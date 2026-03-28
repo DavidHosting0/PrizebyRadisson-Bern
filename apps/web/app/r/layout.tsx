@@ -6,18 +6,64 @@ import { useEffect } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
 import { BrandLogo } from '@/components/BrandLogo';
-import { IconFloor, IconLost, IconRequests } from '@/components/icons';
+import { Button } from '@/components/ui/Button';
+import { ReceptionUiProvider, useReceptionUi } from '@/app/r/reception-context';
+import { NewRequestModal } from '@/components/reception/NewRequestModal';
+import { ReceptionRoomDetailPanel } from '@/components/reception/ReceptionRoomDetailPanel';
+import { useReceptionRealtime } from '@/lib/hooks/useReceptionRealtime';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
-const tabs = [
-  { href: '/r', label: 'Floor', Icon: IconFloor },
-  { href: '/r/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/r/lost', label: 'Lost & found', Icon: IconLost },
+const nav = [
+  { href: '/r', label: 'Dashboard', icon: IconDash },
+  { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
+  { href: '/r/requests', label: 'Service requests', icon: IconInbox },
+  { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
 ];
 
-export default function ReceptionLayout({ children }: { children: React.ReactNode }) {
+function IconDash({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 13h6V4H4v9zm0 7h6v-5H4v5zm8 0h8v-9h-8v9zm0-16v5h8V4h-8z" fill="currentColor" />
+    </svg>
+  );
+}
+function IconBuilding({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 21V8l8-5 8 5v13M9 21v-4h6v4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconInbox({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M22 12h-4l-2 4H8l-2-4H2" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M5.45 5L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-7A2 2 0 0017.52 4H6.48a2 2 0 00-1.93 1z" stroke="currentColor" strokeWidth="1.75" />
+    </svg>
+  );
+}
+function IconPackage({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ReceptionShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
+  useReceptionRealtime();
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api<{ name: string }>('/settings'),
+    enabled: !!user,
+  });
 
   useEffect(() => {
     if (loading) return;
@@ -38,71 +84,98 @@ export default function ReceptionLayout({ children }: { children: React.ReactNod
     );
   }
 
-  const NavLinks = ({ mobile }: { mobile?: boolean }) => (
-    <>
-      {tabs.map((t) => {
-        const active = path === t.href;
-        const Icon = t.Icon;
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            className={clsx(
-              mobile
-                ? 'flex flex-1 flex-col items-center gap-1 py-3 text-[11px] font-medium'
-                : 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-              active
-                ? mobile
-                  ? 'text-ink'
-                  : 'bg-surface-muted text-ink'
-                : mobile
-                  ? 'text-ink-muted'
-                  : 'text-ink-muted hover:bg-surface-muted/80 hover:text-ink',
-            )}
-          >
-            <Icon className={clsx(!mobile && 'shrink-0', active ? 'text-ink' : 'text-ink-muted')} />
-            {t.label}
-          </Link>
-        );
-      })}
-    </>
-  );
+  const hotelTitle = settings?.name ?? 'Front Office';
 
   return (
-    <div className="min-h-screen bg-surface-muted md:flex">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-6 shadow-card md:flex">
-        <div className="px-4">
-          <BrandLogo />
+    <div className="flex min-h-screen flex-col bg-surface-muted">
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface px-4 shadow-card md:px-6">
+        <div className="flex min-w-0 items-center gap-4">
+          <BrandLogo compact className="shrink-0" />
+          <div className="hidden min-w-0 sm:block">
+            <p className="truncate text-sm font-semibold text-ink">{hotelTitle}</p>
+            <p className="truncate text-xs text-ink-muted">Housekeeping operations</p>
+          </div>
         </div>
-        <nav className="mt-8 flex flex-1 flex-col gap-1 px-2">
-          <NavLinks />
-        </nav>
-        <div className="mt-auto border-t border-border px-4 pt-4">
-          <p className="truncate text-xs font-medium text-ink">{user.name}</p>
-          <p className="truncate text-xs text-ink-muted">{user.email}</p>
+        <div className="flex flex-1 items-center justify-end gap-3">
+          <Button
+            type="button"
+            variant="action"
+            className="hidden min-h-[40px] sm:inline-flex"
+            onClick={openNewRequest}
+          >
+            + New request
+          </Button>
+          <div className="hidden text-right md:block">
+            <p className="truncate text-sm font-medium text-ink">{user.name}</p>
+            <p className="truncate text-xs text-ink-muted">{user.email}</p>
+          </div>
           <button
             type="button"
             onClick={() => {
               logout();
               router.replace('/login');
             }}
-            className="mt-3 text-xs font-medium text-ink-muted underline underline-offset-2 hover:text-ink"
+            className="text-xs font-medium text-ink-muted hover:text-ink"
           >
             Sign out
           </button>
         </div>
-      </aside>
+      </header>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-[calc(5rem+var(--safe-bottom))] md:pb-0">
-        <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 shadow-card md:hidden">
-          <BrandLogo compact />
-          <span className="max-w-[50%] truncate text-xs text-ink-muted">{user.name}</span>
-        </header>
-        <main className="flex-1">{children}</main>
-        <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] backdrop-blur-md md:hidden">
-          <NavLinks mobile />
-        </nav>
+      <div className="flex flex-1">
+        <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-4 shadow-card md:flex">
+          <nav className="flex flex-col gap-0.5 px-2">
+            {nav.map((item) => {
+              const active =
+                item.href === '/r'
+                  ? path === '/r'
+                  : path === item.href || path.startsWith(`${item.href}/`);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={clsx(
+                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                    active ? 'bg-surface-muted text-ink' : 'text-ink-muted hover:bg-surface-muted/80 hover:text-ink',
+                  )}
+                >
+                  <Icon className={clsx('shrink-0', active ? 'text-ink' : 'text-ink-muted')} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          <Button
+            type="button"
+            variant="action"
+            className="mx-3 mt-6 min-h-[44px] md:hidden"
+            onClick={openNewRequest}
+          >
+            + New request
+          </Button>
+        </aside>
+
+        <main className="min-w-0 flex-1 overflow-auto pb-20 md:pb-8">
+          {children}
+          <div className="fixed bottom-4 right-4 z-20 sm:hidden">
+            <Button type="button" variant="action" className="min-h-[52px] rounded-full px-5 shadow-lift" onClick={openNewRequest}>
+              +
+            </Button>
+          </div>
+        </main>
       </div>
+
+      <NewRequestModal open={newRequestOpen} onClose={closeNewRequest} />
+      <ReceptionRoomDetailPanel roomId={roomPanelId} open={!!roomPanelId} onClose={() => openRoom(null)} />
     </div>
+  );
+}
+
+export default function ReceptionLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ReceptionUiProvider>
+      <ReceptionShell>{children}</ReceptionShell>
+    </ReceptionUiProvider>
   );
 }

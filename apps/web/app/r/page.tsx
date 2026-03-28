@@ -1,86 +1,73 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
-import { io } from 'socket.io-client';
-import { api, API_BASE } from '@/lib/api';
-import { StatusBadge } from '@/components/StatusBadge';
-import { Card } from '@/components/ui/Card';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { api } from '@/lib/api';
+import { KpiStat } from '@/components/supervisor/KpiStat';
+import { ReceptionRoomBoard } from '@/components/reception/ReceptionRoomBoard';
 
-type RoomRow = {
-  id: string;
-  roomNumber: string;
-  derivedStatus: string;
-};
+type RoomRow = { id: string; derivedStatus: string };
+type ReqRow = { id: string; status: string };
 
-export default function ReceptionFloorPage() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ['rooms', 'all'],
+export default function ReceptionDashboardPage() {
+  const { data: rooms = [] } = useQuery({
+    queryKey: ['rooms', 'reception'],
     queryFn: () => api<RoomRow[]>('/rooms'),
   });
 
-  useEffect(() => {
-    const origin = API_BASE.replace(/\/api\/v1\/?$/, '');
-    const socket = io(`${origin}/operations`, { transports: ['websocket'] });
-    socket.on('room.status_updated', () => {
-      qc.invalidateQueries({ queryKey: ['rooms'] });
-    });
-    return () => {
-      socket.disconnect();
-    };
-  }, [qc]);
+  const { data: requests = [] } = useQuery({
+    queryKey: ['service-requests'],
+    queryFn: () => api<ReqRow[]>('/service-requests'),
+  });
 
   const stats = useMemo(() => {
-    const rooms = data ?? [];
     const total = rooms.length;
     const clean = rooms.filter((r) => r.derivedStatus === 'CLEAN' || r.derivedStatus === 'INSPECTED').length;
     const dirty = rooms.filter((r) => r.derivedStatus === 'DIRTY').length;
     const progress = rooms.filter((r) => r.derivedStatus === 'IN_PROGRESS').length;
-    return { total, clean, dirty, progress };
-  }, [data]);
-
-  if (isLoading) {
-    return (
-      <div className="p-4 md:p-8">
-        <p className="text-sm text-ink-muted">Loading floor…</p>
-      </div>
-    );
-  }
+    const activeReq = requests.filter((r) => r.status !== 'RESOLVED' && r.status !== 'CANCELLED').length;
+    return { total, clean, dirty, progress, activeReq };
+  }, [rooms, requests]);
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
+    <div className="space-y-10 p-4 md:p-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Live floor</h1>
-        <p className="mt-1 text-sm text-ink-muted">Room status updates in real time.</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: 'Total rooms', value: stats.total },
-          { label: 'Clean', value: stats.clean },
-          { label: 'In progress', value: stats.progress },
-          { label: 'Dirty', value: stats.dirty },
-        ].map((s) => (
-          <Card key={s.label}>
-            <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{s.label}</p>
-            <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">{s.value}</p>
-          </Card>
-        ))}
+        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Dashboard</h1>
+        <p className="mt-1 text-sm text-ink-muted">Live operational snapshot</p>
       </div>
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Room grid</h2>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {data?.map((r) => (
-            <Card key={r.id} className="text-center" padding>
-              <p className="text-lg font-semibold text-ink">{r.roomNumber}</p>
-              <div className="mt-3 flex justify-center">
-                <StatusBadge status={r.derivedStatus} />
-              </div>
-            </Card>
-          ))}
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Overview</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-5">
+          <KpiStat label="Total rooms" value={stats.total} />
+          <KpiStat label="Clean / ready" value={stats.clean} sub="Turn-down complete" />
+          <KpiStat label="In progress" value={stats.progress} />
+          <KpiStat label="Dirty" value={stats.dirty} />
+          <KpiStat label="Active requests" value={stats.activeReq} sub="Open pipeline" />
         </div>
+      </section>
+
+      <section className="flex flex-wrap gap-4">
+        <Link
+          href="/r/rooms"
+          className="text-sm font-medium text-action hover:underline"
+        >
+          Full room board →
+        </Link>
+        <Link href="/r/requests" className="text-sm font-medium text-action hover:underline">
+          Service requests →
+        </Link>
+      </section>
+
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Live room status</h2>
+            <p className="text-sm text-ink-muted">Click a room for details. Urgent request flags highlighted.</p>
+          </div>
+        </div>
+        <ReceptionRoomBoard compact />
       </section>
     </div>
   );

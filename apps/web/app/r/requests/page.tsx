@@ -1,151 +1,115 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useState } from 'react';
 import { api } from '@/lib/api';
 import { PriorityBadge } from '@/components/PriorityBadge';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { useReceptionUi } from '@/app/r/reception-context';
 
-type RoomOpt = { id: string; roomNumber: string };
-type TypeOpt = { id: string; label: string; code: string };
+type Req = {
+  id: string;
+  roomId: string;
+  status: string;
+  priority: string;
+  room: { roomNumber: string };
+  type: { label: string };
+  claimedBy: { id: string; name: string } | null;
+};
 
 export default function ReceptionRequestsPage() {
   const qc = useQueryClient();
-  const { data: rooms } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: () => api<RoomOpt[]>('/rooms'),
-  });
-  const { data: types } = useQuery({
-    queryKey: ['service-request-types'],
-    queryFn: () => api<TypeOpt[]>('/service-requests/types'),
-  });
+  const { openNewRequest } = useReceptionUi();
 
-  const [roomId, setRoomId] = useState('');
-  const [typeId, setTypeId] = useState('');
-  const [priority, setPriority] = useState('NORMAL');
-  const [description, setDescription] = useState('');
-
-  const create = useMutation({
-    mutationFn: () =>
-      api('/service-requests', {
-        method: 'POST',
-        body: JSON.stringify({
-          roomId,
-          typeId,
-          priority,
-          description: description || undefined,
-        }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['service-requests'] });
-      setDescription('');
-    },
-  });
-
-  const { data: list } = useQuery({
+  const { data: list = [], isLoading } = useQuery({
     queryKey: ['service-requests'],
-    queryFn: () =>
-      api<
-        {
-          id: string;
-          status: string;
-          priority: string;
-          room: { roomNumber: string };
-          type: { label: string };
-        }[]
-      >('/service-requests'),
+    queryFn: () => api<Req[]>('/service-requests'),
   });
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!roomId || !typeId) return;
-    create.mutate();
-  }
+  const cancel = useMutation({
+    mutationFn: (id: string) => api(`/service-requests/${id}/cancel`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+  });
 
-  const inputClass =
-    'mt-1.5 w-full min-h-[48px] rounded-btn border border-border bg-surface px-3 py-2.5 text-sm text-ink shadow-card focus:border-ink/30 focus:outline-none focus:ring-2 focus:ring-ink/10';
+  const escalate = useMutation({
+    mutationFn: (id: string) =>
+      api(`/service-requests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ priority: 'URGENT' }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+  });
+
+  const active = list.filter((r) => r.status !== 'RESOLVED' && r.status !== 'CANCELLED');
 
   return (
-    <div className="space-y-10 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Service requests</h1>
-        <p className="mt-1 text-sm text-ink-muted">Create a request in a few taps.</p>
+    <div className="space-y-8 p-4 md:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Service requests</h1>
+          <p className="mt-1 text-sm text-ink-muted">Create, track, and manage guest requests.</p>
+        </div>
+        <Button type="button" variant="action" className="min-h-[48px]" onClick={openNewRequest}>
+          + New request
+        </Button>
       </div>
 
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">New request</h2>
-        <form className="mt-4 space-y-4" onSubmit={onSubmit}>
-          <Card className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-ink">Room</label>
-              <select className={inputClass} value={roomId} onChange={(e) => setRoomId(e.target.value)} required>
-                <option value="">Select room…</option>
-                {rooms?.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.roomNumber}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-ink">Type</label>
-              <select className={inputClass} value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
-                <option value="">Select type…</option>
-                {types?.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-ink">Priority</label>
-              <select className={inputClass} value={priority} onChange={(e) => setPriority(e.target.value)}>
-                <option value="NORMAL">Normal</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-ink">Notes</label>
-              <textarea
-                className={`${inputClass} min-h-[88px] resize-y`}
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-            <Button type="submit" variant="primary" fullWidth disabled={create.isPending}>
-              {create.isPending ? 'Creating…' : 'Create request'}
-            </Button>
-          </Card>
-        </form>
-      </section>
+      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
 
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Active requests</h2>
-        <ul className="mt-4 space-y-3">
-          {list
-            ?.filter((r) => r.status !== 'RESOLVED' && r.status !== 'CANCELLED')
-            .map((r) => (
-              <li key={r.id}>
-                <Card className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-ink">Room {r.room.roomNumber}</p>
-                    <p className="mt-0.5 text-sm text-ink-muted">{r.type.label}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-ink-muted">{r.status.replace(/_/g, ' ')}</span>
-                      <PriorityBadge priority={r.priority} />
-                    </div>
+      <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-card">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="border-b border-border bg-surface-muted/80 text-xs uppercase tracking-wide text-ink-muted">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Room</th>
+              <th className="px-4 py-3 font-semibold">Type</th>
+              <th className="px-4 py-3 font-semibold">Priority</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Assigned</th>
+              <th className="px-4 py-3 font-semibold text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.map((r) => (
+              <tr key={r.id} className="border-b border-border/80 hover:bg-surface-muted/40">
+                <td className="px-4 py-3 font-semibold text-ink">Room {r.room.roomNumber}</td>
+                <td className="px-4 py-3 text-ink-muted">{r.type.label}</td>
+                <td className="px-4 py-3">
+                  <PriorityBadge priority={r.priority} />
+                </td>
+                <td className="px-4 py-3 capitalize text-ink-muted">{r.status.replace(/_/g, ' ').toLowerCase()}</td>
+                <td className="px-4 py-3 text-ink-muted">{r.claimedBy?.name ?? '—'}</td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {r.priority === 'NORMAL' && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="min-h-[36px] px-3 py-1.5 text-xs"
+                        disabled={escalate.isPending}
+                        onClick={() => escalate.mutate(r.id)}
+                      >
+                        Escalate
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="min-h-[36px] px-3 py-1.5 text-xs text-danger"
+                      disabled={cancel.isPending}
+                      onClick={() => cancel.mutate(r.id)}
+                    >
+                      Cancel
+                    </Button>
                   </div>
-                </Card>
-              </li>
+                </td>
+              </tr>
             ))}
-        </ul>
-        {list?.filter((r) => r.status !== 'RESOLVED' && r.status !== 'CANCELLED').length === 0 && (
-          <p className="mt-2 text-sm text-ink-muted">No active requests.</p>
-        )}
-      </section>
+          </tbody>
+        </table>
+      </div>
+
+      {active.length === 0 && !isLoading && (
+        <p className="text-sm text-ink-muted">No active requests.</p>
+      )}
     </div>
   );
 }
