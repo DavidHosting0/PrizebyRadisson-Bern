@@ -4,8 +4,15 @@
 
 :root {
   color-scheme: light;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body {
-  @apply bg-mist text-ink antialiased min-h-screen;
+  @apply bg-surface-muted text-ink antialiased min-h-screen;
+}
+
+@layer utilities {
+  .tap-scale {
+    @apply active:scale-[0.98] transition-transform duration-tap;
+  }
 }

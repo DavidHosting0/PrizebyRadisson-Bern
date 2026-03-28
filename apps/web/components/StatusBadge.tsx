@@ -1,26 +1,30 @@
 import clsx from 'clsx';
 
 const LABEL: Record<string, string> = {
-  OUT_OF_ORDER: 'OOO',
+  OUT_OF_ORDER: 'Out of order',
   DIRTY: 'Dirty',
   IN_PROGRESS: 'In progress',
   CLEAN: 'Clean',
   INSPECTED: 'Inspected',
 };
 
+const style: Record<string, string> = {
+  OUT_OF_ORDER: 'bg-warning-muted text-warning',
+  DIRTY: 'bg-surface-muted text-ink-muted',
+  IN_PROGRESS: 'bg-warning-muted/80 text-ink',
+  CLEAN: 'bg-success-muted text-success',
+  INSPECTED: 'bg-surface-muted text-ink',
+};
+
 export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={clsx(
-        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-        status === 'OUT_OF_ORDER' && 'bg-amber-100 text-amber-900',
-        status === 'DIRTY' && 'bg-slate-200 text-slate-800',
-        status === 'IN_PROGRESS' && 'bg-sky-100 text-sky-900',
-        status === 'CLEAN' && 'bg-emerald-100 text-emerald-900',
-        status === 'INSPECTED' && 'bg-teal-100 text-teal-900',
+        'inline-flex rounded-full px-2.5 py-1 text-xs font-medium',
+        style[status] ?? 'bg-surface-muted text-ink-muted',
       )}
     >
-      {LABEL[status] ?? status}
+      {LABEL[status] ?? status.replace(/_/g, ' ')}
     </span>
   );
 }

@@ -1,16 +1,23 @@
 import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
-  title: 'Housekeeping',
+  title: 'Prize by Radisson Bern · Housekeeping',
   description: 'Hotel housekeeping operations',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Housekeeping' },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0d9488',
+  themeColor: '#2B2B2B',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -18,8 +25,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={inter.variable}>
+      <body className="font-sans">
         <Providers>{children}</Providers>
       </body>
     </html>

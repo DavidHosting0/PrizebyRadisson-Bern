@@ -3,6 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
+import { PriorityBadge } from '@/components/PriorityBadge';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 
 type Req = {
   id: string;
@@ -35,7 +38,13 @@ export default function HousekeeperRequestsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
   });
 
-  if (isLoading) return <p className="p-4">Loading…</p>;
+  if (isLoading) {
+    return (
+      <div className="p-4">
+        <p className="text-sm text-ink-muted">Loading requests…</p>
+      </div>
+    );
+  }
 
   const rows = data ?? [];
   const open = rows.filter((r) => r.status === 'OPEN');
@@ -46,53 +55,64 @@ export default function HousekeeperRequestsPage() {
   );
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-8 p-4">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight text-ink">Requests</h1>
+        <p className="mt-1 text-sm text-ink-muted">Claim open work or complete what you started.</p>
+      </div>
+
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Open</h2>
-        <ul className="mt-2 space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Open</h2>
+        <ul className="mt-3 space-y-3">
           {open.map((r) => (
-            <li key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex justify-between gap-2">
-                <div>
-                  <p className="font-medium">
-                    Room {r.room.roomNumber} · {r.type.label}
-                  </p>
-                  <p className="text-xs text-slate-500">{r.priority}</p>
+            <li key={r.id}>
+              <Card>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-semibold text-ink">Room {r.room.roomNumber}</p>
+                    <p className="mt-1 text-sm text-ink-muted">{r.type.label}</p>
+                    <div className="mt-2">
+                      <PriorityBadge priority={r.priority} />
+                    </div>
+                  </div>
+                  <Button
+                    variant="primary"
+                    className="min-h-[48px] min-w-[96px]"
+                    disabled={claim.isPending}
+                    onClick={() => claim.mutate(r.id)}
+                  >
+                    Claim
+                  </Button>
                 </div>
-                <button
-                  type="button"
-                  className="rounded-lg bg-accent px-3 py-1 text-sm text-white"
-                  onClick={() => claim.mutate(r.id)}
-                >
-                  Claim
-                </button>
-              </div>
+              </Card>
             </li>
           ))}
         </ul>
+        {open.length === 0 && <p className="mt-2 text-sm text-ink-muted">No open requests.</p>}
       </section>
+
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Claimed</h2>
-        <ul className="mt-2 space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">My active tasks</h2>
+        <ul className="mt-3 space-y-3">
           {mine.map((r) => (
-            <li key={r.id} className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex justify-between gap-2">
-                <div>
-                  <p className="font-medium">
-                    Room {r.room.roomNumber} · {r.type.label}
-                  </p>
+            <li key={r.id}>
+              <Card>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-semibold text-ink">Room {r.room.roomNumber}</p>
+                    <p className="mt-1 text-sm text-ink-muted">{r.type.label}</p>
+                  </div>
+                  <Button variant="secondary" disabled={resolve.isPending} onClick={() => resolve.mutate(r.id)}>
+                    Mark as done
+                  </Button>
                 </div>
-                <button
-                  type="button"
-                  className="rounded-lg border border-slate-300 px-3 py-1 text-sm"
-                  onClick={() => resolve.mutate(r.id)}
-                >
-                  Resolve
-                </button>
-              </div>
+              </Card>
             </li>
           ))}
         </ul>
+        {mine.length === 0 && (
+          <p className="mt-2 text-sm text-ink-muted">You have no claimed requests in progress.</p>
+        )}
       </section>
     </div>
   );

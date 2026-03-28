@@ -25,8 +25,9 @@ export default function HomePage() {
   }, [user, loading, router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p className="text-slate-600">Loading…</p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-surface-muted">
+      <div className="h-8 w-8 animate-pulse rounded-full bg-surface-muted ring-2 ring-border" />
+      <p className="text-sm text-ink-muted">Loading…</p>
     </div>
   );
 }

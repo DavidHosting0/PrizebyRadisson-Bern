@@ -1,11 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useMemo } from 'react';
 import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
+import { ChecklistToggle } from '@/components/ChecklistToggle';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 type Task = {
   id: string;
@@ -26,6 +30,7 @@ export default function RoomChecklistPage() {
   const id = params.id as string;
   const qc = useQueryClient();
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['room', id],
@@ -51,6 +56,16 @@ export default function RoomChecklistPage() {
     [patchTask],
   );
 
+  const cycle = (t: Task) => {
+    const next =
+      t.status === 'NOT_STARTED'
+        ? 'IN_PROGRESS'
+        : t.status === 'IN_PROGRESS'
+          ? 'COMPLETED'
+          : 'NOT_STARTED';
+    schedule(t.id, next);
+  };
+
   const uploadPhoto = useMutation({
     mutationFn: async (file: File) => {
       const compressed = await imageCompression(file, { maxSizeMB: 0.6, maxWidthOrHeight: 1600 });
@@ -75,52 +90,102 @@ export default function RoomChecklistPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['room', id] }),
   });
 
-  if (isLoading || !data) return <p className="p-4">Loading…</p>;
+  const tasks = data?.checklist?.tasks ?? [];
+  const progress = useMemo(() => {
+    const total = tasks.length;
+    if (!total) return 0;
+    const done = tasks.filter((t) => t.status === 'COMPLETED').length;
+    return Math.round((done / total) * 100);
+  }, [tasks]);
 
-  const tasks = data.checklist?.tasks ?? [];
+  if (isLoading || !data) {
+    return (
+      <div className="p-4">
+        <p className="text-sm text-ink-muted">Loading room…</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Room {data.roomNumber}</h1>
-        <StatusBadge status={data.derivedStatus} />
+    <div className="space-y-6 p-4">
+      <div className="flex items-center gap-3">
+        <Link
+          href="/h"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-ink shadow-card tap-scale"
+          aria-label="Back to rooms"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Room {data.roomNumber}</h1>
+          <div className="mt-1">
+            <StatusBadge status={data.derivedStatus} />
+          </div>
+        </div>
       </div>
-      <ul className="mt-4 space-y-2">
-        {tasks.map((t) => (
-          <li key={t.id}>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-left active:bg-slate-50"
-              onClick={() => {
-                const next =
-                  t.status === 'NOT_STARTED'
-                    ? 'IN_PROGRESS'
-                    : t.status === 'IN_PROGRESS'
-                      ? 'COMPLETED'
-                      : 'NOT_STARTED';
-                schedule(t.id, next);
-              }}
-            >
-              <span className="font-medium">{t.label}</span>
-              <span className="text-sm text-slate-600">{t.status.replace('_', ' ')}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-6">
-        <label className="block text-sm font-medium text-slate-700">Cleaning photo</label>
+
+      <Card>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Checklist progress</p>
+          <span className="text-lg font-semibold tabular-nums text-ink">{progress}%</span>
+        </div>
+        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface-muted">
+          <div
+            className="h-full rounded-full bg-success transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <p className="mt-3 text-sm text-ink-muted">
+          Tap a task to cycle: not started → in progress → done.
+        </p>
+      </Card>
+
+      <section>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Tasks</h2>
+        <ul className="mt-3 space-y-3">
+          {tasks.map((t) => (
+            <li key={t.id}>
+              <ChecklistToggle task={t} onCycle={() => cycle(t)} />
+            </li>
+          ))}
+        </ul>
+        {tasks.length === 0 && (
+          <p className="mt-2 text-sm text-ink-muted">No checklist tasks for this room.</p>
+        )}
+      </section>
+
+      <section className="space-y-3">
         <input
+          ref={fileRef}
           type="file"
           accept="image/*"
           capture="environment"
-          className="mt-2 w-full text-sm"
+          className="sr-only"
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) uploadPhoto.mutate(f);
+            e.target.value = '';
           }}
         />
-        <p className="mt-1 text-xs text-slate-500">Compressed automatically before upload.</p>
-      </div>
+        <Button
+          variant="secondary"
+          fullWidth
+          disabled={uploadPhoto.isPending}
+          onClick={() => fileRef.current?.click()}
+        >
+          {uploadPhoto.isPending ? 'Uploading…' : 'Upload photo'}
+        </Button>
+        <p className="text-center text-xs text-ink-muted">Photos are compressed before upload.</p>
+      </section>
+
+      {progress === 100 && tasks.length > 0 && (
+        <section className="rounded-card border border-success/30 bg-success-muted/50 p-4 text-center">
+          <p className="font-medium text-ink">All tasks complete</p>
+          <p className="mt-1 text-sm text-ink-muted">Room status updates automatically.</p>
+        </section>
+      )}
     </div>
   );
 }

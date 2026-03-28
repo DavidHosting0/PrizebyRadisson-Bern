@@ -1,20 +1,12 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
+import { Card } from '@/components/ui/Card';
 
 export default function SupervisorPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-    if (!user) router.replace('/login');
-    else if (user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') router.replace('/');
-  }, [user, loading, router]);
+  const { user } = useAuth();
 
   const { data } = useQuery({
     queryKey: ['analytics'],
@@ -27,30 +19,41 @@ export default function SupervisorPage() {
       }>('/analytics/summary'),
   });
 
-  if (loading || !user) return <p className="p-4">Loading…</p>;
+  const hk = data?.tasksPerHousekeeper ?? [];
 
   return (
-    <div className="space-y-6 p-4">
-      <h1 className="text-xl font-semibold">Supervisor</h1>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-sm text-slate-500">Avg clean time</p>
-          <p className="text-2xl font-semibold">{data?.avgCleanTimeSeconds ?? 0}s</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-sm text-slate-500">Avg request resolve</p>
-          <p className="text-2xl font-semibold">{data?.avgRequestResolveTimeSeconds ?? 0}s</p>
-        </div>
+    <div className="space-y-8 p-4 md:p-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Supervisor</h1>
+        <p className="mt-1 text-sm text-ink-muted">Performance overview</p>
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Avg. clean time</p>
+          <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">{data?.avgCleanTimeSeconds ?? 0}s</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Avg. request resolve</p>
+          <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">
+            {data?.avgRequestResolveTimeSeconds ?? 0}s
+          </p>
+        </Card>
+      </div>
+
       <section>
-        <h2 className="font-medium">Tasks per housekeeper</h2>
-        <ul className="mt-2 space-y-1 text-sm">
-          {data?.tasksPerHousekeeper.map((t) => (
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Tasks per housekeeper</h2>
+        <ul className="mt-4 space-y-3">
+          {hk.map((t) => (
             <li key={t.name}>
-              {t.name}: {t.completedTasks}
+              <Card className="flex items-center justify-between gap-4">
+                <span className="font-medium text-ink">{t.name}</span>
+                <span className="text-2xl font-semibold tabular-nums text-ink">{t.completedTasks}</span>
+              </Card>
             </li>
           ))}
         </ul>
+        {hk.length === 0 && <p className="mt-2 text-sm text-ink-muted">No data yet.</p>}
       </section>
     </div>
   );

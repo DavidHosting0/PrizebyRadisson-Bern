@@ -3,6 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { BrandLogo } from '@/components/BrandLogo';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
@@ -27,7 +30,7 @@ export default function LoginPage() {
       const msg = e instanceof Error ? e.message : String(e);
       if (/failed to fetch|networkerror|load failed|fetch/i.test(msg)) {
         setErr(
-          'Cannot reach the API. The site must be built with NEXT_PUBLIC_API_URL set to this site’s public API base (e.g. https://your-domain.com/api/v1), then redeploy.',
+          'Cannot reach the API. Set NEXT_PUBLIC_API_URL to this site’s public API base and rebuild the web app.',
         );
       } else {
         setErr('Login failed. Check email and password.');
@@ -37,43 +40,47 @@ export default function LoginPage() {
     }
   }
 
+  const field =
+    'mt-2 w-full min-h-[48px] rounded-btn border border-border bg-surface px-3 py-2.5 text-base text-ink shadow-card focus:border-ink/30 focus:outline-none focus:ring-2 focus:ring-ink/10';
+
   return (
-    <div className="flex min-h-screen flex-col justify-center px-4">
-      <div className="mx-auto w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-ink">Sign in</h1>
-        <p className="mt-1 text-sm text-slate-600">Housekeeping operations</p>
-        <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Email</label>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Password</label>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-xl bg-accent py-3 text-center font-medium text-white disabled:opacity-60"
-          >
-            {pending ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+    <div className="flex min-h-screen flex-col justify-center bg-surface-muted px-4 py-12">
+      <div className="mx-auto w-full max-w-md">
+        <div className="mb-8 flex justify-center">
+          <BrandLogo />
+        </div>
+        <Card>
+          <h1 className="text-xl font-semibold tracking-tight text-ink">Sign in</h1>
+          <p className="mt-1 text-sm text-ink-muted">Housekeeping operations</p>
+          <form className="mt-8 space-y-5" onSubmit={onSubmit}>
+            <div>
+              <label className="block text-sm font-medium text-ink">Email</label>
+              <input
+                className={field}
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink">Password</label>
+              <input
+                className={field}
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            {err && <p className="text-sm text-danger">{err}</p>}
+            <Button type="submit" variant="primary" fullWidth disabled={pending}>
+              {pending ? 'Signing in…' : 'Sign in'}
+            </Button>
+          </form>
+        </Card>
       </div>
     </div>
   );
