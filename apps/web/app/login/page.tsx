@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('Password123!');
   const [err, setErr] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [remember, setRemember] = useState(false);
 
   useEffect(() => {
     if (!loading && user) router.replace('/');
@@ -25,6 +26,11 @@ export default function LoginPage() {
     setPending(true);
     try {
       await login(email, password);
+      if (remember && typeof window !== 'undefined') {
+        localStorage.setItem('hk_remember_email', email);
+      } else {
+        localStorage.removeItem('hk_remember_email');
+      }
       router.replace('/');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -40,12 +46,24 @@ export default function LoginPage() {
     }
   }
 
+  useEffect(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('hk_remember_email') : null;
+    if (saved) {
+      setEmail(saved);
+      setRemember(true);
+    }
+  }, []);
+
   const field =
-    'mt-2 w-full min-h-[48px] rounded-btn border border-border bg-surface px-3 py-2.5 text-base text-ink shadow-card focus:border-ink/30 focus:outline-none focus:ring-2 focus:ring-ink/10';
+    'mt-2 w-full min-h-[48px] rounded-btn border border-border bg-surface px-3 py-2.5 text-base text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15';
 
   return (
-    <div className="flex min-h-screen flex-col justify-center bg-surface-muted px-4 py-12">
-      <div className="mx-auto w-full max-w-md">
+    <div className="relative flex min-h-screen flex-col justify-center bg-surface-muted px-4 py-12">
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(37,99,235,0.06),_transparent_50%),radial-gradient(ellipse_at_bottom,_rgba(43,43,43,0.04),_transparent_55%)]"
+        aria-hidden
+      />
+      <div className="relative mx-auto w-full max-w-md">
         <div className="mb-8 flex justify-center">
           <BrandLogo />
         </div>
@@ -75,9 +93,21 @@ export default function LoginPage() {
                 required
               />
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-ink-muted">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-border text-action"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                />
+                Remember me
+              </label>
+              <span className="text-ink-muted/70">Forgot password? · Contact admin</span>
+            </div>
             {err && <p className="text-sm text-danger">{err}</p>}
-            <Button type="submit" variant="primary" fullWidth disabled={pending}>
-              {pending ? 'Signing in…' : 'Sign in'}
+            <Button type="submit" variant="action" fullWidth disabled={pending}>
+              {pending ? 'Signing in…' : 'Login'}
             </Button>
           </form>
         </Card>

@@ -17,6 +17,8 @@ const config: Config = {
         'danger-muted': '#FCEEED',
         warning: '#C98A32',
         'warning-muted': '#FDF6E8',
+        action: '#2563EB',
+        'action-muted': '#EFF6FF',
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],

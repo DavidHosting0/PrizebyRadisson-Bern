@@ -11,6 +11,12 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  @Get('housekeepers')
+  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  listHousekeepers() {
+    return this.users.listHousekeepers();
+  }
+
   @Get()
   @Roles(UserRole.ADMIN)
   list() {

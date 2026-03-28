@@ -128,10 +128,48 @@ export class ServiceRequestsService {
     return updated;
   }
 
+  async patchRequest(
+    id: string,
+    user: User,
+    dto: { status?: ServiceRequestStatus; priority?: ServiceRequestPriority },
+  ) {
+    const row = await this.prisma.serviceRequest.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException();
+
+    if (dto.priority != null) {
+      if (
+        user.role !== UserRole.RECEPTION &&
+        user.role !== UserRole.SUPERVISOR &&
+        user.role !== UserRole.ADMIN
+      ) {
+        throw new ForbiddenException();
+      }
+    }
+
+    if (dto.status != null) {
+      return this.updateStatus(id, user, dto.status, dto.priority);
+    }
+
+    const updated = await this.prisma.serviceRequest.update({
+      where: { id },
+      data: {
+        priority: dto.priority,
+      },
+      include: {
+        room: { select: { id: true, roomNumber: true } },
+        type: true,
+        claimedBy: { select: { id: true, name: true } },
+      },
+    });
+    this.realtime.emitServiceRequest('service_request.updated', updated);
+    return updated;
+  }
+
   async updateStatus(
     id: string,
     user: User,
     status: ServiceRequestStatus,
+    priority?: ServiceRequestPriority,
   ) {
     const row = await this.prisma.serviceRequest.findUnique({ where: { id } });
     if (!row) throw new NotFoundException();
@@ -151,15 +189,19 @@ export class ServiceRequestsService {
       where: { id },
       data: {
         status,
+        ...(priority !== undefined ? { priority } : {}),
         resolvedAt: status === ServiceRequestStatus.RESOLVED ? new Date() : undefined,
       },
       include: {
         room: { select: { id: true, roomNumber: true } },
         type: true,
+        claimedBy: { select: { id: true, name: true } },
       },
     });
     if (status === ServiceRequestStatus.RESOLVED) {
       this.realtime.emitServiceRequest('service_request.resolved', updated);
+    } else {
+      this.realtime.emitServiceRequest('service_request.updated', updated);
     }
     return updated;
   }

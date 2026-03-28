@@ -56,10 +56,12 @@ export class ServiceRequestsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.HOUSEKEEPER, UserRole.SUPERVISOR, UserRole.ADMIN)
+  @Roles(UserRole.HOUSEKEEPER, UserRole.RECEPTION, UserRole.SUPERVISOR, UserRole.ADMIN)
   patch(@Param('id') id: string, @CurrentUser() user: User, @Body() dto: UpdateServiceRequestDto) {
-    if (!dto.status) throw new BadRequestException('status is required');
-    return this.svc.updateStatus(id, user, dto.status);
+    if (dto.status == null && dto.priority == null) {
+      throw new BadRequestException('status or priority is required');
+    }
+    return this.svc.patchRequest(id, user, dto);
   }
 
   @Post(':id/cancel')
