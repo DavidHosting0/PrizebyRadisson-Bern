@@ -45,6 +45,7 @@ npm run dev:web
 ## Production (PM2 on a shared server)
 
 - **SSH + GitHub first-time deploy:** **[DEPLOY-SSH-GITHUB.md](DEPLOY-SSH-GITHUB.md)** (step-by-step from clone to Nginx). Example deploy directory on the server: **`/var/www/PrizeByRadissonBern`**.
+- **Server with other PM2 apps:** **[SERVER-RUNBOOK.md](SERVER-RUNBOOK.md)** (ports, clone URL, env, PM2, Nginx, updates).
 - **PM2 / env / updates:** **[DEPLOY-PM2.md](DEPLOY-PM2.md)** and **[ecosystem.config.cjs](ecosystem.config.cjs)**. Use free ports (e.g. 3100/3101), set `WEB_ORIGIN` and `NEXT_PUBLIC_API_URL` for your public URLs, put Nginx in front if you serve HTTPS.
 
 - API: `http://localhost:3001/api/v1`

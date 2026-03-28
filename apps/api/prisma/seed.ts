@@ -18,7 +18,7 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@demo.local' },
-    update: {},
+    update: { passwordHash, name: 'Admin User', role: UserRole.ADMIN, isActive: true },
     create: {
       email: 'admin@demo.local',
       passwordHash,
@@ -29,7 +29,7 @@ async function main() {
 
   const hk = await prisma.user.upsert({
     where: { email: 'housekeeper@demo.local' },
-    update: {},
+    update: { passwordHash, name: 'Jane Housekeeper', role: UserRole.HOUSEKEEPER, isActive: true },
     create: {
       email: 'housekeeper@demo.local',
       passwordHash,
@@ -40,7 +40,7 @@ async function main() {
 
   const sup = await prisma.user.upsert({
     where: { email: 'supervisor@demo.local' },
-    update: {},
+    update: { passwordHash, name: 'Sam Supervisor', role: UserRole.SUPERVISOR, isActive: true },
     create: {
       email: 'supervisor@demo.local',
       passwordHash,
@@ -51,7 +51,7 @@ async function main() {
 
   const rec = await prisma.user.upsert({
     where: { email: 'reception@demo.local' },
-    update: {},
+    update: { passwordHash, name: 'Rita Reception', role: UserRole.RECEPTION, isActive: true },
     create: {
       email: 'reception@demo.local',
       passwordHash,

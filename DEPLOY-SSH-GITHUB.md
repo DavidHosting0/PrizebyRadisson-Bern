@@ -28,14 +28,14 @@ cd /var/www
 sudo mkdir -p PrizeByRadissonBern
 sudo chown "$USER:$USER" PrizeByRadissonBern
 cd PrizeByRadissonBern
-git clone https://github.com/YOUR_ORG/YOUR_REPO.git .
+git clone https://github.com/DavidHosting0/PrizebyRadisson-Bern.git .
 ```
 
 If you use **SSH keys** with GitHub:
 
 ```bash
 cd /var/www
-git clone git@github.com:YOUR_ORG/YOUR_REPO.git PrizeByRadissonBern
+git clone git@github.com:DavidHosting0/PrizebyRadisson-Bern.git PrizeByRadissonBern
 cd PrizeByRadissonBern
 ```
 
