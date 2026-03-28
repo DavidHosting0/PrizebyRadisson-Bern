@@ -114,7 +114,12 @@ export default function RoomChecklistPage() {
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        <Button type="button" variant="secondary" className="min-h-[48px] sm:min-w-[200px]" onClick={() => setLostFoundOpen(true)}>
+        <Button
+          type="button"
+          variant="danger"
+          className="min-h-[48px] border-0 bg-red-600 text-white shadow-sm hover:bg-red-700 hover:text-white sm:min-w-[200px]"
+          onClick={() => setLostFoundOpen(true)}
+        >
           Report lost &amp; found
         </Button>
       </div>

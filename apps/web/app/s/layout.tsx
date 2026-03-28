@@ -10,6 +10,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 const nav = [
   { href: '/s', label: 'Dashboard' },
   { href: '/s/board', label: 'Assignment board' },
+  { href: '/s/room-tasks', label: 'Room task lists' },
   { href: '/s/requests', label: 'Requests' },
   { href: '/s/lost', label: 'Lost & found' },
   { href: '/s/performance', label: 'Performance' },

@@ -13,6 +13,7 @@ import { LostFoundModule } from './lost-found/lost-found.module';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { InspectionsModule } from './inspections/inspections.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { RoomTypesModule } from './room-types/room-types.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { StorageModule } from './storage/storage.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -35,6 +36,7 @@ import configuration from './config/configuration';
     AssignmentsModule,
     InspectionsModule,
     AnalyticsModule,
+    RoomTypesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
