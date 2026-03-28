@@ -23,8 +23,15 @@ export default function LoginPage() {
     try {
       await login(email, password);
       router.replace('/');
-    } catch {
-      setErr('Login failed. Check email and password.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/failed to fetch|networkerror|load failed|fetch/i.test(msg)) {
+        setErr(
+          'Cannot reach the API. The site must be built with NEXT_PUBLIC_API_URL set to this site’s public API base (e.g. https://your-domain.com/api/v1), then redeploy.',
+        );
+      } else {
+        setErr('Login failed. Check email and password.');
+      }
     } finally {
       setPending(false);
     }
