@@ -1,12 +1,46 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { LostFoundStatus, Prisma, User, UserRole } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { AssignmentStatus, LostFoundStatus, Prisma, User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { S3Service } from '../storage/s3.service';
 import { CreateLostFoundDto } from './dto/create-lost-found.dto';
 import { UpdateLostFoundDto } from './dto/update-lost-found.dto';
 
 @Injectable()
 export class LostFoundService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3: S3Service,
+  ) {}
+
+  private async assertHousekeeperRoom(user: User, roomId: string) {
+    if (user.role === UserRole.SUPERVISOR || user.role === UserRole.ADMIN) return;
+    if (user.role !== UserRole.HOUSEKEEPER) throw new ForbiddenException();
+    const a = await this.prisma.roomAssignment.findFirst({
+      where: {
+        roomId,
+        housekeeperUserId: user.id,
+        status: AssignmentStatus.ACTIVE,
+      },
+    });
+    if (!a) throw new ForbiddenException('Not assigned to this room');
+  }
+
+  async presign(user: User, roomId: string | undefined, contentType: string) {
+    if (user.role === UserRole.HOUSEKEEPER) {
+      if (!roomId) throw new BadRequestException('roomId is required');
+      await this.assertHousekeeperRoom(user, roomId);
+    }
+    const mime = contentType || 'image/jpeg';
+    const ext = mime.includes('png') ? 'png' : 'jpg';
+    const key = this.s3.buildLostFoundKey(ext);
+    const { url } = await this.s3.presignPut(key, mime);
+    return { uploadUrl: url, key };
+  }
 
   async list(query: { status?: LostFoundStatus; q?: string }) {
     const where: Prisma.LostFoundItemWhereInput = {};
@@ -31,6 +65,9 @@ export class LostFoundService {
       user.role !== UserRole.ADMIN
     ) {
       throw new ForbiddenException();
+    }
+    if (user.role === UserRole.HOUSEKEEPER && dto.roomId) {
+      await this.assertHousekeeperRoom(user, dto.roomId);
     }
     return this.prisma.lostFoundItem.create({
       data: {

@@ -39,4 +39,8 @@ export class S3Service {
   buildRoomPhotoKey(roomId: string, ext = 'jpg') {
     return `rooms/${roomId}/photos/${randomUUID()}.${ext}`;
   }
+
+  buildLostFoundKey(ext = 'jpg') {
+    return `lost-found/${randomUUID()}.${ext}`;
+  }
 }

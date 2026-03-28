@@ -5,6 +5,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { CreateLostFoundDto } from './dto/create-lost-found.dto';
+import { PresignLostFoundDto } from './dto/presign-lost-found.dto';
 import { UpdateLostFoundDto } from './dto/update-lost-found.dto';
 
 @Controller('lost-found')
@@ -16,6 +17,12 @@ export class LostFoundController {
   @Roles(UserRole.RECEPTION, UserRole.HOUSEKEEPER, UserRole.SUPERVISOR, UserRole.ADMIN)
   list(@Query('status') status?: LostFoundStatus, @Query('q') q?: string) {
     return this.lostFound.list({ status, q });
+  }
+
+  @Post('presign')
+  @Roles(UserRole.HOUSEKEEPER, UserRole.SUPERVISOR, UserRole.ADMIN)
+  presign(@Body() dto: PresignLostFoundDto, @CurrentUser() user: User) {
+    return this.lostFound.presign(user, dto.roomId, dto.contentType);
   }
 
   @Post()
