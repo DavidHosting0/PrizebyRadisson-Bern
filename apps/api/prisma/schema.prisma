@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  HOUSEKEEPER
+  SUPERVISOR
+  RECEPTION
+  ADMIN
+}
+
+enum ChecklistTaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ServiceRequestPriority {
+  NORMAL
+  URGENT
+}
+
+enum ServiceRequestStatus {
+  CREATED
+  OPEN
+  CLAIMED
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum LostFoundStatus {
+  FOUND
+  STORED
+  CLAIMED
+  CLOSED
+}
+
+enum AssignmentStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PhotoUploadStatus {
+  PENDING
+  READY
+}
+
+model HotelSettings {
+  id        String   @id @default(cuid())
+  name      String   @default("Hotel")
+  timezone  String   @default("UTC")
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  isActive     Boolean  @default(true)
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens      RefreshToken[]
+  cleaningSessions   CleaningSession[] @relation("AssignedSessions")
+  roomChecklistTasks RoomChecklistTask[]
+  roomPhotos         RoomPhoto[]
+  serviceRequestsCreated ServiceRequest[] @relation("CreatedBy")
+  serviceRequestsClaimed ServiceRequest[] @relation("ClaimedBy")
+  lostFoundReported  LostFoundItem[]
+  shifts             Shift[]
+  roomAssignmentsAsHousekeeper RoomAssignment[] @relation("HousekeeperAssignment")
+  roomAssignmentsAsAssigner    RoomAssignment[] @relation("AssignerAssignment")
+  inspections        RoomInspection[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model RoomType {
+  id                         String              @id @default(cuid())
+  name                       String
+  code                       String              @unique
+  defaultChecklistTemplateId String?
+  defaultChecklistTemplate   ChecklistTemplate?  @relation(fields: [defaultChecklistTemplateId], references: [id])
+  rooms                      Room[]
+  checklistTemplates         ChecklistTemplate[] @relation("RoomTypeTemplates")
+}
+
+model ChecklistTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  version     Int      @default(1)
+  roomTypeId  String?
+  roomType    RoomType? @relation("RoomTypeTemplates", fields: [roomTypeId], references: [id], onDelete: SetNull)
+  tasks       ChecklistTemplateTask[]
+  states      RoomChecklistState[]
+  roomTypesDefault RoomType[]
+}
+
+model ChecklistTemplateTask {
+  id          String            @id @default(cuid())
+  templateId  String
+  template    ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sortOrder   Int
+  label       String
+  code        String
+  required    Boolean           @default(true)
+  roomTasks   RoomChecklistTask[]
+
+  @@unique([templateId, code])
+  @@index([templateId])
+}
+
+model Room {
+  id          String   @id @default(cuid())
+  roomNumber  String   @unique
+  floor       Int?
+  roomTypeId  String
+  roomType    RoomType @relation(fields: [roomTypeId], references: [id])
+  outOfOrder  Boolean  @default(false)
+  oooReason   String?
+  oooUntil    DateTime?
+  notes       String?
+  metadata    Json     @default("{}")
+
+  checklistStates  RoomChecklistState[]
+  cleaningSessions CleaningSession[]
+  photos           RoomPhoto[]
+  serviceRequests  ServiceRequest[]
+  lostFoundItems   LostFoundItem[]
+  assignments      RoomAssignment[]
+  inspections      RoomInspection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RoomChecklistState {
+  id         String            @id @default(cuid())
+  roomId     String
+  room       Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  templateId String
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id])
+  updatedAt  DateTime          @updatedAt
+  tasks      RoomChecklistTask[]
+
+  @@unique([roomId])
+}
+
+model RoomChecklistTask {
+  id                 String              @id @default(cuid())
+  stateId            String
+  state              RoomChecklistState  @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  templateTaskId     String
+  templateTask       ChecklistTemplateTask @relation(fields: [templateTaskId], references: [id])
+  status             ChecklistTaskStatus @default(NOT_STARTED)
+  updatedByUserId    String?
+  updatedBy          User?               @relation(fields: [updatedByUserId], references: [id])
+  updatedAt          DateTime            @updatedAt
+  supervisorOverride Boolean             @default(false)
+
+  @@unique([stateId, templateTaskId])
+}
+
+model CleaningSession {
+  id              String    @id @default(cuid())
+  roomId          String
+  room            Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  assignedUserId  String
+  assignedUser    User      @relation("AssignedSessions", fields: [assignedUserId], references: [id])
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  photos RoomPhoto[]
+
+  @@index([roomId])
+  @@index([assignedUserId])
+}
+
+model RoomInspection {
+  id              String   @id @default(cuid())
+  roomId          String
+  room            Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  inspectorUserId String
+  inspector       User     @relation(fields: [inspectorUserId], references: [id])
+  inspectedAt     DateTime @default(now())
+  notes           String?
+  passed          Boolean  @default(true)
+
+  @@index([roomId])
+}
+
+model RoomPhoto {
+  id                 String            @id @default(cuid())
+  roomId             String
+  room               Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  uploadedByUserId   String
+  uploadedBy         User              @relation(fields: [uploadedByUserId], references: [id])
+  s3Key              String
+  mime               String?
+  bytes              Int?
+  takenAt            DateTime?
+  status             PhotoUploadStatus @default(PENDING)
+  cleaningSessionId  String?
+  cleaningSession    CleaningSession?  @relation(fields: [cleaningSessionId], references: [id])
+  createdAt          DateTime          @default(now())
+
+  @@index([roomId])
+}
+
+model ServiceRequestType {
+  id                         String   @id @default(cuid())
+  code                       String   @unique
+  label                      String
+  mapsToChecklistTaskCode    String?
+
+  requests ServiceRequest[]
+}
+
+model ServiceRequest {
+  id                String                 @id @default(cuid())
+  roomId            String
+  room              Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  typeId            String
+  type              ServiceRequestType     @relation(fields: [typeId], references: [id])
+  priority          ServiceRequestPriority @default(NORMAL)
+  description       String?
+  status            ServiceRequestStatus   @default(CREATED)
+  createdByUserId   String
+  createdBy         User                   @relation("CreatedBy", fields: [createdByUserId], references: [id])
+  claimedByUserId   String?
+  claimedBy         User?                  @relation("ClaimedBy", fields: [claimedByUserId], references: [id])
+  claimedAt         DateTime?
+  resolvedAt        DateTime?
+  version           Int                    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([roomId])
+}
+
+model LostFoundItem {
+  id                 String         @id @default(cuid())
+  roomId             String?
+  room               Room?          @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  reportedByUserId   String
+  reportedBy         User           @relation(fields: [reportedByUserId], references: [id])
+  description        String
+  photoS3Key         String?
+  status             LostFoundStatus @default(FOUND)
+  foundAt            DateTime       @default(now())
+  storedLocation     String?
+  claimedByGuestInfo Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model Shift {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, startsAt, endsAt])
+}
+
+model RoomAssignment {
+  id                  String           @id @default(cuid())
+  roomId              String
+  room                Room             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  housekeeperUserId   String
+  housekeeper         User             @relation("HousekeeperAssignment", fields: [housekeeperUserId], references: [id])
+  assignedByUserId    String?
+  assigner            User?            @relation("AssignerAssignment", fields: [assignedByUserId], references: [id])
+  assignedAt          DateTime         @default(now())
+  status              AssignmentStatus @default(PENDING)
+
+  @@index([roomId])
+  @@index([housekeeperUserId])
+}
+
+model AnalyticsDaily {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  metricKey String
+  value     Float
+  meta      Json     @default("{}")
+
+  @@unique([date, metricKey])
+}

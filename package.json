@@ -1,0 +1,19 @@
+{
+  "name": "housekeeping-platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev -w @housekeeping/api",
+    "dev:web": "npm run dev -w @housekeeping/web",
+    "build": "npm run build -w @housekeeping/shared && npm run build -w @housekeeping/api && npm run build -w @housekeeping/web",
+    "db:migrate": "npm run prisma:migrate -w @housekeeping/api",
+    "db:generate": "npm run prisma:generate -w @housekeeping/api",
+    "db:seed": "npm run prisma:seed -w @housekeeping/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
