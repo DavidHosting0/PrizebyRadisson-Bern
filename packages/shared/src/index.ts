@@ -13,6 +13,8 @@ export enum DerivedRoomStatus {
   INSPECTED = 'INSPECTED',
 }
 
+export * from './room-layout';
+
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',
   SERVICE_REQUEST_CLAIMED: 'service_request.claimed',

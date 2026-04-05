@@ -5,6 +5,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { allHotelRoomNumbers, floorFromRoomNumber } from '../src/rooms/room-layout';
 
 const prisma = new PrismaClient();
 
@@ -110,14 +111,16 @@ async function main() {
     data: { roomTypeId: rt.id },
   });
 
-  const rooms = ['101', '102', '103', '201', '202'];
+  const rooms = allHotelRoomNumbers();
   for (const num of rooms) {
+    const floor = floorFromRoomNumber(num);
+    if (floor == null) continue;
     await prisma.room.upsert({
       where: { roomNumber: num },
-      update: {},
+      update: { floor },
       create: {
         roomNumber: num,
-        floor: parseInt(num, 10) >= 200 ? 2 : 1,
+        floor,
         roomTypeId: rt.id,
       },
     });

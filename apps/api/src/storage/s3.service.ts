@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
@@ -34,6 +34,12 @@ export class S3Service {
     });
     const url = await getSignedUrl(this.client, cmd, { expiresIn: expiresSec });
     return { url, key, bucket: this.bucket };
+  }
+
+  async presignGet(key: string, expiresSec = 900) {
+    const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const url = await getSignedUrl(this.client, cmd, { expiresIn: expiresSec });
+    return { url };
   }
 
   buildRoomPhotoKey(roomId: string, ext = 'jpg') {

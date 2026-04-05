@@ -6,6 +6,11 @@ import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import {
+  RoomDetailInsights,
+  type LastCleaningDto,
+  type LastCleaningPhotoDto,
+} from '@/components/rooms/RoomDetailInsights';
 
 type Task = {
   id: string;
@@ -22,8 +27,11 @@ type RoomDetail = {
   derivedStatus: string;
   outOfOrder: boolean;
   oooReason: string | null;
+  oooUntil: string | null;
   notes: string | null;
   checklist: { stateId: string; tasks: Task[] } | null;
+  lastCleaningPhoto?: LastCleaningPhotoDto;
+  lastCleaning?: LastCleaningDto;
 };
 
 const STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'] as const;
@@ -45,13 +53,32 @@ export function RoomSlideOver({
   });
 
   const [notes, setNotes] = useState('');
+  const [oooReason, setOooReason] = useState('');
+  const [oooUntilLocal, setOooUntilLocal] = useState('');
   useEffect(() => {
     if (data?.notes != null) setNotes(data.notes ?? '');
   }, [data?.notes, roomId]);
+  useEffect(() => {
+    if (!data) return;
+    setOooReason(data.oooReason ?? '');
+    if (data.oooUntil) {
+      const d = new Date(data.oooUntil);
+      if (!Number.isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        setOooUntilLocal(
+          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`,
+        );
+      } else setOooUntilLocal('');
+    } else setOooUntilLocal('');
+  }, [data?.oooReason, data?.oooUntil, roomId]);
 
   const patchRoom = useMutation({
-    mutationFn: (body: { notes?: string | null; outOfOrder?: boolean; oooReason?: string | null }) =>
-      api(`/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    mutationFn: (body: {
+      notes?: string | null;
+      outOfOrder?: boolean;
+      oooReason?: string | null;
+      oooUntil?: string | null;
+    }) => api(`/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['rooms'] });
       refetch();
@@ -110,6 +137,17 @@ export function RoomSlideOver({
           {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
           {data && (
             <div className="space-y-6">
+              <RoomDetailInsights
+                roomId={data.id}
+                roomNumber={data.roomNumber}
+                lastCleaningPhoto={data.lastCleaningPhoto ?? null}
+                lastCleaning={data.lastCleaning ?? null}
+                outOfOrder={data.outOfOrder}
+                oooReason={data.oooReason}
+                oooUntil={data.oooUntil}
+                maintenanceReadOnly={false}
+              />
+
               <Card>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Room notes</h3>
                 <textarea
@@ -129,7 +167,7 @@ export function RoomSlideOver({
               </Card>
 
               <Card>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Out of order</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Maintenance (out of order)</h3>
                 <label className="mt-3 flex cursor-pointer items-center gap-3">
                   <input
                     type="checkbox"
@@ -139,6 +177,38 @@ export function RoomSlideOver({
                   />
                   <span className="text-sm text-ink">Mark room out of order</span>
                 </label>
+                <label className="mt-3 block text-xs font-medium text-ink-muted">
+                  Reason
+                  <input
+                    type="text"
+                    className="mt-1 min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink"
+                    value={oooReason}
+                    onChange={(e) => setOooReason(e.target.value)}
+                    placeholder="e.g. AC repair, plumbing…"
+                  />
+                </label>
+                <label className="mt-3 block text-xs font-medium text-ink-muted">
+                  Expected back in service
+                  <input
+                    type="datetime-local"
+                    className="mt-1 min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink"
+                    value={oooUntilLocal}
+                    onChange={(e) => setOooUntilLocal(e.target.value)}
+                  />
+                </label>
+                <Button
+                  variant="secondary"
+                  className="mt-3"
+                  disabled={patchRoom.isPending}
+                  onClick={() =>
+                    patchRoom.mutate({
+                      oooReason: oooReason.trim() || null,
+                      oooUntil: oooUntilLocal ? new Date(oooUntilLocal).toISOString() : null,
+                    })
+                  }
+                >
+                  Save maintenance details
+                </Button>
               </Card>
 
               <section>

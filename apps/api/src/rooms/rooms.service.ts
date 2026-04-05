@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
+  PhotoUploadStatus,
   Prisma,
   User,
   UserRole,
@@ -9,6 +10,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomStatusService } from './room-status.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { S3Service } from '../storage/s3.service';
+import { compareRoomNumbers } from './room-layout';
 
 @Injectable()
 export class RoomsService {
@@ -16,6 +19,7 @@ export class RoomsService {
     private readonly prisma: PrismaService,
     private readonly roomStatus: RoomStatusService,
     private readonly realtime: RealtimeGateway,
+    private readonly s3: S3Service,
   ) {}
 
   async findAll(
@@ -49,6 +53,13 @@ export class RoomsService {
       orderBy: [{ floor: 'asc' }, { roomNumber: 'asc' }],
     });
 
+    rooms.sort((a, b) => {
+      const fa = a.floor ?? Number.POSITIVE_INFINITY;
+      const fb = b.floor ?? Number.POSITIVE_INFINITY;
+      if (fa !== fb) return fa - fb;
+      return compareRoomNumbers(a.roomNumber, b.roomNumber);
+    });
+
     return rooms.map((r) => this.toRoomDto(r));
   }
 
@@ -67,7 +78,79 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
-    return this.toRoomDto(room);
+    const base = this.toRoomDto(room);
+
+    const lastPhotoRow = await this.prisma.roomPhoto.findFirst({
+      where: { roomId: id, status: PhotoUploadStatus.READY },
+      orderBy: { createdAt: 'desc' },
+      include: { uploadedBy: { select: { id: true, name: true } } },
+    });
+
+    let lastCleaningPhoto: {
+      id: string;
+      url: string | null;
+      takenAt: Date | null;
+      createdAt: Date;
+      uploadedBy: { id: string; name: string };
+    } | null = null;
+
+    if (lastPhotoRow) {
+      let url: string | null = null;
+      try {
+        url = (await this.s3.presignGet(lastPhotoRow.s3Key)).url;
+      } catch {
+        url = null;
+      }
+      lastCleaningPhoto = {
+        id: lastPhotoRow.id,
+        url,
+        takenAt: lastPhotoRow.takenAt,
+        createdAt: lastPhotoRow.createdAt,
+        uploadedBy: lastPhotoRow.uploadedBy,
+      };
+    }
+
+    let lastCleaning: {
+      by: { id: string; name: string };
+      at: Date;
+      source: 'cleaning_photo' | 'cleaning_session' | 'inspection';
+    } | null = null;
+
+    if (lastPhotoRow) {
+      lastCleaning = {
+        by: lastPhotoRow.uploadedBy,
+        at: lastPhotoRow.takenAt ?? lastPhotoRow.createdAt,
+        source: 'cleaning_photo',
+      };
+    } else {
+      const session = await this.prisma.cleaningSession.findFirst({
+        where: { roomId: id, completedAt: { not: null } },
+        orderBy: { completedAt: 'desc' },
+        include: { assignedUser: { select: { id: true, name: true } } },
+      });
+      if (session?.completedAt) {
+        lastCleaning = {
+          by: session.assignedUser,
+          at: session.completedAt,
+          source: 'cleaning_session',
+        };
+      } else {
+        const insp = await this.prisma.roomInspection.findFirst({
+          where: { roomId: id, passed: true },
+          orderBy: { inspectedAt: 'desc' },
+          include: { inspector: { select: { id: true, name: true } } },
+        });
+        if (insp) {
+          lastCleaning = {
+            by: insp.inspector,
+            at: insp.inspectedAt,
+            source: 'inspection',
+          };
+        }
+      }
+    }
+
+    return { ...base, lastCleaningPhoto, lastCleaning };
   }
 
   private toRoomDto(room: {

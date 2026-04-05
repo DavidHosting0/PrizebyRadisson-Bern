@@ -3,6 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
+import {
+  RoomDetailInsights,
+  type LastCleaningDto,
+  type LastCleaningPhotoDto,
+} from '@/components/rooms/RoomDetailInsights';
 
 type Task = { id: string; label: string; status: string };
 type RoomDetail = {
@@ -12,7 +17,11 @@ type RoomDetail = {
   derivedStatus: string;
   notes: string | null;
   outOfOrder: boolean;
+  oooReason: string | null;
+  oooUntil: string | null;
   checklist: { tasks: Task[] } | null;
+  lastCleaningPhoto?: LastCleaningPhotoDto;
+  lastCleaning?: LastCleaningDto;
 };
 
 type AssignmentRow = {
@@ -84,6 +93,16 @@ export function ReceptionRoomDetailPanel({
                   Out of order
                 </p>
               )}
+              <RoomDetailInsights
+                roomId={room.id}
+                roomNumber={room.roomNumber}
+                lastCleaningPhoto={room.lastCleaningPhoto ?? null}
+                lastCleaning={room.lastCleaning ?? null}
+                outOfOrder={room.outOfOrder}
+                oooReason={room.oooReason}
+                oooUntil={room.oooUntil}
+                maintenanceReadOnly
+              />
               <section>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Cleaning progress</h3>
                 <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-surface-muted">

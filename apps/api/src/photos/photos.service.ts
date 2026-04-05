@@ -78,11 +78,33 @@ export class PhotosService {
   }
 
   async timeline(roomId: string) {
-    return this.prisma.roomPhoto.findMany({
+    const rows = await this.prisma.roomPhoto.findMany({
       where: { roomId, status: PhotoUploadStatus.READY },
       orderBy: { createdAt: 'desc' },
       take: 100,
       include: { uploadedBy: { select: { id: true, name: true } } },
     });
+    const withUrls = await Promise.all(
+      rows.map(async (p) => {
+        let url: string | null = null;
+        try {
+          const signed = await this.s3.presignGet(p.s3Key);
+          url = signed.url;
+        } catch {
+          url = null;
+        }
+        return {
+          id: p.id,
+          mime: p.mime,
+          bytes: p.bytes,
+          takenAt: p.takenAt,
+          createdAt: p.createdAt,
+          cleaningSessionId: p.cleaningSessionId,
+          uploadedBy: p.uploadedBy,
+          url,
+        };
+      }),
+    );
+    return withUrls;
   }
 }
