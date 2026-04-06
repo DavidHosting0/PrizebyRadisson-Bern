@@ -31,12 +31,6 @@ function newId() {
 export default function AdminFloorPlansPage() {
   const qc = useQueryClient();
   const [floor, setFloor] = useState<number>(2);
-  const [kind, setKind] = useState<LayoutElement['kind']>('room');
-  const [x, setX] = useState(1);
-  const [y, setY] = useState(1);
-  const [w, setW] = useState(2);
-  const [h, setH] = useState(1);
-  const [roomNumber, setRoomNumber] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<{
@@ -84,17 +78,24 @@ export default function AdminFloorPlansPage() {
     },
   });
 
-  function addElement() {
+  function addElement(el: LayoutElement) {
+    setSelectedId(el.id);
+    setDraft((prev) => [...prev, el]);
+  }
+
+  function addElementFromDrop(kind: LayoutElement['kind'], dropX: number, dropY: number, room?: string) {
+    const baseW = kind === 'corridor' ? 6 : kind === 'glass' ? 4 : 2;
+    const baseH = kind === 'corridor' ? 2 : 1;
     const el: LayoutElement = {
       id: newId(),
       kind,
-      x,
-      y,
-      w,
-      h,
-      roomNumber: kind === 'room' ? roomNumber || undefined : undefined,
+      x: Math.max(1, Math.min(GRID_COLS, dropX)),
+      y: Math.max(1, Math.min(GRID_ROWS, dropY)),
+      w: baseW,
+      h: baseH,
+      roomNumber: kind === 'room' ? room || undefined : undefined,
     };
-    setDraft((prev) => [...prev, el]);
+    addElement(el);
   }
 
   function updateEl(id: string, patch: Partial<LayoutElement>) {
@@ -172,64 +173,70 @@ export default function AdminFloorPlansPage() {
           </Button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-7">
-          <label className="text-xs text-ink-muted">
-            Type
-            <select
-              className="mt-1 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as LayoutElement['kind'])}
-            >
-              <option value="room">Room</option>
-              <option value="corridor">Corridor</option>
-              <option value="elevator">Elevator</option>
-              <option value="staff">Staff</option>
-              <option value="glass">Glass</option>
-            </select>
-          </label>
-          <label className="text-xs text-ink-muted">
-            X
-            <input className="mt-1 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm" type="number" value={x} onChange={(e) => setX(parseInt(e.target.value || '1', 10))} />
-          </label>
-          <label className="text-xs text-ink-muted">
-            Y
-            <input className="mt-1 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm" type="number" value={y} onChange={(e) => setY(parseInt(e.target.value || '1', 10))} />
-          </label>
-          <label className="text-xs text-ink-muted">
-            W
-            <input className="mt-1 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm" type="number" value={w} onChange={(e) => setW(parseInt(e.target.value || '1', 10))} />
-          </label>
-          <label className="text-xs text-ink-muted">
-            H
-            <input className="mt-1 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm" type="number" value={h} onChange={(e) => setH(parseInt(e.target.value || '1', 10))} />
-          </label>
-          <label className="text-xs text-ink-muted md:col-span-2">
-            Room (for type=room)
-            <select
-              className="mt-1 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm"
-              value={roomNumber}
-              onChange={(e) => setRoomNumber(e.target.value)}
-              disabled={kind !== 'room'}
-            >
-              <option value="">Select room</option>
+        <div className="space-y-3">
+          <p className="text-xs text-ink-muted">Drag elements from the toolbox and drop them on the floor plan. Move elements by dragging; resize with the bottom-right handle.</p>
+          <div className="flex flex-wrap gap-2">
+            {(['corridor', 'elevator', 'staff', 'glass'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData('application/x-floor-element', JSON.stringify({ kind: t }))}
+                className="rounded-btn border border-border bg-surface px-3 py-2 text-sm font-medium text-ink"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-medium text-ink-muted">Rooms (drag into plan)</p>
+            <div className="flex max-h-36 flex-wrap gap-2 overflow-auto rounded-btn border border-border bg-surface p-2">
               {roomOptions.map((r) => (
-                <option key={r.id} value={r.roomNumber}>
+                <button
+                  key={r.id}
+                  type="button"
+                  draggable
+                  onDragStart={(e) =>
+                    e.dataTransfer.setData(
+                      'application/x-floor-element',
+                      JSON.stringify({ kind: 'room', roomNumber: r.roomNumber }),
+                    )
+                  }
+                  className="rounded-btn border border-border bg-surface-muted px-2 py-1 text-sm font-semibold text-ink"
+                >
                   {r.roomNumber}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
         </div>
-
-        <Button type="button" variant="secondary" onClick={addElement}>
-          Add element
-        </Button>
       </Card>
 
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-ink">Preview ({formatFloorLabel(floor)})</h2>
         <div className="overflow-x-auto">
-          <div ref={containerRef} className="relative min-w-[1100px] rounded-btn border border-border bg-surface-muted/30" style={{ height: 540 }}>
+          <div
+            ref={containerRef}
+            className="relative min-w-[1100px] rounded-btn border border-border bg-surface-muted/30"
+            style={{ height: 540 }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const raw = e.dataTransfer.getData('application/x-floor-element');
+              if (!raw) return;
+              try {
+                const parsed = JSON.parse(raw) as { kind: LayoutElement['kind']; roomNumber?: string };
+                const rect = e.currentTarget.getBoundingClientRect();
+                const cellW = rect.width / GRID_COLS;
+                const cellH = rect.height / GRID_ROWS;
+                const gx = Math.round((e.clientX - rect.left) / cellW);
+                const gy = Math.round((e.clientY - rect.top) / cellH);
+                addElementFromDrop(parsed.kind, gx, gy, parsed.roomNumber);
+              } catch {
+                // ignore invalid drag payload
+              }
+            }}
+          >
             {draft.map((el) => {
               const left = `${((el.x - 1) / GRID_COLS) * 100}%`;
               const top = `${((el.y - 1) / GRID_ROWS) * 100}%`;
@@ -299,7 +306,7 @@ export default function AdminFloorPlansPage() {
         <h2 className="mb-3 text-sm font-semibold text-ink">Elements</h2>
         <div className="space-y-2">
           {draft.map((el) => (
-            <div key={el.id} className="grid items-end gap-2 rounded-btn border border-border p-2 md:grid-cols-8">
+            <div key={el.id} className="grid items-end gap-2 rounded-btn border border-border p-2 md:grid-cols-4">
               <span className="text-xs text-ink-muted">{el.id.slice(0, 8)}</span>
               <select className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" value={el.kind} onChange={(e) => updateEl(el.id, { kind: e.target.value as LayoutElement['kind'] })}>
                 <option value="room">room</option>
@@ -308,10 +315,6 @@ export default function AdminFloorPlansPage() {
                 <option value="staff">staff</option>
                 <option value="glass">glass</option>
               </select>
-              <input className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" type="number" value={el.x} onChange={(e) => updateEl(el.id, { x: parseInt(e.target.value || '1', 10) })} />
-              <input className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" type="number" value={el.y} onChange={(e) => updateEl(el.id, { y: parseInt(e.target.value || '1', 10) })} />
-              <input className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" type="number" value={el.w} onChange={(e) => updateEl(el.id, { w: parseInt(e.target.value || '1', 10) })} />
-              <input className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" type="number" value={el.h} onChange={(e) => updateEl(el.id, { h: parseInt(e.target.value || '1', 10) })} />
               <input
                 className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm"
                 placeholder="roomNumber"
