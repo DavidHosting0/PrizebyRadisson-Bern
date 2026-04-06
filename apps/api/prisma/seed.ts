@@ -1,13 +1,18 @@
-import {
-  AssignmentStatus,
-  ChecklistTaskStatus,
-  PrismaClient,
-  UserRole,
-} from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { allHotelRoomNumbers, floorFromRoomNumber } from '../src/rooms/room-layout';
 
 const prisma = new PrismaClient();
+
+/** String enum values — avoids ts-node issues when @prisma/client typings are stale before `prisma generate`. */
+const UserRole = {
+  ADMIN: 'ADMIN',
+  HOUSEKEEPER: 'HOUSEKEEPER',
+  SUPERVISOR: 'SUPERVISOR',
+  RECEPTION: 'RECEPTION',
+} as const;
+const ChecklistTaskStatus = { NOT_STARTED: 'NOT_STARTED' } as const;
+const AssignmentStatus = { ACTIVE: 'ACTIVE' } as const;
 
 async function main() {
   const hsCount = await prisma.hotelSettings.count();
@@ -139,7 +144,7 @@ async function main() {
           roomId: room.id,
           templateId: template.id,
           tasks: {
-            create: tts.map((tt) => ({
+            create: tts.map((tt: { id: string }) => ({
               templateTaskId: tt.id,
               status: ChecklistTaskStatus.NOT_STARTED,
             })),
