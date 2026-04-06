@@ -52,11 +52,11 @@ export default function AdminFloorPlansPage() {
   });
 
   const [draft, setDraft] = useState<LayoutElement[]>([]);
-  const sourceLayout = plan?.layout ?? [];
+  const sourceLayout = useMemo(() => plan?.layout ?? [], [plan?.updatedAt, floor]);
 
   useEffect(() => {
     setDraft(sourceLayout);
-  }, [floor, sourceLayout]);
+  }, [floor, plan?.updatedAt, sourceLayout]);
 
   const roomOptions = useMemo(
     () =>
