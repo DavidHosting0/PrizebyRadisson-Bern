@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "build": "prisma generate && tsc -p tsconfig.build.json && node -e \"require('fs').accessSync('dist/main.js'); console.log('build: dist/main.js ok')\"",
     "verify:dist": "node -e \"require('fs').accessSync('dist/main.js'); console.log('OK: dist/main.js exists')\"",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
