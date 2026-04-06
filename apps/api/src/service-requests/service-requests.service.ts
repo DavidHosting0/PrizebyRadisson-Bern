@@ -217,6 +217,13 @@ export class ServiceRequestsService {
   }
 
   types() {
-    return this.prisma.serviceRequestType.findMany({ orderBy: { label: 'asc' } });
+    return this.prisma.serviceRequestType.findMany({
+      where: {
+        code: {
+          in: ['pillows', 'blanket', 'towels', 'room_cleaning', 'other'],
+        },
+      },
+      orderBy: { label: 'asc' },
+    });
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
@@ -29,6 +29,13 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
   const [description, setDescription] = useState('');
   const [roomQ, setRoomQ] = useState('');
 
+  useEffect(() => {
+    if (!open) return;
+    if (!typeId && types.length > 0) {
+      setTypeId(types[0].id);
+    }
+  }, [open, typeId, types]);
+
   const filteredRooms = useMemo(() => {
     const q = roomQ.trim().toLowerCase();
     if (!q) return rooms;
@@ -51,17 +58,28 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
       qc.invalidateQueries({ queryKey: ['rooms'] });
       setDescription('');
       setRoomId('');
-      setTypeId('');
+      setTypeId(types[0]?.id ?? '');
       setPriority('NORMAL');
       setRoomQ('');
       toast.push('Request created', 'success');
       onClose();
     },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : 'Failed to create request';
+      toast.push(msg, 'warning');
+    },
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!roomId || !typeId) return;
+    if (!roomId) {
+      toast.push('Please select a room', 'warning');
+      return;
+    }
+    if (!typeId) {
+      toast.push('Please select a request type', 'warning');
+      return;
+    }
     create.mutate();
   }
 
@@ -98,7 +116,6 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
               value={roomId}
               onChange={(e) => setRoomId(e.target.value)}
               required
-              size={Math.min(8, Math.max(3, filteredRooms.length))}
             >
               <option value="">Select room…</option>
               {filteredRooms.map((r) => (
@@ -111,7 +128,6 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
           <div>
             <label className="text-sm font-medium text-ink">Request type</label>
             <select className={field} value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
-              <option value="">Select type…</option>
               {types.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.label}
@@ -154,7 +170,12 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             />
           </div>
           <div className="flex flex-wrap gap-3 pt-2">
-            <Button type="submit" variant="action" className="min-h-[48px] min-w-[140px]" disabled={create.isPending}>
+            <Button
+              type="submit"
+              variant="action"
+              className="min-h-[48px] min-w-[140px]"
+              disabled={create.isPending || !roomId || !typeId}
+            >
               {create.isPending ? 'Creating…' : 'Create request'}
             </Button>
             <Button type="button" variant="secondary" className="min-h-[48px]" onClick={onClose}>

@@ -162,24 +162,40 @@ async function main() {
     }
   }
 
-  await prisma.serviceRequestType.upsert({
-    where: { code: 'towels' },
-    update: {},
-    create: {
-      code: 'towels',
-      label: 'Extra towels',
-      mapsToChecklistTaskCode: 'towels',
+  const reqTypes: Array<{
+    code: string;
+    label: string;
+    mapsToChecklistTaskCode?: string | null;
+  }> = [
+    { code: 'pillows', label: 'Extra Pillow' },
+    { code: 'blanket', label: 'Extra Blanket' },
+    { code: 'towels', label: 'Extra Towels', mapsToChecklistTaskCode: 'towels' },
+    { code: 'room_cleaning', label: 'Room Cleaning' },
+    { code: 'other', label: 'Other' },
+  ];
+
+  for (const t of reqTypes) {
+    await prisma.serviceRequestType.upsert({
+      where: { code: t.code },
+      update: {
+        label: t.label,
+        mapsToChecklistTaskCode:
+          t.mapsToChecklistTaskCode === undefined ? undefined : t.mapsToChecklistTaskCode,
+      },
+      create: {
+        code: t.code,
+        label: t.label,
+        mapsToChecklistTaskCode: t.mapsToChecklistTaskCode ?? undefined,
+      },
+    });
+  }
+
+  await prisma.serviceRequestType.deleteMany({
+    where: {
+      code: {
+        notIn: reqTypes.map((t) => t.code),
+      },
     },
-  });
-  await prisma.serviceRequestType.upsert({
-    where: { code: 'pillows' },
-    update: {},
-    create: { code: 'pillows', label: 'Extra pillows' },
-  });
-  await prisma.serviceRequestType.upsert({
-    where: { code: 'minibar' },
-    update: {},
-    create: { code: 'minibar', label: 'Minibar restock' },
   });
 
   await prisma.shift.deleteMany({});
