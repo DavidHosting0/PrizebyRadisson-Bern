@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type LayoutElement = {
   id: string;
-  kind: 'room' | 'staff' | 'elevator' | 'corridor';
+  kind: 'room' | 'staff' | 'elevator' | 'corridor' | 'glass';
   x: number;
   y: number;
   w: number;
@@ -36,7 +36,7 @@ export class FloorPlansService {
     const out: LayoutElement[] = [];
     for (const it of layout) {
       const kind = typeof it.kind === 'string' ? it.kind : '';
-      if (!['room', 'staff', 'elevator', 'corridor'].includes(kind)) continue;
+      if (!['room', 'staff', 'elevator', 'corridor', 'glass'].includes(kind)) continue;
       const x = Number(it.x);
       const y = Number(it.y);
       const w = Number(it.w);

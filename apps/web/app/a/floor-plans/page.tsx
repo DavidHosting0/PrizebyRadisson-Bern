@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatFloorLabel } from '@housekeeping/shared';
 import { api } from '@/lib/api';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 
 type LayoutElement = {
   id: string;
-  kind: 'room' | 'staff' | 'elevator' | 'corridor';
+  kind: 'room' | 'staff' | 'elevator' | 'corridor' | 'glass';
   x: number;
   y: number;
   w: number;
@@ -21,6 +21,8 @@ type RoomRow = { id: string; roomNumber: string; floor: number | null };
 type PlanRow = { floor: number; layout: LayoutElement[]; updatedAt: string };
 
 const FLOOR_CHOICES = [-1, 0, 1, 2, 3, 4, 5, 6, 7];
+const GRID_COLS = 30;
+const GRID_ROWS = 14;
 
 function newId() {
   return `el-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -35,6 +37,15 @@ export default function AdminFloorPlansPage() {
   const [w, setW] = useState(2);
   const [h, setH] = useState(1);
   const [roomNumber, setRoomNumber] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<{
+    id: string;
+    mode: 'move' | 'resize';
+    startClientX: number;
+    startClientY: number;
+    origin: LayoutElement;
+  } | null>(null);
 
   const { data: rooms = [] } = useQuery({
     queryKey: ['rooms', 'admin-floor-plans'],
@@ -94,6 +105,42 @@ export default function AdminFloorPlansPage() {
     setDraft((prev) => prev.filter((p) => p.id !== id));
   }
 
+  useEffect(() => {
+    if (!drag) return;
+    const current = drag;
+    function onMove(e: MouseEvent) {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const cellW = rect.width / GRID_COLS;
+      const cellH = rect.height / GRID_ROWS;
+      const dx = Math.round((e.clientX - current.startClientX) / cellW);
+      const dy = Math.round((e.clientY - current.startClientY) / cellH);
+      if (current.mode === 'move') {
+        updateEl(current.id, {
+          x: Math.max(1, Math.min(GRID_COLS, current.origin.x + dx)),
+          y: Math.max(1, Math.min(GRID_ROWS, current.origin.y + dy)),
+        });
+      } else {
+        const nextW = Math.max(1, current.origin.w + dx);
+        const nextH = Math.max(1, current.origin.h + dy);
+        updateEl(current.id, {
+          w: Math.min(GRID_COLS, nextW),
+          h: Math.min(GRID_ROWS, nextH),
+        });
+      }
+    }
+    function onUp() {
+      setDrag(null);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [drag]);
+
   return (
     <div className="space-y-6 p-4 md:p-8">
       <div>
@@ -137,6 +184,7 @@ export default function AdminFloorPlansPage() {
               <option value="corridor">Corridor</option>
               <option value="elevator">Elevator</option>
               <option value="staff">Staff</option>
+              <option value="glass">Glass</option>
             </select>
           </label>
           <label className="text-xs text-ink-muted">
@@ -181,23 +229,65 @@ export default function AdminFloorPlansPage() {
       <Card>
         <h2 className="mb-3 text-sm font-semibold text-ink">Preview ({formatFloorLabel(floor)})</h2>
         <div className="overflow-x-auto">
-          <div className="relative min-w-[1100px] rounded-btn border border-border bg-surface-muted/30" style={{ height: 540 }}>
+          <div ref={containerRef} className="relative min-w-[1100px] rounded-btn border border-border bg-surface-muted/30" style={{ height: 540 }}>
             {draft.map((el) => {
-              const left = `${((el.x - 1) / 30) * 100}%`;
-              const top = `${((el.y - 1) / 14) * 100}%`;
-              const width = `${(el.w / 30) * 100}%`;
-              const height = `${(el.h / 14) * 100}%`;
+              const left = `${((el.x - 1) / GRID_COLS) * 100}%`;
+              const top = `${((el.y - 1) / GRID_ROWS) * 100}%`;
+              const width = `${(el.w / GRID_COLS) * 100}%`;
+              const height = `${(el.h / GRID_ROWS) * 100}%`;
               const base =
                 el.kind === 'room'
                   ? 'rounded-md border-2 border-border bg-surface text-center text-sm font-semibold text-ink'
                   : el.kind === 'corridor'
                     ? 'rounded-md border border-border/50 bg-surface-muted/45'
+                    : el.kind === 'glass'
+                      ? 'rounded-md border border-cyan-400/70 bg-cyan-100/40 text-center text-xs font-semibold text-cyan-900'
                     : el.kind === 'elevator'
                       ? 'rounded-md border border-dashed border-border bg-surface text-center text-xs text-ink-muted'
                       : 'rounded-md border border-border bg-surface text-center text-xs font-semibold text-ink-muted';
               return (
-                <div key={el.id} className={`absolute ${base}`} style={{ left, top, width, height }}>
-                  {el.kind === 'room' ? el.roomNumber || 'Room' : el.kind === 'elevator' ? 'Elevator' : el.kind === 'staff' ? 'Staff' : ''}
+                <div
+                  key={el.id}
+                  className={`absolute ${base} ${selectedId === el.id ? 'ring-2 ring-action' : ''} cursor-move`}
+                  style={{ left, top, width, height }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setSelectedId(el.id);
+                    setDrag({
+                      id: el.id,
+                      mode: 'move',
+                      startClientX: e.clientX,
+                      startClientY: e.clientY,
+                      origin: el,
+                    });
+                  }}
+                >
+                  {el.kind === 'room'
+                    ? el.roomNumber || 'Room'
+                    : el.kind === 'elevator'
+                      ? 'Elevator'
+                      : el.kind === 'staff'
+                        ? 'Staff'
+                        : el.kind === 'glass'
+                          ? 'Glass'
+                          : ''}
+                  <button
+                    type="button"
+                    className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize rounded-tl border border-border bg-surface"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedId(el.id);
+                      setDrag({
+                        id: el.id,
+                        mode: 'resize',
+                        startClientX: e.clientX,
+                        startClientY: e.clientY,
+                        origin: el,
+                      });
+                    }}
+                    aria-label="Resize"
+                  />
                 </div>
               );
             })}
@@ -216,6 +306,7 @@ export default function AdminFloorPlansPage() {
                 <option value="corridor">corridor</option>
                 <option value="elevator">elevator</option>
                 <option value="staff">staff</option>
+                <option value="glass">glass</option>
               </select>
               <input className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" type="number" value={el.x} onChange={(e) => updateEl(el.id, { x: parseInt(e.target.value || '1', 10) })} />
               <input className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" type="number" value={el.y} onChange={(e) => updateEl(el.id, { y: parseInt(e.target.value || '1', 10) })} />

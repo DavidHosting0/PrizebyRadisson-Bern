@@ -27,7 +27,7 @@ type Props = {
 type Rect = { x: number; y: number; w: number; h: number };
 type SavedLayoutElement = {
   id: string;
-  kind: 'room' | 'staff' | 'elevator' | 'corridor';
+  kind: 'room' | 'staff' | 'elevator' | 'corridor' | 'glass';
   x: number;
   y: number;
   w: number;
@@ -306,6 +306,8 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                   const base =
                     el.kind === 'corridor'
                       ? 'rounded-md border border-border/50 bg-surface-muted/35'
+                      : el.kind === 'glass'
+                        ? 'rounded-md border border-cyan-400/60 bg-cyan-100/40 text-center text-[11px] text-cyan-800'
                       : el.kind === 'elevator'
                         ? 'rounded-md border border-dashed border-border bg-surface text-center text-[11px] text-ink-muted'
                         : 'rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted';
@@ -318,6 +320,8 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                     >
                       {el.kind === 'elevator' ? (
                         <span className="relative top-[34%]">Elevator</span>
+                      ) : el.kind === 'glass' ? (
+                        <span className="relative top-[34%]">Glass</span>
                       ) : el.kind === 'staff' ? (
                         'Staff'
                       ) : null}
