@@ -132,6 +132,13 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
     refetchOnWindowFocus: true,
     refetchInterval: activeFloorNumber != null ? 15000 : false,
   });
+  const { data: allSavedPlans = [] } = useQuery({
+    queryKey: ['floor-plan-layouts'],
+    queryFn: () => api<Array<{ floor: number }>>('/floor-plans'),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
 
   const floors = useMemo(() => {
     const s = new Set<number>();
@@ -139,8 +146,14 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
       const f = planFloor(r);
       if (f != null) s.add(f);
     });
+    allSavedPlans.forEach((p) => {
+      if (typeof p.floor === 'number') s.add(p.floor);
+    });
+    // Non-room levels that should always be available.
+    s.add(-2); // Lobby
+    s.add(8); // Rooftop Bar
     return Array.from(s).sort((a, b) => a - b);
-  }, [rooms]);
+  }, [rooms, allSavedPlans]);
 
   const unplaced = useMemo(
     () => rooms.filter((r) => planFloor(r) == null),

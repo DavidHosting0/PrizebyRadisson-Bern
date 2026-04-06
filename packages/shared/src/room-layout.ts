@@ -64,7 +64,9 @@ export function compareRoomNumbers(a: string, b: string): number {
 
 export function formatFloorLabel(floor: number | null | undefined): string {
   if (floor == null) return '—';
+  if (floor === -2) return 'Lobby';
   if (floor === -1) return 'Basement';
+  if (floor === 8) return 'Rooftop Bar';
   return `Floor ${floor}`;
 }
 

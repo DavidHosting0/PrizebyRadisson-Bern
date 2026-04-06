@@ -20,7 +20,7 @@ type LayoutElement = {
 type RoomRow = { id: string; roomNumber: string; floor: number | null };
 type PlanRow = { floor: number; layout: LayoutElement[]; updatedAt: string };
 
-const FLOOR_CHOICES = [-1, 0, 1, 2, 3, 4, 5, 6, 7];
+const FLOOR_CHOICES = [-2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8];
 const GRID_COLS = 30;
 const GRID_ROWS = 14;
 
