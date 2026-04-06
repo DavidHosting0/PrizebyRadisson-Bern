@@ -11,7 +11,7 @@ import {
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
-import { roomTileClass } from '@/components/rooms/roomTileStyles';
+import { roomPlanCompactClass, roomTileClass } from '@/components/rooms/roomTileStyles';
 
 export type FloorPlanRoom = {
   id: string;
@@ -57,19 +57,10 @@ function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) 
     >
       <span className="block text-sm font-semibold tabular-nums text-ink">{room.roomNumber}</span>
       <span className="mt-1 flex justify-center">
-        <StatusBadge status={room.derivedStatus} />
+        <StatusBadge status={room.derivedStatus} variant="onColor" />
       </span>
     </button>
   );
-}
-
-function roomNumberOnlyClass(status: string): string {
-  if (status === 'OUT_OF_ORDER') return 'border-warning bg-warning-muted/90 text-ink';
-  if (status === 'DIRTY') return 'border-border bg-surface-muted text-ink';
-  if (status === 'IN_PROGRESS') return 'border-warning/80 bg-warning-muted/60 text-ink';
-  if (status === 'CLEAN') return 'border-success/50 bg-success-muted/70 text-ink';
-  if (status === 'INSPECTED') return 'border-action/40 bg-surface text-ink';
-  return 'border-border bg-surface text-ink-muted';
 }
 
 function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) {
@@ -78,15 +69,23 @@ function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => vo
       key={room.id}
       type="button"
       onClick={() => onRoomClick(room.id)}
-      className={`h-full w-full rounded-md border-2 text-center text-sm font-semibold tabular-nums shadow-sm transition-shadow hover:shadow-md ${roomNumberOnlyClass(
-        room.derivedStatus,
-      )}`}
-      title={`Room ${room.roomNumber}`}
+      className={`flex h-full w-full items-center justify-center px-0.5 py-1 ${roomPlanCompactClass(room.derivedStatus)}`}
+      title={`Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`}
     >
       {room.roomNumber}
     </button>
   );
 }
+
+function corridorLabel(floor: number, ordinal: number): string {
+  return `Corridor ${floor}.${ordinal}`;
+}
+
+const corridorZoneClass =
+  'flex items-center justify-center overflow-hidden rounded-lg border border-[#6f6a63]/35 bg-gradient-to-br from-[#d8d3cb]/95 to-[#c0bbb3]/90 p-1 text-center shadow-[inset_0_1px_2px_rgba(255,255,255,0.55)]';
+
+const corridorTextClass =
+  'text-[10px] font-bold uppercase leading-tight tracking-wide text-[#2d2a26] sm:text-[11px]';
 
 function floorOneToSixPosition(suffix: number): Rect | null {
   const map: Record<number, Rect> = {
@@ -222,6 +221,15 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
     return m;
   }, [singleFloorRooms]);
 
+  const corridorOrdinalById = useMemo(() => {
+    const layout = savedPlan?.layout;
+    if (!layout?.length) return new Map<string, number>();
+    const corridors = layout
+      .filter((e) => e.kind === 'corridor')
+      .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+    return new Map(corridors.map((e, i) => [e.id, i + 1]));
+  }, [savedPlan?.layout]);
+
   return (
     <div className="space-y-6">
       <nav
@@ -258,9 +266,33 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
         </div>
       </nav>
 
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border/50 bg-white/70 px-4 py-2.5 text-[11px] shadow-sm backdrop-blur-sm">
+        <span className="font-semibold text-ink">Room status</span>
+        <span className="inline-flex items-center gap-2 text-ink-muted">
+          <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/35 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
+          Dirty
+        </span>
+        <span className="inline-flex items-center gap-2 text-ink-muted">
+          <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/35 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
+          Clean
+        </span>
+        <span className="inline-flex items-center gap-2 text-ink-muted">
+          <span className="h-3.5 w-7 shrink-0 rounded border border-emerald-900/35 bg-gradient-to-b from-emerald-600 to-emerald-700 shadow-sm" />
+          Inspected
+        </span>
+        <span className="inline-flex items-center gap-2 text-ink-muted">
+          <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/45 bg-gradient-to-b from-amber-400 to-amber-500 shadow-sm" />
+          In progress
+        </span>
+        <span className="inline-flex items-center gap-2 text-ink-muted">
+          <span className="h-3.5 w-7 shrink-0 rounded border border-violet-950/40 bg-gradient-to-b from-violet-600 to-violet-700 shadow-sm" />
+          Out of order
+        </span>
+      </div>
+
       <p className="text-xs text-ink-muted">
-        Each tile is a room. Colors reflect housekeeping status (dirty, in progress, clean, inspected, out of order).
-        Select a floor to focus, or use All floors. Click a room for details, photos, and maintenance.
+        Corridors use numbered labels (e.g. Corridor 2.1) per floor. Select a floor to focus, or use All floors.
+        Click a room for details, photos, and maintenance.
       </p>
 
       <div className="space-y-8">
@@ -285,7 +317,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 >
                   <span className="block text-sm font-semibold tabular-nums text-ink">{r.roomNumber}</span>
                   <span className="mt-1 flex justify-center">
-                    <StatusBadge status={r.derivedStatus} />
+                    <StatusBadge status={r.derivedStatus} variant="onColor" />
                   </span>
                 </button>
               ))}
@@ -323,27 +355,38 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                     );
                   }
 
+                  if (el.kind === 'corridor') {
+                    const ord = corridorOrdinalById.get(el.id) ?? 1;
+                    return (
+                      <div
+                        key={el.id}
+                        className={`absolute ${corridorZoneClass}`}
+                        style={{ left, top, width, height }}
+                      >
+                        <span className={corridorTextClass}>{corridorLabel(activeFloor, ord)}</span>
+                      </div>
+                    );
+                  }
+
                   const base =
-                    el.kind === 'corridor'
-                      ? 'rounded-md border border-ink/10 bg-white/40 shadow-inner'
-                      : el.kind === 'glass'
-                        ? 'rounded-md border border-cyan-500/35 bg-cyan-50/50 text-center text-[11px] font-medium text-cyan-900 shadow-sm backdrop-blur-[0.5px]'
+                    el.kind === 'glass'
+                      ? 'rounded-lg border border-cyan-600/40 bg-gradient-to-br from-cyan-100/90 to-cyan-200/70 text-center shadow-sm'
                       : el.kind === 'elevator'
-                        ? 'rounded-md border border-dashed border-ink/20 bg-white/50 text-center text-[11px] font-medium text-ink-muted shadow-sm'
-                        : 'rounded-md border border-ink/12 bg-white/45 p-2 text-center text-xs font-semibold text-ink-muted shadow-sm';
+                        ? 'rounded-lg border border-dashed border-[#5c5852]/50 bg-[#eae6de]/90 text-center shadow-inner'
+                        : 'rounded-lg border border-[#6f6a63]/30 bg-gradient-to-br from-[#e4e1da] to-[#d3cfc7] p-2 text-center text-xs font-bold uppercase tracking-wide text-[#3d3a36] shadow-sm';
 
                   return (
                     <div
                       key={el.id}
-                      className={`absolute ${base}`}
+                      className={`absolute flex items-center justify-center ${base}`}
                       style={{ left, top, width, height }}
                     >
                       {el.kind === 'elevator' ? (
-                        <span className="relative top-[34%]">Elevator</span>
+                        <span className="text-[11px] font-semibold text-[#4a4640]">Elevator</span>
                       ) : el.kind === 'glass' ? (
-                        <span className="relative top-[34%]">Glass</span>
+                        <span className="text-[11px] font-semibold text-cyan-900">Glass</span>
                       ) : el.kind === 'staff' ? (
-                        'Staff'
+                        <span className="text-[11px] font-semibold text-[#4a4640]">Staff</span>
                       ) : null}
                     </div>
                   );
@@ -364,9 +407,15 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 className="relative min-w-[1100px]"
                 style={{ height: 540 }}
               >
-                <div className="absolute left-[9%] top-[6%] h-[74%] w-[14%] rounded-md border border-ink/10 bg-white/35 shadow-inner" />
-                <div className="absolute bottom-[6%] left-[4%] h-[12%] w-[90%] rounded-md border border-ink/10 bg-white/35 shadow-inner" />
-                <div className="absolute bottom-[18%] left-[9%] h-[12%] w-[42%] rounded-md border border-ink/10 bg-white/35 shadow-inner" />
+                <div className={`absolute left-[9%] top-[6%] h-[74%] w-[14%] ${corridorZoneClass}`}>
+                  <span className={corridorTextClass}>{corridorLabel(activeFloor, 1)}</span>
+                </div>
+                <div className={`absolute bottom-[6%] left-[4%] h-[12%] w-[90%] ${corridorZoneClass}`}>
+                  <span className={corridorTextClass}>{corridorLabel(activeFloor, 2)}</span>
+                </div>
+                <div className={`absolute bottom-[18%] left-[9%] h-[12%] w-[42%] ${corridorZoneClass}`}>
+                  <span className={corridorTextClass}>{corridorLabel(activeFloor, 3)}</span>
+                </div>
                 <div className="absolute bottom-[14%] left-[16%] h-[12%] w-[12%] rounded-md border border-dashed border-ink/20 bg-white/50 text-center text-[11px] font-medium text-ink-muted shadow-sm">
                   <span className="relative top-[34%]">Elevator</span>
                 </div>
@@ -457,7 +506,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 >
                   <span className="block text-sm font-semibold tabular-nums text-ink">{r.roomNumber}</span>
                   <span className="mt-1 flex justify-center">
-                    <StatusBadge status={r.derivedStatus} />
+                    <StatusBadge status={r.derivedStatus} variant="onColor" />
                   </span>
                 </button>
               ))}

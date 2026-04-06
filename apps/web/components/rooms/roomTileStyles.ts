@@ -1,17 +1,34 @@
 import clsx from 'clsx';
 
-/** Visual treatment for housekeeping-derived status on floor-plan tiles. */
+/** Status colors for floor-plan rooms (grid + canvas). */
+export const floorPlanStatusClasses: Record<string, string> = {
+  DIRTY:
+    'border-2 border-red-900/40 bg-gradient-to-b from-red-600 to-red-700 text-white shadow-md ring-1 ring-inset ring-white/10 hover:brightness-110',
+  CLEAN:
+    'border-2 border-orange-900/35 bg-gradient-to-b from-orange-500 to-orange-600 text-white shadow-md ring-1 ring-inset ring-white/10 hover:brightness-110',
+  INSPECTED:
+    'border-2 border-emerald-900/40 bg-gradient-to-b from-emerald-600 to-emerald-700 text-white shadow-md ring-1 ring-inset ring-white/15 hover:brightness-110',
+  IN_PROGRESS:
+    'border-2 border-amber-800/50 bg-gradient-to-b from-amber-400 to-amber-500 text-ink shadow-md ring-1 ring-inset ring-white/20 hover:brightness-110',
+  OUT_OF_ORDER:
+    'border-2 border-violet-950/50 bg-gradient-to-b from-violet-600 to-violet-700 text-white shadow-md ring-1 ring-inset ring-white/10 hover:brightness-110',
+};
+
+const floorPlanDefaultClass =
+  'border-2 border-slate-400 bg-gradient-to-b from-slate-200 to-slate-300 text-slate-800 shadow-sm';
+
+/** Grid tiles on floor plan (room number + badge). */
 export function roomTileClass(status: string): string {
   return clsx(
-    'rounded-lg border-2 px-2 py-2 text-center transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action',
-    {
-      'border-warning bg-warning-muted/90 text-ink': status === 'OUT_OF_ORDER',
-      'border-border bg-surface-muted text-ink': status === 'DIRTY',
-      'border-warning/80 bg-warning-muted/60 text-ink': status === 'IN_PROGRESS',
-      'border-success/50 bg-success-muted/70 text-ink': status === 'CLEAN',
-      'border-action/40 bg-surface text-ink': status === 'INSPECTED',
-    },
-    !['OUT_OF_ORDER', 'DIRTY', 'IN_PROGRESS', 'CLEAN', 'INSPECTED'].includes(status) &&
-      'border-border bg-surface text-ink-muted',
+    'rounded-xl px-2 py-2 text-center font-medium transition-shadow hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action',
+    floorPlanStatusClasses[status] ?? floorPlanDefaultClass,
+  );
+}
+
+/** Compact room cells on drawn layout (number only). */
+export function roomPlanCompactClass(status: string): string {
+  return clsx(
+    'min-h-[2rem] rounded-lg text-center text-sm font-bold tabular-nums leading-tight transition-shadow hover:shadow-lg',
+    floorPlanStatusClasses[status] ?? floorPlanDefaultClass,
   );
 }

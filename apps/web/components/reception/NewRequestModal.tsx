@@ -59,12 +59,11 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
     }
   }, [open, typeId, types]);
 
+  /** Default room when modal opens / rooms load; keep user’s choice across rooms refetches. */
   useEffect(() => {
-    if (!open) return;
-    if (rooms.length > 0 && !roomId) {
-      setRoomId(rooms[0].id);
-    }
-  }, [open, rooms, roomId]);
+    if (!open || rooms.length === 0) return;
+    setRoomId((prev) => prev || rooms[0].id);
+  }, [open, rooms]);
 
   const filteredRooms = useMemo(() => {
     const q = roomQ.trim().toLowerCase();
@@ -72,19 +71,30 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
     return rooms.filter((r) => r.roomNumber.toLowerCase().includes(q));
   }, [rooms, roomQ]);
 
-  /** If search matches nothing, show full list so the control never goes empty. */
-  const roomOptions = filteredRooms.length > 0 ? filteredRooms : rooms;
+  /**
+   * The <select> must always list an <option> for `value={roomId}`.
+   * If search narrows the list, the chosen room can be missing → browser shows the first option (e.g. “1”) and submits can mismatch.
+   */
+  const roomOptions = useMemo(() => {
+    const base = filteredRooms.length > 0 ? filteredRooms : rooms;
+    if (!roomId) return base;
+    if (base.some((r) => r.id === roomId)) return base;
+    const chosen = rooms.find((r) => r.id === roomId);
+    return chosen ? [chosen, ...base] : base;
+  }, [rooms, filteredRooms, roomId]);
+
+  type CreatePayload = {
+    roomId: string;
+    typeId: string;
+    priority: 'NORMAL' | 'URGENT';
+    description?: string;
+  };
 
   const create = useMutation({
-    mutationFn: () =>
+    mutationFn: (payload: CreatePayload) =>
       api('/service-requests', {
         method: 'POST',
-        body: JSON.stringify({
-          roomId,
-          typeId,
-          priority,
-          description: description || undefined,
-        }),
+        body: JSON.stringify(payload),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['service-requests'] });
@@ -113,7 +123,12 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
       toast.push('Choose a request type', 'warning');
       return;
     }
-    create.mutate();
+    create.mutate({
+      roomId,
+      typeId,
+      priority,
+      ...(description.trim() ? { description: description.trim() } : {}),
+    });
   }
 
   if (!open) return null;

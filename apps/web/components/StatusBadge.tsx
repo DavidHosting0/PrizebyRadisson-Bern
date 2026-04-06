@@ -16,7 +16,21 @@ const style: Record<string, string> = {
   INSPECTED: 'bg-surface-muted text-ink',
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({
+  status,
+  variant = 'default',
+}: {
+  status: string;
+  /** Readable on saturated status-colored tiles (floor plan). */
+  variant?: 'default' | 'onColor';
+}) {
+  if (variant === 'onColor') {
+    return (
+      <span className="inline-flex rounded-full border border-white/30 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-[2px]">
+        {LABEL[status] ?? status.replace(/_/g, ' ')}
+      </span>
+    );
+  }
   return (
     <span
       className={clsx(

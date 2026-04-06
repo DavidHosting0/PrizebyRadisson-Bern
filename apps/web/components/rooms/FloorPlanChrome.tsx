@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 /** Blueprint-style surface so layouts feel built-in, not a flat canvas. */
 export function FloorPlanCanvasFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/50 shadow-[0_2px_12px_rgba(43,43,43,0.07)]">
+    <div className="relative overflow-hidden rounded-2xl border border-[#b8b3a8]/60 bg-[#ebe8e2]/30 shadow-[0_4px_20px_rgba(43,43,43,0.08),inset_0_1px_0_rgba(255,255,255,0.65)]">
       <div
         className="pointer-events-none absolute inset-0 rounded-2xl"
         style={{
