@@ -16,6 +16,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { RoomTypesModule } from './room-types/room-types.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { StorageModule } from './storage/storage.module';
+import { FloorPlansModule } from './floor-plans/floor-plans.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import configuration from './config/configuration';
 
@@ -37,6 +38,7 @@ import configuration from './config/configuration';
     InspectionsModule,
     AnalyticsModule,
     RoomTypesModule,
+    FloorPlansModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })

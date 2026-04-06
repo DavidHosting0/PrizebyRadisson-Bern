@@ -1,5 +1,6 @@
 'use client';
 
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import {
   compareRoomNumbers,
@@ -7,6 +8,7 @@ import {
   floorPlanGridCols,
   formatFloorLabel,
 } from '@housekeeping/shared';
+import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { roomTileClass } from '@/components/rooms/roomTileStyles';
 
@@ -23,6 +25,15 @@ type Props = {
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
+type SavedLayoutElement = {
+  id: string;
+  kind: 'room' | 'staff' | 'elevator' | 'corridor';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  roomNumber?: string;
+};
 
 function planFloor(r: FloorPlanRoom): number | null {
   return r.floor ?? floorFromRoomNumber(r.roomNumber);
@@ -110,6 +121,13 @@ function floorOneToSixPosition(suffix: number): Rect | null {
 
 export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
   const [activeFloor, setActiveFloor] = useState<number | 'all' | 'unplaced'>('all');
+  const activeFloorNumber = typeof activeFloor === 'number' ? activeFloor : null;
+
+  const { data: savedPlan } = useQuery({
+    queryKey: ['floor-plan-layout', activeFloorNumber],
+    enabled: activeFloorNumber != null,
+    queryFn: () => api<{ floor: number; layout: SavedLayoutElement[] } | null>(`/floor-plans/${activeFloorNumber}`),
+  });
 
   const floors = useMemo(() => {
     const s = new Set<number>();
@@ -179,6 +197,12 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
     }
     return { positioned, fallback };
   }, [activeFloor, singleFloorRooms]);
+
+  const roomByNumber = useMemo(() => {
+    const m = new Map<string, FloorPlanRoom>();
+    for (const r of singleFloorRooms) m.set(r.roomNumber, r);
+    return m;
+  }, [singleFloorRooms]);
 
   return (
     <div className="space-y-6">
@@ -252,7 +276,58 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
           </section>
         )}
 
-        {typeof activeFloor === 'number' && oneToSixLayout && (
+        {typeof activeFloor === 'number' && savedPlan?.layout?.length ? (
+          <section>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
+              {formatFloorLabel(activeFloor)} - custom admin layout
+            </h2>
+            <div className="overflow-x-auto rounded-card border border-border bg-surface p-3">
+              <div className="relative min-w-[1100px]" style={{ height: 540 }}>
+                {savedPlan.layout.map((el) => {
+                  const left = `${((el.x - 1) / 30) * 100}%`;
+                  const top = `${((el.y - 1) / 14) * 100}%`;
+                  const width = `${(el.w / 30) * 100}%`;
+                  const height = `${(el.h / 14) * 100}%`;
+
+                  if (el.kind === 'room' && el.roomNumber) {
+                    const room = roomByNumber.get(el.roomNumber);
+                    if (!room) return null;
+                    return (
+                      <div
+                        key={el.id}
+                        className="absolute p-1"
+                        style={{ left, top, width, height }}
+                      >
+                        {roomPlanButton(room, onRoomClick)}
+                      </div>
+                    );
+                  }
+
+                  const base =
+                    el.kind === 'corridor'
+                      ? 'rounded-md border border-border/50 bg-surface-muted/35'
+                      : el.kind === 'elevator'
+                        ? 'rounded-md border border-dashed border-border bg-surface text-center text-[11px] text-ink-muted'
+                        : 'rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted';
+
+                  return (
+                    <div
+                      key={el.id}
+                      className={`absolute ${base}`}
+                      style={{ left, top, width, height }}
+                    >
+                      {el.kind === 'elevator' ? (
+                        <span className="relative top-[34%]">Elevator</span>
+                      ) : el.kind === 'staff' ? (
+                        'Staff'
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        ) : typeof activeFloor === 'number' && oneToSixLayout ? (
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
               {formatFloorLabel(activeFloor)} - physical layout
@@ -308,7 +383,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
               </div>
             )}
           </section>
-        )}
+        ) : null}
 
         {activeFloor !== 'unplaced' &&
           !(typeof activeFloor === 'number' && activeFloor >= 1 && activeFloor <= 6) &&
