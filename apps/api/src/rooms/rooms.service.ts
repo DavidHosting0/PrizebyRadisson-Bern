@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RoomStatusService } from './room-status.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { S3Service } from '../storage/s3.service';
-import { compareRoomNumbers } from './room-layout';
+import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
 
 @Injectable()
 export class RoomsService {
@@ -54,8 +54,8 @@ export class RoomsService {
     });
 
     rooms.sort((a, b) => {
-      const fa = a.floor ?? Number.POSITIVE_INFINITY;
-      const fb = b.floor ?? Number.POSITIVE_INFINITY;
+      const fa = a.floor ?? floorFromRoomNumber(a.roomNumber) ?? Number.POSITIVE_INFINITY;
+      const fb = b.floor ?? floorFromRoomNumber(b.roomNumber) ?? Number.POSITIVE_INFINITY;
       if (fa !== fb) return fa - fb;
       return compareRoomNumbers(a.roomNumber, b.roomNumber);
     });
@@ -177,10 +177,12 @@ export class RoomsService {
     const state = room.checklistStates[0];
     const tasks = state?.tasks ?? [];
     const derived = this.roomStatus.derive(room, tasks, room.inspections);
+    const floor =
+      room.floor ?? floorFromRoomNumber(room.roomNumber) ?? null;
     return {
       id: room.id,
       roomNumber: room.roomNumber,
-      floor: room.floor,
+      floor,
       outOfOrder: room.outOfOrder,
       oooReason: room.oooReason,
       oooUntil: room.oooUntil,
