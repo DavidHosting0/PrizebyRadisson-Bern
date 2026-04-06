@@ -1,0 +1,36 @@
+---
+description: When deployment, hosting, SSH, PM2, or server updates are discussed, append the Server full update block at the end of the reply.
+alwaysApply: true
+---
+
+# Server full update (append when relevant)
+
+If the user’s question involves **deploying**, **updating the production server**, **git pull on the server**, **PM2**, **migrations**, **Nginx**, or **hosting** this repo, end the reply with a short section titled **Server full update (production)** containing the commands below (adjust path if their deploy dir differs from `/var/www/PrizeByRadissonBern`).
+
+Do **not** append this block to purely local/dev-only answers with no server angle.
+
+```bash
+cd /var/www/PrizeByRadissonBern
+git pull
+npm ci
+npm run build -w @housekeeping/shared
+npm run build -w @housekeeping/api
+npm run build -w @housekeeping/web
+cd apps/api && npx prisma migrate deploy && cd ../..
+pm2 restart ecosystem.config.cjs
+```
+
+Optional (only when you need refreshed seed data: request types, rooms, demo users):
+
+```bash
+cd /var/www/PrizeByRadissonBern/apps/api && npm run prisma:seed && cd ../..
+```
+
+Notes to mention briefly when relevant:
+
+- **PM2 “Cannot find module … dist/main.js”** — the API was not built on the server. Run `npm run build -w @housekeeping/api` (creates `apps/api/dist/`; it is not in git).
+- **`prisma:seed`** can change seed-managed data; skip unless you intend to refresh it.
+- If **`NEXT_PUBLIC_API_URL`** or **`WEB_ORIGIN`** changed, set env files first, then rebuild web (and API if needed) before `pm2 restart`.
+- Smoke test on the server: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3101/api/v1/auth/me` and `curl` to `3100`.
+
+Full detail: [SERVER-RUNBOOK.md](SERVER-RUNBOOK.md), [DEPLOY-PM2.md](DEPLOY-PM2.md).

@@ -10,6 +10,7 @@ import {
 } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
+import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
 import { roomTileClass } from '@/components/rooms/roomTileStyles';
 
 export type FloorPlanRoom = {
@@ -77,7 +78,7 @@ function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => vo
       key={room.id}
       type="button"
       onClick={() => onRoomClick(room.id)}
-      className={`h-full w-full rounded-md border-2 text-center text-sm font-semibold tabular-nums transition-shadow hover:shadow ${roomNumberOnlyClass(
+      className={`h-full w-full rounded-md border-2 text-center text-sm font-semibold tabular-nums shadow-sm transition-shadow hover:shadow-md ${roomNumberOnlyClass(
         room.derivedStatus,
       )}`}
       title={`Room ${room.roomNumber}`}
@@ -223,40 +224,39 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveFloor('all')}
-          className={`min-h-[40px] rounded-full px-4 text-sm font-medium transition-colors ${
-            activeFloor === 'all' ? 'bg-ink text-white' : 'bg-surface-muted text-ink-muted hover:text-ink'
-          }`}
-        >
-          All floors
-        </button>
-        {floors.map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setActiveFloor(f)}
-            className={`min-h-[40px] rounded-full px-4 text-sm font-medium transition-colors ${
-              activeFloor === f ? 'bg-ink text-white' : 'bg-surface-muted text-ink-muted hover:text-ink'
-            }`}
-          >
-            {formatFloorLabel(f)}
-          </button>
-        ))}
-        {unplaced.length > 0 && (
+      <nav
+        aria-label="Floor"
+        className="flex w-full max-w-full overflow-x-auto rounded-xl border border-border/60 bg-gradient-to-b from-[#f0efeb] to-[#e4e2dc] p-1 shadow-[inset_0_1px_2px_rgba(43,43,43,0.07)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <div className="flex min-w-min flex-1 flex-wrap gap-1 sm:flex-nowrap">
           <button
             type="button"
-            onClick={() => setActiveFloor('unplaced')}
-            className={`min-h-[40px] rounded-full px-4 text-sm font-medium transition-colors ${
-              activeFloor === 'unplaced' ? 'bg-ink text-white' : 'bg-surface-muted text-ink-muted hover:text-ink'
-            }`}
+            onClick={() => setActiveFloor('all')}
+            className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(activeFloor === 'all')}`}
           >
-            Unplaced ({unplaced.length})
+            All floors
           </button>
-        )}
-      </div>
+          {floors.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setActiveFloor(f)}
+              className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(activeFloor === f)}`}
+            >
+              {formatFloorLabel(f)}
+            </button>
+          ))}
+          {unplaced.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveFloor('unplaced')}
+              className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(activeFloor === 'unplaced')}`}
+            >
+              Unplaced ({unplaced.length})
+            </button>
+          )}
+        </div>
+      </nav>
 
       <p className="text-xs text-ink-muted">
         Each tile is a room. Colors reflect housekeeping status (dirty, in progress, clean, inspected, out of order).
@@ -295,10 +295,13 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
 
         {typeof activeFloor === 'number' && savedPlan?.layout?.length ? (
           <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
-              {formatFloorLabel(activeFloor)} - custom admin layout
-            </h2>
-            <div className="overflow-x-auto rounded-card border border-border bg-surface p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold tracking-tight text-ink">{formatFloorLabel(activeFloor)}</h2>
+              <span className="inline-flex items-center rounded-full border border-border/50 bg-white/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted shadow-sm backdrop-blur-sm">
+                Custom admin layout
+              </span>
+            </div>
+            <FloorPlanCanvasFrame>
               <div className="relative min-w-[1100px]" style={{ height: 540 }}>
                 {savedPlan.layout.map((el) => {
                   const left = `${((el.x - 1) / 30) * 100}%`;
@@ -322,12 +325,12 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
 
                   const base =
                     el.kind === 'corridor'
-                      ? 'rounded-md border border-border/50 bg-surface-muted/35'
+                      ? 'rounded-md border border-ink/10 bg-white/40 shadow-inner'
                       : el.kind === 'glass'
-                        ? 'rounded-md border border-cyan-400/60 bg-cyan-100/40 text-center text-[11px] text-cyan-800'
+                        ? 'rounded-md border border-cyan-500/35 bg-cyan-50/50 text-center text-[11px] font-medium text-cyan-900 shadow-sm backdrop-blur-[0.5px]'
                       : el.kind === 'elevator'
-                        ? 'rounded-md border border-dashed border-border bg-surface text-center text-[11px] text-ink-muted'
-                        : 'rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted';
+                        ? 'rounded-md border border-dashed border-ink/20 bg-white/50 text-center text-[11px] font-medium text-ink-muted shadow-sm'
+                        : 'rounded-md border border-ink/12 bg-white/45 p-2 text-center text-xs font-semibold text-ink-muted shadow-sm';
 
                   return (
                     <div
@@ -346,28 +349,31 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                   );
                 })}
               </div>
-            </div>
+            </FloorPlanCanvasFrame>
           </section>
         ) : typeof activeFloor === 'number' && oneToSixLayout ? (
           <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
-              {formatFloorLabel(activeFloor)} - physical layout
-            </h2>
-            <div className="overflow-x-auto rounded-card border border-border bg-surface p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold tracking-tight text-ink">{formatFloorLabel(activeFloor)}</h2>
+              <span className="inline-flex items-center rounded-full border border-border/50 bg-white/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted shadow-sm backdrop-blur-sm">
+                Physical layout
+              </span>
+            </div>
+            <FloorPlanCanvasFrame>
               <div
                 className="relative min-w-[1100px]"
                 style={{ height: 540 }}
               >
-                <div className="absolute left-[9%] top-[6%] h-[74%] w-[14%] rounded-md border border-border/50 bg-surface-muted/35" />
-                <div className="absolute bottom-[6%] left-[4%] h-[12%] w-[90%] rounded-md border border-border/50 bg-surface-muted/35" />
-                <div className="absolute bottom-[18%] left-[9%] h-[12%] w-[42%] rounded-md border border-border/50 bg-surface-muted/35" />
-                <div className="absolute bottom-[14%] left-[16%] h-[12%] w-[12%] rounded-md border border-dashed border-border bg-surface text-center text-[11px] text-ink-muted">
+                <div className="absolute left-[9%] top-[6%] h-[74%] w-[14%] rounded-md border border-ink/10 bg-white/35 shadow-inner" />
+                <div className="absolute bottom-[6%] left-[4%] h-[12%] w-[90%] rounded-md border border-ink/10 bg-white/35 shadow-inner" />
+                <div className="absolute bottom-[18%] left-[9%] h-[12%] w-[42%] rounded-md border border-ink/10 bg-white/35 shadow-inner" />
+                <div className="absolute bottom-[14%] left-[16%] h-[12%] w-[12%] rounded-md border border-dashed border-ink/20 bg-white/50 text-center text-[11px] font-medium text-ink-muted shadow-sm">
                   <span className="relative top-[34%]">Elevator</span>
                 </div>
-                <div className="absolute bottom-[6%] left-[4%] w-[6%] rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted">
+                <div className="absolute bottom-[6%] left-[4%] w-[6%] rounded-md border border-ink/12 bg-white/45 p-2 text-center text-xs font-semibold text-ink-muted shadow-sm">
                   Staff
                 </div>
-                <div className="absolute bottom-[6%] left-[52%] w-[6%] rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted">
+                <div className="absolute bottom-[6%] left-[52%] w-[6%] rounded-md border border-ink/12 bg-white/45 p-2 text-center text-xs font-semibold text-ink-muted shadow-sm">
                   Staff
                 </div>
 
@@ -386,7 +392,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                   </div>
                 ))}
               </div>
-            </div>
+            </FloorPlanCanvasFrame>
             {oneToSixLayout.fallback.length > 0 && (
               <div className="mt-3">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">

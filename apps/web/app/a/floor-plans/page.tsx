@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatFloorLabel } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -198,20 +199,26 @@ export default function AdminFloorPlansPage() {
 
       <Card className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs text-ink-muted">
-            Floor
-            <select
-              className="mt-1 min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
-              value={floor}
-              onChange={(e) => setFloor(parseInt(e.target.value, 10))}
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <span className="text-xs font-medium text-ink-muted">Floor</span>
+            <nav
+              aria-label="Edit floor"
+              className="flex w-full max-w-full overflow-x-auto rounded-xl border border-border/60 bg-gradient-to-b from-[#f0efeb] to-[#e4e2dc] p-1 shadow-[inset_0_1px_2px_rgba(43,43,43,0.07)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
-              {FLOOR_CHOICES.map((f) => (
-                <option key={f} value={f}>
-                  {formatFloorLabel(f)}
-                </option>
-              ))}
-            </select>
-          </label>
+              <div className="flex min-w-min flex-1 flex-wrap gap-1">
+                {FLOOR_CHOICES.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFloor(f)}
+                    className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(floor === f)}`}
+                  >
+                    {formatFloorLabel(f)}
+                  </button>
+                ))}
+              </div>
+            </nav>
+          </div>
           <Button type="button" variant="secondary" onClick={() => setDraft(sourceLayout)}>
             Reload saved
           </Button>
@@ -287,11 +294,16 @@ export default function AdminFloorPlansPage() {
       </Card>
 
       <Card>
-        <h2 className="mb-3 text-sm font-semibold text-ink">Preview ({formatFloorLabel(floor)})</h2>
-        <div className="overflow-x-auto">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold tracking-tight text-ink">Preview — {formatFloorLabel(floor)}</h2>
+          <span className="inline-flex items-center rounded-full border border-border/50 bg-white/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted shadow-sm backdrop-blur-sm">
+            Custom admin layout
+          </span>
+        </div>
+        <FloorPlanCanvasFrame>
           <div
             ref={containerRef}
-            className="relative min-w-[1100px] rounded-btn border border-border bg-surface-muted/30"
+            className="relative min-w-[1100px]"
             style={{ height: 540 }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
@@ -320,14 +332,14 @@ export default function AdminFloorPlansPage() {
               const height = `${(el.h / GRID_ROWS) * 100}%`;
               const base =
                 el.kind === 'room'
-                  ? 'rounded-md border-2 border-border bg-surface text-center text-sm font-semibold text-ink'
+                  ? 'rounded-md border-2 border-ink/15 bg-white/70 text-center text-sm font-semibold text-ink shadow-sm'
                   : el.kind === 'corridor'
-                    ? 'rounded-md border border-border/50 bg-surface-muted/45'
+                    ? 'rounded-md border border-ink/10 bg-white/40 shadow-inner'
                     : el.kind === 'glass'
-                      ? 'rounded-md border border-cyan-400/70 bg-cyan-100/40 text-center text-xs font-semibold text-cyan-900'
+                      ? 'rounded-md border border-cyan-500/35 bg-cyan-50/50 text-center text-xs font-semibold text-cyan-900 shadow-sm'
                     : el.kind === 'elevator'
-                      ? 'rounded-md border border-dashed border-border bg-surface text-center text-xs text-ink-muted'
-                      : 'rounded-md border border-border bg-surface text-center text-xs font-semibold text-ink-muted';
+                      ? 'rounded-md border border-dashed border-ink/20 bg-white/50 text-center text-xs font-medium text-ink-muted shadow-sm'
+                      : 'rounded-md border border-ink/12 bg-white/45 text-center text-xs font-semibold text-ink-muted shadow-sm';
               return (
                 <div
                   key={el.id}
@@ -356,7 +368,7 @@ export default function AdminFloorPlansPage() {
                           : ''}
                   <button
                     type="button"
-                    className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize rounded-tl border border-border bg-surface"
+                    className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize rounded-tl border border-ink/20 bg-white/90 shadow-sm"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -375,7 +387,7 @@ export default function AdminFloorPlansPage() {
               );
             })}
           </div>
-        </div>
+        </FloorPlanCanvasFrame>
       </Card>
 
       <Card>

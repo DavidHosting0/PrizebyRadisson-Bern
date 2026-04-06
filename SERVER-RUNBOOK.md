@@ -254,6 +254,7 @@ pm2 restart ecosystem.config.cjs
 
 | Issue | Check |
 |--------|--------|
+| PM2: `Cannot find module '.../apps/api/dist/main.js'` | **`dist/` is not in git.** After `git pull`, run `npm run build -w @housekeeping/api` (or `cd apps/api && npm run build`). Confirm: `test -f apps/api/dist/main.js`. |
 | `migrate deploy` fails | `DATABASE_URL`, Postgres running, user rights |
 | 502 from Nginx | `pm2 list` shows both apps online; ports match `.env` / ecosystem |
 | Login / API errors | `NEXT_PUBLIC_API_URL` matches how the browser reaches the API; rebuild web after changes |
