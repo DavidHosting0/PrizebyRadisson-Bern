@@ -127,6 +127,10 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
     queryKey: ['floor-plan-layout', activeFloorNumber],
     enabled: activeFloorNumber != null,
     queryFn: () => api<{ floor: number; layout: SavedLayoutElement[] } | null>(`/floor-plans/${activeFloorNumber}`),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: activeFloorNumber != null ? 15000 : false,
   });
 
   const floors = useMemo(() => {

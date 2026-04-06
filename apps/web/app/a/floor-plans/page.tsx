@@ -31,7 +31,10 @@ function newId() {
 export default function AdminFloorPlansPage() {
   const qc = useQueryClient();
   const [floor, setFloor] = useState<number>(2);
+  const [copyFromFloor, setCopyFromFloor] = useState<number>(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<{
     id: string;
@@ -49,6 +52,10 @@ export default function AdminFloorPlansPage() {
   const { data: plan } = useQuery({
     queryKey: ['admin-floor-plan', floor],
     queryFn: () => api<PlanRow | null>(`/floor-plans/${floor}`),
+  });
+  const { data: allPlans = [] } = useQuery({
+    queryKey: ['admin-floor-plans-all'],
+    queryFn: () => api<PlanRow[]>('/floor-plans'),
   });
 
   const [draft, setDraft] = useState<LayoutElement[]>([]);
@@ -73,10 +80,21 @@ export default function AdminFloorPlansPage() {
         body: JSON.stringify({ layout }),
       }),
     onSuccess: () => {
+      setSaveError(null);
+      setSaveMessage(`Saved ${layoutLabel(floor)} layout.`);
       qc.invalidateQueries({ queryKey: ['admin-floor-plan', floor] });
       qc.invalidateQueries({ queryKey: ['floor-plan-layout', floor] });
     },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : 'Unknown save error';
+      setSaveMessage(null);
+      setSaveError(msg);
+    },
   });
+
+  function layoutLabel(f: number) {
+    return formatFloorLabel(f);
+  }
 
   function addElement(el: LayoutElement) {
     setSelectedId(el.id);
@@ -104,6 +122,35 @@ export default function AdminFloorPlansPage() {
 
   function removeEl(id: string) {
     setDraft((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function remapRoomNumber(roomNumber: string | undefined, fromFloor: number, toFloor: number): string | undefined {
+    if (!roomNumber) return roomNumber;
+    const n = parseInt(roomNumber, 10);
+    if (!Number.isFinite(n)) return roomNumber;
+    if (fromFloor >= 1 && toFloor >= 1) {
+      if (n >= fromFloor * 100 && n < (fromFloor + 1) * 100) {
+        const suffix = n - fromFloor * 100;
+        return String(toFloor * 100 + suffix);
+      }
+      if (n >= 100 && n < 1000) {
+        const suffix = n % 100;
+        return String(toFloor * 100 + suffix);
+      }
+    }
+    return roomNumber;
+  }
+
+  function copyLayoutFromFloor() {
+    const src = allPlans.find((p) => p.floor === copyFromFloor);
+    if (!src?.layout?.length) return;
+    const copied = src.layout.map((el) => ({
+      ...el,
+      id: newId(),
+      roomNumber: el.kind === 'room' ? remapRoomNumber(el.roomNumber, copyFromFloor, floor) : undefined,
+    }));
+    setDraft(copied);
+    setSelectedId(null);
   }
 
   useEffect(() => {
@@ -168,10 +215,34 @@ export default function AdminFloorPlansPage() {
           <Button type="button" variant="secondary" onClick={() => setDraft(sourceLayout)}>
             Reload saved
           </Button>
+          <label className="text-xs text-ink-muted">
+            Copy from floor
+            <select
+              className="mt-1 min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+              value={copyFromFloor}
+              onChange={(e) => setCopyFromFloor(parseInt(e.target.value, 10))}
+            >
+              {FLOOR_CHOICES.filter((f) => f !== floor).map((f) => (
+                <option key={f} value={f}>
+                  {formatFloorLabel(f)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={copyLayoutFromFloor}
+            disabled={!allPlans.some((p) => p.floor === copyFromFloor && p.layout.length > 0)}
+          >
+            Use this floor's layout
+          </Button>
           <Button type="button" variant="action" disabled={save.isPending} onClick={() => save.mutate(draft)}>
             {save.isPending ? 'Saving…' : 'Save floor plan'}
           </Button>
         </div>
+        {saveMessage && <p className="text-sm text-success">{saveMessage}</p>}
+        {saveError && <p className="whitespace-pre-wrap text-sm text-danger">{saveError}</p>}
 
         <div className="space-y-3">
           <p className="text-xs text-ink-muted">Drag elements from the toolbox and drop them on the floor plan. Move elements by dragging; resize with the bottom-right handle.</p>
@@ -181,7 +252,11 @@ export default function AdminFloorPlansPage() {
                 key={t}
                 type="button"
                 draggable
-                onDragStart={(e) => e.dataTransfer.setData('application/x-floor-element', JSON.stringify({ kind: t }))}
+                onDragStart={(e) => {
+                  const payload = JSON.stringify({ kind: t });
+                  e.dataTransfer.setData('application/x-floor-element', payload);
+                  e.dataTransfer.setData('text/plain', payload);
+                }}
                 className="rounded-btn border border-border bg-surface px-3 py-2 text-sm font-medium text-ink"
               >
                 {t}
@@ -196,12 +271,11 @@ export default function AdminFloorPlansPage() {
                   key={r.id}
                   type="button"
                   draggable
-                  onDragStart={(e) =>
-                    e.dataTransfer.setData(
-                      'application/x-floor-element',
-                      JSON.stringify({ kind: 'room', roomNumber: r.roomNumber }),
-                    )
-                  }
+                  onDragStart={(e) => {
+                    const payload = JSON.stringify({ kind: 'room', roomNumber: r.roomNumber });
+                    e.dataTransfer.setData('application/x-floor-element', payload);
+                    e.dataTransfer.setData('text/plain', payload);
+                  }}
                   className="rounded-btn border border-border bg-surface-muted px-2 py-1 text-sm font-semibold text-ink"
                 >
                   {r.roomNumber}
@@ -222,7 +296,9 @@ export default function AdminFloorPlansPage() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              const raw = e.dataTransfer.getData('application/x-floor-element');
+              const raw =
+                e.dataTransfer.getData('application/x-floor-element') ||
+                e.dataTransfer.getData('text/plain');
               if (!raw) return;
               try {
                 const parsed = JSON.parse(raw) as { kind: LayoutElement['kind']; roomNumber?: string };
