@@ -1,9 +1,11 @@
-import { IsUUID } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
 
 export class CreateAssignmentDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   roomId!: string;
 
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   housekeeperUserId!: string;
 }

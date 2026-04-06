@@ -1,9 +1,10 @@
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { LostFoundStatus } from '@prisma/client';
 
 export class CreateLostFoundDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   roomId?: string | null;
 
   @IsString()

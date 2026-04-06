@@ -1,11 +1,14 @@
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ServiceRequestPriority } from '@prisma/client';
 
 export class CreateServiceRequestDto {
-  @IsUUID()
+  /** Prisma `cuid` — not a UUID */
+  @IsString()
+  @IsNotEmpty()
   roomId!: string;
 
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   typeId!: string;
 
   @IsEnum(ServiceRequestPriority)

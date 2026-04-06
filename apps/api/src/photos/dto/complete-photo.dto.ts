@@ -1,7 +1,8 @@
-import { IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 export class CompletePhotoDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   photoId!: string;
 
   @IsString()

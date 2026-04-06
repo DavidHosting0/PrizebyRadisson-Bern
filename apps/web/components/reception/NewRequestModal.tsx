@@ -9,6 +9,29 @@ import { useToast } from '@/components/toast/ToastProvider';
 type RoomOpt = { id: string; roomNumber: string };
 type TypeOpt = { id: string; label: string; code: string };
 
+const fieldClass =
+  'mt-1.5 w-full min-h-[44px] rounded-btn border border-border bg-surface px-3 py-2 text-sm text-ink shadow-card transition-colors hover:border-ink/15 focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15';
+
+const selectFieldClass =
+  'mt-1.5 w-full min-h-[44px] cursor-pointer appearance-none rounded-btn border border-border bg-surface py-2.5 pl-3 pr-10 text-sm text-ink shadow-card transition-colors hover:border-action/25 focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 disabled:cursor-not-allowed disabled:opacity-60';
+
+function SelectChevron() {
+  return (
+    <svg
+      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -36,11 +59,21 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
     }
   }, [open, typeId, types]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (rooms.length > 0 && !roomId) {
+      setRoomId(rooms[0].id);
+    }
+  }, [open, rooms, roomId]);
+
   const filteredRooms = useMemo(() => {
     const q = roomQ.trim().toLowerCase();
     if (!q) return rooms;
     return rooms.filter((r) => r.roomNumber.toLowerCase().includes(q));
   }, [rooms, roomQ]);
+
+  /** If search matches nothing, show full list so the control never goes empty. */
+  const roomOptions = filteredRooms.length > 0 ? filteredRooms : rooms;
 
   const create = useMutation({
     mutationFn: () =>
@@ -73,20 +106,17 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!roomId) {
-      toast.push('Please select a room', 'warning');
+      toast.push('Choose a room to continue', 'warning');
       return;
     }
     if (!typeId) {
-      toast.push('Please select a request type', 'warning');
+      toast.push('Choose a request type', 'warning');
       return;
     }
     create.mutate();
   }
 
   if (!open) return null;
-
-  const field =
-    'mt-1.5 w-full min-h-[44px] rounded-btn border border-border bg-surface px-3 py-2 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
@@ -99,41 +129,61 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
           <h2 id="new-req-title" className="text-lg font-semibold text-ink">
             New service request
           </h2>
-          <p className="mt-1 text-sm text-ink-muted">Select room, type, and priority.</p>
+          <p className="mt-1 text-sm text-ink-muted">Room, request type, and priority.</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-6">
           <div>
             <label className="text-sm font-medium text-ink">Room</label>
             <input
               type="search"
-              className={field}
+              className={fieldClass}
               placeholder="Search room number…"
               value={roomQ}
               onChange={(e) => setRoomQ(e.target.value)}
             />
-            <select
-              className={`${field} mt-2 max-h-40`}
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-              required
-            >
-              <option value="">Select room…</option>
-              {filteredRooms.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.roomNumber}
-                </option>
-              ))}
-            </select>
+            <div className="relative mt-2">
+              <select
+                className={selectFieldClass}
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+                required
+                disabled={rooms.length === 0}
+              >
+                {rooms.length === 0 ? (
+                  <option value="">No rooms available</option>
+                ) : (
+                  roomOptions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.roomNumber}
+                    </option>
+                  ))
+                )}
+              </select>
+              <SelectChevron />
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium text-ink">Request type</label>
-            <select className={field} value={typeId} onChange={(e) => setTypeId(e.target.value)} required>
-              {types.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                className={selectFieldClass}
+                value={typeId}
+                onChange={(e) => setTypeId(e.target.value)}
+                required
+                disabled={types.length === 0}
+              >
+                {types.length === 0 ? (
+                  <option value="">No request types</option>
+                ) : (
+                  types.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))
+                )}
+              </select>
+              <SelectChevron />
+            </div>
           </div>
           <div>
             <span className="text-sm font-medium text-ink">Priority</span>
@@ -163,7 +213,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
           <div>
             <label className="text-sm font-medium text-ink">Notes (optional)</label>
             <textarea
-              className={`${field} min-h-[80px] resize-y`}
+              className={`${fieldClass} min-h-[80px] resize-y`}
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}

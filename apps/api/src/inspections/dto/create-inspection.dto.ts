@@ -1,7 +1,8 @@
-import { IsBoolean, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateInspectionDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   roomId!: string;
 
   @IsOptional()
