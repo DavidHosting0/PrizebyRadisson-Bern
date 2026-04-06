@@ -51,31 +51,59 @@ function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) 
   );
 }
 
+function roomNumberOnlyClass(status: string): string {
+  if (status === 'OUT_OF_ORDER') return 'border-warning bg-warning-muted/90 text-ink';
+  if (status === 'DIRTY') return 'border-border bg-surface-muted text-ink';
+  if (status === 'IN_PROGRESS') return 'border-warning/80 bg-warning-muted/60 text-ink';
+  if (status === 'CLEAN') return 'border-success/50 bg-success-muted/70 text-ink';
+  if (status === 'INSPECTED') return 'border-action/40 bg-surface text-ink';
+  return 'border-border bg-surface text-ink-muted';
+}
+
+function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) {
+  return (
+    <button
+      key={room.id}
+      type="button"
+      onClick={() => onRoomClick(room.id)}
+      className={`h-full w-full rounded-md border-2 text-center text-sm font-semibold tabular-nums transition-shadow hover:shadow ${roomNumberOnlyClass(
+        room.derivedStatus,
+      )}`}
+      title={`Room ${room.roomNumber}`}
+    >
+      {room.roomNumber}
+    </button>
+  );
+}
+
 function floorOneToSixPosition(suffix: number): Rect | null {
   const map: Record<number, Rect> = {
-    1: { x: 1, y: 1, w: 2, h: 1 },
-    2: { x: 5, y: 1, w: 2, h: 1 },
-    3: { x: 1, y: 2, w: 2, h: 1 },
-    4: { x: 5, y: 2, w: 2, h: 1 },
-    5: { x: 1, y: 3, w: 2, h: 1 },
-    6: { x: 5, y: 3, w: 2, h: 1 },
-    7: { x: 1, y: 4, w: 2, h: 1 },
-    8: { x: 5, y: 4, w: 2, h: 1 },
-    9: { x: 1, y: 5, w: 2, h: 1 },
-    10: { x: 5, y: 5, w: 2, h: 1 },
-    11: { x: 1, y: 6, w: 2, h: 1 },
-    12: { x: 5, y: 6, w: 2, h: 1 },
-    14: { x: 8, y: 7, w: 2, h: 1 },
-    15: { x: 10, y: 7, w: 2, h: 1 },
-    16: { x: 12, y: 7, w: 2, h: 1 },
-    17: { x: 15, y: 7, w: 2, h: 1 },
-    18: { x: 17, y: 7, w: 2, h: 1 },
-    19: { x: 20, y: 7, w: 2, h: 1 },
-    20: { x: 22, y: 7, w: 2, h: 1 },
-    21: { x: 15, y: 8, w: 2, h: 1 },
-    22: { x: 17, y: 8, w: 2, h: 1 },
-    23: { x: 20, y: 8, w: 2, h: 1 },
-    24: { x: 22, y: 8, w: 2, h: 1 },
+    // Bottom run from left staff corner toward turning corner: 201..209
+    1: { x: 7, y: 12, w: 2, h: 1 },
+    2: { x: 9, y: 12, w: 2, h: 1 },
+    3: { x: 11, y: 12, w: 2, h: 1 },
+    4: { x: 13, y: 12, w: 2, h: 1 },
+    5: { x: 15, y: 12, w: 2, h: 1 },
+    6: { x: 17, y: 12, w: 2, h: 1 },
+    7: { x: 19, y: 12, w: 2, h: 1 },
+    8: { x: 21, y: 12, w: 2, h: 1 },
+    9: { x: 23, y: 12, w: 2, h: 1 },
+    // Opposite corner and back run: 210..218
+    10: { x: 4, y: 11, w: 2, h: 1 },
+    11: { x: 4, y: 10, w: 2, h: 1 },
+    12: { x: 4, y: 9, w: 2, h: 1 },
+    14: { x: 4, y: 8, w: 2, h: 1 },
+    15: { x: 4, y: 7, w: 2, h: 1 },
+    16: { x: 4, y: 6, w: 2, h: 1 },
+    17: { x: 4, y: 5, w: 2, h: 1 },
+    18: { x: 4, y: 4, w: 2, h: 1 },
+    // Right wing: 219..224
+    19: { x: 27, y: 11, w: 2, h: 1 },
+    20: { x: 27, y: 10, w: 2, h: 1 },
+    21: { x: 27, y: 9, w: 2, h: 1 },
+    22: { x: 27, y: 8, w: 2, h: 1 },
+    23: { x: 27, y: 7, w: 2, h: 1 },
+    24: { x: 27, y: 6, w: 2, h: 1 },
   };
   return map[suffix] ?? null;
 }
@@ -227,18 +255,24 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
         {typeof activeFloor === 'number' && oneToSixLayout && (
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
-              {formatFloorLabel(activeFloor)} - real layout (corridor + elevator)
+              {formatFloorLabel(activeFloor)} - physical layout
             </h2>
             <div className="overflow-x-auto rounded-card border border-border bg-surface p-3">
               <div
-                className="relative min-w-[900px]"
-                style={{ height: 430 }}
+                className="relative min-w-[1100px]"
+                style={{ height: 540 }}
               >
-                <div className="absolute left-[8%] top-[2%] h-[75%] w-[18%] rounded-md border border-border/50 bg-surface-muted/50" />
-                <div className="absolute bottom-[2%] left-[2%] h-[12%] w-[96%] rounded-md border border-border/50 bg-surface-muted/50" />
-                <div className="absolute bottom-[12%] left-[8%] h-[12%] w-[44%] rounded-md border border-border/50 bg-surface-muted/50" />
-                <div className="absolute bottom-[8%] left-[17%] h-[15%] w-[14%] rounded-md border border-dashed border-border bg-surface text-center text-[11px] text-ink-muted">
-                  <span className="relative top-[40%]">Elevator</span>
+                <div className="absolute left-[9%] top-[6%] h-[74%] w-[14%] rounded-md border border-border/50 bg-surface-muted/35" />
+                <div className="absolute bottom-[6%] left-[4%] h-[12%] w-[90%] rounded-md border border-border/50 bg-surface-muted/35" />
+                <div className="absolute bottom-[18%] left-[9%] h-[12%] w-[42%] rounded-md border border-border/50 bg-surface-muted/35" />
+                <div className="absolute bottom-[14%] left-[16%] h-[12%] w-[12%] rounded-md border border-dashed border-border bg-surface text-center text-[11px] text-ink-muted">
+                  <span className="relative top-[34%]">Elevator</span>
+                </div>
+                <div className="absolute bottom-[6%] left-[4%] w-[6%] rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted">
+                  Staff
+                </div>
+                <div className="absolute bottom-[6%] left-[52%] w-[6%] rounded-md border border-border bg-surface p-2 text-center text-xs font-semibold text-ink-muted">
+                  Staff
                 </div>
 
                 {oneToSixLayout.positioned.map(({ room, rect }) => (
@@ -246,13 +280,13 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                     key={room.id}
                     className="absolute p-1"
                     style={{
-                      left: `${((rect.x - 1) / 24) * 100}%`,
-                      top: `${((rect.y - 1) / 9) * 100}%`,
-                      width: `${(rect.w / 24) * 100}%`,
-                      height: `${(rect.h / 9) * 100}%`,
+                      left: `${((rect.x - 1) / 30) * 100}%`,
+                      top: `${((rect.y - 1) / 14) * 100}%`,
+                      width: `${(rect.w / 30) * 100}%`,
+                      height: `${(rect.h / 14) * 100}%`,
                     }}
                   >
-                    {roomButton(room, onRoomClick)}
+                    {roomPlanButton(room, onRoomClick)}
                   </div>
                 ))}
               </div>
