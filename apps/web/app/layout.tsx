@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   title: 'Prize by Radisson Bern · Housekeeping',
   description: 'Hotel housekeeping operations',
   manifest: '/manifest.json',
+  icons: {
+    icon: [{ url: '/PrizeByRadisson.png', type: 'image/png' }],
+    apple: [{ url: '/PrizeByRadisson.png', type: 'image/png' }],
+  },
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Housekeeping' },
 };
 
