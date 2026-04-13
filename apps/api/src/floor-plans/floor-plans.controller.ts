@@ -1,30 +1,28 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Put, UseGuards } from '@nestjs/common';
-import { User, UserRole } from '@prisma/client';
+import { Body, Controller, Get, Param, ParseIntPipe, Put } from '@nestjs/common';
+import { PermissionCode, User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { UpsertFloorPlanDto } from './dto/upsert-floor-plan.dto';
 import { FloorPlansService } from './floor-plans.service';
 
 @Controller('floor-plans')
-@UseGuards(RolesGuard)
 export class FloorPlansController {
   constructor(private readonly floorPlans: FloorPlansService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.RECEPTION)
+  @RequirePermissions(PermissionCode.FLOOR_PLAN_READ)
   list() {
     return this.floorPlans.list();
   }
 
   @Get(':floor')
-  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.RECEPTION)
+  @RequirePermissions(PermissionCode.FLOOR_PLAN_READ)
   get(@Param('floor', ParseIntPipe) floor: number) {
     return this.floorPlans.get(floor);
   }
 
   @Put(':floor')
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.FLOOR_PLAN_WRITE)
   upsert(
     @Param('floor', ParseIntPipe) floor: number,
     @Body() dto: UpsertFloorPlanDto,

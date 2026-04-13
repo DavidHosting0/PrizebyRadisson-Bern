@@ -7,6 +7,8 @@ export type Me = {
   name: string;
   phone?: string | null;
   titlePrefix?: string | null;
+  /** Effective permission codes (defaults ∪ admin grants). */
+  permissions?: string[];
 };
 
 function getTokens() {

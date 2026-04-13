@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
@@ -18,7 +18,10 @@ type UserRow = {
   titlePrefix: string;
   isActive: boolean;
   createdAt: string;
+  permissionGrants?: { permission: string }[];
 };
+
+type PermissionCatalog = { codes: string[]; labels: Record<string, string> };
 
 /** Permission / app area (maps to API `UserRole`). */
 const JOB_ROLES = ['HOUSEKEEPER', 'SUPERVISOR', 'RECEPTION', 'ADMIN'] as const;
@@ -50,7 +53,7 @@ function parseApiError(raw: string): string {
 }
 
 export default function AdminUserManagementPage() {
-  const { user: me } = useAuth();
+  const { user: me, refreshMe } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
 
@@ -64,6 +67,12 @@ export default function AdminUserManagementPage() {
     queryFn: () => api<UserRow[]>('/users'),
   });
 
+  const { data: permCatalog } = useQuery({
+    queryKey: ['permission-catalog'],
+    enabled: me?.role === 'ADMIN' && (!!createOpen || !!editUser),
+    queryFn: () => api<PermissionCatalog>('/permissions'),
+  });
+
   const createMut = useMutation({
     mutationFn: (body: {
       email: string;
@@ -72,6 +81,7 @@ export default function AdminUserManagementPage() {
       phone?: string;
       role: string;
       titlePrefix: string;
+      permissionGrants?: string[];
     }) => api<UserRow>('/users', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
@@ -94,12 +104,14 @@ export default function AdminUserManagementPage() {
         titlePrefix?: string;
         isActive?: boolean;
         password?: string;
+        permissionGrants?: string[];
       };
     }) => api<UserRow>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    onSuccess: () => {
+    onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['users'] });
       setEditUser(null);
       toast.push('User updated', 'success');
+      if (vars.id === me?.id) void refreshMe();
     },
     onError: (e: Error) => toast.push(parseApiError(e.message), 'warning'),
   });
@@ -149,6 +161,12 @@ export default function AdminUserManagementPage() {
                     <span className="ml-2 font-medium text-ink-muted">· You</span>
                   )}
                 </p>
+                {u.permissionGrants && u.permissionGrants.length > 0 && (
+                  <p className="mt-1 text-[11px] text-ink-muted">
+                    <span className="font-medium text-ink/80">Extra permissions:</span>{' '}
+                    {u.permissionGrants.map((g) => g.permission).join(', ')}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="secondary" className="min-h-[40px] px-3 text-sm" onClick={() => setEditUser(u)}>
@@ -172,6 +190,7 @@ export default function AdminUserManagementPage() {
       {createOpen && (
         <UserUpsertModal
           mode="create"
+          catalog={permCatalog}
           onClose={() => setCreateOpen(false)}
           onSubmitCreate={(values) => createMut.mutate(values)}
           submitting={createMut.isPending}
@@ -182,6 +201,7 @@ export default function AdminUserManagementPage() {
       {editUser && (
         <UserUpsertModal
           mode="edit"
+          catalog={permCatalog}
           initial={editUser}
           onClose={() => setEditUser(null)}
           onSubmitEdit={(body) => updateMut.mutate({ id: editUser.id, body })}
@@ -204,6 +224,7 @@ export default function AdminUserManagementPage() {
 
 function UserUpsertModal({
   mode,
+  catalog,
   initial,
   onClose,
   onSubmitCreate,
@@ -212,6 +233,7 @@ function UserUpsertModal({
   onValidationError,
 }: {
   mode: 'create' | 'edit';
+  catalog?: PermissionCatalog;
   initial?: UserRow;
   onClose: () => void;
   onSubmitCreate?: (v: {
@@ -221,6 +243,7 @@ function UserUpsertModal({
     phone?: string;
     role: string;
     titlePrefix: string;
+    permissionGrants?: string[];
   }) => void;
   onSubmitEdit?: (v: {
     name: string;
@@ -229,6 +252,7 @@ function UserUpsertModal({
     titlePrefix: string;
     isActive: boolean;
     password?: string;
+    permissionGrants: string[];
   }) => void;
   submitting: boolean;
   onValidationError?: (msg: string) => void;
@@ -240,6 +264,24 @@ function UserUpsertModal({
   const [role, setRole] = useState<string>(initial?.role ?? 'HOUSEKEEPER');
   const [titlePrefix, setTitlePrefix] = useState<string>(initial?.titlePrefix ?? 'CLEANER');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+  const [extraGrantCodes, setExtraGrantCodes] = useState<string[]>(() =>
+    initial?.permissionGrants?.map((g) => g.permission) ?? [],
+  );
+
+  useEffect(() => {
+    if (mode === 'edit' && initial) {
+      setExtraGrantCodes(initial.permissionGrants?.map((g) => g.permission) ?? []);
+    }
+    if (mode === 'create') {
+      setExtraGrantCodes([]);
+    }
+  }, [mode, initial?.id, initial?.permissionGrants]);
+
+  function toggleGrant(code: string) {
+    setExtraGrantCodes((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    );
+  }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -253,6 +295,7 @@ function UserUpsertModal({
         phone: phone.trim() || undefined,
         role,
         titlePrefix,
+        permissionGrants: extraGrantCodes.length ? extraGrantCodes : undefined,
       });
       return;
     }
@@ -269,12 +312,14 @@ function UserUpsertModal({
       titlePrefix: string;
       isActive: boolean;
       password?: string;
+      permissionGrants: string[];
     } = {
       name: name.trim(),
       phone: phone.trim() ? phone.trim() : null,
       role,
       titlePrefix,
       isActive,
+      permissionGrants: extraGrantCodes,
     };
     if (pw.length >= 8) {
       body.password = pw;
@@ -290,7 +335,7 @@ function UserUpsertModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-lift"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold text-ink">{mode === 'create' ? 'New user' : 'Edit user'}</h2>
@@ -393,6 +438,37 @@ function UserUpsertModal({
             {mode === 'create' && <p className="mt-1 text-xs text-ink-muted">At least 8 characters.</p>}
             {mode === 'edit' && <p className="mt-1 text-xs text-ink-muted">Only filled if you want to reset their password.</p>}
           </label>
+          <div className="rounded-lg border border-border bg-surface-muted/40 px-3 py-3">
+            <p className="text-sm font-medium text-ink">Extra permissions</p>
+            <p className="mt-1 text-xs text-ink-muted">
+              Added on top of the automatic set for the chosen role and title. Users still need the correct app role
+              (Cleaner / Supervisor / Reception / Admin) to sign in to each area.
+            </p>
+            {!catalog?.codes?.length && (
+              <p className="mt-2 text-xs text-ink-muted">Loading permission list…</p>
+            )}
+            {!!catalog?.codes?.length && (
+              <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto text-sm">
+                {catalog.codes.map((code) => (
+                  <li key={code} className="flex gap-2">
+                    <input
+                      type="checkbox"
+                      id={`perm-${mode}-${code}`}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-action focus:ring-action/30"
+                      checked={extraGrantCodes.includes(code)}
+                      onChange={() => toggleGrant(code)}
+                    />
+                    <label htmlFor={`perm-${mode}-${code}`} className="cursor-pointer text-ink">
+                      <span className="font-mono text-xs text-ink-muted">{code}</span>
+                      {catalog.labels[code] && (
+                        <span className="mt-0.5 block text-sm text-ink">{catalog.labels[code]}</span>
+                      )}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" className="min-h-[44px]" onClick={onClose} disabled={submitting}>
               Cancel

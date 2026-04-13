@@ -74,3 +74,8 @@ export function useRole() {
   const { user } = useAuth();
   return user?.role;
 }
+
+export function usePermission(code: string) {
+  const { user } = useAuth();
+  return user?.permissions?.includes(code) ?? false;
+}

@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import clsx from 'clsx';
 import { api, API_BASE } from '@/lib/api';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { NewRequestModal } from '@/components/reception/NewRequestModal';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -65,6 +65,7 @@ export function TeamChatView({
   embedOperationsSocket?: boolean;
 }) {
   const { user } = useAuth();
+  const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const qc = useQueryClient();
   const toast = useToast();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -147,8 +148,6 @@ export function TeamChatView({
   }
 
   const isHk = user?.role === 'HOUSEKEEPER';
-  const canCreateRequest =
-    user?.role === 'SUPERVISOR' || user?.role === 'RECEPTION' || user?.role === 'ADMIN';
 
   return (
     <div className={clsx('flex min-h-0 flex-1 flex-col', className)}>

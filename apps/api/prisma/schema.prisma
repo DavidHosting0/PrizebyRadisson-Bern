@@ -24,6 +24,42 @@ enum UserTitlePrefix {
   ADMIN
 }
 
+/** Fine-grained access; merged with role + titlePrefix defaults + per-user grants. */
+enum PermissionCode {
+  ROOMS_READ
+  ROOMS_UPDATE
+  CHECKLIST_TASK_UPDATE
+  CHECKLIST_REOPEN
+  PHOTO_UPLOAD
+  PHOTO_TIMELINE_READ
+  ASSIGNMENT_READ
+  ASSIGNMENT_CREATE
+  ASSIGNMENT_SUGGESTIONS
+  ASSIGNMENT_RUN_AUTO
+  SERVICE_REQUEST_READ
+  SERVICE_REQUEST_CREATE
+  SERVICE_REQUEST_CLAIM
+  SERVICE_REQUEST_PATCH
+  SERVICE_REQUEST_CANCEL
+  LOST_FOUND_READ
+  LOST_FOUND_CREATE
+  LOST_FOUND_UPDATE
+  INSPECTION_CREATE
+  ROOM_TYPE_READ
+  ROOM_TYPE_WRITE
+  FLOOR_PLAN_READ
+  FLOOR_PLAN_WRITE
+  ANALYTICS_READ
+  TEAM_CHAT_READ
+  TEAM_CHAT_POST
+  USERS_READ
+  USERS_READ_HOUSEKEEPERS
+  USERS_WRITE
+  USERS_DELETE
+  SETTINGS_READ
+  SETTINGS_WRITE
+}
+
 enum ChecklistTaskStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -97,6 +133,18 @@ model User {
   // Admin can maintain custom floor-plan layouts.
   floorPlansUpdated  FloorPlan[]
   teamChatMessages   TeamChatMessage[]
+  permissionGrants   UserPermissionGrant[]
+}
+
+model UserPermissionGrant {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission PermissionCode
+  createdAt  DateTime       @default(now())
+
+  @@unique([userId, permission])
+  @@index([userId])
 }
 
 model RefreshToken {

@@ -1,5 +1,5 @@
-import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { UserRole, UserTitlePrefix } from '@prisma/client';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { PermissionCode, UserRole, UserTitlePrefix } from '@prisma/client';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -26,4 +26,10 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(8)
   password?: string;
+
+  /** Replace extra grants entirely when provided (empty array clears grants). */
+  @IsOptional()
+  @IsArray()
+  @IsEnum(PermissionCode, { each: true })
+  permissionGrants?: PermissionCode[];
 }

@@ -1,5 +1,5 @@
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { UserRole, UserTitlePrefix } from '@prisma/client';
+import { IsArray, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { PermissionCode, UserRole, UserTitlePrefix } from '@prisma/client';
 
 export class CreateUserDto {
   @IsEmail()
@@ -21,4 +21,10 @@ export class CreateUserDto {
 
   @IsEnum(UserTitlePrefix)
   titlePrefix!: UserTitlePrefix;
+
+  /** Extra permissions beyond role + title-prefix defaults (additive). */
+  @IsOptional()
+  @IsArray()
+  @IsEnum(PermissionCode, { each: true })
+  permissionGrants?: PermissionCode[];
 }

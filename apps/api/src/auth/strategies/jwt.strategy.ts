@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PermissionsService } from '../../permissions/permissions.service';
+import type { AuthenticatedUser } from '../../common/types/authenticated-user';
 
 export type JwtPayload = { sub: string; email: string; role: string };
 
@@ -11,6 +13,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly permissions: PermissionsService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -19,9 +22,14 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
   }
 
-  async validate(payload: JwtPayload) {
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+  async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { permissionGrants: { select: { permission: true } } },
+    });
     if (!user?.isActive) throw new UnauthorizedException();
-    return user;
+    const grants = user.permissionGrants.map((g) => g.permission);
+    const effectivePermissions = this.permissions.effectiveFor(user.role, user.titlePrefix, grants);
+    return { ...user, effectivePermissions };
   }
 }

@@ -33,6 +33,7 @@ export class UsersService {
         titlePrefix: true,
         isActive: true,
         createdAt: true,
+        permissionGrants: { select: { permission: true } },
       },
       orderBy: { email: 'asc' },
     });
@@ -50,6 +51,9 @@ export class UsersService {
         phone: dto.phone,
         role: dto.role,
         titlePrefix: dto.titlePrefix,
+        permissionGrants: dto.permissionGrants?.length
+          ? { create: dto.permissionGrants.map((permission) => ({ permission })) }
+          : undefined,
       },
       select: {
         id: true,
@@ -59,6 +63,7 @@ export class UsersService {
         role: true,
         titlePrefix: true,
         isActive: true,
+        permissionGrants: { select: { permission: true } },
       },
     });
   }
@@ -94,9 +99,23 @@ export class UsersService {
     if (dto.password) {
       data.passwordHash = await bcrypt.hash(dto.password, 10);
     }
-    return this.prisma.user.update({
+
+    await this.prisma.$transaction(async (tx) => {
+      if (Object.keys(data).length > 0) {
+        await tx.user.update({ where: { id }, data });
+      }
+      if (dto.permissionGrants !== undefined) {
+        await tx.userPermissionGrant.deleteMany({ where: { userId: id } });
+        if (dto.permissionGrants.length > 0) {
+          await tx.userPermissionGrant.createMany({
+            data: dto.permissionGrants.map((permission) => ({ userId: id, permission })),
+          });
+        }
+      }
+    });
+
+    return this.prisma.user.findUniqueOrThrow({
       where: { id },
-      data,
       select: {
         id: true,
         email: true,
@@ -105,6 +124,7 @@ export class UsersService {
         role: true,
         titlePrefix: true,
         isActive: true,
+        permissionGrants: { select: { permission: true } },
       },
     });
   }

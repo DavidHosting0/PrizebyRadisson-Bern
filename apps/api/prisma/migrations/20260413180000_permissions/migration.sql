@@ -1,0 +1,54 @@
+-- CreateEnum
+CREATE TYPE "PermissionCode" AS ENUM (
+  'ROOMS_READ',
+  'ROOMS_UPDATE',
+  'CHECKLIST_TASK_UPDATE',
+  'CHECKLIST_REOPEN',
+  'PHOTO_UPLOAD',
+  'PHOTO_TIMELINE_READ',
+  'ASSIGNMENT_READ',
+  'ASSIGNMENT_CREATE',
+  'ASSIGNMENT_SUGGESTIONS',
+  'ASSIGNMENT_RUN_AUTO',
+  'SERVICE_REQUEST_READ',
+  'SERVICE_REQUEST_CREATE',
+  'SERVICE_REQUEST_CLAIM',
+  'SERVICE_REQUEST_PATCH',
+  'SERVICE_REQUEST_CANCEL',
+  'LOST_FOUND_READ',
+  'LOST_FOUND_CREATE',
+  'LOST_FOUND_UPDATE',
+  'INSPECTION_CREATE',
+  'ROOM_TYPE_READ',
+  'ROOM_TYPE_WRITE',
+  'FLOOR_PLAN_READ',
+  'FLOOR_PLAN_WRITE',
+  'ANALYTICS_READ',
+  'TEAM_CHAT_READ',
+  'TEAM_CHAT_POST',
+  'USERS_READ',
+  'USERS_READ_HOUSEKEEPERS',
+  'USERS_WRITE',
+  'USERS_DELETE',
+  'SETTINGS_READ',
+  'SETTINGS_WRITE'
+);
+
+-- CreateTable
+CREATE TABLE "UserPermissionGrant" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "permission" "PermissionCode" NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "UserPermissionGrant_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserPermissionGrant_userId_permission_key" ON "UserPermissionGrant"("userId", "permission");
+
+-- CreateIndex
+CREATE INDEX "UserPermissionGrant_userId_idx" ON "UserPermissionGrant"("userId");
+
+-- AddForeignKey
+ALTER TABLE "UserPermissionGrant" ADD CONSTRAINT "UserPermissionGrant_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, usePermission } from '@/lib/auth-context';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { ReceptionUiProvider, useReceptionUi } from '@/app/r/reception-context';
@@ -73,6 +73,7 @@ function IconPackage({ className }: { className?: string }) {
 function ReceptionShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { user, loading, logout } = useAuth();
+  const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const router = useRouter();
   const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
   useReceptionRealtime();
@@ -115,14 +116,16 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="flex flex-1 items-center justify-end gap-3">
-          <Button
-            type="button"
-            variant="action"
-            className="hidden min-h-[40px] sm:inline-flex"
-            onClick={openNewRequest}
-          >
-            + New request
-          </Button>
+          {canCreateRequest && (
+            <Button
+              type="button"
+              variant="action"
+              className="hidden min-h-[40px] sm:inline-flex"
+              onClick={openNewRequest}
+            >
+              + New request
+            </Button>
+          )}
           <div className="hidden text-right md:block">
             <p className="truncate text-sm font-medium text-ink">
               {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
@@ -166,23 +169,27 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-          <Button
-            type="button"
-            variant="action"
-            className="mx-3 mt-6 min-h-[44px] md:hidden"
-            onClick={openNewRequest}
-          >
-            + New request
-          </Button>
+          {canCreateRequest && (
+            <Button
+              type="button"
+              variant="action"
+              className="mx-3 mt-6 min-h-[44px] md:hidden"
+              onClick={openNewRequest}
+            >
+              + New request
+            </Button>
+          )}
         </aside>
 
         <main className="min-w-0 flex-1 overflow-auto pb-20 md:pb-8">
           {children}
-          <div className="fixed bottom-4 right-4 z-20 sm:hidden">
-            <Button type="button" variant="action" className="min-h-[52px] rounded-full px-5 shadow-lift" onClick={openNewRequest}>
-              +
-            </Button>
-          </div>
+          {canCreateRequest && (
+            <div className="fixed bottom-4 right-4 z-20 sm:hidden">
+              <Button type="button" variant="action" className="min-h-[52px] rounded-full px-5 shadow-lift" onClick={openNewRequest}>
+                +
+              </Button>
+            </div>
+          )}
         </main>
       </div>
 

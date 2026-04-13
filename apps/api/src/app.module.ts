@@ -18,7 +18,9 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { StorageModule } from './storage/storage.module';
 import { FloorPlansModule } from './floor-plans/floor-plans.module';
 import { TeamChatModule } from './team-chat/team-chat.module';
+import { PermissionsModule } from './permissions/permissions.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 import configuration from './config/configuration';
 
 @Module({
@@ -27,6 +29,7 @@ import configuration from './config/configuration';
     PrismaModule,
     RealtimeModule,
     StorageModule,
+    PermissionsModule,
     AuthModule,
     UsersModule,
     SettingsModule,
@@ -42,6 +45,9 @@ import configuration from './config/configuration';
     FloorPlansModule,
     TeamChatModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
+  ],
 })
 export class AppModule {}

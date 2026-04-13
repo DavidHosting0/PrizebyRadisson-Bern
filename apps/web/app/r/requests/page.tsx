@@ -6,6 +6,7 @@ import { formatUserRef } from '@/lib/userTitlePrefix';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
+import { usePermission } from '@/lib/auth-context';
 
 type Req = {
   id: string;
@@ -20,6 +21,7 @@ type Req = {
 export default function ReceptionRequestsPage() {
   const qc = useQueryClient();
   const { openNewRequest } = useReceptionUi();
+  const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
 
   const { data: list = [], isLoading } = useQuery({
     queryKey: ['service-requests'],
@@ -49,9 +51,11 @@ export default function ReceptionRequestsPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Service requests</h1>
           <p className="mt-1 text-sm text-ink-muted">Create, track, and manage guest requests.</p>
         </div>
-        <Button type="button" variant="action" className="min-h-[48px]" onClick={openNewRequest}>
-          + New request
-        </Button>
+        {canCreateRequest && (
+          <Button type="button" variant="action" className="min-h-[48px]" onClick={openNewRequest}>
+            + New request
+          </Button>
+        )}
       </div>
 
       {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}

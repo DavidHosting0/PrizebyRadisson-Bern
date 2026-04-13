@@ -1,23 +1,21 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { PermissionCode } from '@prisma/client';
 import { SettingsService } from './settings.service';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
 @Controller('settings')
-@UseGuards(RolesGuard)
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.RECEPTION)
+  @RequirePermissions(PermissionCode.SETTINGS_READ)
   get() {
     return this.settings.get();
   }
 
   @Patch()
-  @Roles(UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.SETTINGS_WRITE)
   patch(@Body() dto: UpdateSettingsDto) {
     return this.settings.update(dto);
   }

@@ -1,16 +1,14 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Controller, Get, Query } from '@nestjs/common';
+import { PermissionCode } from '@prisma/client';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { AnalyticsService } from './analytics.service';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('analytics')
-@UseGuards(RolesGuard)
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
   @Get('summary')
-  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.ANALYTICS_READ)
   summary(
     @Query('from') from?: string,
     @Query('to') to?: string,

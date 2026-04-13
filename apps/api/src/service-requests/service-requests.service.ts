@@ -47,14 +47,6 @@ export class ServiceRequestsService {
   }
 
   async create(dto: CreateServiceRequestDto, user: User) {
-    const allowed =
-      user.role === UserRole.RECEPTION ||
-      user.role === UserRole.ADMIN ||
-      user.role === UserRole.SUPERVISOR ||
-      user.role === UserRole.HOUSEKEEPER;
-    if (!allowed) {
-      throw new ForbiddenException();
-    }
     await this.rooms.ensureChecklistState(dto.roomId);
     const req = await this.prisma.$transaction(async (tx) => {
       const created = await tx.serviceRequest.create({

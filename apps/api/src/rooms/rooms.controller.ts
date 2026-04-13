@@ -1,18 +1,16 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
-import { User, UserRole } from '@prisma/client';
+import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { PermissionCode, User } from '@prisma/client';
 import { RoomsService } from './rooms.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 @Controller('rooms')
-@UseGuards(RolesGuard)
 export class RoomsController {
   constructor(private readonly rooms: RoomsService) {}
 
   @Get()
-  @Roles(UserRole.HOUSEKEEPER, UserRole.SUPERVISOR, UserRole.RECEPTION, UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.ROOMS_READ)
   findAll(
     @CurrentUser() user: User,
     @Query('floor') floor?: string,
@@ -27,13 +25,13 @@ export class RoomsController {
   }
 
   @Get(':roomId')
-  @Roles(UserRole.HOUSEKEEPER, UserRole.SUPERVISOR, UserRole.RECEPTION, UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.ROOMS_READ)
   findOne(@Param('roomId') roomId: string) {
     return this.rooms.findOne(roomId);
   }
 
   @Patch(':roomId')
-  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.ROOMS_UPDATE)
   update(@Param('roomId') roomId: string, @Body() dto: UpdateRoomDto) {
     return this.rooms.updateRoom(roomId, dto);
   }

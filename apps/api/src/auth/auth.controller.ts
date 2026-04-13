@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { User } from '@prisma/client';
 import { AuthService } from './auth.service';
+import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { Public } from '../common/decorators/public.decorator';
@@ -29,7 +29,7 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: User) {
+  me(@CurrentUser() user: AuthenticatedUser) {
     return {
       id: user.id,
       email: user.email,
@@ -37,6 +37,7 @@ export class AuthController {
       name: user.name,
       phone: user.phone,
       titlePrefix: user.titlePrefix,
+      permissions: user.effectivePermissions,
     };
   }
 }

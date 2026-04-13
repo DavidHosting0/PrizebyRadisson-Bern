@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -53,8 +55,11 @@ export class AuthService {
         name: true,
         phone: true,
         titlePrefix: true,
+        permissionGrants: { select: { permission: true } },
       },
     });
+    const grants = u.permissionGrants.map((g) => g.permission);
+    const effectivePermissions = this.permissions.effectiveFor(u.role, u.titlePrefix, grants);
     const accessToken = await this.jwt.signAsync({
       sub: u.id,
       email: u.email,
@@ -78,6 +83,7 @@ export class AuthService {
         name: u.name,
         phone: u.phone,
         titlePrefix: u.titlePrefix,
+        permissions: effectivePermissions,
       },
     };
   }

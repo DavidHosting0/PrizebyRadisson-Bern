@@ -1,18 +1,16 @@
-import { Body, Controller, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { User, UserRole } from '@prisma/client';
+import { Body, Controller, Param, Patch, Post } from '@nestjs/common';
+import { PermissionCode, User } from '@prisma/client';
 import { ChecklistsService } from './checklists.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { UpdateChecklistTaskDto } from './dto/update-checklist-task.dto';
 
 @Controller('rooms/:roomId/checklist')
-@UseGuards(RolesGuard)
 export class ChecklistsController {
   constructor(private readonly checklists: ChecklistsService) {}
 
   @Patch('tasks/:taskId')
-  @Roles(UserRole.HOUSEKEEPER, UserRole.SUPERVISOR, UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.CHECKLIST_TASK_UPDATE)
   updateTask(
     @Param('roomId') roomId: string,
     @Param('taskId') taskId: string,
@@ -23,7 +21,7 @@ export class ChecklistsController {
   }
 
   @Post('reopen')
-  @Roles(UserRole.SUPERVISOR, UserRole.ADMIN)
+  @RequirePermissions(PermissionCode.CHECKLIST_REOPEN)
   reopen(@Param('roomId') roomId: string, @CurrentUser() user: User) {
     return this.checklists.reopen(roomId, user);
   }
