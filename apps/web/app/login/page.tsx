@@ -10,8 +10,8 @@ import { Card } from '@/components/ui/Card';
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState('housekeeper@demo.local');
-  const [password, setPassword] = useState('Password123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [remember, setRemember] = useState(false);
