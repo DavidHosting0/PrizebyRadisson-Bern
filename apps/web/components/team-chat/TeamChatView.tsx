@@ -147,6 +147,8 @@ export function TeamChatView({
   }
 
   const isHk = user?.role === 'HOUSEKEEPER';
+  const canCreateRequest =
+    user?.role === 'SUPERVISOR' || user?.role === 'RECEPTION' || user?.role === 'ADMIN';
 
   return (
     <div className={clsx('flex min-h-0 flex-1 flex-col', className)}>
@@ -233,11 +235,13 @@ export function TeamChatView({
           </ul>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-b border-border/60 px-4 py-2">
-          <Button type="button" variant="secondary" className="min-h-[40px] text-sm" onClick={() => setNewReqOpen(true)}>
-            + New request
-          </Button>
-        </div>
+        {canCreateRequest && (
+          <div className="flex flex-wrap gap-2 border-b border-border/60 px-4 py-2">
+            <Button type="button" variant="secondary" className="min-h-[40px] text-sm" onClick={() => setNewReqOpen(true)}>
+              + New request
+            </Button>
+          </div>
+        )}
 
         <form onSubmit={onSend} className="flex gap-2 p-3">
           <input
@@ -254,7 +258,7 @@ export function TeamChatView({
         </form>
       </div>
 
-      <NewRequestModal open={newReqOpen} onClose={() => setNewReqOpen(false)} />
+      {canCreateRequest && <NewRequestModal open={newReqOpen} onClose={() => setNewReqOpen(false)} />}
     </div>
   );
 }
