@@ -16,7 +16,7 @@ export type DerivedRoomStatus =
 @Injectable()
 export class RoomStatusService {
   derive(
-    room: Pick<Room, 'outOfOrder'>,
+    room: Pick<Room, 'outOfOrder' | 'cleaningDeclaredAt'>,
     tasks: Pick<RoomChecklistTask, 'status'>[],
     inspections: Pick<RoomInspection, 'passed' | 'inspectedAt'>[],
   ): DerivedRoomStatus {
@@ -33,6 +33,7 @@ export class RoomStatusService {
     );
     const latest = sorted[0];
     if (latest?.passed) return 'INSPECTED';
+    if (!room.cleaningDeclaredAt) return 'IN_PROGRESS';
     return 'CLEAN';
   }
 }

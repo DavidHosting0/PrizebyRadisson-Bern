@@ -73,7 +73,7 @@ export class PhotosService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    const room = await this.rooms.findOne(roomId);
+    const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitRoomStatus(room);
     return { ok: true, timeline };
   }

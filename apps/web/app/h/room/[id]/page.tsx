@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LostFoundReportModal } from '@/components/housekeeper/LostFoundReportModal';
 import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
+import { useToast } from '@/components/toast/ToastProvider';
 import { usePermission } from '@/lib/auth-context';
 
 type Task = {
@@ -25,6 +26,8 @@ type RoomDetail = {
   id: string;
   roomNumber: string;
   derivedStatus: string;
+  cleaningDeclaredAt: string | null;
+  hasMyReadyCleaningPhoto?: boolean;
   checklist: { stateId: string; tasks: Task[] } | null;
 };
 
@@ -36,6 +39,7 @@ export default function RoomChecklistPage() {
   const [lostFoundOpen, setLostFoundOpen] = useState(false);
   const [damageOpen, setDamageOpen] = useState(false);
   const canReportDamage = usePermission('DAMAGE_REPORT_CREATE');
+  const toast = useToast();
 
   const { data, isLoading } = useQuery({
     queryKey: ['room', id],
@@ -60,25 +64,46 @@ export default function RoomChecklistPage() {
   const uploadPhoto = useMutation({
     mutationFn: async (file: File) => {
       const compressed = await imageCompression(file, { maxSizeMB: 0.6, maxWidthOrHeight: 1600 });
+      const contentType = compressed.type?.trim() ? compressed.type : 'image/jpeg';
       const presign = await api<{ uploadUrl: string; photoId: string }>(`/rooms/${id}/photos/presign`, {
         method: 'POST',
-        body: JSON.stringify({ contentType: compressed.type || 'image/jpeg' }),
+        body: JSON.stringify({ contentType }),
       });
-      await fetch(presign.uploadUrl, {
+      const putRes = await fetch(presign.uploadUrl, {
         method: 'PUT',
         body: compressed,
-        headers: { 'Content-Type': compressed.type || 'image/jpeg' },
+        headers: { 'Content-Type': contentType },
       });
+      if (!putRes.ok) {
+        const t = await putRes.text().catch(() => '');
+        throw new Error(t || `Upload failed (${putRes.status})`);
+      }
       await api(`/rooms/${id}/photos/complete`, {
         method: 'POST',
         body: JSON.stringify({
           photoId: presign.photoId,
-          mime: compressed.type || 'image/jpeg',
-          bytes: compressed.size,
+          mime: contentType,
+          bytes: Math.max(0, Math.round(compressed.size)),
         }),
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['room', id] }),
+    onSuccess: () => {
+      toast.push('Photo uploaded', 'success');
+      qc.invalidateQueries({ queryKey: ['room', id] });
+    },
+    onError: (e: Error) => toast.push(e.message || 'Photo upload failed', 'warning'),
+  });
+
+  const markClean = useMutation({
+    mutationFn: () =>
+      api<RoomDetail>(`/rooms/${id}/mark-clean`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      toast.push('Room marked clean', 'success');
+      qc.invalidateQueries({ queryKey: ['room', id] });
+    },
+    onError: (e: Error) => toast.push(e.message || 'Could not mark room clean', 'warning'),
   });
 
   const tasks = data?.checklist?.tasks ?? [];
@@ -88,6 +113,16 @@ export default function RoomChecklistPage() {
     const done = tasks.filter((t) => t.status === 'COMPLETED').length;
     return Math.round((done / total) * 100);
   }, [tasks]);
+
+  const allTasksDone = progress === 100 && tasks.length > 0;
+  const hasPhoto = data?.hasMyReadyCleaningPhoto === true;
+  const canMarkClean =
+    !!data &&
+    allTasksDone &&
+    hasPhoto &&
+    !data.cleaningDeclaredAt &&
+    data.derivedStatus !== 'INSPECTED' &&
+    data.derivedStatus !== 'OUT_OF_ORDER';
 
   if (isLoading || !data) {
     return (
@@ -200,12 +235,38 @@ export default function RoomChecklistPage() {
         >
           {uploadPhoto.isPending ? 'Uploading…' : 'Upload cleaning photo'}
         </Button>
+        {allTasksDone && !hasPhoto && (
+          <p className="text-center text-sm text-ink-muted">Add a cleaning photo to finish and mark the room clean.</p>
+        )}
       </section>
 
-      {progress === 100 && tasks.length > 0 && (
+      {canMarkClean && (
+        <Button
+          variant="primary"
+          fullWidth
+          className="min-h-[48px]"
+          disabled={markClean.isPending}
+          onClick={() => markClean.mutate()}
+        >
+          {markClean.isPending ? 'Saving…' : 'Mark room clean'}
+        </Button>
+      )}
+
+      {allTasksDone && data.cleaningDeclaredAt && (
         <section className="rounded-card border border-success/30 bg-success-muted/50 p-4 text-center">
+          <p className="font-medium text-ink">Room marked clean</p>
+          <p className="mt-1 text-sm text-ink-muted">Supervisors will see this room as clean pending inspection.</p>
+        </section>
+      )}
+
+      {allTasksDone && !data.cleaningDeclaredAt && data.derivedStatus === 'IN_PROGRESS' && (
+        <section className="rounded-card border border-border bg-surface p-4 text-center">
           <p className="font-medium text-ink">All tasks complete</p>
-          <p className="mt-1 text-sm text-ink-muted">Room status updates automatically.</p>
+          <p className="mt-1 text-sm text-ink-muted">
+            {hasPhoto
+              ? 'Tap “Mark room clean” when you are finished.'
+              : 'Upload a cleaning photo, then mark the room clean.'}
+          </p>
         </section>
       )}
     </div>

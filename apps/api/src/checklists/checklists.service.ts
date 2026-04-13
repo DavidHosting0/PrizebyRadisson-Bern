@@ -61,7 +61,14 @@ export class ChecklistsService {
       },
     });
 
-    const room = await this.rooms.findOne(roomId);
+    if (dto.status !== ChecklistTaskStatus.COMPLETED) {
+      await this.prisma.room.update({
+        where: { id: roomId },
+        data: { cleaningDeclaredAt: null },
+      });
+    }
+
+    const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitChecklistTask({ roomId, taskId });
     this.realtime.emitRoomStatus(room);
     return room;
@@ -79,6 +86,10 @@ export class ChecklistsService {
     if (!state) throw new NotFoundException();
 
     await this.prisma.$transaction([
+      this.prisma.room.update({
+        where: { id: roomId },
+        data: { cleaningDeclaredAt: null },
+      }),
       ...state.tasks.map((t) =>
         this.prisma.roomChecklistTask.update({
           where: { id: t.id },
@@ -91,7 +102,7 @@ export class ChecklistsService {
       ),
     ]);
 
-    const room = await this.rooms.findOne(roomId);
+    const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitRoomStatus(room);
     return room;
   }

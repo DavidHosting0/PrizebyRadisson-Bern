@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
@@ -64,7 +69,7 @@ export class RoomsService {
     return rooms.map((r) => this.toRoomDto(r));
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, viewer?: User) {
     const room = await this.prisma.room.findUnique({
       where: { id },
       include: {
@@ -151,7 +156,73 @@ export class RoomsService {
       }
     }
 
-    return { ...base, lastCleaningPhoto, lastCleaning };
+    let hasMyReadyCleaningPhoto = false;
+    if (viewer?.id) {
+      const n = await this.prisma.roomPhoto.count({
+        where: {
+          roomId: id,
+          uploadedByUserId: viewer.id,
+          status: PhotoUploadStatus.READY,
+        },
+      });
+      hasMyReadyCleaningPhoto = n > 0;
+    }
+
+    return { ...base, lastCleaningPhoto, lastCleaning, hasMyReadyCleaningPhoto };
+  }
+
+  async markHousekeepingClean(roomId: string, user: User) {
+    if (user.role !== UserRole.HOUSEKEEPER) {
+      throw new ForbiddenException('Only housekeepers can mark a room clean');
+    }
+    const a = await this.prisma.roomAssignment.findFirst({
+      where: {
+        roomId,
+        housekeeperUserId: user.id,
+        status: AssignmentStatus.ACTIVE,
+      },
+    });
+    if (!a) throw new ForbiddenException('Not assigned to this room');
+
+    await this.ensureChecklistState(roomId);
+    const roomFull = await this.prisma.room.findUnique({
+      where: { id: roomId },
+      include: {
+        checklistStates: {
+          take: 1,
+          include: { tasks: true },
+        },
+      },
+    });
+    if (!roomFull) throw new NotFoundException('Room not found');
+    const tasks = roomFull.checklistStates[0]?.tasks ?? [];
+    if (tasks.length === 0) {
+      throw new BadRequestException('No checklist tasks for this room');
+    }
+    const allComplete = tasks.every((t) => t.status === ChecklistTaskStatus.COMPLETED);
+    if (!allComplete) {
+      throw new BadRequestException('Complete all checklist tasks first');
+    }
+
+    const photo = await this.prisma.roomPhoto.findFirst({
+      where: {
+        roomId,
+        uploadedByUserId: user.id,
+        status: PhotoUploadStatus.READY,
+      },
+    });
+    if (!photo) {
+      throw new BadRequestException('Upload at least one cleaning photo before marking the room clean');
+    }
+
+    await this.prisma.room.update({
+      where: { id: roomId },
+      data: { cleaningDeclaredAt: new Date() },
+    });
+
+    const out = await this.findOne(roomId, user);
+    this.realtime.emitRoomStatus(out);
+    return out;
   }
 
   private toRoomDto(room: {
@@ -162,6 +233,7 @@ export class RoomsService {
     oooReason: string | null;
     oooUntil: Date | null;
     notes: string | null;
+    cleaningDeclaredAt: Date | null;
     roomType: { name: string; code: string };
     checklistStates: Array<{
       id: string;
@@ -188,6 +260,7 @@ export class RoomsService {
       oooReason: room.oooReason,
       oooUntil: room.oooUntil,
       notes: room.notes,
+      cleaningDeclaredAt: room.cleaningDeclaredAt,
       roomType: room.roomType,
       derivedStatus: derived,
       checklist: state

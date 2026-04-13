@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { PermissionCode, User } from '@prisma/client';
 import { RoomsService } from './rooms.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -24,10 +24,16 @@ export class RoomsController {
     });
   }
 
+  @Post(':roomId/mark-clean')
+  @RequirePermissions(PermissionCode.CHECKLIST_TASK_UPDATE)
+  markClean(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.rooms.markHousekeepingClean(roomId, user);
+  }
+
   @Get(':roomId')
   @RequirePermissions(PermissionCode.ROOMS_READ)
-  findOne(@Param('roomId') roomId: string) {
-    return this.rooms.findOne(roomId);
+  findOne(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.rooms.findOne(roomId, user);
   }
 
   @Patch(':roomId')

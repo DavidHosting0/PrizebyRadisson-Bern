@@ -121,6 +121,14 @@ enum PhotoUploadStatus {
   READY
 }
 
+enum TeamChatReactionType {
+  THUMBS_UP
+  CHECK_MARK
+  HEART
+  EYES
+  EXCLAMATION_QUESTION
+}
+
 model HotelSettings {
   id        String   @id @default(cuid())
   name      String   @default("Hotel")
@@ -155,8 +163,9 @@ model User {
   inspections        RoomInspection[]
   // Admin can maintain custom floor-plan layouts.
   floorPlansUpdated  FloorPlan[]
-  teamChatMessages   TeamChatMessage[]
-  permissionGrants   UserPermissionGrant[]
+  teamChatMessages         TeamChatMessage[]
+  teamChatMessageReactions TeamChatMessageReaction[]
+  permissionGrants         UserPermissionGrant[]
 }
 
 model UserPermissionGrant {
@@ -227,6 +236,8 @@ model Room {
   oooUntil    DateTime?
   notes       String?
   metadata    Json     @default("{}")
+  /** Set when assigned housekeeper confirms clean (checklist + photo). Drives derived CLEAN vs IN_PROGRESS. */
+  cleaningDeclaredAt DateTime?
 
   checklistStates  RoomChecklistState[]
   cleaningSessions CleaningSession[]
@@ -436,7 +447,25 @@ model TeamChatMessage {
   body      String   @db.VarChar(2000)
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  replyToId String?
+  replyTo   TeamChatMessage? @relation("TeamChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   TeamChatMessage[] @relation("TeamChatReplies")
+  reactions TeamChatMessageReaction[]
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([replyToId])
+}
+
+model TeamChatMessageReaction {
+  id        String               @id @default(cuid())
+  messageId String
+  message   TeamChatMessage      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      TeamChatReactionType
+  createdAt DateTime             @default(now())
+
+  @@unique([messageId, userId, type])
+  @@index([messageId])
 }

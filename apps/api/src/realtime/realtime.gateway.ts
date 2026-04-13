@@ -24,4 +24,8 @@ export class RealtimeGateway {
   emitTeamChatMessage(payload: unknown) {
     this.server?.emit('team_chat.message', payload);
   }
+
+  emitTeamChatReaction(payload: unknown) {
+    this.server?.emit('team_chat.reaction', payload);
+  }
 }
