@@ -9,7 +9,9 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LostFoundReportModal } from '@/components/housekeeper/LostFoundReportModal';
+import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
 import { InspectRoomModal } from '@/components/supervisor/InspectRoomModal';
+import { usePermission } from '@/lib/auth-context';
 
 type RoomDetail = {
   id: string;
@@ -24,6 +26,8 @@ export default function SupervisorMobileInspectionRoomPage() {
   const roomId = params.roomId as string;
   const [inspectOpen, setInspectOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
+  const [damageOpen, setDamageOpen] = useState(false);
+  const canReportDamage = usePermission('DAMAGE_REPORT_CREATE');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['room', roomId],
@@ -63,7 +67,8 @@ export default function SupervisorMobileInspectionRoomPage() {
         </div>
         {data.derivedStatus !== 'CLEAN' && (
           <p className="mt-3 text-sm text-ink-muted">
-            This room is not in &quot;clean&quot; status. You can still log an inspection or lost &amp; found if needed.
+            This room is not in &quot;clean&quot; status. You can still inspect, report lost &amp; found, or report damage if
+            needed.
           </p>
         )}
       </Card>
@@ -75,6 +80,16 @@ export default function SupervisorMobileInspectionRoomPage() {
         <Button type="button" variant="secondary" className="min-h-[52px] w-full" onClick={() => setLostOpen(true)}>
           Report lost &amp; found
         </Button>
+        {canReportDamage && (
+          <Button
+            type="button"
+            variant="danger"
+            className="min-h-[52px] w-full border-0 bg-red-800 text-white shadow-sm hover:bg-red-900 hover:text-white"
+            onClick={() => setDamageOpen(true)}
+          >
+            Report damage
+          </Button>
+        )}
         <Button type="button" variant="ghost" className="min-h-[48px] w-full" onClick={() => router.push('/s/m/inspections')}>
           Back to list
         </Button>
@@ -89,6 +104,12 @@ export default function SupervisorMobileInspectionRoomPage() {
       <LostFoundReportModal
         open={lostOpen}
         onClose={() => setLostOpen(false)}
+        roomId={data.id}
+        roomNumber={data.roomNumber}
+      />
+      <DamageReportModal
+        open={damageOpen}
+        onClose={() => setDamageOpen(false)}
         roomId={data.id}
         roomNumber={data.roomNumber}
       />

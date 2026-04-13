@@ -129,8 +129,8 @@ export default function RoomChecklistPage() {
         {canReportDamage && (
           <Button
             type="button"
-            variant="secondary"
-            className="min-h-[48px] border-amber-600/40 bg-amber-50 text-amber-950 shadow-sm hover:bg-amber-100/90 sm:min-w-[200px]"
+            variant="danger"
+            className="min-h-[48px] border-0 bg-red-800 text-white shadow-sm hover:bg-red-900 hover:text-white sm:min-w-[200px]"
             onClick={() => setDamageOpen(true)}
           >
             Report damage
@@ -200,7 +200,6 @@ export default function RoomChecklistPage() {
         >
           {uploadPhoto.isPending ? 'Uploading…' : 'Upload cleaning photo'}
         </Button>
-        <p className="text-center text-xs text-ink-muted">Photos are compressed before upload.</p>
       </section>
 
       {progress === 100 && tasks.length > 0 && (
