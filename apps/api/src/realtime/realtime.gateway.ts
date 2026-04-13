@@ -20,4 +20,8 @@ export class RealtimeGateway {
   emitServiceRequest(event: string, payload: unknown) {
     this.server?.emit(event, payload);
   }
+
+  emitTeamChatMessage(payload: unknown) {
+    this.server?.emit('team_chat.message', payload);
+  }
 }

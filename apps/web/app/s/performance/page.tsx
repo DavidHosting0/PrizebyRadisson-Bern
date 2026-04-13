@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { KpiStat } from '@/components/supervisor/KpiStat';
 import { Card } from '@/components/ui/Card';
 
@@ -12,7 +13,7 @@ export default function SupervisorPerformancePage() {
       api<{
         avgCleanTimeSeconds: number;
         avgRequestResolveTimeSeconds: number;
-        tasksPerHousekeeper: { name: string; completedTasks: number }[];
+        tasksPerHousekeeper: { userId: string; name: string; titlePrefix: string | null; completedTasks: number }[];
       }>('/analytics/summary'),
   });
 
@@ -36,8 +37,10 @@ export default function SupervisorPerformancePage() {
         <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Tasks completed per housekeeper</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {hk.map((t) => (
-            <Card key={t.name}>
-              <p className="text-sm font-medium text-ink">{t.name}</p>
+            <Card key={t.userId}>
+              <p className="text-sm font-medium text-ink">
+                {formatUserWithTitlePrefix(t.name, t.titlePrefix)}
+              </p>
               <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">{t.completedTasks}</p>
             </Card>
           ))}

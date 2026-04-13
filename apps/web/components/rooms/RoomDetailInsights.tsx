@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
 import { RoomPhotoTimelineModal } from '@/components/rooms/RoomPhotoTimelineModal';
 
@@ -9,11 +10,11 @@ export type LastCleaningPhotoDto = {
   url: string | null;
   takenAt: string | null;
   createdAt: string;
-  uploadedBy: { id: string; name: string };
+  uploadedBy: { id: string; name: string; titlePrefix: string };
 } | null;
 
 export type LastCleaningDto = {
-  by: { id: string; name: string };
+  by: { id: string; name: string; titlePrefix: string };
   at: string;
   source: 'cleaning_photo' | 'cleaning_session' | 'inspection';
 } | null;
@@ -65,7 +66,9 @@ export function RoomDetailInsights({
         <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Last cleaning</h3>
         {lastCleaning ? (
           <div className="rounded-btn border border-border bg-surface-muted/50 px-3 py-2 text-sm">
-            <p className="font-medium text-ink">{lastCleaning.by.name}</p>
+            <p className="font-medium text-ink">
+              {formatUserWithTitlePrefix(lastCleaning.by.name, lastCleaning.by.titlePrefix)}
+            </p>
             <p className="text-ink-muted">{formatWhen(lastCleaning.at)}</p>
             <p className="mt-1 text-xs text-ink-muted">{SOURCE_LABEL[lastCleaning.source]}</p>
           </div>
@@ -85,7 +88,11 @@ export function RoomDetailInsights({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={lastCleaningPhoto.url} alt={`Room ${roomNumber} after cleaning`} className="aspect-video w-full object-cover" />
             <p className="px-2 py-1.5 text-xs text-ink-muted">
-              {lastCleaningPhoto.uploadedBy.name} · {formatWhen(lastCleaningPhoto.takenAt ?? lastCleaningPhoto.createdAt)}
+              {formatUserWithTitlePrefix(
+                lastCleaningPhoto.uploadedBy.name,
+                lastCleaningPhoto.uploadedBy.titlePrefix,
+              )}{' '}
+              · {formatWhen(lastCleaningPhoto.takenAt ?? lastCleaningPhoto.createdAt)}
             </p>
           </button>
         ) : lastCleaningPhoto && !lastCleaningPhoto.url ? (

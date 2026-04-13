@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AssignmentStatus, LostFoundStatus, Prisma, User, UserRole } from '@prisma/client';
+import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { CreateLostFoundDto } from './dto/create-lost-found.dto';
@@ -52,7 +53,7 @@ export class LostFoundService {
       where,
       include: {
         room: { select: { id: true, roomNumber: true } },
-        reportedBy: { select: { id: true, name: true } },
+        reportedBy: { select: userPublicSelect },
       },
       orderBy: { foundAt: 'desc' },
     });

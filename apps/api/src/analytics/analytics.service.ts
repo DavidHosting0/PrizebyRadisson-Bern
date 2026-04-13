@@ -60,19 +60,23 @@ export class AnalyticsService {
 
     const users = await this.prisma.user.findMany({
       where: { role: UserRole.HOUSEKEEPER },
-      select: { id: true, name: true },
+      select: { id: true, name: true, titlePrefix: true },
     });
-    const idToName = Object.fromEntries(users.map((u) => [u.id, u.name]));
+    const idToUser = Object.fromEntries(users.map((u) => [u.id, u]));
 
     return {
       period: { from, to },
       avgCleanTimeSeconds: Math.round(avgCleanMs / 1000),
       avgRequestResolveTimeSeconds: Math.round(avgResolveMs / 1000),
-      tasksPerHousekeeper: [...countByUser.entries()].map(([userId, completedTasksCount]) => ({
-        userId,
-        name: idToName[userId] ?? '—',
-        completedTasks: completedTasksCount,
-      })),
+      tasksPerHousekeeper: [...countByUser.entries()].map(([userId, completedTasksCount]) => {
+        const u = idToUser[userId];
+        return {
+          userId,
+          name: u?.name ?? '—',
+          titlePrefix: u?.titlePrefix ?? null,
+          completedTasks: completedTasksCount,
+        };
+      }),
       incompleteTasksInPeriod: missed,
     };
   }

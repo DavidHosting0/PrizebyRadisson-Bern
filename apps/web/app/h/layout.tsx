@@ -5,13 +5,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
-import { IconRequests, IconRooms, IconUser } from '@/components/icons';
+import { IconChat, IconRequests, IconRooms } from '@/components/icons';
 
 const tabs = [
   { href: '/h', label: 'Rooms', Icon: IconRooms },
   { href: '/h/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/h/profile', label: 'Profile', Icon: IconUser },
+  { href: '/h/chat', label: 'Chat', Icon: IconChat },
 ];
 
 export default function HousekeeperLayout({ children }: { children: React.ReactNode }) {
@@ -39,15 +40,17 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="min-h-screen bg-surface-muted pb-[calc(5rem+var(--safe-bottom))]">
+    <div className="flex min-h-screen flex-col bg-surface-muted pb-[calc(5rem+var(--safe-bottom))]">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface/95 px-4 py-3 shadow-card backdrop-blur-sm">
         <BrandLogo compact />
-        <span className="max-w-[45%] truncate text-right text-xs font-medium text-ink-muted">{user.name}</span>
+        <span className="max-w-[55%] truncate text-right text-xs font-medium text-ink-muted">
+          {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
+        </span>
       </header>
-      <main>{children}</main>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
         {tabs.map((t) => {
-          const active = path === t.href;
+          const active = t.href === '/h' ? path === '/h' : path === t.href || path.startsWith(`${t.href}/`);
           const Icon = t.Icon;
           return (
             <Link

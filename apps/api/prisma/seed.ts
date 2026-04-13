@@ -11,6 +11,12 @@ const UserRole = {
   SUPERVISOR: 'SUPERVISOR',
   RECEPTION: 'RECEPTION',
 } as const;
+const UserTitlePrefix = {
+  ADMIN: 'ADMIN',
+  CLEANER: 'CLEANER',
+  HOUSEKEEPING_SUPERVISOR: 'HOUSEKEEPING_SUPERVISOR',
+  RECEPTION: 'RECEPTION',
+} as const;
 const ChecklistTaskStatus = { NOT_STARTED: 'NOT_STARTED' } as const;
 const AssignmentStatus = { ACTIVE: 'ACTIVE' } as const;
 
@@ -24,45 +30,73 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@demo.local' },
-    update: { passwordHash, name: 'Admin User', role: UserRole.ADMIN, isActive: true },
+    update: {
+      passwordHash,
+      name: 'Admin User',
+      role: UserRole.ADMIN,
+      titlePrefix: UserTitlePrefix.ADMIN,
+      isActive: true,
+    },
     create: {
       email: 'admin@demo.local',
       passwordHash,
       name: 'Admin User',
       role: UserRole.ADMIN,
+      titlePrefix: UserTitlePrefix.ADMIN,
     },
   });
 
   const hk = await prisma.user.upsert({
     where: { email: 'housekeeper@demo.local' },
-    update: { passwordHash, name: 'Jane Housekeeper', role: UserRole.HOUSEKEEPER, isActive: true },
+    update: {
+      passwordHash,
+      name: 'Jane Housekeeper',
+      role: UserRole.HOUSEKEEPER,
+      titlePrefix: UserTitlePrefix.CLEANER,
+      isActive: true,
+    },
     create: {
       email: 'housekeeper@demo.local',
       passwordHash,
       name: 'Jane Housekeeper',
       role: UserRole.HOUSEKEEPER,
+      titlePrefix: UserTitlePrefix.CLEANER,
     },
   });
 
   const sup = await prisma.user.upsert({
     where: { email: 'supervisor@demo.local' },
-    update: { passwordHash, name: 'Sam Supervisor', role: UserRole.SUPERVISOR, isActive: true },
+    update: {
+      passwordHash,
+      name: 'Sam Supervisor',
+      role: UserRole.SUPERVISOR,
+      titlePrefix: UserTitlePrefix.HOUSEKEEPING_SUPERVISOR,
+      isActive: true,
+    },
     create: {
       email: 'supervisor@demo.local',
       passwordHash,
       name: 'Sam Supervisor',
       role: UserRole.SUPERVISOR,
+      titlePrefix: UserTitlePrefix.HOUSEKEEPING_SUPERVISOR,
     },
   });
 
   const rec = await prisma.user.upsert({
     where: { email: 'reception@demo.local' },
-    update: { passwordHash, name: 'Rita Reception', role: UserRole.RECEPTION, isActive: true },
+    update: {
+      passwordHash,
+      name: 'Rita Reception',
+      role: UserRole.RECEPTION,
+      titlePrefix: UserTitlePrefix.RECEPTION,
+      isActive: true,
+    },
     create: {
       email: 'reception@demo.local',
       passwordHash,
       name: 'Rita Reception',
       role: UserRole.RECEPTION,
+      titlePrefix: UserTitlePrefix.RECEPTION,
     },
   });
 

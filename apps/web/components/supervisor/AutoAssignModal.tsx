@@ -3,10 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
-type Hk = { id: string; name: string; email: string };
+type Hk = { id: string; name: string; email: string; titlePrefix: string };
 
 type SuggestionsRes = {
   dirtyRooms: number;
@@ -100,7 +101,7 @@ export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () 
                   >
                     {(housekeepers ?? []).map((h) => (
                       <option key={h.id} value={h.id}>
-                        {h.name}
+                        {formatUserWithTitlePrefix(h.name, h.titlePrefix)}
                       </option>
                     ))}
                   </select>

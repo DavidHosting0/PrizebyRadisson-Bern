@@ -7,6 +7,7 @@ import {
   User,
   UserRole,
 } from '@prisma/client';
+import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomStatusService } from './room-status.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -83,7 +84,7 @@ export class RoomsService {
     const lastPhotoRow = await this.prisma.roomPhoto.findFirst({
       where: { roomId: id, status: PhotoUploadStatus.READY },
       orderBy: { createdAt: 'desc' },
-      include: { uploadedBy: { select: { id: true, name: true } } },
+      include: { uploadedBy: { select: userPublicSelect } },
     });
 
     let lastCleaningPhoto: {
@@ -91,7 +92,7 @@ export class RoomsService {
       url: string | null;
       takenAt: Date | null;
       createdAt: Date;
-      uploadedBy: { id: string; name: string };
+      uploadedBy: { id: string; name: string; titlePrefix: string };
     } | null = null;
 
     if (lastPhotoRow) {
@@ -111,7 +112,7 @@ export class RoomsService {
     }
 
     let lastCleaning: {
-      by: { id: string; name: string };
+      by: { id: string; name: string; titlePrefix: string };
       at: Date;
       source: 'cleaning_photo' | 'cleaning_session' | 'inspection';
     } | null = null;
@@ -126,7 +127,7 @@ export class RoomsService {
       const session = await this.prisma.cleaningSession.findFirst({
         where: { roomId: id, completedAt: { not: null } },
         orderBy: { completedAt: 'desc' },
-        include: { assignedUser: { select: { id: true, name: true } } },
+        include: { assignedUser: { select: userPublicSelect } },
       });
       if (session?.completedAt) {
         lastCleaning = {
@@ -138,7 +139,7 @@ export class RoomsService {
         const insp = await this.prisma.roomInspection.findFirst({
           where: { roomId: id, passed: true },
           orderBy: { inspectedAt: 'desc' },
-          include: { inspector: { select: { id: true, name: true } } },
+          include: { inspector: { select: userPublicSelect } },
         });
         if (insp) {
           lastCleaning = {

@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
 
 export type TimelinePhoto = {
@@ -11,7 +12,7 @@ export type TimelinePhoto = {
   mime: string | null;
   takenAt: string | null;
   createdAt: string;
-  uploadedBy: { id: string; name: string };
+  uploadedBy: { id: string; name: string; titlePrefix: string };
 };
 
 type Props = {
@@ -82,7 +83,9 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
                     )}
                   </div>
                   <div className="p-2 text-[11px] text-ink-muted">
-                    <p className="font-medium text-ink">{p.uploadedBy.name}</p>
+                    <p className="font-medium text-ink">
+                      {formatUserWithTitlePrefix(p.uploadedBy.name, p.uploadedBy.titlePrefix)}
+                    </p>
                     <p>{formatWhen(p.takenAt ?? p.createdAt, '—')}</p>
                   </div>
                 </button>
@@ -104,7 +107,8 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={lightbox.url} alt="" className="max-h-[80vh] w-full object-contain" />
             <p className="mt-2 text-center text-sm text-white/90">
-              {lightbox.uploadedBy.name} · {formatWhen(lightbox.takenAt ?? lightbox.createdAt, '')}
+              {formatUserWithTitlePrefix(lightbox.uploadedBy.name, lightbox.uploadedBy.titlePrefix)} ·{' '}
+              {formatWhen(lightbox.takenAt ?? lightbox.createdAt, '')}
             </p>
             <div className="mt-2 flex justify-center">
               <Button type="button" variant="secondary" onClick={() => setLightbox(null)}>

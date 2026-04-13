@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 
 const nav = [
@@ -13,6 +14,7 @@ const nav = [
   { href: '/s/board', label: 'Assignment board' },
   { href: '/s/room-tasks', label: 'Room task lists' },
   { href: '/s/requests', label: 'Requests' },
+  { href: '/s/chat', label: 'Team chat' },
   { href: '/s/lost', label: 'Lost & found' },
   { href: '/s/performance', label: 'Performance' },
 ];
@@ -63,7 +65,9 @@ export default function SupervisorLayout({ children }: { children: React.ReactNo
           })}
         </nav>
         <div className="mt-auto border-t border-border px-4 pt-4">
-          <p className="truncate text-xs font-medium text-ink">{user.name}</p>
+          <p className="truncate text-xs font-medium text-ink">
+            {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
+          </p>
           <p className="truncate text-xs text-ink-muted">{user.email}</p>
           <button
             type="button"

@@ -25,7 +25,7 @@ type Req = {
   priority: string;
   room: { roomNumber: string };
   type: { label: string };
-  claimedBy: { id: string; name: string } | null;
+  claimedBy: { id: string; name: string; titlePrefix: string } | null;
 };
 
 export default function HousekeeperRoomsPage() {

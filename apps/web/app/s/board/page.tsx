@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BoardRoomCard, type BoardRoom } from '@/components/supervisor/BoardRoomCard';
 import { AutoAssignModal } from '@/components/supervisor/AutoAssignModal';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
@@ -12,10 +13,10 @@ type AssignmentRow = {
   id: string;
   roomId: string;
   room: { id: string; roomNumber: string; floor: number | null };
-  housekeeper: { id: string; name: string };
+  housekeeper: { id: string; name: string; titlePrefix: string };
 };
 
-type Hk = { id: string; name: string; email: string };
+type Hk = { id: string; name: string; email: string; titlePrefix: string };
 
 export default function SupervisorBoardPage() {
   const qc = useQueryClient();
@@ -160,7 +161,9 @@ export default function SupervisorBoardPage() {
               onDragOver={onDragOver}
               onDrop={onDropColumn(hk.id)}
             >
-              <h2 className="text-sm font-semibold text-ink">{hk.name}</h2>
+              <h2 className="text-sm font-semibold text-ink">
+                {formatUserWithTitlePrefix(hk.name, hk.titlePrefix)}
+              </h2>
               <p className="text-[11px] text-ink-muted">{hk.email}</p>
               <ul className="mt-4 space-y-3">
                 {col.map((a) => {

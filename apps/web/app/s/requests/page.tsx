@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatUserRef } from '@/lib/userTitlePrefix';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -12,7 +13,7 @@ type Req = {
   priority: string;
   room: { roomNumber: string };
   type: { label: string };
-  claimedBy: { id: string; name: string } | null;
+  claimedBy: { id: string; name: string; titlePrefix: string } | null;
 };
 
 const STATUSES = ['CREATED', 'OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'] as const;
@@ -57,7 +58,7 @@ export default function SupervisorRequestsPage() {
                   <span className="text-xs uppercase text-ink-muted">{r.status.replace(/_/g, ' ')}</span>
                   <PriorityBadge priority={r.priority} />
                   {r.claimedBy && (
-                    <span className="text-xs text-ink-muted">· {r.claimedBy.name}</span>
+                    <span className="text-xs text-ink-muted">· {formatUserRef(r.claimedBy)}</span>
                   )}
                 </div>
               </div>

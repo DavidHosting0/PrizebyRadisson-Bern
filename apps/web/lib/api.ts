@@ -1,6 +1,13 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
-export type Me = { id: string; email: string; role: string; name: string };
+export type Me = {
+  id: string;
+  email: string;
+  role: string;
+  name: string;
+  phone?: string | null;
+  titlePrefix?: string | null;
+};
 
 function getTokens() {
   if (typeof window === 'undefined') return { access: null as string | null, refresh: null as string | null };

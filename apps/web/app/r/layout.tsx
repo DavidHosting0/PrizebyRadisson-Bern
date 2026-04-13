@@ -13,12 +13,15 @@ import { ReceptionRoomDetailPanel } from '@/components/reception/ReceptionRoomDe
 import { useReceptionRealtime } from '@/lib/hooks/useReceptionRealtime';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
+import { IconChat } from '@/components/icons';
 
 const nav = [
   { href: '/r', label: 'Dashboard', icon: IconDash },
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
   { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
+  { href: '/r/chat', label: 'Team chat', icon: IconChat },
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
 ];
 
@@ -121,7 +124,9 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
             + New request
           </Button>
           <div className="hidden text-right md:block">
-            <p className="truncate text-sm font-medium text-ink">{user.name}</p>
+            <p className="truncate text-sm font-medium text-ink">
+              {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
+            </p>
             <p className="truncate text-xs text-ink-muted">{user.email}</p>
           </div>
           <button

@@ -36,6 +36,7 @@ export class AuthController {
       role: user.role,
       name: user.name,
       phone: user.phone,
+      titlePrefix: user.titlePrefix,
     };
   }
 }

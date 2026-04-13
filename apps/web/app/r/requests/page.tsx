@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatUserRef } from '@/lib/userTitlePrefix';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
@@ -13,7 +14,7 @@ type Req = {
   priority: string;
   room: { roomNumber: string };
   type: { label: string };
-  claimedBy: { id: string; name: string } | null;
+  claimedBy: { id: string; name: string; titlePrefix: string } | null;
 };
 
 export default function ReceptionRequestsPage() {
@@ -76,7 +77,7 @@ export default function ReceptionRequestsPage() {
                   <PriorityBadge priority={r.priority} />
                 </td>
                 <td className="px-4 py-3 capitalize text-ink-muted">{r.status.replace(/_/g, ' ').toLowerCase()}</td>
-                <td className="px-4 py-3 text-ink-muted">{r.claimedBy?.name ?? '—'}</td>
+                <td className="px-4 py-3 text-ink-muted">{r.claimedBy ? formatUserRef(r.claimedBy) : '—'}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex flex-wrap justify-end gap-2">
                     {r.priority === 'NORMAL' && (

@@ -44,7 +44,7 @@ export class ServiceRequestsController {
   }
 
   @Post()
-  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.HOUSEKEEPER)
   create(@Body() dto: CreateServiceRequestDto, @CurrentUser() user: User) {
     return this.svc.create(dto, user);
   }

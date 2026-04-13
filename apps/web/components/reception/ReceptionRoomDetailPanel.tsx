@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
 import {
   RoomDetailInsights,
@@ -26,7 +27,7 @@ type RoomDetail = {
 
 type AssignmentRow = {
   roomId: string;
-  housekeeper: { id: string; name: string };
+  housekeeper: { id: string; name: string; titlePrefix: string };
 };
 
 export function ReceptionRoomDetailPanel({
@@ -114,7 +115,11 @@ export function ReceptionRoomDetailPanel({
               </section>
               <section>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Assigned to</h3>
-                <p className="mt-2 text-sm font-medium text-ink">{assign?.housekeeper.name ?? '— Unassigned'}</p>
+                <p className="mt-2 text-sm font-medium text-ink">
+                  {assign
+                    ? formatUserWithTitlePrefix(assign.housekeeper.name, assign.housekeeper.titlePrefix)
+                    : '— Unassigned'}
+                </p>
               </section>
               {room.notes && (
                 <section>

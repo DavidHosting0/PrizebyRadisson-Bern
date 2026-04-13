@@ -5,6 +5,7 @@ import {
   User,
   UserRole,
 } from '@prisma/client';
+import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -31,7 +32,7 @@ export class AssignmentsService implements OnModuleInit {
       where: { status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
       include: {
         room: { select: { id: true, roomNumber: true, floor: true } },
-        housekeeper: { select: { id: true, name: true } },
+        housekeeper: { select: userPublicSelect },
       },
       orderBy: { assignedAt: 'desc' },
     });
@@ -54,7 +55,7 @@ export class AssignmentsService implements OnModuleInit {
       },
       include: {
         room: { select: { id: true, roomNumber: true } },
-        housekeeper: { select: { id: true, name: true } },
+        housekeeper: { select: userPublicSelect },
       },
     });
     const room = await this.rooms.findOne(roomId);
@@ -66,7 +67,7 @@ export class AssignmentsService implements OnModuleInit {
     const dirtyRooms = await this.findDirtyUnassignedRooms();
     const hk = await this.prisma.user.findMany({
       where: { role: UserRole.HOUSEKEEPER, isActive: true },
-      select: { id: true, name: true },
+      select: { id: true, name: true, titlePrefix: true },
     });
     const loads = await Promise.all(
       hk.map(async (u) => ({

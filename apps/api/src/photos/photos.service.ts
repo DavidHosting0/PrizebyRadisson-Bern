@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AssignmentStatus, PhotoUploadStatus, User, UserRole } from '@prisma/client';
+import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -82,7 +83,7 @@ export class PhotosService {
       where: { roomId, status: PhotoUploadStatus.READY },
       orderBy: { createdAt: 'desc' },
       take: 100,
-      include: { uploadedBy: { select: { id: true, name: true } } },
+      include: { uploadedBy: { select: userPublicSelect } },
     });
     const withUrls = await Promise.all(
       rows.map(async (p) => {

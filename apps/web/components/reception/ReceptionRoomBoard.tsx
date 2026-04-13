@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/Card';
 import { useReceptionUi } from '@/app/r/reception-context';
@@ -17,7 +18,7 @@ export type RoomBoardRow = {
 
 type AssignmentRow = {
   roomId: string;
-  housekeeper: { id: string; name: string };
+  housekeeper: { id: string; name: string; titlePrefix: string };
 };
 
 type ReqRow = {
@@ -55,7 +56,13 @@ export function ReceptionRoomBoard({ compact }: Props) {
   });
 
   const assignByRoom = useMemo(
-    () => Object.fromEntries(assignments.map((a) => [a.roomId, a.housekeeper.name])),
+    () =>
+      Object.fromEntries(
+        assignments.map((a) => [
+          a.roomId,
+          formatUserWithTitlePrefix(a.housekeeper.name, a.housekeeper.titlePrefix),
+        ]),
+      ),
     [assignments],
   );
 

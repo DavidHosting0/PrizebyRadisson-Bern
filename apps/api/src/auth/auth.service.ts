@@ -19,7 +19,7 @@ export class AuthService {
     if (!user?.isActive) throw new UnauthorizedException('Invalid credentials');
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
-    return this.issueTokens(user.id, user.email, user.role);
+    return this.issueTokens(user.id);
   }
 
   async refresh(refreshTokenRaw: string) {
@@ -30,7 +30,7 @@ export class AuthService {
     });
     if (!row?.user?.isActive) throw new UnauthorizedException('Invalid refresh');
     await this.prisma.refreshToken.delete({ where: { id: row.id } });
-    return this.issueTokens(row.user.id, row.user.email, row.user.role);
+    return this.issueTokens(row.user.id);
   }
 
   async logout(refreshTokenRaw: string) {
@@ -43,20 +43,42 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async issueTokens(userId: string, email: string, role: string) {
-    const accessToken = await this.jwt.signAsync({ sub: userId, email, role });
+  private async issueTokens(userId: string) {
+    const u = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        name: true,
+        phone: true,
+        titlePrefix: true,
+      },
+    });
+    const accessToken = await this.jwt.signAsync({
+      sub: u.id,
+      email: u.email,
+      role: u.role,
+    });
     const refreshRaw = randomBytes(48).toString('hex');
     const refreshHash = this.hashToken(refreshRaw);
     const refreshDays = parseInt(this.config.get<string>('JWT_REFRESH_DAYS') ?? '7', 10);
     const expiresAt = new Date(Date.now() + refreshDays * 86400_000);
     await this.prisma.refreshToken.create({
-      data: { userId, tokenHash: refreshHash, expiresAt },
+      data: { userId: u.id, tokenHash: refreshHash, expiresAt },
     });
     return {
       accessToken,
       refreshToken: refreshRaw,
       expiresIn: 900,
-      user: { id: userId, email, role },
+      user: {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        name: u.name,
+        phone: u.phone,
+        titlePrefix: u.titlePrefix,
+      },
     };
   }
 }

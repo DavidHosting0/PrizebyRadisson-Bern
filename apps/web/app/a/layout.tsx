@@ -38,7 +38,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   pathname === '/a' ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
                 }`}
               >
-                Users
+                User management
               </Link>
               <Link
                 href="/a/floor-plans"

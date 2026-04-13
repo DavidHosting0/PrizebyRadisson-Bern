@@ -45,11 +45,16 @@ export function useReceptionRealtime() {
       qc.invalidateQueries({ queryKey: ['service-requests'] });
     };
 
+    const onTeamChat = () => {
+      qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
+    };
+
     socket.on('room.status_updated', onRoom);
     socket.on('service_request.created', onCreated);
     socket.on('service_request.claimed', onClaimed);
     socket.on('service_request.resolved', onResolved);
     socket.on('service_request.updated', onUpdated);
+    socket.on('team_chat.message', onTeamChat);
 
     return () => {
       socket?.off('room.status_updated', onRoom);
@@ -57,6 +62,7 @@ export function useReceptionRealtime() {
       socket?.off('service_request.claimed', onClaimed);
       socket?.off('service_request.resolved', onResolved);
       socket?.off('service_request.updated', onUpdated);
+      socket?.off('team_chat.message', onTeamChat);
       socket?.disconnect();
     };
   }, [qc, toast]);

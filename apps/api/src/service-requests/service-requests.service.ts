@@ -11,6 +11,7 @@ import {
   User,
   UserRole,
 } from '@prisma/client';
+import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -38,15 +39,20 @@ export class ServiceRequestsService {
       include: {
         room: { select: { id: true, roomNumber: true } },
         type: true,
-        createdBy: { select: { id: true, name: true } },
-        claimedBy: { select: { id: true, name: true } },
+        createdBy: { select: userPublicSelect },
+        claimedBy: { select: userPublicSelect },
       },
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
     });
   }
 
   async create(dto: CreateServiceRequestDto, user: User) {
-    if (user.role !== UserRole.RECEPTION && user.role !== UserRole.ADMIN) {
+    const allowed =
+      user.role === UserRole.RECEPTION ||
+      user.role === UserRole.ADMIN ||
+      user.role === UserRole.SUPERVISOR ||
+      user.role === UserRole.HOUSEKEEPER;
+    if (!allowed) {
       throw new ForbiddenException();
     }
     await this.rooms.ensureChecklistState(dto.roomId);
@@ -120,7 +126,7 @@ export class ServiceRequestsService {
         include: {
           room: { select: { id: true, roomNumber: true } },
           type: true,
-          claimedBy: { select: { id: true, name: true } },
+          claimedBy: { select: userPublicSelect },
         },
       });
     });
@@ -158,7 +164,7 @@ export class ServiceRequestsService {
       include: {
         room: { select: { id: true, roomNumber: true } },
         type: true,
-        claimedBy: { select: { id: true, name: true } },
+        claimedBy: { select: userPublicSelect },
       },
     });
     this.realtime.emitServiceRequest('service_request.updated', updated);
@@ -195,7 +201,7 @@ export class ServiceRequestsService {
       include: {
         room: { select: { id: true, roomNumber: true } },
         type: true,
-        claimedBy: { select: { id: true, name: true } },
+        claimedBy: { select: userPublicSelect },
       },
     });
     if (status === ServiceRequestStatus.RESOLVED) {

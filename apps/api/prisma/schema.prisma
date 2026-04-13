@@ -14,6 +14,16 @@ enum UserRole {
   ADMIN
 }
 
+/** Shown in chat, headers, and assignments (independent of permission role). */
+enum UserTitlePrefix {
+  CLEANER
+  HOUSEKEEPING_SUPERVISOR
+  RECEPTION
+  HTC_IN_TRAINING
+  HTC
+  ADMIN
+}
+
 enum ChecklistTaskStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -62,15 +72,16 @@ model HotelSettings {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String          @id @default(cuid())
+  email        String          @unique
   passwordHash String
   name         String
   phone        String?
-  isActive     Boolean  @default(true)
+  isActive     Boolean         @default(true)
   role         UserRole
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  titlePrefix  UserTitlePrefix @default(CLEANER)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   refreshTokens      RefreshToken[]
   cleaningSessions   CleaningSession[] @relation("AssignedSessions")
@@ -85,6 +96,7 @@ model User {
   inspections        RoomInspection[]
   // Admin can maintain custom floor-plan layouts.
   floorPlansUpdated  FloorPlan[]
+  teamChatMessages   TeamChatMessage[]
 }
 
 model RefreshToken {
@@ -326,4 +338,14 @@ model FloorPlan {
   updatedBy       User?    @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model TeamChatMessage {
+  id        String   @id @default(cuid())
+  body      String   @db.VarChar(2000)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
