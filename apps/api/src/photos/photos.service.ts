@@ -1,5 +1,5 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AssignmentStatus, PhotoUploadStatus, User, UserRole } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AssignmentStatus, PhotoUploadStatus, Prisma, User, UserRole } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
@@ -58,16 +58,24 @@ export class PhotosService {
       where: { id: photoId, roomId, uploadedByUserId: user.id },
     });
     if (!photo) throw new NotFoundException('Photo not found');
-    await this.prisma.roomPhoto.update({
-      where: { id: photoId },
-      data: {
-        status: PhotoUploadStatus.READY,
-        mime: dto.mime,
-        bytes: dto.bytes,
-        takenAt: new Date(),
-        cleaningSessionId: dto.cleaningSessionId,
-      },
-    });
+    const cleaningSessionId = dto.cleaningSessionId?.trim() ? dto.cleaningSessionId.trim() : null;
+    try {
+      await this.prisma.roomPhoto.update({
+        where: { id: photoId },
+        data: {
+          status: PhotoUploadStatus.READY,
+          mime: dto.mime,
+          bytes: dto.bytes,
+          takenAt: new Date(),
+          cleaningSessionId,
+        },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+        throw new BadRequestException('Invalid cleaning session');
+      }
+      throw e;
+    }
     const timeline = await this.prisma.roomPhoto.findMany({
       where: { roomId, status: PhotoUploadStatus.READY },
       orderBy: { createdAt: 'desc' },

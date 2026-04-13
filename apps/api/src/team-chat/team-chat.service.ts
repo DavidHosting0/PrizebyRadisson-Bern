@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TeamChatReactionType, User } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
+/** Narrow reaction fields so Prisma never nests `message` (avoids circular JSON on serialize). */
 const messageInclude = {
   author: { select: userPublicSelect },
   replyTo: {
@@ -14,11 +15,13 @@ const messageInclude = {
       author: { select: userPublicSelect },
     },
   },
-  reactions: true,
+  reactions: { select: { userId: true, type: true } },
 } as const;
 
 @Injectable()
 export class TeamChatService {
+  private readonly log = new Logger(TeamChatService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
@@ -69,12 +72,28 @@ export class TeamChatService {
     },
     viewerId: string,
   ) {
+    // Plain object only — Express JSON.stringify must not hit Prisma cycles/proxies.
     return {
       id: row.id,
       body: row.body,
       createdAt: row.createdAt,
-      author: row.author,
-      replyTo: row.replyTo,
+      author: {
+        id: row.author.id,
+        name: row.author.name,
+        titlePrefix: row.author.titlePrefix,
+      },
+      replyTo: row.replyTo
+        ? {
+            id: row.replyTo.id,
+            body: row.replyTo.body,
+            createdAt: row.replyTo.createdAt,
+            author: {
+              id: row.replyTo.author.id,
+              name: row.replyTo.author.name,
+              titlePrefix: row.replyTo.author.titlePrefix,
+            },
+          }
+        : null,
       reactions: this.summarizeReactions(row.reactions, viewerId),
     };
   }
@@ -105,7 +124,11 @@ export class TeamChatService {
       include: messageInclude,
     });
     const mapped = this.mapMessage(msg, user.id);
-    this.realtime.emitTeamChatMessage(mapped);
+    try {
+      this.realtime.emitTeamChatMessage(mapped);
+    } catch (e) {
+      this.log.warn(`team_chat broadcast failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
     return mapped;
   }
 

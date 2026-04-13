@@ -123,6 +123,8 @@ export default function RoomChecklistPage() {
     !data.cleaningDeclaredAt &&
     data.derivedStatus !== 'INSPECTED' &&
     data.derivedStatus !== 'OUT_OF_ORDER';
+  const markCleanReady = canMarkClean;
+  const markCleanDisabled = !markCleanReady || markClean.isPending;
 
   if (isLoading || !data) {
     return (
@@ -240,17 +242,25 @@ export default function RoomChecklistPage() {
         )}
       </section>
 
-      {canMarkClean && (
-        <Button
-          variant="primary"
-          fullWidth
-          className="min-h-[48px]"
-          disabled={markClean.isPending}
-          onClick={() => markClean.mutate()}
-        >
-          {markClean.isPending ? 'Saving…' : 'Mark room clean'}
-        </Button>
-      )}
+      <Button
+        variant="primary"
+        fullWidth
+        className={`min-h-[48px] border-0 text-white ${
+          markCleanReady
+            ? 'bg-red-600 hover:bg-red-700'
+            : 'bg-emerald-400/80 hover:bg-emerald-400/80'
+        }`}
+        disabled={markCleanDisabled}
+        onClick={() => markClean.mutate()}
+      >
+        {markClean.isPending
+          ? 'Saving…'
+          : data.cleaningDeclaredAt
+            ? 'Room already marked clean'
+            : markCleanReady
+              ? 'Mark room clean'
+              : 'Mark room clean (complete tasks + upload photo)'}
+      </Button>
 
       {allTasksDone && data.cleaningDeclaredAt && (
         <section className="rounded-card border border-success/30 bg-success-muted/50 p-4 text-center">
