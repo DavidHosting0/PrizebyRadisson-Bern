@@ -24,7 +24,7 @@ type UserRow = {
 type PermissionCatalog = { codes: string[]; labels: Record<string, string> };
 
 /** Permission / app area (maps to API `UserRole`). */
-const JOB_ROLES = ['HOUSEKEEPER', 'SUPERVISOR', 'RECEPTION', 'ADMIN'] as const;
+const JOB_ROLES = ['HOUSEKEEPER', 'SUPERVISOR', 'RECEPTION', 'TECHNICIAN', 'ADMIN'] as const;
 
 function jobRoleLabel(r: string) {
   switch (r) {
@@ -34,6 +34,8 @@ function jobRoleLabel(r: string) {
       return 'Housekeeping Supervisor';
     case 'RECEPTION':
       return 'Reception';
+    case 'TECHNICIAN':
+      return 'Technician (maintenance app)';
     case 'ADMIN':
       return 'Admin';
     default:
@@ -277,6 +279,12 @@ function UserUpsertModal({
     }
   }, [mode, initial?.id, initial?.permissionGrants]);
 
+  useEffect(() => {
+    if (mode === 'create' && role === 'TECHNICIAN') {
+      setTitlePrefix('TECHNICIAN');
+    }
+  }, [mode, role]);
+
   function toggleGrant(code: string) {
     setExtraGrantCodes((prev) =>
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
@@ -384,7 +392,9 @@ function UserUpsertModal({
           </label>
           <label className="block text-sm">
             <span className="font-medium text-ink">Role (permissions)</span>
-            <p className="mt-0.5 text-xs text-ink-muted">What they can access in the app: Cleaner, Supervisor, Reception, or Admin.</p>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              App area: Cleaner, Supervisor, Reception, Technician (mobile maintenance), or Admin.
+            </p>
             <select
               className="mt-1 w-full min-h-[44px] cursor-pointer rounded-btn border border-border bg-surface px-3 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15"
               value={role}
@@ -442,7 +452,7 @@ function UserUpsertModal({
             <p className="text-sm font-medium text-ink">Extra permissions</p>
             <p className="mt-1 text-xs text-ink-muted">
               Added on top of the automatic set for the chosen role and title. Users still need the correct app role
-              (Cleaner / Supervisor / Reception / Admin) to sign in to each area.
+              (Cleaner / Supervisor / Reception / Technician / Admin) to open each area.
             </p>
             {!catalog?.codes?.length && (
               <p className="mt-2 text-xs text-ink-muted">Loading permission list…</p>

@@ -40,6 +40,9 @@ const LABELS: Record<PermissionCode, string> = {
   [PermissionCode.USERS_DELETE]: 'Delete users',
   [PermissionCode.SETTINGS_READ]: 'View hotel settings',
   [PermissionCode.SETTINGS_WRITE]: 'Edit hotel settings',
+  [PermissionCode.DAMAGE_REPORT_CREATE]: 'Report room damage (photo + details)',
+  [PermissionCode.DAMAGE_REPORT_READ]: 'View room damage reports',
+  [PermissionCode.DAMAGE_REPORT_UPDATE]: 'Update room damage report status',
 };
 
 @Controller('permissions')

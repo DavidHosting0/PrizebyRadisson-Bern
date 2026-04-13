@@ -3,6 +3,7 @@ export enum UserRole {
   SUPERVISOR = 'SUPERVISOR',
   RECEPTION = 'RECEPTION',
   ADMIN = 'ADMIN',
+  TECHNICIAN = 'TECHNICIAN',
 }
 
 export enum DerivedRoomStatus {

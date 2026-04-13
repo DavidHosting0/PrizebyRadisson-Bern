@@ -10,12 +10,14 @@ const UserRole = {
   HOUSEKEEPER: 'HOUSEKEEPER',
   SUPERVISOR: 'SUPERVISOR',
   RECEPTION: 'RECEPTION',
+  TECHNICIAN: 'TECHNICIAN',
 } as const;
 const UserTitlePrefix = {
   ADMIN: 'ADMIN',
   CLEANER: 'CLEANER',
   HOUSEKEEPING_SUPERVISOR: 'HOUSEKEEPING_SUPERVISOR',
   RECEPTION: 'RECEPTION',
+  TECHNICIAN: 'TECHNICIAN',
 } as const;
 const ChecklistTaskStatus = { NOT_STARTED: 'NOT_STARTED' } as const;
 const AssignmentStatus = { ACTIVE: 'ACTIVE' } as const;
@@ -79,6 +81,24 @@ async function main() {
       name: 'Sam Supervisor',
       role: UserRole.SUPERVISOR,
       titlePrefix: UserTitlePrefix.HOUSEKEEPING_SUPERVISOR,
+    },
+  });
+
+  const tech = await prisma.user.upsert({
+    where: { email: 'technician@demo.local' },
+    update: {
+      passwordHash,
+      name: 'Tom Technician',
+      role: UserRole.TECHNICIAN,
+      titlePrefix: UserTitlePrefix.TECHNICIAN,
+      isActive: true,
+    },
+    create: {
+      email: 'technician@demo.local',
+      passwordHash,
+      name: 'Tom Technician',
+      role: UserRole.TECHNICIAN,
+      titlePrefix: UserTitlePrefix.TECHNICIAN,
     },
   });
 
@@ -250,7 +270,7 @@ async function main() {
     })),
   });
 
-  console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, rec: rec.email });
+  console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
 }
 
 main()

@@ -12,6 +12,7 @@ enum UserRole {
   SUPERVISOR
   RECEPTION
   ADMIN
+  TECHNICIAN
 }
 
 /** Shown in chat, headers, and assignments (independent of permission role). */
@@ -22,6 +23,7 @@ enum UserTitlePrefix {
   HTC_IN_TRAINING
   HTC
   ADMIN
+  TECHNICIAN
 }
 
 /** Fine-grained access; merged with role + titlePrefix defaults + per-user grants. */
@@ -58,6 +60,9 @@ enum PermissionCode {
   USERS_DELETE
   SETTINGS_READ
   SETTINGS_WRITE
+  DAMAGE_REPORT_CREATE
+  DAMAGE_REPORT_READ
+  DAMAGE_REPORT_UPDATE
 }
 
 enum ChecklistTaskStatus {
@@ -85,6 +90,23 @@ enum LostFoundStatus {
   STORED
   CLAIMED
   CLOSED
+}
+
+enum RoomDamageType {
+  FURNITURE
+  FIXTURES
+  WALL_OR_CEILING
+  FLOOR
+  WINDOW_OR_DOOR
+  BATHROOM
+  ELECTRICAL_OR_APPLIANCE
+  OTHER
+}
+
+enum RoomDamageReportStatus {
+  REPORTED
+  ACKNOWLEDGED
+  RESOLVED
 }
 
 enum AssignmentStatus {
@@ -126,6 +148,7 @@ model User {
   serviceRequestsCreated ServiceRequest[] @relation("CreatedBy")
   serviceRequestsClaimed ServiceRequest[] @relation("ClaimedBy")
   lostFoundReported  LostFoundItem[]
+  damageReportsReported RoomDamageReport[]
   shifts             Shift[]
   roomAssignmentsAsHousekeeper RoomAssignment[] @relation("HousekeeperAssignment")
   roomAssignmentsAsAssigner    RoomAssignment[] @relation("AssignerAssignment")
@@ -210,6 +233,7 @@ model Room {
   photos           RoomPhoto[]
   serviceRequests  ServiceRequest[]
   lostFoundItems   LostFoundItem[]
+  damageReports    RoomDamageReport[]
   assignments      RoomAssignment[]
   inspections      RoomInspection[]
 
@@ -340,6 +364,25 @@ model LostFoundItem {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+model RoomDamageReport {
+  id                 String                 @id @default(cuid())
+  roomId             String
+  room               Room                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  reportedByUserId   String
+  reportedBy         User                   @relation(fields: [reportedByUserId], references: [id])
+  damageType         RoomDamageType
+  description        String
+  photoS3Key         String
+  status             RoomDamageReportStatus @default(REPORTED)
+  reportedAt         DateTime               @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([roomId])
 }
 
 model Shift {

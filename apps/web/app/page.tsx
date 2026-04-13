@@ -9,6 +9,7 @@ const ROLE_HOME: Record<string, string> = {
   SUPERVISOR: '/s',
   RECEPTION: '/r',
   ADMIN: '/a',
+  TECHNICIAN: '/t',
 };
 
 export default function HomePage() {

@@ -7,6 +7,8 @@ import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
+import { SupervisorMobileModeProvider, useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
+import { SupervisorMobileShell } from '@/components/supervisor/SupervisorMobileShell';
 
 const nav = [
   { href: '/s', label: 'Dashboard' },
@@ -16,13 +18,39 @@ const nav = [
   { href: '/s/requests', label: 'Requests' },
   { href: '/s/chat', label: 'Team chat' },
   { href: '/s/lost', label: 'Lost & found' },
+  { href: '/s/damages', label: 'Damage reports' },
   { href: '/s/performance', label: 'Performance' },
 ];
 
 export default function SupervisorLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SupervisorMobileModeProvider>
+      <SupervisorLayoutInner>{children}</SupervisorLayoutInner>
+    </SupervisorMobileModeProvider>
+  );
+}
+
+function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const { user, loading, logout } = useAuth();
+  const { mobileUi, hydrated, enterMobile } = useSupervisorMobileMode();
+
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    if (mobileUi && path.startsWith('/s') && !path.startsWith('/s/m')) {
+      router.replace('/s/m/inspections');
+    }
+  }, [hydrated, mobileUi, path, router, user]);
+
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    if (!mobileUi && path.startsWith('/s/m')) {
+      if (path.startsWith('/s/m/chat')) router.replace('/s/chat');
+      else if (path.startsWith('/s/m/requests')) router.replace('/s/requests');
+      else router.replace('/s');
+    }
+  }, [hydrated, mobileUi, path, router, user]);
 
   useEffect(() => {
     if (loading) return;
@@ -38,13 +66,46 @@ export default function SupervisorLayout({ children }: { children: React.ReactNo
     );
   }
 
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
+        <p className="text-sm text-ink-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  const redirectingMobile = mobileUi && path.startsWith('/s') && !path.startsWith('/s/m');
+  const redirectingDesktop = !mobileUi && path.startsWith('/s/m');
+  if (redirectingMobile || redirectingDesktop) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
+        <p className="text-sm text-ink-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  if (mobileUi) {
+    return (
+      <SupervisorMobileShell userName={user.name} titlePrefix={user.titlePrefix}>
+        {children}
+      </SupervisorMobileShell>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-surface-muted md:flex">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-6 shadow-card md:flex">
         <div className="px-4">
           <BrandLogo />
         </div>
-        <nav className="mt-8 flex flex-1 flex-col gap-0.5 px-2">
+        <button
+          type="button"
+          onClick={enterMobile}
+          className="mx-4 mt-4 w-[calc(100%-2rem)] rounded-lg border border-action/30 bg-action-muted px-3 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-action-muted/80"
+        >
+          Mobile view
+        </button>
+        <nav className="mt-4 flex flex-1 flex-col gap-0.5 px-2">
           {nav.map((item) => {
             const active =
               item.href === '/s'
@@ -83,8 +144,15 @@ export default function SupervisorLayout({ children }: { children: React.ReactNo
       </aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 shadow-card md:hidden">
+        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 shadow-card md:hidden">
           <BrandLogo compact />
+          <button
+            type="button"
+            onClick={enterMobile}
+            className="shrink-0 rounded-lg border border-action/30 bg-action-muted px-3 py-2 text-xs font-semibold text-ink"
+          >
+            Mobile view
+          </button>
         </header>
         <nav className="flex flex-wrap gap-1 border-b border-border bg-surface px-2 py-2 md:hidden">
           {nav.map((item) => {

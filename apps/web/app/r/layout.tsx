@@ -23,6 +23,7 @@ const nav = [
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
   { href: '/r/chat', label: 'Team chat', icon: IconChat },
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
+  { href: '/r/damages', label: 'Damage reports', icon: IconDamage },
 ];
 
 function IconDash({ className }: { className?: string }) {
@@ -66,6 +67,21 @@ function IconPackage({ className }: { className?: string }) {
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" stroke="currentColor" strokeWidth="1.75" />
       <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconDamage({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 3L4 9v12h16V9l-8-6zM9 21v-8h6v8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M10 7l2 3 2-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

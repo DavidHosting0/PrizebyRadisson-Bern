@@ -10,6 +10,7 @@ import { ChecklistsModule } from './checklists/checklists.module';
 import { PhotosModule } from './photos/photos.module';
 import { ServiceRequestsModule } from './service-requests/service-requests.module';
 import { LostFoundModule } from './lost-found/lost-found.module';
+import { DamageReportsModule } from './damage-reports/damage-reports.module';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { InspectionsModule } from './inspections/inspections.module';
 import { AnalyticsModule } from './analytics/analytics.module';
@@ -38,6 +39,7 @@ import configuration from './config/configuration';
     PhotosModule,
     ServiceRequestsModule,
     LostFoundModule,
+    DamageReportsModule,
     AssignmentsModule,
     InspectionsModule,
     AnalyticsModule,

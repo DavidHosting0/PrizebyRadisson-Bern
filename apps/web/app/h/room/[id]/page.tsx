@@ -11,6 +11,8 @@ import { ChecklistToggle } from '@/components/ChecklistToggle';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LostFoundReportModal } from '@/components/housekeeper/LostFoundReportModal';
+import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
+import { usePermission } from '@/lib/auth-context';
 
 type Task = {
   id: string;
@@ -32,6 +34,8 @@ export default function RoomChecklistPage() {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [lostFoundOpen, setLostFoundOpen] = useState(false);
+  const [damageOpen, setDamageOpen] = useState(false);
+  const canReportDamage = usePermission('DAMAGE_REPORT_CREATE');
 
   const { data, isLoading } = useQuery({
     queryKey: ['room', id],
@@ -122,11 +126,27 @@ export default function RoomChecklistPage() {
         >
           Report lost &amp; found
         </Button>
+        {canReportDamage && (
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-[48px] border-amber-600/40 bg-amber-50 text-amber-950 shadow-sm hover:bg-amber-100/90 sm:min-w-[200px]"
+            onClick={() => setDamageOpen(true)}
+          >
+            Report damage
+          </Button>
+        )}
       </div>
 
       <LostFoundReportModal
         open={lostFoundOpen}
         onClose={() => setLostFoundOpen(false)}
+        roomId={data.id}
+        roomNumber={data.roomNumber}
+      />
+      <DamageReportModal
+        open={damageOpen}
+        onClose={() => setDamageOpen(false)}
         roomId={data.id}
         roomNumber={data.roomNumber}
       />

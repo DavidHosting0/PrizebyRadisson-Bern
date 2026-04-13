@@ -49,4 +49,8 @@ export class S3Service {
   buildLostFoundKey(ext = 'jpg') {
     return `lost-found/${randomUUID()}.${ext}`;
   }
+
+  buildDamageReportKey(ext = 'jpg') {
+    return `damage-reports/${randomUUID()}.${ext}`;
+  }
 }

@@ -6,6 +6,7 @@ export const USER_TITLE_PREFIX_OPTIONS = [
   { value: 'HTC_IN_TRAINING', label: 'HTC in Training' },
   { value: 'HTC', label: 'HTC' },
   { value: 'ADMIN', label: 'Admin' },
+  { value: 'TECHNICIAN', label: 'Technician' },
 ] as const;
 
 export type UserTitlePrefixValue = (typeof USER_TITLE_PREFIX_OPTIONS)[number]['value'];

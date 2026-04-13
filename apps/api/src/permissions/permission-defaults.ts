@@ -34,6 +34,9 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.USERS_DELETE,
   PermissionCode.SETTINGS_READ,
   PermissionCode.SETTINGS_WRITE,
+  PermissionCode.DAMAGE_REPORT_CREATE,
+  PermissionCode.DAMAGE_REPORT_READ,
+  PermissionCode.DAMAGE_REPORT_UPDATE,
 ];
 
 function addCleanerBase(s: Set<PermissionCode>) {
@@ -46,6 +49,7 @@ function addCleanerBase(s: Set<PermissionCode>) {
   s.add(PermissionCode.SERVICE_REQUEST_PATCH);
   s.add(PermissionCode.LOST_FOUND_READ);
   s.add(PermissionCode.LOST_FOUND_CREATE);
+  s.add(PermissionCode.DAMAGE_REPORT_CREATE);
   s.add(PermissionCode.TEAM_CHAT_READ);
   s.add(PermissionCode.TEAM_CHAT_POST);
 }
@@ -60,12 +64,26 @@ function addDeputyCaptainExtras(s: Set<PermissionCode>) {
   s.add(PermissionCode.SERVICE_REQUEST_CREATE);
   s.add(PermissionCode.SERVICE_REQUEST_CANCEL);
   s.add(PermissionCode.LOST_FOUND_UPDATE);
+  s.add(PermissionCode.DAMAGE_REPORT_READ);
+  s.add(PermissionCode.DAMAGE_REPORT_UPDATE);
   s.add(PermissionCode.INSPECTION_CREATE);
   s.add(PermissionCode.ROOM_TYPE_READ);
   s.add(PermissionCode.FLOOR_PLAN_READ);
   s.add(PermissionCode.ANALYTICS_READ);
   s.add(PermissionCode.USERS_READ_HOUSEKEEPERS);
   s.add(PermissionCode.SETTINGS_READ);
+}
+
+/** Property maintenance mobile app: damage reports, room occupancy-style view, team chat. */
+function buildTechnicianSet(): Set<PermissionCode> {
+  const s = new Set<PermissionCode>();
+  s.add(PermissionCode.ROOMS_READ);
+  s.add(PermissionCode.DAMAGE_REPORT_READ);
+  s.add(PermissionCode.DAMAGE_REPORT_UPDATE);
+  s.add(PermissionCode.SERVICE_REQUEST_READ);
+  s.add(PermissionCode.TEAM_CHAT_READ);
+  s.add(PermissionCode.TEAM_CHAT_POST);
+  return s;
 }
 
 function buildReceptionSet(): Set<PermissionCode> {
@@ -79,6 +97,8 @@ function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.PHOTO_TIMELINE_READ);
   s.add(PermissionCode.LOST_FOUND_READ);
   s.add(PermissionCode.LOST_FOUND_UPDATE);
+  s.add(PermissionCode.DAMAGE_REPORT_READ);
+  s.add(PermissionCode.DAMAGE_REPORT_UPDATE);
   s.add(PermissionCode.FLOOR_PLAN_READ);
   s.add(PermissionCode.TEAM_CHAT_READ);
   s.add(PermissionCode.TEAM_CHAT_POST);
@@ -106,6 +126,9 @@ function buildSupervisorSet(): Set<PermissionCode> {
   s.add(PermissionCode.LOST_FOUND_READ);
   s.add(PermissionCode.LOST_FOUND_CREATE);
   s.add(PermissionCode.LOST_FOUND_UPDATE);
+  s.add(PermissionCode.DAMAGE_REPORT_READ);
+  s.add(PermissionCode.DAMAGE_REPORT_CREATE);
+  s.add(PermissionCode.DAMAGE_REPORT_UPDATE);
   s.add(PermissionCode.INSPECTION_CREATE);
   s.add(PermissionCode.ROOM_TYPE_READ);
   s.add(PermissionCode.ROOM_TYPE_WRITE);
@@ -128,6 +151,10 @@ export function defaultPermissionsForUser(role: UserRole, titlePrefix: UserTitle
 
   if (role === UserRole.RECEPTION) {
     return buildReceptionSet();
+  }
+
+  if (role === UserRole.TECHNICIAN) {
+    return buildTechnicianSet();
   }
 
   if (role === UserRole.SUPERVISOR) {
