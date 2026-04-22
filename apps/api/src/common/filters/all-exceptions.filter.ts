@@ -87,8 +87,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
       });
     }
 
+    // AWS SDK credential errors — S3/MinIO env vars are missing on the server.
+    const err = exception as Error & { name?: string };
+    const msg = err?.message ?? '';
+    if (
+      err?.name === 'CredentialsProviderError' ||
+      /Could not load credentials from any providers/i.test(msg)
+    ) {
+      this.log.error(
+        `${req.method} ${req.url} -> 503: S3 credentials not configured`,
+        err?.stack,
+      );
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        statusCode: 503,
+        message:
+          'Photo storage is not configured on the server. ' +
+          'Set S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY ' +
+          'in apps/api/.env (or the pm2 environment) and restart the API.',
+      });
+    }
+
     // Anything else — log the stack so pm2 shows the real cause.
-    const err = exception as Error;
     this.log.error(
       `${req.method} ${req.url} -> 500: ${err?.message ?? 'unknown'}`,
       err?.stack,

@@ -93,13 +93,13 @@ export class TeamChatService {
       Array.from(keys).map(async (key) => {
         try {
           const { url } = await this.s3.presignGet(key);
-          return [key, url] as const;
+          return [key, url ?? ''] as const;
         } catch {
           return [key, ''] as const;
         }
       }),
     );
-    return new Map(entries.filter(([, v]) => v));
+    return new Map(entries.filter((entry): entry is readonly [string, string] => !!entry[1]));
   }
 
   private authorDto(a: AuthorRow, urls: Map<string, string>) {
