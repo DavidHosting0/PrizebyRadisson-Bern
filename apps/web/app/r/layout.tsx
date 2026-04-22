@@ -10,11 +10,13 @@ import { Button } from '@/components/ui/Button';
 import { ReceptionUiProvider, useReceptionUi } from '@/app/r/reception-context';
 import { NewRequestModal } from '@/components/reception/NewRequestModal';
 import { ReceptionRoomDetailPanel } from '@/components/reception/ReceptionRoomDetailPanel';
+import { ReceptionMobileShell } from '@/components/reception/ReceptionMobileShell';
 import { useReceptionRealtime } from '@/lib/hooks/useReceptionRealtime';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { IconChat } from '@/components/icons';
+import { ReceptionMobileModeProvider, useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 const nav = [
   { href: '/r', label: 'Dashboard', icon: IconDash },
@@ -92,6 +94,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const router = useRouter();
   const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
+  const { mobileUi, hydrated, enterMobile } = useReceptionMobileMode();
   useReceptionRealtime();
 
   const { data: settings } = useQuery({
@@ -111,11 +114,59 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    if (mobileUi && path.startsWith('/r') && !path.startsWith('/r/m')) {
+      router.replace('/r/m/requests');
+    }
+  }, [hydrated, mobileUi, path, router, user]);
+
+  useEffect(() => {
+    if (!hydrated || !user) return;
+    if (!mobileUi && path.startsWith('/r/m')) {
+      if (path.startsWith('/r/m/chat')) router.replace('/r/chat');
+      else if (path.startsWith('/r/m/requests')) router.replace('/r/requests');
+      else if (path.startsWith('/r/m/rooms')) router.replace('/r/rooms');
+      else if (path.startsWith('/r/m/lost')) router.replace('/r/lost');
+      else router.replace('/r');
+    }
+  }, [hydrated, mobileUi, path, router, user]);
+
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
         <p className="text-sm text-ink-muted">Loading…</p>
       </div>
+    );
+  }
+
+  if (!hydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
+        <p className="text-sm text-ink-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  const redirectingMobile = mobileUi && path.startsWith('/r') && !path.startsWith('/r/m');
+  const redirectingDesktop = !mobileUi && path.startsWith('/r/m');
+  if (redirectingMobile || redirectingDesktop) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
+        <p className="text-sm text-ink-muted">Loading…</p>
+      </div>
+    );
+  }
+
+  if (mobileUi) {
+    return (
+      <>
+        <ReceptionMobileShell userName={user.name} titlePrefix={user.titlePrefix}>
+          {children}
+        </ReceptionMobileShell>
+        <NewRequestModal open={newRequestOpen} onClose={closeNewRequest} />
+        <ReceptionRoomDetailPanel roomId={roomPanelId} open={!!roomPanelId} onClose={() => openRoom(null)} />
+      </>
     );
   }
 
@@ -132,6 +183,14 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="flex flex-1 items-center justify-end gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-[40px] px-3 text-xs"
+            onClick={enterMobile}
+          >
+            Mobile view
+          </Button>
           {canCreateRequest && (
             <Button
               type="button"
@@ -217,8 +276,10 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
 export default function ReceptionLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ReceptionUiProvider>
-      <ReceptionShell>{children}</ReceptionShell>
-    </ReceptionUiProvider>
+    <ReceptionMobileModeProvider>
+      <ReceptionUiProvider>
+        <ReceptionShell>{children}</ReceptionShell>
+      </ReceptionUiProvider>
+    </ReceptionMobileModeProvider>
   );
 }
