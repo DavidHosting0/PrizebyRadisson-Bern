@@ -55,7 +55,7 @@ export class LostFoundService {
         room: { select: { id: true, roomNumber: true } },
         reportedBy: { select: userPublicSelect },
       },
-      orderBy: { foundAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
     return Promise.all(
       rows.map(async (item) => {
@@ -76,20 +76,25 @@ export class LostFoundService {
     if (
       user.role !== UserRole.HOUSEKEEPER &&
       user.role !== UserRole.SUPERVISOR &&
-      user.role !== UserRole.ADMIN
+      user.role !== UserRole.ADMIN &&
+      user.role !== UserRole.RECEPTION
     ) {
       throw new ForbiddenException();
     }
     if (user.role === UserRole.HOUSEKEEPER && dto.roomId) {
       await this.assertHousekeeperRoom(user, dto.roomId);
     }
+    const status = dto.status ?? LostFoundStatus.FOUND;
+    const isCleanerReport = user.role === UserRole.HOUSEKEEPER;
     return this.prisma.lostFoundItem.create({
       data: {
         roomId: dto.roomId ?? undefined,
         description: dto.description,
         photoS3Key: dto.photoS3Key,
-        status: dto.status ?? LostFoundStatus.FOUND,
-        storedAt: dto.status === LostFoundStatus.STORED ? new Date() : null,
+        status,
+        foundAt: isCleanerReport ? new Date() : null,
+        storedAt: status === LostFoundStatus.STORED ? new Date() : null,
+        storedLocation: dto.storedLocation ?? null,
         reportedByUserId: user.id,
       },
       include: {
@@ -111,9 +116,11 @@ export class LostFoundService {
         storedAt:
           dto.status == null
             ? undefined
-            : dto.status === LostFoundStatus.STORED
-              ? row.storedAt ?? new Date()
-              : null,
+            : dto.status === LostFoundStatus.FOUND
+              ? null
+              : dto.status === LostFoundStatus.STORED
+                ? row.storedAt ?? new Date()
+                : row.storedAt,
         storedLocation: dto.storedLocation,
         guestContactedAt:
           dto.guestContacted === undefined

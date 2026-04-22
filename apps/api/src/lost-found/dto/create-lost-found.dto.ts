@@ -17,4 +17,9 @@ export class CreateLostFoundDto {
   @IsOptional()
   @IsEnum(LostFoundStatus)
   status?: LostFoundStatus;
+
+  /** Storage box code (e.g. A1..D4) when creating an item directly into storage. */
+  @IsOptional()
+  @IsString()
+  storedLocation?: string | null;
 }

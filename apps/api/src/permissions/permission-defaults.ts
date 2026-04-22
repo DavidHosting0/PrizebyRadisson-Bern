@@ -96,6 +96,7 @@ function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.ASSIGNMENT_READ);
   s.add(PermissionCode.PHOTO_TIMELINE_READ);
   s.add(PermissionCode.LOST_FOUND_READ);
+  s.add(PermissionCode.LOST_FOUND_CREATE);
   s.add(PermissionCode.LOST_FOUND_UPDATE);
   s.add(PermissionCode.DAMAGE_REPORT_READ);
   s.add(PermissionCode.DAMAGE_REPORT_UPDATE);

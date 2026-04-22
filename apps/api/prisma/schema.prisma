@@ -367,7 +367,8 @@ model LostFoundItem {
   description        String
   photoS3Key         String?
   status             LostFoundStatus @default(FOUND)
-  foundAt            DateTime       @default(now())
+  /// Set when a housekeeper reports the item. Null when reception backfills an existing storage item.
+  foundAt            DateTime?
   storedAt           DateTime?
   storedLocation     String?
   guestContactedAt   DateTime?
