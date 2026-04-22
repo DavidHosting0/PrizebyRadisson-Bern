@@ -5,10 +5,14 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { UsersService } from '../users/users.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly users: UsersService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -29,7 +33,8 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: AuthenticatedUser) {
+  async me(@CurrentUser() user: AuthenticatedUser) {
+    const avatarUrl = await this.users.resolveAvatarUrl(user.avatarS3Key);
     return {
       id: user.id,
       email: user.email,
@@ -37,6 +42,7 @@ export class AuthController {
       name: user.name,
       phone: user.phone,
       titlePrefix: user.titlePrefix,
+      avatarUrl,
       permissions: user.effectivePermissions,
     };
   }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -36,6 +37,35 @@ export class UsersController {
   @RequirePermissions(PermissionCode.USERS_WRITE)
   create(@Body() dto: CreateUserDto) {
     return this.users.create(dto);
+  }
+
+  /**
+   * Self-service avatar endpoints — any authenticated user may update their own
+   * profile picture, regardless of USERS_WRITE permissions.
+   */
+  @Post('me/avatar/presign')
+  presignOwnAvatar(
+    @CurrentUser('id') userId: string,
+    @Body() body: { contentType?: string },
+  ) {
+    return this.users.presignOwnAvatar(userId, body?.contentType);
+  }
+
+  @Patch('me/avatar')
+  setOwnAvatar(
+    @CurrentUser('id') userId: string,
+    @Body() body: { key?: string | null },
+  ) {
+    const key = body?.key;
+    if (typeof key !== 'string' || !key.trim()) {
+      throw new BadRequestException('key is required');
+    }
+    return this.users.setOwnAvatar(userId, key.trim());
+  }
+
+  @Delete('me/avatar')
+  clearOwnAvatar(@CurrentUser('id') userId: string) {
+    return this.users.setOwnAvatar(userId, null);
   }
 
   @Patch(':userId')

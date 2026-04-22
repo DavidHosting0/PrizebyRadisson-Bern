@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "avatarS3Key" TEXT;

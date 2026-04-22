@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly permissions: PermissionsService,
+    private readonly users: UsersService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -55,6 +57,7 @@ export class AuthService {
         name: true,
         phone: true,
         titlePrefix: true,
+        avatarS3Key: true,
         permissionGrants: { select: { permission: true } },
       },
     });
@@ -72,6 +75,7 @@ export class AuthService {
     await this.prisma.refreshToken.create({
       data: { userId: u.id, tokenHash: refreshHash, expiresAt },
     });
+    const avatarUrl = await this.users.resolveAvatarUrl(u.avatarS3Key);
     return {
       accessToken,
       refreshToken: refreshRaw,
@@ -83,6 +87,7 @@ export class AuthService {
         name: u.name,
         phone: u.phone,
         titlePrefix: u.titlePrefix,
+        avatarUrl,
         permissions: effectivePermissions,
       },
     };

@@ -3,6 +3,7 @@ import { TeamChatReactionType, User } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { S3Service } from '../storage/s3.service';
 
 /** Narrow reaction fields so Prisma never nests `message` (avoids circular JSON on serialize). */
 const messageInclude = {
@@ -18,6 +19,27 @@ const messageInclude = {
   reactions: { select: { userId: true, type: true } },
 } as const;
 
+type AuthorRow = {
+  id: string;
+  name: string;
+  titlePrefix: string;
+  avatarS3Key: string | null;
+};
+
+type MessageRow = {
+  id: string;
+  body: string;
+  createdAt: Date;
+  author: AuthorRow;
+  replyTo: {
+    id: string;
+    body: string;
+    createdAt: Date;
+    author: AuthorRow;
+  } | null;
+  reactions: { userId: string; type: TeamChatReactionType }[];
+};
+
 @Injectable()
 export class TeamChatService {
   private readonly log = new Logger(TeamChatService.name);
@@ -25,6 +47,7 @@ export class TeamChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
+    private readonly s3: S3Service,
   ) {}
 
   private summarizeReactions(
@@ -56,42 +79,50 @@ export class TeamChatService {
       .filter((x) => x.count > 0);
   }
 
-  private mapMessage(
-    row: {
-      id: string;
-      body: string;
-      createdAt: Date;
-      author: { id: string; name: string; titlePrefix: string };
-      replyTo: {
-        id: string;
-        body: string;
-        createdAt: Date;
-        author: { id: string; name: string; titlePrefix: string };
-      } | null;
-      reactions: { userId: string; type: TeamChatReactionType }[];
-    },
-    viewerId: string,
-  ) {
-    // Plain object only — Express JSON.stringify must not hit Prisma cycles/proxies.
+  /**
+   * Presign GET URLs for every distinct avatar key referenced in the batch.
+   * Done in parallel to avoid N+1 latency.
+   */
+  private async buildAvatarUrlMap(rows: MessageRow[]): Promise<Map<string, string>> {
+    const keys = new Set<string>();
+    for (const r of rows) {
+      if (r.author.avatarS3Key) keys.add(r.author.avatarS3Key);
+      if (r.replyTo?.author.avatarS3Key) keys.add(r.replyTo.author.avatarS3Key);
+    }
+    const entries = await Promise.all(
+      Array.from(keys).map(async (key) => {
+        try {
+          const { url } = await this.s3.presignGet(key);
+          return [key, url] as const;
+        } catch {
+          return [key, ''] as const;
+        }
+      }),
+    );
+    return new Map(entries.filter(([, v]) => v));
+  }
+
+  private authorDto(a: AuthorRow, urls: Map<string, string>) {
+    return {
+      id: a.id,
+      name: a.name,
+      titlePrefix: a.titlePrefix,
+      avatarUrl: a.avatarS3Key ? urls.get(a.avatarS3Key) ?? null : null,
+    };
+  }
+
+  private mapMessage(row: MessageRow, viewerId: string, urls: Map<string, string>) {
     return {
       id: row.id,
       body: row.body,
       createdAt: row.createdAt,
-      author: {
-        id: row.author.id,
-        name: row.author.name,
-        titlePrefix: row.author.titlePrefix,
-      },
+      author: this.authorDto(row.author, urls),
       replyTo: row.replyTo
         ? {
             id: row.replyTo.id,
             body: row.replyTo.body,
             createdAt: row.replyTo.createdAt,
-            author: {
-              id: row.replyTo.author.id,
-              name: row.replyTo.author.name,
-              titlePrefix: row.replyTo.author.titlePrefix,
-            },
+            author: this.authorDto(row.replyTo.author, urls),
           }
         : null,
       reactions: this.summarizeReactions(row.reactions, viewerId),
@@ -100,12 +131,13 @@ export class TeamChatService {
 
   async list(limit = 200, viewer: User) {
     const take = Math.min(Math.max(1, limit), 500);
-    const rows = await this.prisma.teamChatMessage.findMany({
+    const rows = (await this.prisma.teamChatMessage.findMany({
       take,
       orderBy: { createdAt: 'asc' },
       include: messageInclude,
-    });
-    return rows.map((r) => this.mapMessage(r, viewer.id));
+    })) as unknown as MessageRow[];
+    const urls = await this.buildAvatarUrlMap(rows);
+    return rows.map((r) => this.mapMessage(r, viewer.id, urls));
   }
 
   async create(body: string, user: User, replyToId?: string) {
@@ -115,15 +147,16 @@ export class TeamChatService {
       });
       if (!parent) throw new BadRequestException('Reply target not found');
     }
-    const msg = await this.prisma.teamChatMessage.create({
+    const msg = (await this.prisma.teamChatMessage.create({
       data: {
         body: body.trim(),
         authorId: user.id,
         replyToId: replyToId ?? null,
       },
       include: messageInclude,
-    });
-    const mapped = this.mapMessage(msg, user.id);
+    })) as unknown as MessageRow;
+    const urls = await this.buildAvatarUrlMap([msg]);
+    const mapped = this.mapMessage(msg, user.id, urls);
     try {
       this.realtime.emitTeamChatMessage(mapped);
     } catch (e) {

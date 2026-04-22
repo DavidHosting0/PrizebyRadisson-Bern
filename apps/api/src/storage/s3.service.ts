@@ -53,4 +53,8 @@ export class S3Service {
   buildDamageReportKey(ext = 'jpg') {
     return `damage-reports/${randomUUID()}.${ext}`;
   }
+
+  buildAvatarKey(userId: string, ext = 'jpg') {
+    return `avatars/${userId}/${randomUUID()}.${ext}`;
+  }
 }

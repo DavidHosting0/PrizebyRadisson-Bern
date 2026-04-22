@@ -146,6 +146,8 @@ model User {
   isActive     Boolean         @default(true)
   role         UserRole
   titlePrefix  UserTitlePrefix @default(CLEANER)
+  /// Object-storage key for the user's avatar photo. URLs are resolved on read via presigned GETs.
+  avatarS3Key  String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 

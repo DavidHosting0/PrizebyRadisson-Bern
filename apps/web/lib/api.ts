@@ -7,6 +7,8 @@ export type Me = {
   name: string;
   phone?: string | null;
   titlePrefix?: string | null;
+  /** Short-lived presigned GET URL for the user's profile picture, or null. */
+  avatarUrl?: string | null;
   /** Effective permission codes (defaults ∪ admin grants). */
   permissions?: string[];
 };

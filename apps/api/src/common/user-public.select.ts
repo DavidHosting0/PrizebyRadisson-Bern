@@ -3,4 +3,5 @@ export const userPublicSelect = {
   id: true,
   name: true,
   titlePrefix: true,
+  avatarS3Key: true,
 } as const;

@@ -7,12 +7,52 @@ import {
 import { Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { S3Service } from '../storage/s3.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3: S3Service,
+  ) {}
+
+  /** Resolve a short-lived GET URL for an avatar key, if any. */
+  async resolveAvatarUrl(key: string | null | undefined): Promise<string | null> {
+    if (!key) return null;
+    try {
+      return (await this.s3.presignGet(key)).url;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Presign a PUT URL so the user can upload a new avatar directly. */
+  async presignOwnAvatar(userId: string, contentType: string | undefined) {
+    const mime = (contentType || '').toLowerCase();
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+    const key = this.s3.buildAvatarKey(userId, ext);
+    const { url } = await this.s3.presignPut(key, mime || 'image/jpeg');
+    return { uploadUrl: url, key };
+  }
+
+  /** Save a new avatar key on the current user's record. Pass null to clear. */
+  async setOwnAvatar(userId: string, key: string | null) {
+    if (key !== null && typeof key === 'string' && !key.startsWith('avatars/')) {
+      throw new BadRequestException('Invalid avatar key');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarS3Key: key },
+    });
+    const fresh = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, avatarS3Key: true },
+    });
+    const avatarUrl = await this.resolveAvatarUrl(fresh.avatarS3Key);
+    return { id: fresh.id, avatarUrl };
+  }
 
   async listHousekeepers() {
     return this.prisma.user.findMany({
