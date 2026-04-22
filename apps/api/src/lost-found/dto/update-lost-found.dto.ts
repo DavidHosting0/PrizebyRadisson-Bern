@@ -1,5 +1,6 @@
-import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 import { LostFoundStatus } from '@prisma/client';
+import { Transform } from 'class-transformer';
 
 export class UpdateLostFoundDto {
   @IsOptional()
@@ -9,6 +10,11 @@ export class UpdateLostFoundDto {
   @IsOptional()
   @IsString()
   storedLocation?: string | null;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  guestContacted?: boolean;
 
   @IsOptional()
   @IsObject()

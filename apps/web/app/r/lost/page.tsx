@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
@@ -10,16 +10,22 @@ type Lf = {
   description: string;
   status: string;
   foundAt: string;
+  storedAt: string | null;
+  guestContactedAt: string | null;
+  storedLocation: string | null;
   photoS3Key: string | null;
+  photoUrl?: string | null;
   room: { roomNumber: string } | null;
 };
 
 const STATUSES = ['FOUND', 'STORED', 'CLAIMED', 'CLOSED'];
 
 export default function ReceptionLostFoundPage() {
+  const qc = useQueryClient();
   const [view, setView] = useState<'grid' | 'table'>('grid');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
+  const [editingLocation, setEditingLocation] = useState<Record<string, string>>({});
 
   const { data: raw = [], isLoading } = useQuery({
     queryKey: ['lost-found', status, q],
@@ -35,6 +41,15 @@ export default function ReceptionLostFoundPage() {
   const sorted = useMemo(() => {
     return [...raw].sort((a, b) => new Date(b.foundAt).getTime() - new Date(a.foundAt).getTime());
   }, [raw]);
+
+  const patchItem = useMutation({
+    mutationFn: (payload: { id: string; body: Record<string, unknown> }) =>
+      api(`/lost-found/${payload.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload.body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['lost-found'] }),
+  });
 
   return (
     <div className="space-y-8 p-4 md:p-8">
@@ -97,8 +112,10 @@ export default function ReceptionLostFoundPage() {
             <li key={item.id}>
               <Card className="h-full overflow-hidden p-0">
                 <div className="flex aspect-[4/3] items-center justify-center bg-surface-muted text-ink-muted">
-                  {item.photoS3Key ? (
-                    <span className="text-xs">Photo on file</span>
+                  {item.photoUrl ? (
+                    <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
+                  ) : item.photoS3Key ? (
+                    <span className="text-xs">Photo uploaded</span>
                   ) : (
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden>
                       <path
@@ -116,6 +133,12 @@ export default function ReceptionLostFoundPage() {
                   <p className="mt-2 text-sm text-ink-muted">
                     {item.room ? `Room ${item.room.roomNumber}` : 'No room'} ·{' '}
                     {new Date(item.foundAt).toLocaleString()}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Stored since: {item.storedAt ? new Date(item.storedAt).toLocaleString() : 'Not in storage'}
+                  </p>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    Guest contacted: {item.guestContactedAt ? new Date(item.guestContactedAt).toLocaleString() : 'No'}
                   </p>
                   <span className="mt-3 inline-flex rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium capitalize text-ink-muted">
                     {item.status.toLowerCase()}
@@ -136,7 +159,10 @@ export default function ReceptionLostFoundPage() {
                 <th className="px-4 py-3 font-semibold">Description</th>
                 <th className="px-4 py-3 font-semibold">Room</th>
                 <th className="px-4 py-3 font-semibold">Date found</th>
+                <th className="px-4 py-3 font-semibold">Stored since</th>
+                <th className="px-4 py-3 font-semibold">Guest contacted</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Storage location</th>
               </tr>
             </thead>
             <tbody>
@@ -150,7 +176,58 @@ export default function ReceptionLostFoundPage() {
                   <td className="max-w-xs px-4 py-3 text-ink">{item.description}</td>
                   <td className="px-4 py-3 text-ink-muted">{item.room ? item.room.roomNumber : '—'}</td>
                   <td className="px-4 py-3 text-ink-muted">{new Date(item.foundAt).toLocaleString()}</td>
-                  <td className="px-4 py-3 capitalize text-ink-muted">{item.status.toLowerCase()}</td>
+                  <td className="px-4 py-3 text-ink-muted">
+                    {item.storedAt ? new Date(item.storedAt).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <label className="inline-flex items-center gap-2 text-xs text-ink-muted">
+                      <input
+                        type="checkbox"
+                        checked={!!item.guestContactedAt}
+                        onChange={(e) =>
+                          patchItem.mutate({ id: item.id, body: { guestContacted: e.target.checked } })
+                        }
+                      />
+                      {item.guestContactedAt ? 'Yes' : 'No'}
+                    </label>
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      className="min-h-[34px] rounded-btn border border-border bg-surface px-2 text-xs"
+                      value={item.status}
+                      onChange={(e) => patchItem.mutate({ id: item.id, body: { status: e.target.value } })}
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="min-h-[34px] rounded-btn border border-border bg-surface px-2 text-xs"
+                        value={editingLocation[item.id] ?? item.storedLocation ?? ''}
+                        onChange={(e) =>
+                          setEditingLocation((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                        placeholder="Shelf / box"
+                      />
+                      <button
+                        type="button"
+                        className="rounded-btn border border-border px-2 py-1 text-xs"
+                        onClick={() =>
+                          patchItem.mutate({
+                            id: item.id,
+                            body: { storedLocation: editingLocation[item.id] ?? item.storedLocation ?? '' },
+                          })
+                        }
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -49,7 +49,7 @@ export class LostFoundService {
     if (query.q) {
       where.description = { contains: query.q, mode: 'insensitive' };
     }
-    return this.prisma.lostFoundItem.findMany({
+    const rows = await this.prisma.lostFoundItem.findMany({
       where,
       include: {
         room: { select: { id: true, roomNumber: true } },
@@ -57,6 +57,19 @@ export class LostFoundService {
       },
       orderBy: { foundAt: 'desc' },
     });
+    return Promise.all(
+      rows.map(async (item) => {
+        let photoUrl: string | null = null;
+        if (item.photoS3Key) {
+          try {
+            photoUrl = (await this.s3.presignGet(item.photoS3Key)).url;
+          } catch {
+            photoUrl = null;
+          }
+        }
+        return { ...item, photoUrl };
+      }),
+    );
   }
 
   async create(dto: CreateLostFoundDto, user: User) {
@@ -76,6 +89,7 @@ export class LostFoundService {
         description: dto.description,
         photoS3Key: dto.photoS3Key,
         status: dto.status ?? LostFoundStatus.FOUND,
+        storedAt: dto.status === LostFoundStatus.STORED ? new Date() : null,
         reportedByUserId: user.id,
       },
       include: {
@@ -94,7 +108,19 @@ export class LostFoundService {
       where: { id },
       data: {
         status: dto.status,
+        storedAt:
+          dto.status == null
+            ? undefined
+            : dto.status === LostFoundStatus.STORED
+              ? row.storedAt ?? new Date()
+              : null,
         storedLocation: dto.storedLocation,
+        guestContactedAt:
+          dto.guestContacted === undefined
+            ? undefined
+            : dto.guestContacted
+              ? row.guestContactedAt ?? new Date()
+              : null,
         claimedByGuestInfo: dto.claimedByGuestInfo === undefined ? undefined : (dto.claimedByGuestInfo as object),
       },
       include: {

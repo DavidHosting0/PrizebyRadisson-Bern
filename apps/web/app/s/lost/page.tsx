@@ -10,6 +10,10 @@ type Lf = {
   description: string;
   status: string;
   foundAt: string;
+  storedAt: string | null;
+  guestContactedAt: string | null;
+  storedLocation: string | null;
+  photoUrl?: string | null;
   room: { roomNumber: string } | null;
 };
 
@@ -55,10 +59,22 @@ export default function SupervisorLostFoundPage() {
         {data.map((item) => (
           <li key={item.id}>
             <Card className="h-full">
+              {item.photoUrl && (
+                <img src={item.photoUrl} alt={item.description} className="mb-3 h-40 w-full rounded-card object-cover" />
+              )}
               <p className="font-medium leading-snug text-ink">{item.description}</p>
               <p className="mt-3 text-sm text-ink-muted">
                 {item.room ? `Room ${item.room.roomNumber}` : 'No room'} ·{' '}
                 {new Date(item.foundAt).toLocaleString()}
+              </p>
+              <p className="mt-1 text-xs text-ink-muted">
+                Stored since: {item.storedAt ? new Date(item.storedAt).toLocaleString() : 'Not in storage'}
+              </p>
+              <p className="mt-1 text-xs text-ink-muted">
+                Guest contacted: {item.guestContactedAt ? 'Yes' : 'No'}
+              </p>
+              <p className="mt-1 text-xs text-ink-muted">
+                Location: {item.storedLocation || '—'}
               </p>
               <span className="mt-3 inline-flex rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium capitalize text-ink-muted">
                 {item.status.toLowerCase()}

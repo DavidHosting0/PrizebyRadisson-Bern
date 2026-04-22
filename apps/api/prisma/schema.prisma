@@ -368,7 +368,9 @@ model LostFoundItem {
   photoS3Key         String?
   status             LostFoundStatus @default(FOUND)
   foundAt            DateTime       @default(now())
+  storedAt           DateTime?
   storedLocation     String?
+  guestContactedAt   DateTime?
   claimedByGuestInfo Json?
 
   createdAt DateTime @default(now())
