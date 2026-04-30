@@ -47,18 +47,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   await refresh();
 
   $('save').addEventListener('click', async () => {
-    const patch = {
-      apiBase: $('apiBase').value.trim(),
-      apiKey: $('apiKey').value.trim(),
-    };
-    chrome.runtime.sendMessage({ type: 'SET_SETTINGS', patch }, (r) => {
-      if (r?.ok) {
-        showToast('Gespeichert.', 'success');
-        refresh();
-      } else {
-        showToast(r?.error ?? 'Fehler beim Speichern', 'error');
-      }
-    });
+    const apiBase = $('apiBase').value.trim();
+    const apiKey = $('apiKey').value.trim();
+    if (!apiBase) {
+      showToast('Backend-URL fehlt.', 'error');
+      return;
+    }
+
+    // Make sure we have host permission for the entered backend, otherwise
+    // fetch() from the service worker is blocked with "Failed to fetch".
+    let originPattern;
+    try {
+      const u = new URL(apiBase);
+      originPattern = `${u.protocol}//${u.host}/*`;
+    } catch {
+      showToast('Backend-URL ist ungültig.', 'error');
+      return;
+    }
+    const granted = await chrome.permissions.request({ origins: [originPattern] });
+    if (!granted) {
+      showToast('Permission verweigert für ' + originPattern, 'error');
+      return;
+    }
+
+    chrome.runtime.sendMessage(
+      { type: 'SET_SETTINGS', patch: { apiBase, apiKey } },
+      (r) => {
+        if (r?.ok) {
+          showToast('Gespeichert.', 'success');
+          refresh();
+        } else {
+          showToast(r?.error ?? 'Fehler beim Speichern', 'error');
+        }
+      },
+    );
   });
 
   $('test').addEventListener('click', async () => {

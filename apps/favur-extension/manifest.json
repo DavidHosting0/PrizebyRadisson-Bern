@@ -9,11 +9,12 @@
   ],
   "host_permissions": [
     "https://web.favur.ch/*",
-    "https://*.favur.ch/*"
+    "https://*.favur.ch/*",
+    "https://prizebern.com/*"
   ],
   "optional_host_permissions": [
     "https://*/*",
-    "http://*/*"
+    "http://localhost/*"
   ],
   "background": {
     "service_worker": "background.js",
