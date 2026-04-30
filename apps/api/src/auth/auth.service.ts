@@ -59,10 +59,31 @@ export class AuthService {
         titlePrefix: true,
         avatarS3Key: true,
         permissionGrants: { select: { permission: true } },
+        roleAssignments: {
+          include: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                position: true,
+                permissions: { select: { permission: true } },
+              },
+            },
+          },
+        },
       },
     });
     const grants = u.permissionGrants.map((g) => g.permission);
-    const effectivePermissions = this.permissions.effectiveFor(u.role, u.titlePrefix, grants);
+    const rolePerms = Array.from(
+      new Set(u.roleAssignments.flatMap((a) => a.role.permissions.map((p) => p.permission))),
+    );
+    const effectivePermissions = this.permissions.effectiveFor(
+      u.role,
+      u.titlePrefix,
+      grants,
+      rolePerms,
+    );
     const accessToken = await this.jwt.signAsync({
       sub: u.id,
       email: u.email,
@@ -76,6 +97,14 @@ export class AuthService {
       data: { userId: u.id, tokenHash: refreshHash, expiresAt },
     });
     const avatarUrl = await this.users.resolveAvatarUrl(u.avatarS3Key);
+    const roles = u.roleAssignments
+      .map((a) => ({
+        id: a.role.id,
+        name: a.role.name,
+        color: a.role.color,
+        position: a.role.position,
+      }))
+      .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name));
     return {
       accessToken,
       refreshToken: refreshRaw,
@@ -89,6 +118,7 @@ export class AuthService {
         titlePrefix: u.titlePrefix,
         avatarUrl,
         permissions: effectivePermissions,
+        roles,
       },
     };
   }

@@ -27,4 +27,10 @@ export class CreateUserDto {
   @IsArray()
   @IsEnum(PermissionCode, { each: true })
   permissionGrants?: PermissionCode[];
+
+  /** Custom role IDs to assign on creation. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roleIds?: string[];
 }

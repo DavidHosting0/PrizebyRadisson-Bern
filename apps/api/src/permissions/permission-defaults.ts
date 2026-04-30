@@ -202,10 +202,10 @@ export function mergeEffective(
   role: UserRole,
   titlePrefix: UserTitlePrefix,
   extraGrants: PermissionCode[],
+  rolePermissions: PermissionCode[] = [],
 ): PermissionCode[] {
   const base = defaultPermissionsForUser(role, titlePrefix);
-  for (const g of extraGrants) {
-    base.add(g);
-  }
+  for (const g of extraGrants) base.add(g);
+  for (const p of rolePermissions) base.add(p);
   return Array.from(base).sort();
 }

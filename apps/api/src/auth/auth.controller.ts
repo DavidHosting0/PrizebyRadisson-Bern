@@ -35,6 +35,14 @@ export class AuthController {
   @Get('me')
   async me(@CurrentUser() user: AuthenticatedUser) {
     const avatarUrl = await this.users.resolveAvatarUrl(user.avatarS3Key);
+    const roles = user.roleAssignments
+      .map((a) => ({
+        id: a.role.id,
+        name: a.role.name,
+        color: a.role.color,
+        position: a.role.position,
+      }))
+      .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name));
     return {
       id: user.id,
       email: user.email,
@@ -44,6 +52,7 @@ export class AuthController {
       titlePrefix: user.titlePrefix,
       avatarUrl,
       permissions: user.effectivePermissions,
+      roles,
     };
   }
 }

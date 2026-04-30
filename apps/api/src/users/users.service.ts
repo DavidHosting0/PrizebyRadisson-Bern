@@ -11,6 +11,35 @@ import { S3Service } from '../storage/s3.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
+const userRolesInclude = {
+  permissionGrants: { select: { permission: true } },
+  roleAssignments: {
+    include: {
+      role: { select: { id: true, name: true, color: true, position: true } },
+    },
+  },
+} as const;
+
+type UserWithRoles = Prisma.UserGetPayload<{ include: typeof userRolesInclude }>;
+
+/** Map a User loaded with permissionGrants + roleAssignments into the API DTO. */
+function toUserDto(u: UserWithRoles) {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    phone: u.phone,
+    role: u.role,
+    titlePrefix: u.titlePrefix,
+    isActive: u.isActive,
+    createdAt: u.createdAt,
+    permissionGrants: u.permissionGrants.map((g) => ({ permission: g.permission })),
+    roles: u.roleAssignments
+      .map((a) => a.role)
+      .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name)),
+  };
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -63,27 +92,29 @@ export class UsersService {
   }
 
   async list() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        titlePrefix: true,
-        isActive: true,
-        createdAt: true,
-        permissionGrants: { select: { permission: true } },
-      },
+    const rows = await this.prisma.user.findMany({
       orderBy: { email: 'asc' },
+      include: userRolesInclude,
     });
+    return rows.map(toUserDto);
   }
 
   async create(dto: CreateUserDto) {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
     if (exists) throw new ConflictException('Email already registered');
+
+    if (dto.roleIds?.length) {
+      const found = await this.prisma.role.findMany({
+        where: { id: { in: dto.roleIds } },
+        select: { id: true },
+      });
+      if (found.length !== new Set(dto.roleIds).size) {
+        throw new BadRequestException('One or more roles do not exist');
+      }
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    return this.prisma.user.create({
+    const created = await this.prisma.user.create({
       data: {
         email: dto.email.toLowerCase(),
         passwordHash,
@@ -94,18 +125,13 @@ export class UsersService {
         permissionGrants: dto.permissionGrants?.length
           ? { create: dto.permissionGrants.map((permission) => ({ permission })) }
           : undefined,
+        roleAssignments: dto.roleIds?.length
+          ? { create: dto.roleIds.map((roleId) => ({ roleId })) }
+          : undefined,
       },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        titlePrefix: true,
-        isActive: true,
-        permissionGrants: { select: { permission: true } },
-      },
+      include: userRolesInclude,
     });
+    return toUserDto(created);
   }
 
   async update(id: string, dto: UpdateUserDto) {
@@ -140,6 +166,16 @@ export class UsersService {
       data.passwordHash = await bcrypt.hash(dto.password, 10);
     }
 
+    if (dto.roleIds?.length) {
+      const found = await this.prisma.role.findMany({
+        where: { id: { in: dto.roleIds } },
+        select: { id: true },
+      });
+      if (found.length !== new Set(dto.roleIds).size) {
+        throw new BadRequestException('One or more roles do not exist');
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       if (Object.keys(data).length > 0) {
         await tx.user.update({ where: { id }, data });
@@ -152,21 +188,22 @@ export class UsersService {
           });
         }
       }
+      if (dto.roleIds !== undefined) {
+        await tx.userRoleAssignment.deleteMany({ where: { userId: id } });
+        if (dto.roleIds.length > 0) {
+          await tx.userRoleAssignment.createMany({
+            data: dto.roleIds.map((roleId) => ({ userId: id, roleId })),
+            skipDuplicates: true,
+          });
+        }
+      }
     });
 
-    return this.prisma.user.findUniqueOrThrow({
+    const fresh = await this.prisma.user.findUniqueOrThrow({
       where: { id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        titlePrefix: true,
-        isActive: true,
-        permissionGrants: { select: { permission: true } },
-      },
+      include: userRolesInclude,
     });
+    return toUserDto(fresh);
   }
 
   async remove(id: string, actorId: string) {

@@ -32,4 +32,10 @@ export class UpdateUserDto {
   @IsArray()
   @IsEnum(PermissionCode, { each: true })
   permissionGrants?: PermissionCode[];
+
+  /** Replace the user's custom-role memberships entirely (empty array clears). */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roleIds?: string[];
 }

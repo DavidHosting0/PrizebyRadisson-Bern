@@ -25,11 +25,24 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { permissionGrants: { select: { permission: true } } },
+      include: {
+        permissionGrants: { select: { permission: true } },
+        roleAssignments: {
+          include: { role: { include: { permissions: { select: { permission: true } } } } },
+        },
+      },
     });
     if (!user?.isActive) throw new UnauthorizedException();
     const grants = user.permissionGrants.map((g) => g.permission);
-    const effectivePermissions = this.permissions.effectiveFor(user.role, user.titlePrefix, grants);
+    const rolePerms = Array.from(
+      new Set(user.roleAssignments.flatMap((a) => a.role.permissions.map((p) => p.permission))),
+    );
+    const effectivePermissions = this.permissions.effectiveFor(
+      user.role,
+      user.titlePrefix,
+      grants,
+      rolePerms,
+    );
     return { ...user, effectivePermissions };
   }
 }

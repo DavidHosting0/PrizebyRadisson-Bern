@@ -20,6 +20,7 @@ import { StorageModule } from './storage/storage.module';
 import { FloorPlansModule } from './floor-plans/floor-plans.module';
 import { TeamChatModule } from './team-chat/team-chat.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { RolesModule } from './roles/roles.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import configuration from './config/configuration';
@@ -46,6 +47,7 @@ import configuration from './config/configuration';
     RoomTypesModule,
     FloorPlansModule,
     TeamChatModule,
+    RolesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
