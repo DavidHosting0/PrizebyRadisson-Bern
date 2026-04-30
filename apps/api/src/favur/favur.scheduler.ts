@@ -17,7 +17,7 @@ export class FavurScheduler {
   async runScheduledSync() {
     try {
       const config = await this.favur.getConfig();
-      if (!config.enabled || !config.email || !config.hasPassword) return;
+      if (!config.enabled || !config.hasActiveCapture) return;
       await this.favur.syncNow('cron');
     } catch (err) {
       this.logger.warn(`Scheduled Favur sync failed: ${(err as Error).message}`);

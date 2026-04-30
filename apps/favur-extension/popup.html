@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>PrizeBern Favur Sync</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * { box-sizing: border-box; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        margin: 0;
+        padding: 16px;
+        width: 320px;
+        background: #f7f7f9;
+        color: #111;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .sub {
+        font-size: 11px;
+        color: #666;
+        margin-bottom: 14px;
+      }
+      label {
+        display: block;
+        margin: 10px 0 4px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #444;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      input[type='text'], input[type='password'] {
+        width: 100%;
+        padding: 7px 9px;
+        border: 1px solid #d1d1d6;
+        border-radius: 7px;
+        background: #fff;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 7px;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: filter 120ms;
+      }
+      button:hover { filter: brightness(0.96); }
+      .btn-primary { background: #1f1f23; color: #fff; }
+      .btn-secondary { background: #fff; color: #1f1f23; border: 1px solid #d1d1d6; }
+      .btn-toggle.on { background: #16a34a; color: #fff; }
+      .btn-toggle.off { background: #e5e7eb; color: #374151; }
+      .status {
+        margin-top: 14px;
+        padding: 10px;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid #ececef;
+        font-size: 12px;
+      }
+      .status .line {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 2px 0;
+      }
+      .status .label { color: #666; }
+      .status .val {
+        font-variant-numeric: tabular-nums;
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ok { color: #16a34a; font-weight: 600; }
+      .err { color: #dc2626; font-weight: 600; }
+      .footer {
+        margin-top: 14px;
+        font-size: 11px;
+        color: #888;
+      }
+      .toast {
+        margin-top: 10px;
+        font-size: 12px;
+        padding: 6px 8px;
+        border-radius: 6px;
+      }
+      .toast.success { background: #ecfdf5; color: #065f46; }
+      .toast.error { background: #fef2f2; color: #991b1b; }
+    </style>
+  </head>
+  <body>
+    <h1>PrizeBern Favur Sync</h1>
+    <div class="sub">
+      Schickt jeden Favur-API-Call (mit Cookies) an dein PrizeBern-Backend.
+    </div>
+
+    <label for="apiBase">Backend-URL</label>
+    <input type="text" id="apiBase" placeholder="https://prizebern.com/api/v1" />
+
+    <label for="apiKey">API-Key</label>
+    <input type="password" id="apiKey" placeholder="aus Admin → Integrations" />
+
+    <div class="row" style="margin-top: 12px;">
+      <button id="save" class="btn-primary">Speichern</button>
+      <button id="test" class="btn-secondary">Testen</button>
+      <button id="toggle" class="btn-toggle on">An</button>
+    </div>
+
+    <div id="toast" class="toast" style="display:none"></div>
+
+    <div class="status" id="status">
+      <div class="line"><span class="label">Letzter Upload</span><span class="val" id="lastUploadAt">–</span></div>
+      <div class="line"><span class="label">Status</span><span class="val" id="lastUploadStatus">–</span></div>
+      <div class="line"><span class="label">URL</span><span class="val" id="lastUploadUrl">–</span></div>
+      <div class="line"><span class="label">Erfolge</span><span class="val" id="uploadCount">0</span></div>
+      <div class="line"><span class="label">Fehler</span><span class="val" id="errorCount">0</span></div>
+    </div>
+
+    <div class="footer">
+      Logge dich auf <strong>web.favur.ch</strong> ein und navigiere auf den Schichtplan.
+      Die Extension sendet alle relevanten Calls automatisch.
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

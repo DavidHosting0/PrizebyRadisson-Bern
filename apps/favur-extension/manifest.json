@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "PrizeBern Favur Sync",
+  "version": "1.0.0",
+  "description": "Captures Favur shift API requests in your browser and forwards them (with cookies) to the PrizeBern hotel housekeeping backend, so the schichtplan auto-syncs.",
+  "permissions": [
+    "storage",
+    "cookies"
+  ],
+  "host_permissions": [
+    "https://web.favur.ch/*",
+    "https://*.favur.ch/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.favur.ch/*", "https://*.favur.ch/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["https://web.favur.ch/*", "https://*.favur.ch/*"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PrizeBern Favur Sync"
+  }
+}

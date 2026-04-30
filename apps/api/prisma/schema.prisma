@@ -475,17 +475,43 @@ model Shift {
   @@index([startsAt, endsAt])
 }
 
-/// Singleton-ish config for the Favur shift import. There should normally be
-/// exactly one row (id = "default"). Credentials are encrypted at rest.
+/// Singleton-ish config for the Favur shift import. Always one row (id = "default").
+///
+/// Auth flows in via the browser extension: the user logs into Favur as normal
+/// (SMS OTP), the extension intercepts API calls + reads cookies, and POSTs them
+/// to /favur/import on our backend. The most useful capture (or whatever the
+/// admin marks as active) becomes the "request template" we replay every 15 min.
 model FavurIntegration {
   id                 String    @id @default("default")
   enabled            Boolean   @default(false)
   baseUrl            String    @default("https://web.favur.ch")
-  email              String?
-  encryptedPassword  String?
-  /// Last successful auth token + cookies (encrypted JSON blob).
-  encryptedSession   String?
-  sessionExpiresAt   DateTime?
+
+  /// Shared secret the extension uses to authenticate when posting captures.
+  apiKey             String?   @unique
+
+  /// Active request template (from the most recently chosen FavurCapture).
+  activeCaptureId    String?
+  activeUrl          String?
+  activeMethod       String?
+  /// Encrypted JSON: { headerName: value, ... } — replayed on every sync.
+  activeHeaders      String?
+  /// Encrypted cookie string ("a=1; b=2"), captured via chrome.cookies API
+  /// so HttpOnly cookies are included.
+  activeCookies      String?
+  /// Optional encrypted body for POST requests.
+  activeBody         String?
+  activeCapturedAt   DateTime?
+
+  /// JSONPath-ish dot path into the response for the shifts array.
+  /// "" means "response is itself the shifts array".
+  shiftsJsonPath     String    @default("")
+  fieldShiftId       String    @default("id")
+  fieldUserId        String    @default("user.id")
+  fieldUserName      String    @default("user.fullName")
+  fieldStartsAt      String    @default("startsAt")
+  fieldEndsAt        String    @default("endsAt")
+  fieldLabel         String?
+
   /// Sync window in days, looking forward from "today".
   windowDays         Int       @default(14)
   lastSyncAt         DateTime?
@@ -496,6 +522,28 @@ model FavurIntegration {
   syncInProgress     Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+}
+
+/// Every API request the browser extension forwards. The most-recently chosen
+/// one becomes the active request template (mirrored onto FavurIntegration
+/// for fast access and so the extension's history can be cleaned without
+/// breaking sync).
+model FavurCapture {
+  id              String   @id @default(cuid())
+  url             String
+  method          String   @default("GET")
+  headers         String   // encrypted JSON
+  cookies         String   // encrypted cookie string
+  body            String?  // encrypted (POST/PUT requests)
+  responseStatus  Int
+  /// Encrypted, truncated response body (first 64 KB) — used for previewing
+  /// in the admin UI and for auto-detecting which capture is the shift list.
+  responseSample  String
+  responseShape   String?  // hint string (e.g. "array<10> with date fields")
+  capturedAt      DateTime @default(now())
+  capturedFrom    String?  // optional user/host hint from extension
+
+  @@index([capturedAt])
 }
 
 /// Mapping from Favur employee identifier to a local User. Rows are created
