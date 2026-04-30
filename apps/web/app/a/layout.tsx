@@ -60,6 +60,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 Floor plans
               </Link>
+              <Link
+                href="/a/integrations"
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  pathname.startsWith('/a/integrations')
+                    ? 'bg-ink text-white'
+                    : 'text-ink-muted hover:bg-surface-muted'
+                }`}
+              >
+                Integrations
+              </Link>
             </nav>
           </div>
           <span className="truncate text-sm text-ink-muted">{user.email}</span>

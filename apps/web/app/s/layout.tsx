@@ -19,6 +19,7 @@ const nav = [
   { href: '/s/chat', label: 'Team chat' },
   { href: '/s/lost', label: 'Lost & found' },
   { href: '/s/damages', label: 'Damage reports' },
+  { href: '/s/schichtplan', label: 'Schichtplan' },
   { href: '/s/performance', label: 'Performance' },
 ];
 

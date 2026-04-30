@@ -63,6 +63,8 @@ enum PermissionCode {
   DAMAGE_REPORT_CREATE
   DAMAGE_REPORT_READ
   DAMAGE_REPORT_UPDATE
+  SHIFT_READ
+  SHIFT_MANAGE
 }
 
 enum ChecklistTaskStatus {
@@ -169,6 +171,7 @@ model User {
   teamChatMessageReactions TeamChatMessageReaction[]
   permissionGrants         UserPermissionGrant[]
   roleAssignments          UserRoleAssignment[]
+  favurMap                 FavurUserMap[]
 }
 
 /**
@@ -456,9 +459,58 @@ model Shift {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   startsAt  DateTime
   endsAt    DateTime
+  /// Where the row originated. "manual" for hand entries, "favur" for sync.
+  source    String   @default("manual")
+  /// External id from the source system (e.g. Favur shift id). Lets us upsert.
+  sourceId  String?
+  /// Free-form label (Favur shift code, location, role, etc.).
+  label     String?
+  /// Hex color for the chip on the roster (defaults to user's role color).
+  color     String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  @@unique([source, sourceId])
   @@index([userId, startsAt, endsAt])
+  @@index([startsAt, endsAt])
+}
+
+/// Singleton-ish config for the Favur shift import. There should normally be
+/// exactly one row (id = "default"). Credentials are encrypted at rest.
+model FavurIntegration {
+  id                 String    @id @default("default")
+  enabled            Boolean   @default(false)
+  baseUrl            String    @default("https://web.favur.ch")
+  email              String?
+  encryptedPassword  String?
+  /// Last successful auth token + cookies (encrypted JSON blob).
+  encryptedSession   String?
+  sessionExpiresAt   DateTime?
+  /// Sync window in days, looking forward from "today".
+  windowDays         Int       @default(14)
+  lastSyncAt         DateTime?
+  lastSyncStatus     String?
+  lastSyncError      String?
+  lastSyncCount      Int       @default(0)
+  /// True while a sync is currently running (advisory lock).
+  syncInProgress     Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+/// Mapping from Favur employee identifier to a local User. Rows are created
+/// the first time we see a Favur user; admins map them to local accounts.
+model FavurUserMap {
+  id               String    @id @default(cuid())
+  favurUserId      String    @unique
+  favurDisplayName String?
+  userId           String?
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lastSeenAt       DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model RoomAssignment {

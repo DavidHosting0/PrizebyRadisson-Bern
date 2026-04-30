@@ -93,6 +93,14 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       { code: PermissionCode.TEAM_CHAT_POST, title: 'Send messages', description: 'Post messages and reactions.' },
     ],
   },
+  {
+    id: 'schedule',
+    label: 'Schedule',
+    entries: [
+      { code: PermissionCode.SHIFT_READ, title: 'View shift plan', description: 'Open the daily/weekly roster.' },
+      { code: PermissionCode.SHIFT_MANAGE, title: 'Manage shift integration', description: 'Configure Favur sync, map users, trigger manual sync.' },
+    ],
+  },
 ];
 
 const LABELS: Record<PermissionCode, string> = Object.fromEntries(

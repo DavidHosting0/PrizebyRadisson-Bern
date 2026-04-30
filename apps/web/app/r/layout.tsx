@@ -26,6 +26,7 @@ const nav = [
   { href: '/r/chat', label: 'Team chat', icon: IconChat },
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
   { href: '/r/damages', label: 'Damage reports', icon: IconDamage },
+  { href: '/r/schichtplan', label: 'Schichtplan', icon: IconCalendar },
 ];
 
 function IconDash({ className }: { className?: string }) {
@@ -84,6 +85,15 @@ function IconDamage({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <path d="M10 7l2 3 2-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconCalendar({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
     </svg>
   );
 }

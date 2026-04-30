@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -21,6 +22,9 @@ import { FloorPlansModule } from './floor-plans/floor-plans.module';
 import { TeamChatModule } from './team-chat/team-chat.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { RolesModule } from './roles/roles.module';
+import { ShiftsModule } from './shifts/shifts.module';
+import { FavurModule } from './favur/favur.module';
+import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import configuration from './config/configuration';
@@ -28,9 +32,11 @@ import configuration from './config/configuration';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     RealtimeModule,
     StorageModule,
+    CryptoModule,
     PermissionsModule,
     AuthModule,
     UsersModule,
@@ -48,6 +54,8 @@ import configuration from './config/configuration';
     FloorPlansModule,
     TeamChatModule,
     RolesModule,
+    ShiftsModule,
+    FavurModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
