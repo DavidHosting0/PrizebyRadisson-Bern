@@ -40,18 +40,41 @@ export function clearTokens() {
   localStorage.removeItem('refreshToken');
 }
 
+/**
+ * In-flight refresh promise, shared across the whole app so that concurrent
+ * 401s only trigger one POST /auth/refresh. Without this, two parallel API
+ * calls race on the same refresh token: the server invalidates the token after
+ * the first request consumes it, so the second one sees 401 and the user gets
+ * unceremoniously logged out.
+ */
+let refreshInFlight: Promise<string | null> | null = null;
+
 async function refreshAccess(): Promise<string | null> {
-  const { refresh } = getTokens();
-  if (!refresh) return null;
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken: refresh }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  setTokens(data.accessToken, data.refreshToken);
-  return data.accessToken;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const { refresh } = getTokens();
+    if (!refresh) return null;
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: refresh }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { accessToken: string; refreshToken: string };
+      setTokens(data.accessToken, data.refreshToken);
+      return data.accessToken;
+    } catch {
+      return null;
+    } finally {
+      // Always reset so the next 401 (e.g. after a true session expiry) can try again.
+      // Tiny delay so any pending callers grab the cached promise first.
+      setTimeout(() => {
+        refreshInFlight = null;
+      }, 50);
+    }
+  })();
+  return refreshInFlight;
 }
 
 export async function api<T>(

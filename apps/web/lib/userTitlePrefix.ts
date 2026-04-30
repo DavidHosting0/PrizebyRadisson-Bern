@@ -30,3 +30,29 @@ export function formatUserRef(u: UserLike | null | undefined): string {
   if (!u) return '';
   return formatUserWithTitlePrefix(u.name, u.titlePrefix);
 }
+
+/**
+ * Derive the API `UserRole` (account type — drives which app shell the user
+ * lands in after login) from the chosen title prefix. The two are tightly
+ * coupled in this app: e.g. "Cleaner" always lives in the housekeeper app.
+ *
+ * Permissions on top of that are now handled by the custom Roles system,
+ * so admins shouldn't have to pick the account type separately.
+ */
+export function accountTypeForTitlePrefix(prefix: string): string {
+  switch (prefix) {
+    case 'RECEPTION':
+      return 'RECEPTION';
+    case 'ADMIN':
+      return 'ADMIN';
+    case 'TECHNICIAN':
+      return 'TECHNICIAN';
+    case 'HOUSEKEEPING_SUPERVISOR':
+      return 'SUPERVISOR';
+    case 'CLEANER':
+    case 'HTC_IN_TRAINING':
+    case 'HTC':
+    default:
+      return 'HOUSEKEEPER';
+  }
+}

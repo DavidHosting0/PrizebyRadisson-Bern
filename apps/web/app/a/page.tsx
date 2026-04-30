@@ -7,7 +7,11 @@ import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
-import { USER_TITLE_PREFIX_OPTIONS, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
+import {
+  USER_TITLE_PREFIX_OPTIONS,
+  accountTypeForTitlePrefix,
+  userTitlePrefixLabel,
+} from '@/lib/userTitlePrefix';
 
 type CustomRole = { id: string; name: string; color: string; position: number };
 
@@ -31,21 +35,19 @@ type PermissionCatalog = {
   groups?: { id: string; label: string; codes: string[] }[];
 };
 
-/** Permission / app area (maps to API `UserRole`). */
-const JOB_ROLES = ['HOUSEKEEPER', 'SUPERVISOR', 'RECEPTION', 'TECHNICIAN', 'ADMIN'] as const;
-
-function jobRoleLabel(r: string) {
+/** Compact account-type label for the user-card line. */
+function accountTypeLabel(r: string) {
   switch (r) {
     case 'HOUSEKEEPER':
-      return 'Cleaner';
+      return 'Housekeeper account';
     case 'SUPERVISOR':
-      return 'Housekeeping Supervisor';
+      return 'Supervisor account';
     case 'RECEPTION':
-      return 'Reception';
+      return 'Reception account';
     case 'TECHNICIAN':
-      return 'Technician (maintenance app)';
+      return 'Technician account';
     case 'ADMIN':
-      return 'Admin';
+      return 'Admin account';
     default:
       return r;
   }
@@ -173,7 +175,7 @@ export default function AdminUserManagementPage() {
                 <p className="mt-1 text-xs text-ink-muted">
                   <span className="font-medium text-ink/90">{userTitlePrefixLabel(u.titlePrefix)}</span>
                   <span className="mx-1.5 text-ink-muted/60">·</span>
-                  {jobRoleLabel(u.role)}
+                  {accountTypeLabel(u.role)}
                   {!u.isActive && (
                     <span className="ml-2 font-medium text-danger">· Disabled</span>
                   )}
@@ -300,8 +302,10 @@ function UserUpsertModal({
   const [password, setPassword] = useState('');
   const [name, setName] = useState(initial?.name ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
-  const [role, setRole] = useState<string>(initial?.role ?? 'HOUSEKEEPER');
   const [titlePrefix, setTitlePrefix] = useState<string>(initial?.titlePrefix ?? 'CLEANER');
+  // Account type (drives which app shell the user opens after login) is
+  // derived from the chosen title prefix; admins don't pick it explicitly.
+  const role = accountTypeForTitlePrefix(titlePrefix);
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [extraGrantCodes, setExtraGrantCodes] = useState<string[]>(() =>
     initial?.permissionGrants?.map((g) => g.permission) ?? [],
@@ -320,11 +324,6 @@ function UserUpsertModal({
     }
   }, [mode, initial?.id, initial?.permissionGrants, initial?.roles]);
 
-  useEffect(() => {
-    if (mode === 'create' && role === 'TECHNICIAN') {
-      setTitlePrefix('TECHNICIAN');
-    }
-  }, [mode, role]);
 
   function toggleGrant(code: string) {
     setExtraGrantCodes((prev) =>
@@ -439,25 +438,11 @@ function UserUpsertModal({
             />
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-ink">Role (permissions)</span>
+            <span className="font-medium text-ink">Title prefix</span>
             <p className="mt-0.5 text-xs text-ink-muted">
-              App area: Cleaner, Supervisor, Reception, Technician (mobile maintenance), or Admin.
+              Drives where the user lands after login (Cleaner → housekeeper app, Reception → reception app, etc.) and is shown in chat, headers, and lists.
+              Permissions on top of this are handled with Roles.
             </p>
-            <select
-              className="mt-1 w-full min-h-[44px] cursor-pointer rounded-btn border border-border bg-surface px-3 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              {JOB_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {jobRoleLabel(r)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="font-medium text-ink">Title prefix (shown everywhere)</span>
-            <p className="mt-0.5 text-xs text-ink-muted">Displayed in chat, headers, assignments, and lists.</p>
             <select
               className="mt-1 w-full min-h-[44px] cursor-pointer rounded-btn border border-border bg-surface px-3 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15"
               value={titlePrefix}

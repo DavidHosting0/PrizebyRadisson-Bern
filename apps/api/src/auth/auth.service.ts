@@ -33,7 +33,17 @@ export class AuthService {
       include: { user: true },
     });
     if (!row?.user?.isActive) throw new UnauthorizedException('Invalid refresh');
-    await this.prisma.refreshToken.delete({ where: { id: row.id } });
+
+    // Atomic consume: deleteMany never throws P2025. If two clients race on the
+    // same refresh token (common with multi-tab + Socket.IO reconnects),
+    // exactly one wins; the loser sees a clean 401 instead of crashing the
+    // request with a Prisma error.
+    const consumed = await this.prisma.refreshToken.deleteMany({
+      where: { id: row.id },
+    });
+    if (consumed.count === 0) {
+      throw new UnauthorizedException('Refresh token already used');
+    }
     return this.issueTokens(row.user.id);
   }
 
