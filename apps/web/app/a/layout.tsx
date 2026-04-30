@@ -28,7 +28,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-surface-muted">
       <header className="border-b border-border bg-surface px-4 py-3 shadow-card">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <BrandLogo compact />
             <nav className="flex items-center gap-2">
@@ -39,6 +39,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 }`}
               >
                 User management
+              </Link>
+              <Link
+                href="/a/roles"
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  pathname.startsWith('/a/roles')
+                    ? 'bg-ink text-white'
+                    : 'text-ink-muted hover:bg-surface-muted'
+                }`}
+              >
+                Roles
               </Link>
               <Link
                 href="/a/floor-plans"
@@ -55,7 +65,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <span className="truncate text-sm text-ink-muted">{user.email}</span>
         </div>
       </header>
-      <div className="mx-auto max-w-5xl">{children}</div>
+      <div className="mx-auto max-w-7xl">{children}</div>
     </div>
   );
 }

@@ -1,5 +1,12 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
+export type MeRole = {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+};
+
 export type Me = {
   id: string;
   email: string;
@@ -9,8 +16,10 @@ export type Me = {
   titlePrefix?: string | null;
   /** Short-lived presigned GET URL for the user's profile picture, or null. */
   avatarUrl?: string | null;
-  /** Effective permission codes (defaults ∪ admin grants). */
+  /** Effective permission codes (defaults ∪ grants ∪ assigned roles). */
   permissions?: string[];
+  /** Discord-style custom roles assigned to this user, sorted top to bottom. */
+  roles?: MeRole[];
 };
 
 function getTokens() {

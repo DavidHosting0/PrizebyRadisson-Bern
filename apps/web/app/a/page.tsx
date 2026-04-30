@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
 import { USER_TITLE_PREFIX_OPTIONS, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
 
+type CustomRole = { id: string; name: string; color: string; position: number };
+
 type UserRow = {
   id: string;
   email: string;
@@ -19,9 +21,15 @@ type UserRow = {
   isActive: boolean;
   createdAt: string;
   permissionGrants?: { permission: string }[];
+  roles?: CustomRole[];
 };
 
-type PermissionCatalog = { codes: string[]; labels: Record<string, string> };
+type PermissionCatalog = {
+  codes: string[];
+  labels: Record<string, string>;
+  descriptions?: Record<string, string>;
+  groups?: { id: string; label: string; codes: string[] }[];
+};
 
 /** Permission / app area (maps to API `UserRole`). */
 const JOB_ROLES = ['HOUSEKEEPER', 'SUPERVISOR', 'RECEPTION', 'TECHNICIAN', 'ADMIN'] as const;
@@ -75,6 +83,12 @@ export default function AdminUserManagementPage() {
     queryFn: () => api<PermissionCatalog>('/permissions'),
   });
 
+  const { data: rolesCatalog = [] } = useQuery({
+    queryKey: ['roles'],
+    enabled: me?.role === 'ADMIN',
+    queryFn: () => api<CustomRole[]>('/roles'),
+  });
+
   const createMut = useMutation({
     mutationFn: (body: {
       email: string;
@@ -84,9 +98,11 @@ export default function AdminUserManagementPage() {
       role: string;
       titlePrefix: string;
       permissionGrants?: string[];
+      roleIds?: string[];
     }) => api<UserRow>('/users', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['roles'] });
       setCreateOpen(false);
       toast.push('User created', 'success');
     },
@@ -107,10 +123,12 @@ export default function AdminUserManagementPage() {
         isActive?: boolean;
         password?: string;
         permissionGrants?: string[];
+        roleIds?: string[];
       };
     }) => api<UserRow>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['roles'] });
       setEditUser(null);
       toast.push('User updated', 'success');
       if (vars.id === me?.id) void refreshMe();
@@ -163,6 +181,19 @@ export default function AdminUserManagementPage() {
                     <span className="ml-2 font-medium text-ink-muted">· You</span>
                   )}
                 </p>
+                {u.roles && u.roles.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {u.roles.map((r) => (
+                      <span
+                        key={r.id}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/60 px-2 py-0.5 text-[11px] font-medium text-ink"
+                      >
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: r.color }} />
+                        {r.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {u.permissionGrants && u.permissionGrants.length > 0 && (
                   <p className="mt-1 text-[11px] text-ink-muted">
                     <span className="font-medium text-ink/80">Extra permissions:</span>{' '}
@@ -193,6 +224,7 @@ export default function AdminUserManagementPage() {
         <UserUpsertModal
           mode="create"
           catalog={permCatalog}
+          rolesCatalog={rolesCatalog}
           onClose={() => setCreateOpen(false)}
           onSubmitCreate={(values) => createMut.mutate(values)}
           submitting={createMut.isPending}
@@ -204,6 +236,7 @@ export default function AdminUserManagementPage() {
         <UserUpsertModal
           mode="edit"
           catalog={permCatalog}
+          rolesCatalog={rolesCatalog}
           initial={editUser}
           onClose={() => setEditUser(null)}
           onSubmitEdit={(body) => updateMut.mutate({ id: editUser.id, body })}
@@ -227,6 +260,7 @@ export default function AdminUserManagementPage() {
 function UserUpsertModal({
   mode,
   catalog,
+  rolesCatalog,
   initial,
   onClose,
   onSubmitCreate,
@@ -236,6 +270,7 @@ function UserUpsertModal({
 }: {
   mode: 'create' | 'edit';
   catalog?: PermissionCatalog;
+  rolesCatalog?: CustomRole[];
   initial?: UserRow;
   onClose: () => void;
   onSubmitCreate?: (v: {
@@ -246,6 +281,7 @@ function UserUpsertModal({
     role: string;
     titlePrefix: string;
     permissionGrants?: string[];
+    roleIds?: string[];
   }) => void;
   onSubmitEdit?: (v: {
     name: string;
@@ -255,6 +291,7 @@ function UserUpsertModal({
     isActive: boolean;
     password?: string;
     permissionGrants: string[];
+    roleIds: string[];
   }) => void;
   submitting: boolean;
   onValidationError?: (msg: string) => void;
@@ -269,15 +306,19 @@ function UserUpsertModal({
   const [extraGrantCodes, setExtraGrantCodes] = useState<string[]>(() =>
     initial?.permissionGrants?.map((g) => g.permission) ?? [],
   );
+  const [roleIds, setRoleIds] = useState<string[]>(() => initial?.roles?.map((r) => r.id) ?? []);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     if (mode === 'edit' && initial) {
       setExtraGrantCodes(initial.permissionGrants?.map((g) => g.permission) ?? []);
+      setRoleIds(initial.roles?.map((r) => r.id) ?? []);
     }
     if (mode === 'create') {
       setExtraGrantCodes([]);
+      setRoleIds([]);
     }
-  }, [mode, initial?.id, initial?.permissionGrants]);
+  }, [mode, initial?.id, initial?.permissionGrants, initial?.roles]);
 
   useEffect(() => {
     if (mode === 'create' && role === 'TECHNICIAN') {
@@ -289,6 +330,10 @@ function UserUpsertModal({
     setExtraGrantCodes((prev) =>
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
     );
+  }
+
+  function toggleRole(id: string) {
+    setRoleIds((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]));
   }
 
   function onSubmit(e: FormEvent) {
@@ -304,6 +349,7 @@ function UserUpsertModal({
         role,
         titlePrefix,
         permissionGrants: extraGrantCodes.length ? extraGrantCodes : undefined,
+        roleIds: roleIds.length ? roleIds : undefined,
       });
       return;
     }
@@ -321,6 +367,7 @@ function UserUpsertModal({
       isActive: boolean;
       password?: string;
       permissionGrants: string[];
+      roleIds: string[];
     } = {
       name: name.trim(),
       phone: phone.trim() ? phone.trim() : null,
@@ -328,6 +375,7 @@ function UserUpsertModal({
       titlePrefix,
       isActive,
       permissionGrants: extraGrantCodes,
+      roleIds,
     };
     if (pw.length >= 8) {
       body.password = pw;
@@ -449,10 +497,61 @@ function UserUpsertModal({
             {mode === 'edit' && <p className="mt-1 text-xs text-ink-muted">Only filled if you want to reset their password.</p>}
           </label>
           <div className="rounded-lg border border-border bg-surface-muted/40 px-3 py-3">
-            <p className="text-sm font-medium text-ink">Extra permissions</p>
-            <p className="mt-1 text-xs text-ink-muted">
-              Added on top of the automatic set for the chosen role and title. Users still need the correct app role
-              (Cleaner / Supervisor / Reception / Technician / Admin) to open each area.
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-ink">Roles</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  Group permissions into reusable bundles. Manage them on the{' '}
+                  <a href="/a/roles" className="underline">Roles page</a>.
+                </p>
+              </div>
+              <span className="text-xs text-ink-muted">
+                {roleIds.length} of {rolesCatalog?.length ?? 0}
+              </span>
+            </div>
+            {!rolesCatalog?.length && (
+              <p className="mt-3 text-xs text-ink-muted">No roles created yet.</p>
+            )}
+            {!!rolesCatalog?.length && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[...rolesCatalog]
+                  .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name))
+                  .map((r) => {
+                    const active = roleIds.includes(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleRole(r.id)}
+                        className={
+                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
+                          (active
+                            ? 'border-ink bg-ink text-white shadow-card'
+                            : 'border-border bg-surface text-ink hover:bg-surface-muted')
+                        }
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: r.color }}
+                        />
+                        {r.name}
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+
+          <details
+            className="rounded-lg border border-border bg-surface-muted/40 px-3 py-3"
+            open={showAdvanced}
+            onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}
+          >
+            <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+              Advanced — individual permission overrides
+            </summary>
+            <p className="mt-2 text-xs text-ink-muted">
+              Added on top of account-type defaults and the user&apos;s assigned roles. Prefer roles when you can.
             </p>
             {!catalog?.codes?.length && (
               <p className="mt-2 text-xs text-ink-muted">Loading permission list…</p>
@@ -478,7 +577,7 @@ function UserUpsertModal({
                 ))}
               </ul>
             )}
-          </div>
+          </details>
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" className="min-h-[44px]" onClick={onClose} disabled={submitting}>
               Cancel
