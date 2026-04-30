@@ -115,7 +115,8 @@ export class FavurService {
     const headersJson = JSON.stringify(dto.headers ?? {});
     const sample = (dto.responseSample ?? '').slice(0, 64 * 1024);
 
-    const shape = describeShape(sample);
+    const isFavurTeamplan = looksLikeFavurTeamplanCapture(dto);
+    const shape = isFavurTeamplan ? 'favur:teamplanWithTeams' : describeShape(sample);
 
     const capture = await this.prisma.favurCapture.create({
       data: {
@@ -144,13 +145,15 @@ export class FavurService {
       });
     }
 
-    // Auto-promote: if THIS capture looks like shifts AND we have nothing better,
-    // mark it active. The admin can override at any time.
-    const looksLikeShifts = shape.startsWith('array<');
+    // Auto-promote: Favur teamplan captures are unambiguous, always promote
+    // (a fresher one replaces an older one within ≤6h; otherwise leave alone
+    // so an admin's manual pin sticks). For unknown shapes, only promote if
+    // the response is an array and we have no active capture yet.
     const config = await this.ensureRow();
-    const shouldActivate =
-      looksLikeShifts &&
-      (!config.activeCaptureId || isOlderThan(config.activeCapturedAt, 6));
+    const shouldActivate = isFavurTeamplan
+      ? !config.activeCaptureId || isOlderThan(config.activeCapturedAt, 6)
+      : shape.startsWith('array<') &&
+        (!config.activeCaptureId || isOlderThan(config.activeCapturedAt, 6));
 
     if (shouldActivate) {
       await this.activateCaptureInternal(capture.id);
@@ -503,6 +506,15 @@ function addDays(d: Date, n: number): Date {
 function isOlderThan(d: Date | null, hours: number): boolean {
   if (!d) return true;
   return Date.now() - d.getTime() > hours * 3_600_000;
+}
+
+function looksLikeFavurTeamplanCapture(dto: ImportCaptureDto): boolean {
+  if (!/\/graphql(?:$|[/?#])/i.test(dto.url)) return false;
+  const body = dto.body ?? '';
+  if (!body.includes('teamplanWithTeams')) return false;
+  // Ignore probe / non-200 captures.
+  if (dto.responseStatus < 200 || dto.responseStatus >= 300) return false;
+  return true;
 }
 
 /**

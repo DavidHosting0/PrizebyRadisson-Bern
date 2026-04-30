@@ -331,22 +331,33 @@ export default function FavurIntegrationPage() {
           <Field label="Basis-URL"><input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" /></Field>
           <Field label="Sync-Fenster (Tage)"><input type="number" min={1} max={60} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" /></Field>
 
-          <div className="md:col-span-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              JSON-Parsing (anhand der Capture-Antwort anpassen)
-            </p>
-            <p className="text-xs text-ink-muted">
-              Pfad in Punkt-Notation, z.B. <code>data.shifts</code>. Leer lassen wenn die
-              Response selbst schon das Array ist.
-            </p>
-          </div>
-          <Field label="Shifts JSON path"><input type="text" value={shiftsJsonPath} onChange={(e) => setShiftsJsonPath(e.target.value)} placeholder="(leer = root)" className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
-          <Field label="Shift-ID Feld"><input type="text" value={fieldShiftId} onChange={(e) => setFieldShiftId(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
-          <Field label="User-ID Feld"><input type="text" value={fieldUserId} onChange={(e) => setFieldUserId(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
-          <Field label="User-Name Feld"><input type="text" value={fieldUserName} onChange={(e) => setFieldUserName(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
-          <Field label="Start-Feld"><input type="text" value={fieldStartsAt} onChange={(e) => setFieldStartsAt(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
-          <Field label="Ende-Feld"><input type="text" value={fieldEndsAt} onChange={(e) => setFieldEndsAt(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
-          <Field label="Label-Feld (optional)"><input type="text" value={fieldLabel} onChange={(e) => setFieldLabel(e.target.value)} placeholder="z.B. shiftType.code" className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+          {config?.activeUrl && /\/graphql/.test(config.activeUrl) ? (
+            <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+              <strong>Favur GraphQL teamplan erkannt.</strong> Der eingebaute Parser
+              kümmert sich um die genestete Struktur (tenants → costCenters → persons →
+              shifts), Pausen werden gefiltert, Nachtdienste über Mitternacht korrekt
+              berechnet. Die JSON-Path-Felder unten sind in diesem Modus ungenutzt.
+            </div>
+          ) : (
+            <>
+              <div className="md:col-span-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  JSON-Parsing (anhand der Capture-Antwort anpassen)
+                </p>
+                <p className="text-xs text-ink-muted">
+                  Pfad in Punkt-Notation, z.B. <code>data.shifts</code>. Leer lassen
+                  wenn die Response selbst schon das Array ist.
+                </p>
+              </div>
+              <Field label="Shifts JSON path"><input type="text" value={shiftsJsonPath} onChange={(e) => setShiftsJsonPath(e.target.value)} placeholder="(leer = root)" className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+              <Field label="Shift-ID Feld"><input type="text" value={fieldShiftId} onChange={(e) => setFieldShiftId(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+              <Field label="User-ID Feld"><input type="text" value={fieldUserId} onChange={(e) => setFieldUserId(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+              <Field label="User-Name Feld"><input type="text" value={fieldUserName} onChange={(e) => setFieldUserName(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+              <Field label="Start-Feld"><input type="text" value={fieldStartsAt} onChange={(e) => setFieldStartsAt(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+              <Field label="Ende-Feld"><input type="text" value={fieldEndsAt} onChange={(e) => setFieldEndsAt(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+              <Field label="Label-Feld (optional)"><input type="text" value={fieldLabel} onChange={(e) => setFieldLabel(e.target.value)} placeholder="z.B. shiftType.code" className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm" /></Field>
+            </>
+          )}
 
           <div className="md:col-span-2 flex flex-wrap items-center gap-3">
             <button type="submit" disabled={updateMut.isPending} className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{updateMut.isPending ? 'Speichert…' : 'Speichern'}</button>
