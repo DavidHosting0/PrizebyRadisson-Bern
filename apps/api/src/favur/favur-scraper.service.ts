@@ -295,25 +295,58 @@ function setTeamplanDates(bodyJson: string, startDate: string, endDate: string):
   return JSON.stringify(parsed);
 }
 
+const FAVUR_TZ = 'Europe/Zurich';
+
+/**
+ * Combine a `YYYY-MM-DD` date with a `HH:MM[:SS]` time, interpreted in
+ * Europe/Zurich (Favur's timezone), and return the corresponding UTC instant.
+ *
+ * DST-aware: uses `Intl.DateTimeFormat` with `timeZoneName: 'shortOffset'` to
+ * resolve the actual offset for the wall-clock instant in question, then
+ * iterates once to be safe near DST transitions.
+ */
 function combineDateAndTime(dateStr: string, timeStr: string | undefined): Date | null {
   if (!dateStr || !timeStr) return null;
   const dm = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
   const tm = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(timeStr);
   if (!dm || !tm) return null;
-  // Use UTC to avoid surprises on the server's local TZ. Favur dates are local
-  // Swiss times, but for our roster (filtered as date windows) UTC vs local
-  // makes no difference within a single timezone deployment.
-  const d = new Date(
-    Date.UTC(
-      Number(dm[1]),
-      Number(dm[2]) - 1,
-      Number(dm[3]),
-      Number(tm[1]),
-      Number(tm[2]),
-      Number(tm[3] ?? '0'),
-    ),
-  );
-  return Number.isNaN(d.getTime()) ? null : d;
+  const y = Number(dm[1]);
+  const mo = Number(dm[2]);
+  const d = Number(dm[3]);
+  const h = Number(tm[1]);
+  const mi = Number(tm[2]);
+  const s = Number(tm[3] ?? '0');
+
+  // Naive UTC interpretation, then shift by the Zurich offset valid at that instant.
+  const naive = Date.UTC(y, mo - 1, d, h, mi, s);
+  let offsetMin = zurichOffsetMinutes(new Date(naive));
+  let utc = naive - offsetMin * 60_000;
+  // Re-check at the corrected instant in case we crossed a DST boundary.
+  const offsetMin2 = zurichOffsetMinutes(new Date(utc));
+  if (offsetMin2 !== offsetMin) {
+    offsetMin = offsetMin2;
+    utc = naive - offsetMin * 60_000;
+  }
+  const out = new Date(utc);
+  return Number.isNaN(out.getTime()) ? null : out;
+}
+
+const ZURICH_OFFSET_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: FAVUR_TZ,
+  timeZoneName: 'shortOffset',
+  hour: 'numeric',
+});
+
+function zurichOffsetMinutes(at: Date): number {
+  const parts = ZURICH_OFFSET_FORMATTER.formatToParts(at);
+  const tz = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+0';
+  // Examples: "GMT+1", "GMT+2", "GMT+02:00", "GMT-1:30"
+  const m = /GMT([+-])(\d{1,2})(?::?(\d{2}))?/.exec(tz);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  const hours = Number(m[2]);
+  const mins = Number(m[3] ?? '0');
+  return sign * (hours * 60 + mins);
 }
 
 function isoDate(d: Date): string {

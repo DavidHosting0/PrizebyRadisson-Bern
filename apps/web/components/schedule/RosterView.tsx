@@ -63,9 +63,15 @@ function buildRanges(): Range[] {
   ];
 }
 
+const ROSTER_TZ = 'Europe/Zurich';
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('de-CH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: ROSTER_TZ,
+  });
 }
 
 function formatDayLabel(iso: string): string {
@@ -74,6 +80,7 @@ function formatDayLabel(iso: string): string {
     weekday: 'short',
     day: '2-digit',
     month: '2-digit',
+    timeZone: ROSTER_TZ,
   });
 }
 
