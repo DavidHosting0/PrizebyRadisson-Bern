@@ -417,6 +417,10 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
 
 async function clickNextPage(page: Page): Promise<boolean> {
   const candidates = [
+    page.locator('.dataTables_paginate a:has-text("Next"):visible'),
+    page.locator('.pagination a:has-text("Next"):visible'),
+    page.locator('ul.pagination li:not(.disabled) a:has-text("Next"):visible'),
+    page.locator('a:has-text("Next"):visible'),
     page.locator('.paginate_button.next:not(.disabled)'),
     page.locator('[aria-label="Next"]:not([disabled])'),
     page.locator('button:has-text("Next"):not([disabled])'),
@@ -432,19 +436,23 @@ async function clickNextPage(page: Page): Promise<boolean> {
       const cls = await el.getAttribute('class');
       const dis = await el.getAttribute('disabled');
       const ariaDisabled = await el.getAttribute('aria-disabled');
+      const disabledByParent = await el.evaluate((node) =>
+        Boolean(node.closest('.disabled, [aria-disabled="true"]')),
+      );
       if (
         cls?.includes('disabled') ||
         dis !== null ||
         ariaDisabled === 'true' ||
-        (await el.locator('xpath=ancestor-or-self::*[contains(@class, "disabled")]').count()) > 0
+        disabledByParent
       )
         continue;
       const response = page
         .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
         .catch(() => null);
-      await el.click();
+      await el.scrollIntoViewIfNeeded().catch(() => {});
+      await el.click({ force: true });
       await response;
-      await sleep(600);
+      await sleep(1500);
       return true;
     } catch {
       continue;
