@@ -78,6 +78,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 Puzzle
               </Link>
+              <Link
+                href="/a/emma"
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  pathname.startsWith('/a/emma') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
+                }`}
+              >
+                EMMA
+              </Link>
             </nav>
           </div>
           <span className="truncate text-sm text-ink-muted">{user.email}</span>
