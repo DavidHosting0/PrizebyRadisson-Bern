@@ -50,23 +50,38 @@ function rowHash(pageIdx: number, i: number, text: string) {
 }
 
 async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
-  const userField = page.locator('#Input_Username, input[name="Input.Username"]').first();
+  const userField = page
+    .locator(
+      '#Input_Username, input[name="Input.Username"], #userNameInput, input[name="UserName"], input[placeholder="someone@example.com"]',
+    )
+    .first();
   if (await userField.isVisible({ timeout: 8000 }).catch(() => false)) {
     await userField.fill(opts.email);
-    const nextBtn = page.locator('form#mainForm button.submit-button').first();
+    const nextBtn = page
+      .locator('form#mainForm button.submit-button, button.submit-button, input#submitButton, input[type="submit"], button:has-text("Next")')
+      .first();
     await nextBtn.click();
     await sleep(1200);
   }
 
+  const adfsUserField = page
+    .locator('#userNameInput, input[name="UserName"], input[placeholder="someone@example.com"]')
+    .first();
+  if (await adfsUserField.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await adfsUserField.fill(opts.email);
+  }
+
   const passField = page
     .locator(
-      '#Input_Password, input[name="Input.Password"], input#password, input[type="password"][autocomplete="current-password"]',
+      '#Input_Password, input[name="Input.Password"], #passwordInput, input#password, input[type="password"], input[type="password"][autocomplete="current-password"]',
     )
     .first();
   if (await passField.isVisible({ timeout: 20000 }).catch(() => false)) {
     await passField.fill(opts.password);
     const submit = page
-      .locator('form button[type="submit"], button.submit-button, button:has-text("Sign in"), button:has-text("Next")')
+      .locator(
+        '#submitButton, input[type="submit"], form button[type="submit"], button.submit-button, button:has-text("Sign in"), button:has-text("Next")',
+      )
       .first();
     await submit.click();
     await sleep(2000);
@@ -74,7 +89,7 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
 
   const otp = page
     .locator(
-      'input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="code" i], input[placeholder*="code" i]',
+      '#challengeQuestionInput, input[autocomplete="one-time-code"], input[name*="otp" i], input[name*="code" i], input[placeholder*="code" i], input[type="tel"], input[type="text"]',
     )
     .first();
   if (
@@ -85,7 +100,9 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
       secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
     });
     await otp.fill(code);
-    const go = page.locator('button[type="submit"], button:has-text("Verify"), button:has-text("Next")').first();
+    const go = page
+      .locator('#submitButton, input[type="submit"], button[type="submit"], button:has-text("Verify"), button:has-text("Next")')
+      .first();
     await go.click();
     await sleep(2500);
   }
@@ -138,7 +155,7 @@ async function setPageSizeTo100(page: Page): Promise<boolean> {
 
 async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string): Promise<PuzzelScrapedRow[]> {
   const out: PuzzelScrapedRow[] = [];
-  const tableRows = page.locator('table tbody tr');
+  const tableRows = page.locator('table:visible tbody tr:visible');
   const n = await tableRows.count();
   if (n > 0) {
     for (let i = 0; i < n; i++) {
@@ -187,7 +204,7 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
   }
 
   /* AG Grid / aria grid */
-  const gridRows = page.locator('[role="row"]').filter({ has: page.locator('[role="gridcell"]') });
+  const gridRows = page.locator('[role="row"]:visible').filter({ has: page.locator('[role="gridcell"]') });
   const m = await gridRows.count();
   for (let i = 1; i < m; i++) {
     /* skip header row 0 heuristic */
@@ -290,8 +307,14 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
 
     await page.goto(ticketUrl, { timeout: 120_000, waitUntil: 'domcontentloaded' });
     await sleep(2000);
+    await page
+      .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+      .catch(() => {});
 
     await setPageSizeTo100(page);
+    await page
+      .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
+      .catch(() => {});
 
     const all: PuzzelScrapedRow[] = [];
     const maxPages = 400;
