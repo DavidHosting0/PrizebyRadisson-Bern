@@ -12,6 +12,14 @@ export type PuzzelLoginStored = {
 };
 
 const PUZZEL_KEY = 'puzzelLogin';
+const PUZZEL_TICKET_SYNC_KEY = 'puzzelTicketSync';
+
+export type PuzzelTicketSyncStored = {
+  lastSyncedAt?: string | null;
+  lastError?: string | null;
+  lastTicketCount?: number;
+  inProgress?: boolean;
+};
 
 @Injectable()
 export class SettingsService {
@@ -84,6 +92,37 @@ export class SettingsService {
       email: pl.email.trim(),
       password: typeof pl.password === 'string' ? pl.password : '',
       totpSecret: typeof pl.totpSecret === 'string' ? pl.totpSecret : '',
+    };
+  }
+
+  async getPuzzelTicketSyncMeta(): Promise<PuzzelTicketSyncStored> {
+    const row = await this.ensureRow();
+    return this.parseTicketSync(this.asRecord(row.settings)[PUZZEL_TICKET_SYNC_KEY]);
+  }
+
+  async mergePuzzelTicketSyncMeta(patch: Partial<PuzzelTicketSyncStored>) {
+    const row = await this.ensureRow();
+    const s = this.asRecord(row.settings);
+    const prev = this.parseTicketSync(s[PUZZEL_TICKET_SYNC_KEY]);
+    const next: PuzzelTicketSyncStored = { ...prev, ...patch };
+    await this.prisma.hotelSettings.update({
+      where: { id: row.id },
+      data: {
+        settings: { ...s, [PUZZEL_TICKET_SYNC_KEY]: next } as object,
+      },
+    });
+  }
+
+  private parseTicketSync(raw: unknown): PuzzelTicketSyncStored {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return { inProgress: false, lastTicketCount: 0 };
+    }
+    const o = raw as Record<string, unknown>;
+    return {
+      lastSyncedAt: typeof o.lastSyncedAt === 'string' ? o.lastSyncedAt : o.lastSyncedAt === null ? null : undefined,
+      lastError: typeof o.lastError === 'string' ? o.lastError : o.lastError === null ? null : undefined,
+      lastTicketCount: typeof o.lastTicketCount === 'number' ? o.lastTicketCount : 0,
+      inProgress: o.inProgress === true,
     };
   }
 

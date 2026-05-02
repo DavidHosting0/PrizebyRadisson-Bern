@@ -139,6 +139,24 @@ model HotelSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// Rows scraped from CM Puzzel (Radisson-hosted) ticket overview; rebuilt on each successful sync.
+model PuzzelTicket {
+  id          String   @id @default(cuid())
+  /// Stable dedup key — prefer ticket href path hash, else deterministic fallback.
+  externalKey String   @unique
+  subject     String
+  reference   String?
+  status      String?
+  /// Relative or absolute link to ticket details in Puzzel (if scraped).
+  detailHref  String?
+  /// Full visible row text (fallback search / auditing).
+  rowSummary  String
+  metadata    Json?
+  scrapedAt   DateTime @default(now())
+
+  @@index([scrapedAt])
+}
+
 model User {
   id           String          @id @default(cuid())
   email        String          @unique

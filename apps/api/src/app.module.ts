@@ -24,6 +24,7 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { RolesModule } from './roles/roles.module';
 import { ShiftsModule } from './shifts/shifts.module';
 import { FavurModule } from './favur/favur.module';
+import { PuzzleModule } from './puzzle/puzzle.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -56,6 +57,7 @@ import configuration from './config/configuration';
     RolesModule,
     ShiftsModule,
     FavurModule,
+    PuzzleModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
