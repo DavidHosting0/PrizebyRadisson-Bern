@@ -51,11 +51,13 @@ export class PuzzleService {
       }
       const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
       const ticketsPath = process.env.PUZZEL_TICKETS_PATH ?? '/tickets';
+      const savedSearchName = process.env.PUZZEL_SAVED_SEARCH_NAME ?? "My Favourite Team's Open Tickets";
       const headless = process.env.PUZZEL_HEADLESS !== 'false';
 
       const rows = await scrapePuzzelTickets({
         baseUrl,
         ticketsPath,
+        savedSearchName,
         email: creds.email.trim(),
         password: creds.password,
         totpSecret: creds.totpSecret?.trim() || undefined,

@@ -22,6 +22,8 @@ export type PuzzelScrapeOpts = {
   baseUrl: string;
   /** e.g. `/tickets` */
   ticketsPath: string;
+  /** Saved search that represents the ticket scope to sync. */
+  savedSearchName?: string;
   email: string;
   password: string;
   totpSecret?: string;
@@ -148,17 +150,21 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   }
 }
 
-async function selectAllTicketsSearch(page: Page) {
-  const allTickets = page.locator('a:has-text("All Tickets"), li:has-text("All Tickets") a').first();
-  if (!(await allTickets.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+async function selectSavedSearch(page: Page, name: string) {
+  const savedSearch = page
+    .locator('a, li')
+    .filter({ hasText: new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) })
+    .first();
+  if (!(await savedSearch.isVisible({ timeout: 8000 }).catch(() => false))) {
+    throw new Error(`Puzzel Saved Search "${name}" nicht gefunden.`);
+  }
 
   const response = page
     .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
     .catch(() => null);
-  await allTickets.click();
+  await savedSearch.click();
   await response;
   await sleep(1200);
-  return true;
 }
 
 async function setPageSizeTo100(page: Page): Promise<boolean> {
@@ -389,7 +395,7 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
       .catch(() => {});
 
-    await selectAllTicketsSearch(page);
+    await selectSavedSearch(page, opts.savedSearchName ?? "My Favourite Team's Open Tickets");
     await setPageSizeTo100(page);
     await page
       .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
