@@ -27,6 +27,7 @@ const nav = [
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
   { href: '/r/damages', label: 'Damage reports', icon: IconDamage },
   { href: '/r/schichtplan', label: 'Schichtplan', icon: IconCalendar },
+  { href: '/r/puzzle', label: 'Puzzle', icon: IconPuzzle },
 ];
 
 function IconDash({ className }: { className?: string }) {
@@ -94,6 +95,19 @@ function IconCalendar({ className }: { className?: string }) {
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.75" />
       <path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconPuzzle({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M10 3h4a1 1 0 011 1v2a1 1 0 001 1h2a2 2 0 012 2v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a2 2 0 01-2 2h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H5a2 2 0 01-2-2v-3a1 1 0 011-1h1a2 2 0 100-4H4a1 1 0 01-1-1V9a2 2 0 012-2h2a1 1 0 001-1V4a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
