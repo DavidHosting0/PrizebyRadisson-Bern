@@ -48,6 +48,18 @@ export type PuzzelMessageScrapeOpts = PuzzelScrapeOpts & {
   ticketUrl: string;
 };
 
+export type PuzzelBatchMessageTarget = {
+  ticketId: string;
+  externalKey: string;
+  ticketUrl: string;
+};
+
+export type PuzzelBatchScrapedMessages = {
+  ticketId: string;
+  externalKey: string;
+  messages: PuzzelScrapedMessage[];
+};
+
 function normBase(url: string) {
   return url.replace(/\/+$/, '');
 }
@@ -106,7 +118,26 @@ function mapTicketColumns(parts: string[], rowText: string) {
     priority: priorityIdx >= 0 ? clean[priorityIdx] : null,
     responseTarget: statusIdx >= 0 ? clean[statusIdx + 1] ?? null : null,
     resolveTarget: statusIdx >= 0 ? clean[statusIdx + 2] ?? null : null,
+    team: priorityIdx >= 0 ? clean[priorityIdx + 1] ?? null : null,
+    lastInboundActivity: priorityIdx >= 0 ? clean[priorityIdx + 2] ?? null : null,
+    lastActivity: priorityIdx >= 0 ? clean[priorityIdx + 3] ?? null : null,
   };
+}
+
+function ticketFingerprint(mapped: ReturnType<typeof mapTicketColumns>, rowText: string) {
+  return createHash('sha256')
+    .update(
+      [
+        mapped.reference,
+        mapped.status,
+        mapped.subject,
+        mapped.team,
+        mapped.lastInboundActivity,
+        mapped.lastActivity,
+        rowText,
+      ].join('|'),
+    )
+    .digest('hex');
 }
 
 async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
@@ -360,6 +391,10 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
           priority: mapped.priority,
           responseTarget: mapped.responseTarget,
           resolveTarget: mapped.resolveTarget,
+          team: mapped.team,
+          lastInboundActivity: mapped.lastInboundActivity,
+          lastActivity: mapped.lastActivity,
+          syncFingerprint: ticketFingerprint(mapped, text),
         },
       });
     }
@@ -408,6 +443,10 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
         priority: mapped.priority,
         responseTarget: mapped.responseTarget,
         resolveTarget: mapped.resolveTarget,
+        team: mapped.team,
+        lastInboundActivity: mapped.lastInboundActivity,
+        lastActivity: mapped.lastActivity,
+        syncFingerprint: ticketFingerprint(mapped, text),
       },
     });
   }
@@ -562,6 +601,53 @@ function parseTimelineSummary(summary: string): Pick<
   };
 }
 
+async function extractPuzzelMessagesFromPage(page: Page): Promise<PuzzelScrapedMessage[]> {
+  await page
+    .waitForSelector('iframe[src*="/emails/"], text=Timeline', { timeout: 45_000 })
+    .catch(() => {});
+  await sleep(2000);
+
+  const summaries = await page
+    .locator('li:has-text("Download EML"), .timeline li:has-text("Download EML")')
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).innerText || el.textContent || ''))
+    .catch(() => [] as string[]);
+
+  const emailFrames = page
+    .frames()
+    .filter((frame) => /\/emails\/\d+(?:$|\?)/.test(frame.url()) && !frame.url().includes('/email_headers'));
+
+  const messages: PuzzelScrapedMessage[] = [];
+  for (let i = 0; i < emailFrames.length; i++) {
+    const frame = emailFrames[i];
+    const idMatch = frame.url().match(/\/emails\/(\d+)/);
+    const bodyText = await frame.locator('body').innerText().catch(() => '');
+    const bodyHtml = await frame.locator('body').innerHTML().catch(() => null);
+    const normalizedBody = normalizeCellText(bodyText);
+    if (!normalizedBody && !bodyHtml) continue;
+
+    const parsed = parseTimelineSummary(summaries[i] ?? '');
+    messages.push({
+      externalKey: `email:${idMatch?.[1] ?? createHash('sha256').update(frame.url()).digest('hex').slice(0, 24)}`,
+      sentAtText: parsed.sentAtText,
+      fromText: parsed.fromText,
+      toText: parsed.toText,
+      direction: parsed.direction,
+      bodyText: bodyText.slice(0, 50_000),
+      bodyHtml: bodyHtml?.slice(0, 200_000) ?? null,
+      metadata: {
+        frameUrl: frame.url(),
+        summary: summaries[i] ?? null,
+        index: i,
+      },
+    });
+  }
+
+  if (!messages.length) {
+    throw new Error('Keine Puzzel-Nachrichten im Ticket gefunden.');
+  }
+  return messages;
+}
+
 export async function scrapePuzzelTicketMessages(opts: PuzzelMessageScrapeOpts): Promise<PuzzelScrapedMessage[]> {
   const browser = await chromium.launch({
     headless: opts.headless ?? true,
@@ -575,49 +661,45 @@ export async function scrapePuzzelTicketMessages(opts: PuzzelMessageScrapeOpts):
     });
     const page = await ctx.newPage();
     await openLoggedInPage(page, opts.ticketUrl, opts);
-    await page
-      .waitForSelector('iframe[src*="/emails/"], text=Timeline', { timeout: 45_000 })
-      .catch(() => {});
-    await sleep(2000);
+    return extractPuzzelMessagesFromPage(page);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
 
-    const summaries = await page
-      .locator('li:has-text("Download EML"), .timeline li:has-text("Download EML")')
-      .evaluateAll((els) => els.map((el) => (el as HTMLElement).innerText || el.textContent || ''))
-      .catch(() => [] as string[]);
+export async function scrapePuzzelTicketMessagesBatch(
+  opts: PuzzelScrapeOpts,
+  tickets: PuzzelBatchMessageTarget[],
+): Promise<PuzzelBatchScrapedMessages[]> {
+  if (tickets.length === 0) return [];
 
-    const emailFrames = page
-      .frames()
-      .filter((frame) => /\/emails\/\d+(?:$|\?)/.test(frame.url()) && !frame.url().includes('/email_headers'));
+  const browser = await chromium.launch({
+    headless: opts.headless ?? true,
+  });
 
-    const messages: PuzzelScrapedMessage[] = [];
-    for (let i = 0; i < emailFrames.length; i++) {
-      const frame = emailFrames[i];
-      const idMatch = frame.url().match(/\/emails\/(\d+)/);
-      const bodyText = normalizeCellText(await frame.locator('body').innerText().catch(() => ''));
-      const bodyHtml = await frame.locator('body').innerHTML().catch(() => null);
-      if (!bodyText && !bodyHtml) continue;
+  try {
+    const ctx = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+      locale: 'de-CH',
+    });
+    const page = await ctx.newPage();
+    await openLoggedInPage(page, tickets[0].ticketUrl, opts);
 
-      const parsed = parseTimelineSummary(summaries[i] ?? '');
-      messages.push({
-        externalKey: `email:${idMatch?.[1] ?? createHash('sha256').update(frame.url()).digest('hex').slice(0, 24)}`,
-        sentAtText: parsed.sentAtText,
-        fromText: parsed.fromText,
-        toText: parsed.toText,
-        direction: parsed.direction,
-        bodyText: bodyText.slice(0, 50_000),
-        bodyHtml: bodyHtml?.slice(0, 200_000) ?? null,
-        metadata: {
-          frameUrl: frame.url(),
-          summary: summaries[i] ?? null,
-          index: i,
-        },
+    const out: PuzzelBatchScrapedMessages[] = [];
+    for (let i = 0; i < tickets.length; i++) {
+      const target = tickets[i];
+      if (i > 0) {
+        await page.goto(target.ticketUrl, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+      }
+      const messages = await extractPuzzelMessagesFromPage(page).catch(() => [] as PuzzelScrapedMessage[]);
+      out.push({
+        ticketId: target.ticketId,
+        externalKey: target.externalKey,
+        messages,
       });
     }
-
-    if (!messages.length) {
-      throw new Error('Keine Puzzel-Nachrichten im Ticket gefunden.');
-    }
-    return messages;
+    return out;
   } finally {
     await browser.close().catch(() => {});
   }
