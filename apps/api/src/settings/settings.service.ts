@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { HotelSettings, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import type { UpdatePuzzleLoginDto } from './dto/update-puzzle-login.dto';
+import type { UpdateEmmaLoginDto } from './dto/update-emma-login.dto';
 
 /** Stored under HotelSettings.settings JSON key `puzzelLogin` */
 export type PuzzelLoginStored = {
@@ -11,9 +13,38 @@ export type PuzzelLoginStored = {
   totpSecret?: string;
 };
 
+/**
+ * Plaintext shape of the EMMA credentials returned to the server-side
+ * automation. The on-disk representation under `HotelSettings.settings.emmaLogin`
+ * keeps the password/seed fields envelope-encrypted via SecretCipherService.
+ */
+export type EmmaLoginStored = {
+  adfsEmail?: string;
+  adfsPassword?: string;
+  totpSecret?: string;
+  sapUser?: string;
+  sapPassword?: string;
+  operatorCode?: string;
+  operatorPassword?: string;
+  baseUrl?: string;
+};
+
+/** Persisted shape (passwords/seed are AES-GCM ciphertext, base64). */
+type EmmaLoginPersisted = {
+  adfsEmail?: string;
+  adfsPasswordEnc?: string;
+  totpSecretEnc?: string;
+  sapUser?: string;
+  sapPasswordEnc?: string;
+  operatorCode?: string;
+  operatorPasswordEnc?: string;
+  baseUrl?: string;
+};
+
 const PUZZEL_KEY = 'puzzelLogin';
 const PUZZEL_TICKET_SYNC_KEY = 'puzzelTicketSync';
 const PUZZEL_TICKET_FILTER_KEY = 'puzzelTicketFilter';
+const EMMA_KEY = 'emmaLogin';
 
 export type PuzzelTicketSyncStored = {
   lastSyncedAt?: string | null;
@@ -39,7 +70,10 @@ const DEFAULT_PUZZEL_TICKET_FILTER: PuzzelTicketFilterStored = {
 
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cipher: SecretCipherService,
+  ) {}
 
   private async ensureRow() {
     let row = await this.prisma.hotelSettings.findFirst();
@@ -148,6 +182,52 @@ export class SettingsService {
     });
   }
 
+  // ------------------------- EMMA login ------------------------------------
+
+  /** Public shape for the admin UI (no plaintext secrets). */
+  async getEmmaLoginMeta() {
+    const row = await this.ensureRow();
+    return this.metaFromEmmaRaw(this.asRecord(row.settings)[EMMA_KEY]);
+  }
+
+  async updateEmmaLogin(dto: UpdateEmmaLoginDto) {
+    const current = await this.ensureRow();
+    const s = this.asRecord(current.settings);
+    const prev = this.parseEmmaPersisted(s[EMMA_KEY]);
+    const next = this.mergeEmmaInput(prev, dto);
+
+    const updated = await this.prisma.hotelSettings.update({
+      where: { id: current.id },
+      data: {
+        settings: { ...s, [EMMA_KEY]: next } as object,
+      },
+    });
+    return this.metaFromEmmaRaw(this.asRecord(updated.settings)[EMMA_KEY]);
+  }
+
+  /**
+   * Full EMMA credentials for server-side automation. Decrypts the encrypted
+   * fields. Returns null if no EMMA login has been configured yet.
+   */
+  async getEmmaLoginSecrets(): Promise<EmmaLoginStored | null> {
+    const row = await this.ensureRow();
+    const persisted = this.parseEmmaPersisted(this.asRecord(row.settings)[EMMA_KEY]);
+    if (!persisted.adfsEmail?.trim() && !persisted.sapUser?.trim()) {
+      return null;
+    }
+    return {
+      adfsEmail: persisted.adfsEmail?.trim() || undefined,
+      adfsPassword: this.cipher.decryptSafe(persisted.adfsPasswordEnc) ?? undefined,
+      totpSecret: this.cipher.decryptSafe(persisted.totpSecretEnc) ?? undefined,
+      sapUser: persisted.sapUser?.trim() || undefined,
+      sapPassword: this.cipher.decryptSafe(persisted.sapPasswordEnc) ?? undefined,
+      operatorCode: persisted.operatorCode?.trim() || undefined,
+      operatorPassword:
+        this.cipher.decryptSafe(persisted.operatorPasswordEnc) ?? undefined,
+      baseUrl: persisted.baseUrl?.trim() || undefined,
+    };
+  }
+
   private parseTicketSync(raw: unknown): PuzzelTicketSyncStored {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
       return { inProgress: false, lastTicketCount: 0 };
@@ -251,6 +331,11 @@ export class SettingsService {
       if (key === PUZZEL_KEY && val && typeof val === 'object' && !Array.isArray(val)) {
         const prevPl = this.parsePuzzel(next[PUZZEL_KEY]);
         next[PUZZEL_KEY] = this.mergePuzzelPartial(prevPl, val as Record<string, unknown>);
+      } else if (key === EMMA_KEY) {
+        // Encrypted EMMA blob is not patchable through the generic settings
+        // endpoint — admins must use the dedicated /settings/emma-login route
+        // so credentials get encrypted properly. Drop the patch silently.
+        continue;
       } else {
         next[key] = val;
       }
@@ -263,6 +348,9 @@ export class SettingsService {
     const out = { ...raw };
     if (raw[PUZZEL_KEY] && typeof raw[PUZZEL_KEY] === 'object' && !Array.isArray(raw[PUZZEL_KEY])) {
       out[PUZZEL_KEY] = this.metaFromPuzzel(raw[PUZZEL_KEY]);
+    }
+    if (raw[EMMA_KEY] && typeof raw[EMMA_KEY] === 'object' && !Array.isArray(raw[EMMA_KEY])) {
+      out[EMMA_KEY] = this.metaFromEmmaRaw(raw[EMMA_KEY]);
     }
     return out;
   }
@@ -278,5 +366,66 @@ export class SettingsService {
 
   private metaFromSettings(settings: unknown) {
     return this.metaFromPuzzel(this.asRecord(settings)[PUZZEL_KEY]);
+  }
+
+  // ------------------------- EMMA helpers -----------------------------------
+
+  private parseEmmaPersisted(raw: unknown): EmmaLoginPersisted {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const o = raw as Record<string, unknown>;
+    const pickStr = (k: string): string | undefined =>
+      typeof o[k] === 'string' ? (o[k] as string) : undefined;
+    return {
+      adfsEmail: pickStr('adfsEmail'),
+      adfsPasswordEnc: pickStr('adfsPasswordEnc'),
+      totpSecretEnc: pickStr('totpSecretEnc'),
+      sapUser: pickStr('sapUser'),
+      sapPasswordEnc: pickStr('sapPasswordEnc'),
+      operatorCode: pickStr('operatorCode'),
+      operatorPasswordEnc: pickStr('operatorPasswordEnc'),
+      baseUrl: pickStr('baseUrl'),
+    };
+  }
+
+  private mergeEmmaInput(
+    prev: EmmaLoginPersisted,
+    dto: UpdateEmmaLoginDto,
+  ): EmmaLoginPersisted {
+    const next: EmmaLoginPersisted = { ...prev };
+    if (dto.adfsEmail !== undefined) next.adfsEmail = dto.adfsEmail.trim();
+    if (dto.sapUser !== undefined) next.sapUser = dto.sapUser.trim();
+    if (dto.operatorCode !== undefined) next.operatorCode = dto.operatorCode.trim();
+    if (dto.baseUrl !== undefined) {
+      const v = dto.baseUrl.trim();
+      next.baseUrl = v.length > 0 ? v : undefined;
+    }
+    if (dto.adfsPassword !== undefined && dto.adfsPassword.length > 0) {
+      next.adfsPasswordEnc = this.cipher.encrypt(dto.adfsPassword);
+    }
+    if (dto.totpSecret !== undefined) {
+      const t = dto.totpSecret.trim().replace(/\s+/g, '');
+      if (t.length > 0) next.totpSecretEnc = this.cipher.encrypt(t);
+    }
+    if (dto.sapPassword !== undefined && dto.sapPassword.length > 0) {
+      next.sapPasswordEnc = this.cipher.encrypt(dto.sapPassword);
+    }
+    if (dto.operatorPassword !== undefined && dto.operatorPassword.length > 0) {
+      next.operatorPasswordEnc = this.cipher.encrypt(dto.operatorPassword);
+    }
+    return next;
+  }
+
+  private metaFromEmmaRaw(raw: unknown) {
+    const p = this.parseEmmaPersisted(raw);
+    return {
+      adfsEmail: p.adfsEmail?.trim() || null,
+      sapUser: p.sapUser?.trim() || null,
+      operatorCode: p.operatorCode?.trim() || null,
+      baseUrl: p.baseUrl?.trim() || null,
+      hasAdfsPassword: !!p.adfsPasswordEnc,
+      hasTotpSecret: !!p.totpSecretEnc,
+      hasSapPassword: !!p.sapPasswordEnc,
+      hasOperatorPassword: !!p.operatorPasswordEnc,
+    };
   }
 }
