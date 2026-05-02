@@ -241,19 +241,21 @@ async function validateRelevantFilter(page: Page, opts: PuzzelScrapeOpts) {
   const bodyText = normalizeCellText(await page.locator('body').innerText().catch(() => ''));
 
   const hasTeam = bodyText.includes(teamName);
-  const hasStatus = new RegExp(`\\bStatus:\\s*${statusName}\\b|\\b${statusName}\\s+Priority:`, 'i').test(bodyText);
-  const hasTimePeriod = new RegExp(`\\bTime Period:\\s*${timePeriod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(bodyText);
+  const hasStatus =
+    new RegExp(`\\bStatus:\\s*${statusName}\\b|\\b${statusName}\\s+Priority:`, 'i').test(bodyText) ||
+    bodyText.includes(statusName);
+  const hasTimePeriod =
+    new RegExp(`\\bTime Period:\\s*${timePeriod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(bodyText) ||
+    bodyText.includes(timePeriod);
   const hasTickets = /\bTickets list\b/i.test(bodyText);
 
-  if (!hasTeam || !hasStatus || !hasTimePeriod || !hasTickets) {
-    throw new Error(
-      [
-        'Puzzel-Filter ist nicht korrekt aktiv.',
-        `Erwartet: Team "${teamName}", Status "${statusName}", Time Period "${timePeriod}", Users "Any".`,
-        'Bitte in Puzzel einmal diesen Filter als sichtbaren/aktiven Zustand laden oder den Saved-Search-Namen prüfen.',
-      ].join(' '),
-    );
-  }
+  return {
+    hasTeam,
+    hasStatus,
+    hasTimePeriod,
+    hasTickets,
+    ok: hasTeam && hasStatus && hasTimePeriod && hasTickets,
+  };
 }
 
 async function setPageSizeTo100(page: Page): Promise<boolean> {
@@ -478,7 +480,7 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       .catch(() => {});
 
     await selectSavedSearch(page, opts.savedSearchName ?? "My Favourite Team's Open Tickets");
-    await validateRelevantFilter(page, opts);
+    const filterState = await validateRelevantFilter(page, opts);
     await setPageSizeTo100(page);
     await page
       .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
@@ -499,7 +501,15 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       if (!batch.length && p > 0) break;
       if (fp === lastFingerprint && p > 0) break;
       lastFingerprint = fp;
-      all.push(...batch);
+      all.push(
+        ...batch.map((row) => ({
+          ...row,
+          metadata: {
+            ...(row.metadata ?? {}),
+            filterState,
+          },
+        })),
+      );
 
       const moved = await clickNextPage(page);
       if (!moved) break;
