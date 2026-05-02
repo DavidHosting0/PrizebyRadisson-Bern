@@ -13,12 +13,27 @@ export type PuzzelLoginStored = {
 
 const PUZZEL_KEY = 'puzzelLogin';
 const PUZZEL_TICKET_SYNC_KEY = 'puzzelTicketSync';
+const PUZZEL_TICKET_FILTER_KEY = 'puzzelTicketFilter';
 
 export type PuzzelTicketSyncStored = {
   lastSyncedAt?: string | null;
   lastError?: string | null;
   lastTicketCount?: number;
   inProgress?: boolean;
+};
+
+export type PuzzelTicketFilterStored = {
+  savedSearchName: string;
+  teamName: string;
+  statusName: string;
+  timePeriod: string;
+};
+
+const DEFAULT_PUZZEL_TICKET_FILTER: PuzzelTicketFilterStored = {
+  savedSearchName: "My Favourite Team's Open Tickets",
+  teamName: 'PZ | Billing Bern',
+  statusName: 'Open',
+  timePeriod: 'All Time',
 };
 
 @Injectable()
@@ -100,6 +115,25 @@ export class SettingsService {
     return this.parseTicketSync(this.asRecord(row.settings)[PUZZEL_TICKET_SYNC_KEY]);
   }
 
+  async getPuzzelTicketFilter(): Promise<PuzzelTicketFilterStored> {
+    const row = await this.ensureRow();
+    return this.parseTicketFilter(this.asRecord(row.settings)[PUZZEL_TICKET_FILTER_KEY]);
+  }
+
+  async updatePuzzelTicketFilter(patch: Partial<PuzzelTicketFilterStored>) {
+    const row = await this.ensureRow();
+    const s = this.asRecord(row.settings);
+    const prev = this.parseTicketFilter(s[PUZZEL_TICKET_FILTER_KEY]);
+    const next = this.parseTicketFilter({ ...prev, ...patch });
+    await this.prisma.hotelSettings.update({
+      where: { id: row.id },
+      data: {
+        settings: { ...s, [PUZZEL_TICKET_FILTER_KEY]: next } as object,
+      },
+    });
+    return next;
+  }
+
   async mergePuzzelTicketSyncMeta(patch: Partial<PuzzelTicketSyncStored>) {
     const row = await this.ensureRow();
     const s = this.asRecord(row.settings);
@@ -123,6 +157,31 @@ export class SettingsService {
       lastError: typeof o.lastError === 'string' ? o.lastError : o.lastError === null ? null : undefined,
       lastTicketCount: typeof o.lastTicketCount === 'number' ? o.lastTicketCount : 0,
       inProgress: o.inProgress === true,
+    };
+  }
+
+  private parseTicketFilter(raw: unknown): PuzzelTicketFilterStored {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return DEFAULT_PUZZEL_TICKET_FILTER;
+    }
+    const o = raw as Record<string, unknown>;
+    return {
+      savedSearchName:
+        typeof o.savedSearchName === 'string' && o.savedSearchName.trim()
+          ? o.savedSearchName.trim()
+          : DEFAULT_PUZZEL_TICKET_FILTER.savedSearchName,
+      teamName:
+        typeof o.teamName === 'string' && o.teamName.trim()
+          ? o.teamName.trim()
+          : DEFAULT_PUZZEL_TICKET_FILTER.teamName,
+      statusName:
+        typeof o.statusName === 'string' && o.statusName.trim()
+          ? o.statusName.trim()
+          : DEFAULT_PUZZEL_TICKET_FILTER.statusName,
+      timePeriod:
+        typeof o.timePeriod === 'string' && o.timePeriod.trim()
+          ? o.timePeriod.trim()
+          : DEFAULT_PUZZEL_TICKET_FILTER.timePeriod,
     };
   }
 

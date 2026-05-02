@@ -18,16 +18,34 @@ export type PuzzelScrapedRow = {
   metadata?: Record<string, unknown>;
 };
 
+export type PuzzelScrapedMessage = {
+  externalKey: string;
+  sentAtText: string | null;
+  fromText: string | null;
+  toText: string | null;
+  direction: 'inbound' | 'outbound' | null;
+  bodyText: string;
+  bodyHtml: string | null;
+  metadata?: Record<string, unknown>;
+};
+
 export type PuzzelScrapeOpts = {
   baseUrl: string;
   /** e.g. `/tickets` */
   ticketsPath: string;
   /** Saved search that represents the ticket scope to sync. */
   savedSearchName?: string;
+  teamName?: string;
+  statusName?: string;
+  timePeriod?: string;
   email: string;
   password: string;
   totpSecret?: string;
   headless?: boolean;
+};
+
+export type PuzzelMessageScrapeOpts = PuzzelScrapeOpts & {
+  ticketUrl: string;
 };
 
 function normBase(url: string) {
@@ -150,13 +168,61 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   }
 }
 
+async function openLoggedInPage(page: Page, url: string, opts: PuzzelScrapeOpts) {
+  await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+  await tryPuzzelLogin(page, opts);
+
+  if (
+    page.url().includes('/Account/Login') ||
+    page.url().includes('/adfs/ls') ||
+    (await page.locator('#Input_Username, #userNameInput').count()) > 0
+  ) {
+    await tryPuzzelLogin(page, opts);
+  }
+
+  if (page.url() !== url) {
+    await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+  }
+}
+
 async function selectSavedSearch(page: Page, name: string) {
-  const savedSearch = page
-    .locator('a, li')
-    .filter({ hasText: new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) })
-    .first();
-  if (!(await savedSearch.isVisible({ timeout: 8000 }).catch(() => false))) {
-    throw new Error(`Puzzel Saved Search "${name}" nicht gefunden.`);
+  const candidates = [
+    page.getByText(name, { exact: true }).first(),
+    page.locator('a').filter({ hasText: name }).first(),
+    page.locator('li').filter({ hasText: name }).locator('a').first(),
+    page.locator('li').filter({ hasText: name }).first(),
+  ];
+
+  let savedSearch = candidates[0];
+  let found = false;
+  for (const candidate of candidates) {
+    if (await candidate.isVisible({ timeout: 1500 }).catch(() => false)) {
+      savedSearch = candidate;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    const savedSearchButton = page.locator('button:has-text("Saved Searches"), .dropdown-toggle:has-text("Saved Searches")').first();
+    if (await savedSearchButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await savedSearchButton.click().catch(() => {});
+      await sleep(500);
+    }
+
+    for (const candidate of candidates) {
+      if (await candidate.isVisible({ timeout: 1500 }).catch(() => false)) {
+        savedSearch = candidate;
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    // Some sessions already restore the correct filter but do not render the saved-search list.
+    // Continue instead of failing the whole sync; the table scrape below still validates rows.
+    return false;
   }
 
   const response = page
@@ -165,6 +231,29 @@ async function selectSavedSearch(page: Page, name: string) {
   await savedSearch.click();
   await response;
   await sleep(1200);
+  return true;
+}
+
+async function validateRelevantFilter(page: Page, opts: PuzzelScrapeOpts) {
+  const teamName = opts.teamName ?? 'PZ | Billing Bern';
+  const statusName = opts.statusName ?? 'Open';
+  const timePeriod = opts.timePeriod ?? 'All Time';
+  const bodyText = normalizeCellText(await page.locator('body').innerText().catch(() => ''));
+
+  const hasTeam = bodyText.includes(teamName);
+  const hasStatus = new RegExp(`\\bStatus:\\s*${statusName}\\b|\\b${statusName}\\s+Priority:`, 'i').test(bodyText);
+  const hasTimePeriod = new RegExp(`\\bTime Period:\\s*${timePeriod.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(bodyText);
+  const hasTickets = /\bTickets list\b/i.test(bodyText);
+
+  if (!hasTeam || !hasStatus || !hasTimePeriod || !hasTickets) {
+    throw new Error(
+      [
+        'Puzzel-Filter ist nicht korrekt aktiv.',
+        `Erwartet: Team "${teamName}", Status "${statusName}", Time Period "${timePeriod}", Users "Any".`,
+        'Bitte in Puzzel einmal diesen Filter als sichtbaren/aktiven Zustand laden oder den Saved-Search-Namen prüfen.',
+      ].join(' '),
+    );
+  }
 }
 
 async function setPageSizeTo100(page: Page): Promise<boolean> {
@@ -382,20 +471,14 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
     });
     const page = await ctx.newPage();
 
-    await page.goto(ticketUrl, { timeout: 120_000, waitUntil: 'domcontentloaded' });
-    await tryPuzzelLogin(page, opts);
-
-    if (page.url().includes('/Account/Login') || (await page.locator('#Input_Username').count()) > 0) {
-      await tryPuzzelLogin(page, opts);
-    }
-
-    await page.goto(ticketUrl, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+    await openLoggedInPage(page, ticketUrl, opts);
     await sleep(2000);
     await page
       .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
       .catch(() => {});
 
     await selectSavedSearch(page, opts.savedSearchName ?? "My Favourite Team's Open Tickets");
+    await validateRelevantFilter(page, opts);
     await setPageSizeTo100(page);
     await page
       .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
@@ -433,6 +516,90 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       uniq.set(row.externalKey, row);
     }
     return [...uniq.values()];
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+function parseTimelineSummary(summary: string): Pick<
+  PuzzelScrapedMessage,
+  'sentAtText' | 'fromText' | 'toText' | 'direction'
+> {
+  const text = normalizeCellText(summary);
+  const fromMatch = text.match(/\bFrom:\s*(.*?)\s+\bTo:/i);
+  const toMatch = text.match(/\bTo:\s*(.*?)\s+(?:Download EML|Quote this Message|$)/i);
+  const sentAtMatch = text.match(/^(.+?)\s+\bFrom:/i);
+  const fromText = fromMatch?.[1]?.trim() || null;
+  const toText = toMatch?.[1]?.trim() || null;
+  const direction = fromText?.toLowerCase().includes('billing.bern@prizebyradisson.com')
+    ? 'outbound'
+    : toText?.toLowerCase().includes('billing.bern@prizebyradisson.com')
+      ? 'inbound'
+      : null;
+  return {
+    sentAtText: sentAtMatch?.[1]?.trim() || null,
+    fromText,
+    toText,
+    direction,
+  };
+}
+
+export async function scrapePuzzelTicketMessages(opts: PuzzelMessageScrapeOpts): Promise<PuzzelScrapedMessage[]> {
+  const browser = await chromium.launch({
+    headless: opts.headless ?? true,
+  });
+
+  try {
+    const ctx = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+      locale: 'de-CH',
+    });
+    const page = await ctx.newPage();
+    await openLoggedInPage(page, opts.ticketUrl, opts);
+    await page
+      .waitForSelector('iframe[src*="/emails/"], text=Timeline', { timeout: 45_000 })
+      .catch(() => {});
+    await sleep(2000);
+
+    const summaries = await page
+      .locator('li:has-text("Download EML"), .timeline li:has-text("Download EML")')
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).innerText || el.textContent || ''))
+      .catch(() => [] as string[]);
+
+    const emailFrames = page
+      .frames()
+      .filter((frame) => /\/emails\/\d+(?:$|\?)/.test(frame.url()) && !frame.url().includes('/email_headers'));
+
+    const messages: PuzzelScrapedMessage[] = [];
+    for (let i = 0; i < emailFrames.length; i++) {
+      const frame = emailFrames[i];
+      const idMatch = frame.url().match(/\/emails\/(\d+)/);
+      const bodyText = normalizeCellText(await frame.locator('body').innerText().catch(() => ''));
+      const bodyHtml = await frame.locator('body').innerHTML().catch(() => null);
+      if (!bodyText && !bodyHtml) continue;
+
+      const parsed = parseTimelineSummary(summaries[i] ?? '');
+      messages.push({
+        externalKey: `email:${idMatch?.[1] ?? createHash('sha256').update(frame.url()).digest('hex').slice(0, 24)}`,
+        sentAtText: parsed.sentAtText,
+        fromText: parsed.fromText,
+        toText: parsed.toText,
+        direction: parsed.direction,
+        bodyText: bodyText.slice(0, 50_000),
+        bodyHtml: bodyHtml?.slice(0, 200_000) ?? null,
+        metadata: {
+          frameUrl: frame.url(),
+          summary: summaries[i] ?? null,
+          index: i,
+        },
+      });
+    }
+
+    if (!messages.length) {
+      throw new Error('Keine Puzzel-Nachrichten im Ticket gefunden.');
+    }
+    return messages;
   } finally {
     await browser.close().catch(() => {});
   }

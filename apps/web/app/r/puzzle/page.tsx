@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -24,6 +24,23 @@ type SyncStatus = {
   lastError?: string | null;
   lastTicketCount?: number;
   inProgress?: boolean;
+};
+
+type PuzzelTicketMessage = {
+  id: string;
+  sentAtText: string | null;
+  fromText: string | null;
+  toText: string | null;
+  direction: string | null;
+  bodyText: string;
+  scrapedAt: string;
+};
+
+type PuzzelFilter = {
+  savedSearchName: string;
+  teamName: string;
+  statusName: string;
+  timePeriod: string;
 };
 
 function formatDateTime(value: string | null | undefined) {
@@ -65,6 +82,12 @@ export default function ReceptionPuzzlePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filterDraft, setFilterDraft] = useState<PuzzelFilter>({
+    savedSearchName: "My Favourite Team's Open Tickets",
+    teamName: 'PZ | Billing Bern',
+    statusName: 'Open',
+    timePeriod: 'All Time',
+  });
 
   const syncStatusQuery = useQuery({
     queryKey: ['puzzle', 'sync-status'],
@@ -78,11 +101,33 @@ export default function ReceptionPuzzlePage() {
     refetchInterval: syncStatusQuery.data?.inProgress ? 4000 : 25_000,
   });
 
+  const puzzelFilterQuery = useQuery({
+    queryKey: ['puzzle', 'filter'],
+    queryFn: () => api<PuzzelFilter>('/puzzle/filter'),
+  });
+
+  useEffect(() => {
+    if (puzzelFilterQuery.data) {
+      setFilterDraft(puzzelFilterQuery.data);
+    }
+  }, [puzzelFilterQuery.data]);
+
   const syncMut = useMutation({
     mutationFn: () => api<{ status: string }>('/puzzle/sync', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'sync-status'] });
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
+    },
+  });
+
+  const saveFilterMut = useMutation({
+    mutationFn: (body: PuzzelFilter) =>
+      api<PuzzelFilter>('/puzzle/filter', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(['puzzle', 'filter'], next);
     },
   });
 
@@ -102,6 +147,21 @@ export default function ReceptionPuzzlePage() {
       return matchesStatus && matchesSearch;
     });
   }, [search, statusFilter, tickets]);
+
+  const messagesQuery = useQuery({
+    queryKey: ['puzzle', 'ticket-messages', expandedId],
+    queryFn: () => api<PuzzelTicketMessage[]>(`/puzzle/tickets/${expandedId}/messages`),
+    enabled: !!expandedId,
+    retry: false,
+  });
+
+  const refreshMessagesMut = useMutation({
+    mutationFn: (ticketId: string) =>
+      api<PuzzelTicketMessage[]>(`/puzzle/tickets/${ticketId}/messages/refresh`, { method: 'POST' }),
+    onSuccess: (_data, ticketId) => {
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', ticketId] });
+    },
+  });
 
   return (
     <div className="space-y-8 p-4 md:p-8">
@@ -165,6 +225,79 @@ export default function ReceptionPuzzlePage() {
       </div>
 
       {ticketsQuery.isLoading && <p className="text-sm text-ink-muted">Lädt Tickets…</p>}
+
+      <Card className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Puzzel-Filter</h2>
+            <p className="text-sm text-ink-muted">
+              Diese Werte nutzt der Sync in Puzzel, bevor er die Ticketliste ausliest.
+            </p>
+          </div>
+          {saveFilterMut.isSuccess && !saveFilterMut.isPending && (
+            <span className="text-xs font-medium text-emerald-800">Filter gespeichert.</span>
+          )}
+        </div>
+        <form
+          className="mt-4 grid gap-3 md:grid-cols-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveFilterMut.mutate({
+              savedSearchName: filterDraft.savedSearchName.trim(),
+              teamName: filterDraft.teamName.trim(),
+              statusName: filterDraft.statusName.trim(),
+              timePeriod: filterDraft.timePeriod.trim(),
+            });
+          }}
+        >
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Saved Search</span>
+            <input
+              value={filterDraft.savedSearchName}
+              onChange={(e) => setFilterDraft((f) => ({ ...f, savedSearchName: e.target.value }))}
+              disabled={!isAdmin}
+              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Team</span>
+            <input
+              value={filterDraft.teamName}
+              onChange={(e) => setFilterDraft((f) => ({ ...f, teamName: e.target.value }))}
+              disabled={!isAdmin}
+              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</span>
+            <input
+              value={filterDraft.statusName}
+              onChange={(e) => setFilterDraft((f) => ({ ...f, statusName: e.target.value }))}
+              disabled={!isAdmin}
+              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Time Period</span>
+            <input
+              value={filterDraft.timePeriod}
+              onChange={(e) => setFilterDraft((f) => ({ ...f, timePeriod: e.target.value }))}
+              disabled={!isAdmin}
+              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+            />
+          </label>
+          {isAdmin && (
+            <div className="flex items-end md:col-span-4">
+              <Button type="submit" variant="secondary" className="min-h-[44px]" disabled={saveFilterMut.isPending}>
+                {saveFilterMut.isPending ? 'Speichert…' : 'Filter speichern'}
+              </Button>
+              {saveFilterMut.isError && (
+                <span className="ml-3 text-sm text-rose-700">{(saveFilterMut.error as Error).message}</span>
+              )}
+            </div>
+          )}
+        </form>
+      </Card>
 
       {!ticketsQuery.isLoading && tickets.length === 0 && (
         <Card className="p-6">
@@ -285,16 +418,72 @@ export default function ReceptionPuzzlePage() {
                         {expanded && (
                           <tr className="bg-surface-muted/40">
                             <td colSpan={5} className="px-4 py-4">
-                              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_260px]">
+                              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
                                 <div>
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                    Vollständige Ticket-Zeile
-                                  </p>
-                                  <p className="mt-2 whitespace-pre-wrap rounded-xl border border-border bg-surface p-3 text-sm leading-relaxed text-ink">
-                                    {t.rowSummary || t.subject}
-                                  </p>
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                      Nachrichten im Ticket
+                                    </p>
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        className="text-xs font-medium text-action hover:underline disabled:opacity-50"
+                                        disabled={refreshMessagesMut.isPending}
+                                        onClick={() => refreshMessagesMut.mutate(t.id)}
+                                      >
+                                        Nachrichten neu laden
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {messagesQuery.isLoading && (
+                                    <p className="mt-3 rounded-xl border border-border bg-surface p-3 text-sm text-ink-muted">
+                                      Nachrichten werden aus Puzzel geladen…
+                                    </p>
+                                  )}
+                                  {messagesQuery.isError && (
+                                    <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                                      {(messagesQuery.error as Error).message}
+                                    </p>
+                                  )}
+                                  {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 && (
+                                    <p className="mt-3 rounded-xl border border-border bg-surface p-3 text-sm text-ink-muted">
+                                      Keine Nachrichten gespeichert.
+                                    </p>
+                                  )}
+                                  <ol className="mt-3 space-y-3">
+                                    {(messagesQuery.data ?? []).map((message) => (
+                                      <li
+                                        key={message.id}
+                                        className={`rounded-xl border p-4 ${
+                                          message.direction === 'outbound'
+                                            ? 'border-sky-200 bg-sky-50'
+                                            : 'border-border bg-surface'
+                                        }`}
+                                      >
+                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                          <div>
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                              {message.direction === 'outbound' ? 'Antwort vom Hotel' : 'Nachricht vom Gast'}
+                                            </p>
+                                            <p className="mt-1 text-sm font-medium text-ink">
+                                              {message.fromText ?? 'Unbekannt'} → {message.toText ?? 'Unbekannt'}
+                                            </p>
+                                          </div>
+                                          <span className="text-xs text-ink-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
+                                        </div>
+                                        <p className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-3 text-sm leading-relaxed text-ink">
+                                          {message.bodyText}
+                                        </p>
+                                      </li>
+                                    ))}
+                                  </ol>
                                 </div>
                                 <dl className="grid content-start gap-2 rounded-xl border border-border bg-surface p-3 text-xs">
+                                  <div>
+                                    <dt className="font-semibold uppercase tracking-wide text-ink-muted">Ticket-Zeile</dt>
+                                    <dd className="mt-1 text-ink-muted">{t.rowSummary || t.subject}</dd>
+                                  </div>
                                   <div>
                                     <dt className="font-semibold uppercase tracking-wide text-ink-muted">External Key</dt>
                                     <dd className="mt-1 break-all font-mono text-ink-muted">{t.externalKey}</dd>

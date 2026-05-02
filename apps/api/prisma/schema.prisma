@@ -153,7 +153,27 @@ model PuzzelTicket {
   rowSummary  String
   metadata    Json?
   scrapedAt   DateTime @default(now())
+  messages    PuzzelTicketMessage[]
 
+  @@index([scrapedAt])
+}
+
+/// Individual timeline email/message rows scraped from a Puzzel ticket detail page.
+model PuzzelTicketMessage {
+  id          String       @id @default(cuid())
+  ticketId    String
+  ticket      PuzzelTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  externalKey String       @unique
+  sentAtText  String?
+  fromText    String?
+  toText      String?
+  direction   String?
+  bodyText    String
+  bodyHtml    String?
+  metadata    Json?
+  scrapedAt   DateTime     @default(now())
+
+  @@index([ticketId])
   @@index([scrapedAt])
 }
 

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
-import { scrapePuzzelTickets } from './puzzel-scraper';
+import { scrapePuzzelTicketMessages, scrapePuzzelTickets } from './puzzel-scraper';
 
 @Injectable()
 export class PuzzleService {
@@ -22,8 +22,100 @@ export class PuzzleService {
     });
   }
 
+  async getTicketMessages(ticketId: string) {
+    const ticket = await this.prisma.puzzelTicket.findUnique({
+      where: { id: ticketId },
+      include: { messages: { orderBy: { scrapedAt: 'asc' } } },
+    });
+    if (!ticket) {
+      throw new Error('Puzzel ticket not found.');
+    }
+    if (ticket.messages.length > 0) {
+      return ticket.messages;
+    }
+    return this.refreshTicketMessages(ticketId);
+  }
+
+  async refreshTicketMessages(ticketId: string) {
+    const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      throw new Error('Puzzel ticket not found.');
+    }
+    const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
+    if (!ticketUrl) {
+      throw new Error('Puzzel ticket has no detail URL/reference.');
+    }
+
+    const creds = await this.settings.getPuzzelLoginSecrets();
+    if (!creds?.password?.trim() || !creds.email?.trim()) {
+      throw new Error('Puzzle-Zugangsdaten unvollständig (E-Mail oder Passwort fehlt). Admin → Puzzle.');
+    }
+
+    const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
+    const ticketsPath = process.env.PUZZEL_TICKETS_PATH ?? '/tickets';
+    const filter = await this.settings.getPuzzelTicketFilter();
+    const headless = process.env.PUZZEL_HEADLESS !== 'false';
+
+    const messages = await scrapePuzzelTicketMessages({
+      baseUrl,
+      ticketsPath,
+      savedSearchName: filter.savedSearchName,
+      teamName: filter.teamName,
+      statusName: filter.statusName,
+      timePeriod: filter.timePeriod,
+      ticketUrl,
+      email: creds.email.trim(),
+      password: creds.password,
+      totpSecret: creds.totpSecret?.trim() || undefined,
+      headless,
+    });
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.puzzelTicketMessage.deleteMany({ where: { ticketId } });
+      await tx.puzzelTicketMessage.createMany({
+        data: messages.map((m) => ({
+          ticketId,
+          externalKey: `${ticket.externalKey}:${m.externalKey}`.slice(0, 500),
+          sentAtText: m.sentAtText?.slice(0, 256) ?? null,
+          fromText: m.fromText?.slice(0, 512) ?? null,
+          toText: m.toText?.slice(0, 512) ?? null,
+          direction: m.direction,
+          bodyText: m.bodyText,
+          bodyHtml: m.bodyHtml,
+          metadata: (m.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+          scrapedAt: now,
+        })),
+      });
+    });
+
+    return this.prisma.puzzelTicketMessage.findMany({
+      where: { ticketId },
+      orderBy: { scrapedAt: 'asc' },
+    });
+  }
+
   async getSyncStatus() {
     return this.settings.getPuzzelTicketSyncMeta();
+  }
+
+  async getFilter() {
+    return this.settings.getPuzzelTicketFilter();
+  }
+
+  async updateFilter(patch: {
+    savedSearchName?: string;
+    teamName?: string;
+    statusName?: string;
+    timePeriod?: string;
+  }) {
+    return this.settings.updatePuzzelTicketFilter(patch);
+  }
+
+  private ticketUrlFromReference(reference: string | null) {
+    if (!reference) return null;
+    const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
+    return `${baseUrl.replace(/\/+$/, '')}/tickets/${encodeURIComponent(reference)}`;
   }
 
   requestBackgroundSync(): { status: 'started' | 'already_running' } {
@@ -51,13 +143,16 @@ export class PuzzleService {
       }
       const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
       const ticketsPath = process.env.PUZZEL_TICKETS_PATH ?? '/tickets';
-      const savedSearchName = process.env.PUZZEL_SAVED_SEARCH_NAME ?? "My Favourite Team's Open Tickets";
+      const filter = await this.settings.getPuzzelTicketFilter();
       const headless = process.env.PUZZEL_HEADLESS !== 'false';
 
       const rows = await scrapePuzzelTickets({
         baseUrl,
         ticketsPath,
-        savedSearchName,
+        savedSearchName: filter.savedSearchName,
+        teamName: filter.teamName,
+        statusName: filter.statusName,
+        timePeriod: filter.timePeriod,
         email: creds.email.trim(),
         password: creds.password,
         totpSecret: creds.totpSecret?.trim() || undefined,
