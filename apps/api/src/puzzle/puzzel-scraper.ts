@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { chromium, type Page } from 'playwright';
 import { generateSync } from 'otplib';
 
+type PuzzelProgress = (message: string) => void;
+
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -42,6 +44,7 @@ export type PuzzelScrapeOpts = {
   password: string;
   totpSecret?: string;
   headless?: boolean;
+  progress?: PuzzelProgress;
 };
 
 export type PuzzelMessageScrapeOpts = PuzzelScrapeOpts & {
@@ -86,6 +89,10 @@ const PRIORITIES = new Set(['JUNK', 'LOWEST', 'LOW', 'NORMAL', 'HIGH', 'HIGHEST'
 
 function normalizeCellText(value: string) {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function progress(opts: Pick<PuzzelScrapeOpts, 'progress'>, message: string) {
+  opts.progress?.(`[Puzzel] ${message}`);
 }
 
 function mapTicketColumns(parts: string[], rowText: string) {
@@ -141,17 +148,20 @@ function ticketFingerprint(mapped: ReturnType<typeof mapTicketColumns>, rowText:
 }
 
 async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
+  progress(opts, `Login prüfen: ${page.url()}`);
   const userField = page
     .locator(
       '#Input_Username, input[name="Input.Username"], #userNameInput, input[name="UserName"], input[placeholder="someone@example.com"]',
     )
     .first();
   if (await userField.isVisible({ timeout: 8000 }).catch(() => false)) {
+    progress(opts, 'Login Schritt 1/4: Puzzel E-Mail eintragen');
     await userField.fill(opts.email);
     const nextBtn = page
       .locator('form#mainForm button.submit-button, button.submit-button, input#submitButton, input[type="submit"], button:has-text("Next")')
       .first();
     await nextBtn.click();
+    progress(opts, 'Login Schritt 1/4: Puzzel E-Mail gesendet');
     await sleep(1200);
   }
 
@@ -159,6 +169,7 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
     .locator('#userNameInput, input[name="UserName"], input[placeholder="someone@example.com"]')
     .first();
   if (await adfsUserField.isVisible({ timeout: 3000 }).catch(() => false)) {
+    progress(opts, 'Login Schritt 2/4: ADFS E-Mail eintragen');
     await adfsUserField.fill(opts.email);
   }
 
@@ -168,6 +179,7 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
     )
     .first();
   if (await passField.isVisible({ timeout: 20000 }).catch(() => false)) {
+    progress(opts, 'Login Schritt 3/4: Passwort eintragen');
     await passField.fill(opts.password);
     const submit = page
       .locator(
@@ -175,6 +187,7 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
       )
       .first();
     await submit.click();
+    progress(opts, 'Login Schritt 3/4: Passwort gesendet');
     await sleep(2000);
   }
 
@@ -187,6 +200,7 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
     opts.totpSecret &&
     (await otp.isVisible({ timeout: 6000 }).catch(() => false))
   ) {
+    progress(opts, 'Login Schritt 4/4: 2FA-Code generieren und eintragen');
     const code = generateSync({
       secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
     });
@@ -195,11 +209,13 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
       .locator('#submitButton, input[type="submit"], button[type="submit"], button:has-text("Verify"), button:has-text("Next")')
       .first();
     await go.click();
+    progress(opts, 'Login Schritt 4/4: 2FA-Code gesendet');
     await sleep(2500);
   }
 }
 
 async function openLoggedInPage(page: Page, url: string, opts: PuzzelScrapeOpts) {
+  progress(opts, `Öffne Puzzel-Seite: ${url}`);
   await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
   await tryPuzzelLogin(page, opts);
 
@@ -208,12 +224,15 @@ async function openLoggedInPage(page: Page, url: string, opts: PuzzelScrapeOpts)
     page.url().includes('/adfs/ls') ||
     (await page.locator('#Input_Username, #userNameInput').count()) > 0
   ) {
+    progress(opts, 'Login noch nicht abgeschlossen, wiederhole Login-Prüfung');
     await tryPuzzelLogin(page, opts);
   }
 
   if (page.url() !== url) {
+    progress(opts, 'Zur Zielseite nach erfolgreichem Login zurückkehren');
     await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
   }
+  progress(opts, `Login/Zielseite bereit: ${page.url()}`);
 }
 
 async function selectSavedSearch(page: Page, name: string) {
@@ -520,14 +539,23 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
     });
     const page = await ctx.newPage();
 
+    progress(opts, 'Ticketlisten-Sync startet');
     await openLoggedInPage(page, ticketUrl, opts);
     await sleep(2000);
     await page
       .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
       .catch(() => {});
 
-    await selectSavedSearch(page, opts.savedSearchName ?? "My Favourite Team's Open Tickets");
+    const savedSearchName = opts.savedSearchName ?? "My Favourite Team's Open Tickets";
+    progress(opts, `Saved Search auswählen: ${savedSearchName}`);
+    const savedSearchSelected = await selectSavedSearch(page, savedSearchName);
+    progress(opts, savedSearchSelected ? 'Saved Search ausgewählt' : 'Saved Search nicht gefunden, aktueller Filter wird genutzt');
     const filterState = await validateRelevantFilter(page, opts);
+    progress(
+      opts,
+      `Filterstatus: Team=${filterState.hasTeam ? 'ok' : 'fehlt'}, Status=${filterState.hasStatus ? 'ok' : 'fehlt'}, Zeitraum=${filterState.hasTimePeriod ? 'ok' : 'fehlt'}, Tickets=${filterState.hasTickets ? 'ok' : 'fehlt'}`,
+    );
+    progress(opts, 'Setze Ticketliste auf 100 Einträge pro Seite');
     await setPageSizeTo100(page);
     await page
       .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
@@ -548,6 +576,7 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       if (!batch.length && p > 0) break;
       if (fp === lastFingerprint && p > 0) break;
       lastFingerprint = fp;
+      progress(opts, `Ticketseite ${p + 1}: ${batch.length} Tickets erkannt (${all.length + batch.length} gesamt bisher)`);
       all.push(
         ...batch.map((row) => ({
           ...row,
@@ -559,6 +588,7 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       );
 
       const moved = await clickNextPage(page);
+      progress(opts, moved ? `Wechsle auf Ticketseite ${p + 2}` : 'Keine weitere Ticketseite gefunden');
       if (!moved) break;
     }
 
@@ -572,6 +602,7 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
     for (const row of all) {
       uniq.set(row.externalKey, row);
     }
+    progress(opts, `Ticketlisten-Sync fertig: ${uniq.size} eindeutige Tickets erkannt`);
     return [...uniq.values()];
   } finally {
     await browser.close().catch(() => {});
@@ -660,8 +691,11 @@ export async function scrapePuzzelTicketMessages(opts: PuzzelMessageScrapeOpts):
       locale: 'de-CH',
     });
     const page = await ctx.newPage();
+    progress(opts, 'Einzelnes Ticket für Nachrichten öffnen');
     await openLoggedInPage(page, opts.ticketUrl, opts);
-    return extractPuzzelMessagesFromPage(page);
+    const messages = await extractPuzzelMessagesFromPage(page);
+    progress(opts, `Nachrichten im Ticket erkannt: ${messages.length}`);
+    return messages;
   } finally {
     await browser.close().catch(() => {});
   }
@@ -684,21 +718,28 @@ export async function scrapePuzzelTicketMessagesBatch(
       locale: 'de-CH',
     });
     const page = await ctx.newPage();
+    progress(opts, `Nachrichten-Sync startet: ${tickets.length} Tickets müssen geprüft werden`);
     await openLoggedInPage(page, tickets[0].ticketUrl, opts);
 
     const out: PuzzelBatchScrapedMessages[] = [];
     for (let i = 0; i < tickets.length; i++) {
       const target = tickets[i];
+      progress(opts, `Nachrichten-Sync ${i + 1}/${tickets.length}: Ticket ${target.externalKey}`);
       if (i > 0) {
         await page.goto(target.ticketUrl, { timeout: 120_000, waitUntil: 'domcontentloaded' });
       }
-      const messages = await extractPuzzelMessagesFromPage(page).catch(() => [] as PuzzelScrapedMessage[]);
+      const messages = await extractPuzzelMessagesFromPage(page).catch((e) => {
+        progress(opts, `Nachrichten-Sync ${i + 1}/${tickets.length}: fehlgeschlagen (${(e as Error).message ?? String(e)})`);
+        return [] as PuzzelScrapedMessage[];
+      });
+      progress(opts, `Nachrichten-Sync ${i + 1}/${tickets.length}: ${messages.length} Nachrichten erkannt`);
       out.push({
         ticketId: target.ticketId,
         externalKey: target.externalKey,
         messages,
       });
     }
+    progress(opts, `Nachrichten-Sync fertig: ${out.length} Tickets geprüft`);
     return out;
   } finally {
     await browser.close().catch(() => {});

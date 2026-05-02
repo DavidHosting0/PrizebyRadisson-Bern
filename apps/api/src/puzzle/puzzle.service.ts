@@ -21,6 +21,10 @@ export class PuzzleService {
     private readonly settings: SettingsService,
   ) {}
 
+  private progress(message: string) {
+    this.log.log(message);
+  }
+
   listTickets() {
     return this.prisma.puzzelTicket.findMany({
       orderBy: { scrapedAt: 'desc' },
@@ -73,6 +77,7 @@ export class PuzzleService {
       password: creds.password,
       totpSecret: creds.totpSecret?.trim() || undefined,
       headless,
+      progress: (message) => this.progress(message),
     });
 
     await this.replaceMessages(ticketId, ticket.externalKey, messages);
@@ -180,9 +185,11 @@ export class PuzzleService {
         password: creds.password,
         totpSecret: creds.totpSecret?.trim() || undefined,
         headless,
+        progress: (message) => this.progress(message),
       });
 
       const now = new Date();
+      this.progress(`[Puzzel] Ticketliste gespeichert/aktualisiert: ${rows.length} Tickets werden geprüft`);
       const existing = await this.prisma.puzzelTicket.findMany({
         where: { externalKey: { in: rows.map((r) => r.externalKey.slice(0, 500)) } },
         include: { _count: { select: { messages: true } } },
@@ -229,6 +236,7 @@ export class PuzzleService {
         }
       }
 
+      this.progress(`[Puzzel] Nachrichten-Sync nötig für ${staleTargets.length}/${rows.length} Tickets`);
       if (staleTargets.length > 0) {
         const batches = await scrapePuzzelTicketMessagesBatch(
           {
@@ -242,6 +250,7 @@ export class PuzzleService {
             password: creds.password,
             totpSecret: creds.totpSecret?.trim() || undefined,
             headless,
+            progress: (message) => this.progress(message),
           },
           staleTargets,
         );
