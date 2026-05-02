@@ -49,6 +49,46 @@ function rowHash(pageIdx: number, i: number, text: string) {
     .slice(0, 32);
 }
 
+const KNOWN_STATUSES = new Set(['OPEN', 'PENDING', 'ON HOLD', 'CLOSED', 'ERROR', 'RESOLVED']);
+const PRIORITIES = new Set(['JUNK', 'LOWEST', 'LOW', 'NORMAL', 'HIGH', 'HIGHEST']);
+
+function normalizeCellText(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function mapTicketColumns(parts: string[], rowText: string) {
+  const clean = parts.map(normalizeCellText).filter(Boolean);
+  const ticketIdIdx = clean.findIndex((p) => /^\d{5,}$/.test(p));
+  const statusIdx = clean.findIndex((p) => KNOWN_STATUSES.has(p.toUpperCase()));
+  const priorityIdx = clean.findIndex((p) => PRIORITIES.has(p.toUpperCase()));
+
+  const reference = ticketIdIdx >= 0 ? clean[ticketIdIdx].slice(0, 128) : null;
+  const status = statusIdx >= 0 ? clean[statusIdx] : null;
+
+  let subject = '';
+  if (ticketIdIdx >= 0) {
+    const afterId = clean.slice(ticketIdIdx + 1);
+    const stopIdx = afterId.findIndex((p) => KNOWN_STATUSES.has(p.toUpperCase()));
+    subject = (stopIdx >= 0 ? afterId.slice(0, stopIdx) : afterId.slice(0, 1)).join(' · ');
+  }
+  if (!subject && statusIdx >= 0) {
+    subject = clean
+      .slice(statusIdx + 1)
+      .find((p) => !/^in \d+ (minutes?|hours?|days?)$/i.test(p) && !PRIORITIES.has(p.toUpperCase())) ?? '';
+  }
+  if (!subject) subject = clean.find((p, idx) => idx !== ticketIdIdx && idx !== statusIdx && idx !== priorityIdx) ?? rowText;
+
+  return {
+    clean,
+    reference,
+    subject: subject || rowText,
+    status,
+    priority: priorityIdx >= 0 ? clean[priorityIdx] : null,
+    responseTarget: statusIdx >= 0 ? clean[statusIdx + 1] ?? null : null,
+    resolveTarget: statusIdx >= 0 ? clean[statusIdx + 2] ?? null : null,
+  };
+}
+
 async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   const userField = page
     .locator(
@@ -108,6 +148,19 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   }
 }
 
+async function selectAllTicketsSearch(page: Page) {
+  const allTickets = page.locator('a:has-text("All Tickets"), li:has-text("All Tickets") a').first();
+  if (!(await allTickets.isVisible({ timeout: 5000 }).catch(() => false))) return false;
+
+  const response = page
+    .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+    .catch(() => null);
+  await allTickets.click();
+  await response;
+  await sleep(1200);
+  return true;
+}
+
 async function setPageSizeTo100(page: Page): Promise<boolean> {
   const selectors = [
     async () => page.locator('select').filter({ has: page.locator('option[value="100"]') }).first(),
@@ -118,16 +171,22 @@ async function setPageSizeTo100(page: Page): Promise<boolean> {
     const sel = await getSel();
     if ((await sel.count()) === 0) continue;
     try {
+      const response = page
+        .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+        .catch(() => null);
       await sel.selectOption({ value: '100' });
-      await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+      await response;
       await sleep(900);
       return true;
     } catch {
       /* try label */
     }
     try {
+      const response = page
+        .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+        .catch(() => null);
       await sel.selectOption({ label: '100' });
-      await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+      await response;
       await sleep(900);
       return true;
     } catch {
@@ -141,7 +200,11 @@ async function setPageSizeTo100(page: Page): Promise<boolean> {
       await combo.click();
       const opt = page.getByRole('option', { name: /^100$/ });
       if (await opt.isVisible({ timeout: 2000 }).catch(() => false)) {
+        const response = page
+          .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+          .catch(() => null);
         await opt.click();
+        await response;
         await sleep(800);
         return true;
       }
@@ -169,18 +232,15 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
         rawHref = await link.getAttribute('href');
       }
 
-      const cells = row.locator('td');
+      const cells = row.locator('td:visible');
       const cellCount = await cells.count();
       const parts: string[] = [];
-      for (let c = 0; c < Math.min(cellCount, 6); c++) {
-        parts.push((await cells.nth(c).innerText().catch(() => '')).trim());
+      for (let c = 0; c < cellCount; c++) {
+        const value = normalizeCellText(await cells.nth(c).innerText().catch(() => ''));
+        if (value) parts.push(value);
       }
 
-      let reference = parts[0] && /^[A-Za-z0-9\-#./]+$/.test(parts[0].slice(0, 48)) ? parts[0].slice(0, 128) : null;
-      let subject =
-        parts.length > 2 ? parts.slice(1).join(' · ') : parts.slice(1).join(' ');
-      subject = subject || text;
-      const statusGuess = parts.length > 3 ? parts[parts.length - 2] : null;
+      const mapped = mapTicketColumns(parts, text);
 
       const keyHref = rawHref ? hrefKey(rawHref, baseUrl) : '';
       const externalKey = keyHref ? `href:${keyHref}` : `row:${pageIdx}:${i}:${rowHash(pageIdx, i, text)}`;
@@ -192,12 +252,18 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
 
       out.push({
         externalKey,
-        subject: subject.slice(0, 2000),
-        reference,
-        status: statusGuess,
+        subject: mapped.subject.slice(0, 2000),
+        reference: mapped.reference,
+        status: mapped.status,
         detailHref,
         rowSummary: text.slice(0, 8000),
-        metadata: { cols: parts, pageIdx },
+        metadata: {
+          cols: mapped.clean,
+          pageIdx,
+          priority: mapped.priority,
+          responseTarget: mapped.responseTarget,
+          resolveTarget: mapped.resolveTarget,
+        },
       });
     }
     return out;
@@ -209,11 +275,12 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
   for (let i = 1; i < m; i++) {
     /* skip header row 0 heuristic */
     const row = gridRows.nth(i);
-    const cells = row.locator('[role="gridcell"]');
+    const cells = row.locator('[role="gridcell"]:visible');
     const texts: string[] = [];
     const cc = await cells.count();
     for (let z = 0; z < cc; z++) {
-      texts.push((await cells.nth(z).innerText().catch(() => '')).trim());
+      const value = normalizeCellText(await cells.nth(z).innerText().catch(() => ''));
+      if (value) texts.push(value);
     }
     const text = texts.join(' · ');
     if (!text) continue;
@@ -230,14 +297,21 @@ async function extractTableLikeRows(page: Page, pageIdx: number, baseUrl: string
         detailHref = rawHref;
       }
     }
+    const mapped = mapTicketColumns(texts, text);
     out.push({
       externalKey,
-      subject: (texts[1] ?? texts[0] ?? text).slice(0, 2000),
-      reference: texts[0] ?? null,
-      status: texts.length > 2 ? texts[texts.length - 2] : null,
+      subject: mapped.subject.slice(0, 2000),
+      reference: mapped.reference,
+      status: mapped.status,
       detailHref,
       rowSummary: text.slice(0, 8000),
-      metadata: { gridCells: texts, pageIdx },
+      metadata: {
+        gridCells: mapped.clean,
+        pageIdx,
+        priority: mapped.priority,
+        responseTarget: mapped.responseTarget,
+        resolveTarget: mapped.resolveTarget,
+      },
     });
   }
 
@@ -264,11 +338,15 @@ async function clickNextPage(page: Page): Promise<boolean> {
       if (
         cls?.includes('disabled') ||
         dis !== null ||
-        ariaDisabled === 'true'
+        ariaDisabled === 'true' ||
+        (await el.locator('xpath=ancestor-or-self::*[contains(@class, "disabled")]').count()) > 0
       )
         continue;
+      const response = page
+        .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+        .catch(() => null);
       await el.click();
-      await page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => {});
+      await response;
       await sleep(600);
       return true;
     } catch {
@@ -311,6 +389,7 @@ export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<Puzze
       .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
       .catch(() => {});
 
+    await selectAllTicketsSearch(page);
     await setPageSizeTo100(page);
     await page
       .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
