@@ -51,6 +51,10 @@ export type PuzzelMessageScrapeOpts = PuzzelScrapeOpts & {
   ticketUrl: string;
 };
 
+export type PuzzelTicketActionOpts = PuzzelMessageScrapeOpts & {
+  replyText?: string;
+};
+
 export type PuzzelBatchMessageTarget = {
   ticketId: string;
   externalKey: string;
@@ -61,6 +65,11 @@ export type PuzzelBatchScrapedMessages = {
   ticketId: string;
   externalKey: string;
   messages: PuzzelScrapedMessage[];
+};
+
+export type PuzzelTicketActionResult = {
+  ok: true;
+  action: 'assign' | 'reply';
 };
 
 function normBase(url: string) {
@@ -741,6 +750,156 @@ export async function scrapePuzzelTicketMessagesBatch(
     }
     progress(opts, `Nachrichten-Sync fertig: ${out.length} Tickets geprüft`);
     return out;
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+async function clickFirstVisible(page: Page, selectors: string[], timeout = 3000) {
+  for (const selector of selectors) {
+    try {
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible({ timeout }).catch(() => false)) {
+        await loc.scrollIntoViewIfNeeded().catch(() => {});
+        await loc.click({ force: true });
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
+async function fillFirstVisible(page: Page, selectors: string[], value: string, timeout = 3000) {
+  for (const selector of selectors) {
+    try {
+      const loc = page.locator(selector).first();
+      if (await loc.isVisible({ timeout }).catch(() => false)) {
+        await loc.scrollIntoViewIfNeeded().catch(() => {});
+        await loc.fill(value);
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
+async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOpts) {
+  progress(opts, 'Ticket-Aktion: "Assign to me" suchen');
+  const openedMenu = await clickFirstVisible(page, [
+    'button:has-text("Assign")',
+    'a:has-text("Assign")',
+    'button:has-text("Zuweisen")',
+    'a:has-text("Zuweisen")',
+    '[aria-label*="Assign" i]',
+  ], 1500);
+
+  const assigned = await clickFirstVisible(page, [
+    'button:has-text("Assign to me")',
+    'a:has-text("Assign to me")',
+    'button:has-text("Assign ticket to me")',
+    'a:has-text("Assign ticket to me")',
+    'button:has-text("Take ownership")',
+    'a:has-text("Take ownership")',
+    'button:has-text("Me")',
+    'a:has-text("Me")',
+    'button:has-text("Mir zuweisen")',
+    'a:has-text("Mir zuweisen")',
+  ], openedMenu ? 5000 : 2000);
+
+  if (!assigned) {
+    throw new Error('Puzzel Assign-to-me Button nicht gefunden.');
+  }
+  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+  progress(opts, 'Ticket-Aktion: Ticket wurde an den eingeloggten Puzzel-User zugewiesen');
+}
+
+async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
+  const text = opts.replyText?.trim();
+  if (!text) throw new Error('Reply text is empty.');
+
+  progress(opts, 'Ticket-Aktion: Antwort-Composer öffnen');
+  const opened = await clickFirstVisible(page, [
+    'button:has-text("Reply")',
+    'a:has-text("Reply")',
+    'button:has-text("Reply all")',
+    'a:has-text("Reply all")',
+    'button:has-text("Antworten")',
+    'a:has-text("Antworten")',
+    '[aria-label*="Reply" i]',
+  ], 5000);
+  if (!opened) {
+    throw new Error('Puzzel Reply Button nicht gefunden.');
+  }
+
+  await sleep(1000);
+  progress(opts, 'Ticket-Aktion: Antworttext eintragen');
+  const filled = await fillFirstVisible(page, [
+    'textarea:visible',
+    '[contenteditable="true"]:visible',
+    '.ql-editor:visible',
+    '[role="textbox"]:visible',
+    'iframe[title*="Rich Text" i]',
+  ], text, 5000);
+  if (!filled) {
+    const frame = page.frames().find((f) => /reply|editor|compose|tinymce|ckeditor/i.test(f.url()));
+    const frameBody = frame?.locator('body').first();
+    if (frameBody && (await frameBody.isVisible({ timeout: 2000 }).catch(() => false))) {
+      await frameBody.fill(text);
+    } else {
+      throw new Error('Puzzel Antwortfeld nicht gefunden.');
+    }
+  }
+
+  progress(opts, 'Ticket-Aktion: Antwort senden');
+  const sent = await clickFirstVisible(page, [
+    'button:has-text("Send")',
+    'a:has-text("Send")',
+    'button:has-text("Send reply")',
+    'button:has-text("Reply")',
+    'button:has-text("Senden")',
+    'button:has-text("Antwort senden")',
+    '[aria-label*="Send" i]',
+  ], 5000);
+  if (!sent) {
+    throw new Error('Puzzel Send Button nicht gefunden.');
+  }
+  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+  progress(opts, 'Ticket-Aktion: Antwort wurde gesendet');
+}
+
+export async function assignPuzzelTicketToMe(opts: PuzzelTicketActionOpts): Promise<PuzzelTicketActionResult> {
+  const browser = await chromium.launch({ headless: opts.headless ?? true });
+  try {
+    const ctx = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+      locale: 'de-CH',
+    });
+    const page = await ctx.newPage();
+    await openLoggedInPage(page, opts.ticketUrl, opts);
+    await assignTicketToLoggedInUser(page, opts);
+    return { ok: true, action: 'assign' };
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+export async function replyToPuzzelTicket(opts: PuzzelTicketActionOpts): Promise<PuzzelTicketActionResult> {
+  const browser = await chromium.launch({ headless: opts.headless ?? true });
+  try {
+    const ctx = await browser.newContext({
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36',
+      locale: 'de-CH',
+    });
+    const page = await ctx.newPage();
+    await openLoggedInPage(page, opts.ticketUrl, opts);
+    await replyToTicket(page, opts);
+    return { ok: true, action: 'reply' };
   } finally {
     await browser.close().catch(() => {});
   }

@@ -52,6 +52,28 @@ export class PuzzleController {
     return this.puzzle.refreshTicketMessages(id);
   }
 
+  @Post('tickets/:id/assign-to-me')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  assignTicketToMe(@Param('id') id: string) {
+    return this.puzzle.assignTicketToMe(id);
+  }
+
+  @Post('tickets/:id/reply')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  replyToTicket(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      message?: string;
+    },
+  ) {
+    return this.puzzle.replyToTicket(id, body);
+  }
+
   @Get('sync-status')
   @UseGuards(RolesGuard)
   @Roles(UserRole.RECEPTION, UserRole.ADMIN)

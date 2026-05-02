@@ -3,6 +3,8 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import {
+  assignPuzzelTicketToMe,
+  replyToPuzzelTicket,
   scrapePuzzelTicketMessages,
   scrapePuzzelTicketMessagesBatch,
   scrapePuzzelTickets,
@@ -88,6 +90,34 @@ export class PuzzleService {
     });
   }
 
+  async assignTicketToMe(ticketId: string) {
+    const { ticket, opts } = await this.buildTicketActionOpts(ticketId);
+    const result = await assignPuzzelTicketToMe(opts);
+    await this.prisma.puzzelTicket.update({
+      where: { id: ticket.id },
+      data: {
+        metadata: {
+          ...this.metadataRecord(ticket.metadata),
+          lastAssignedViaPrizeBernAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+    return result;
+  }
+
+  async replyToTicket(ticketId: string, body: { message?: string }) {
+    const message = body.message?.trim();
+    if (!message) {
+      throw new Error('Reply message is empty.');
+    }
+    const { ticket, opts } = await this.buildTicketActionOpts(ticketId, message);
+    const result = await replyToPuzzelTicket(opts);
+    await this.refreshTicketMessages(ticket.id).catch((e) => {
+      this.log.warn(`Puzzel reply sent, but message refresh failed: ${(e as Error).message ?? String(e)}`);
+    });
+    return result;
+  }
+
   async getSyncStatus() {
     const status = await this.settings.getPuzzelTicketSyncMeta();
     if (status.inProgress && !this.syncInFlight) {
@@ -123,6 +153,40 @@ export class PuzzleService {
     if (!reference) return null;
     const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
     return `${baseUrl.replace(/\/+$/, '')}/tickets/${encodeURIComponent(reference)}`;
+  }
+
+  private async buildTicketActionOpts(ticketId: string, replyText?: string) {
+    const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) {
+      throw new Error('Puzzel ticket not found.');
+    }
+    const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
+    if (!ticketUrl) {
+      throw new Error('Puzzel ticket has no detail URL/reference.');
+    }
+    const creds = await this.settings.getPuzzelLoginSecrets();
+    if (!creds?.password?.trim() || !creds.email?.trim()) {
+      throw new Error('Puzzle-Zugangsdaten unvollständig (E-Mail oder Passwort fehlt). Admin → Puzzle.');
+    }
+    const filter = await this.settings.getPuzzelTicketFilter();
+    return {
+      ticket,
+      opts: {
+        baseUrl: process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com',
+        ticketsPath: process.env.PUZZEL_TICKETS_PATH ?? '/tickets',
+        savedSearchName: filter.savedSearchName,
+        teamName: filter.teamName,
+        statusName: filter.statusName,
+        timePeriod: filter.timePeriod,
+        ticketUrl,
+        email: creds.email.trim(),
+        password: creds.password,
+        totpSecret: creds.totpSecret?.trim() || undefined,
+        headless: process.env.PUZZEL_HEADLESS !== 'false',
+        replyText,
+        progress: (message: string) => this.progress(message),
+      },
+    };
   }
 
   private metadataRecord(raw: unknown): Record<string, unknown> {

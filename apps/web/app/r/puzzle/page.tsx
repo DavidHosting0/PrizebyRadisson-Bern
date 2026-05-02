@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -33,6 +33,7 @@ type PuzzelTicketMessage = {
   toText: string | null;
   direction: string | null;
   bodyText: string;
+  bodyHtml?: string | null;
   scrapedAt: string;
 };
 
@@ -75,6 +76,26 @@ function statusTone(status: string | null) {
   return 'border-border bg-surface-muted text-ink-muted';
 }
 
+function metadataRecord(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return {};
+}
+
+function metaText(ticket: PuzzelTicket, key: string) {
+  const value = metadataRecord(ticket.metadata)[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function initials(value: string | null | undefined) {
+  const text = value?.trim() || '?';
+  return text
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || '?';
+}
+
 export default function ReceptionPuzzlePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -82,6 +103,7 @@ export default function ReceptionPuzzlePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
   const [filterDraft, setFilterDraft] = useState<PuzzelFilter>({
     savedSearchName: "My Favourite Team's Open Tickets",
     teamName: 'PZ | Billing Bern',
@@ -148,6 +170,16 @@ export default function ReceptionPuzzlePage() {
     });
   }, [search, statusFilter, tickets]);
 
+  useEffect(() => {
+    if (!expandedId && filteredTickets.length > 0) {
+      setExpandedId(filteredTickets[0].id);
+    }
+  }, [expandedId, filteredTickets]);
+
+  const selectedTicket = useMemo(() => {
+    return tickets.find((ticket) => ticket.id === expandedId) ?? null;
+  }, [expandedId, tickets]);
+
   const messagesQuery = useQuery({
     queryKey: ['puzzle', 'ticket-messages', expandedId],
     queryFn: () => api<PuzzelTicketMessage[]>(`/puzzle/tickets/${expandedId}/messages`),
@@ -163,8 +195,29 @@ export default function ReceptionPuzzlePage() {
     },
   });
 
+  const assignMut = useMutation({
+    mutationFn: (ticketId: string) => api<{ ok: true; action: 'assign' }>(`/puzzle/tickets/${ticketId}/assign-to-me`, { method: 'POST' }),
+    onSuccess: (_data, ticketId) => {
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', ticketId] });
+    },
+  });
+
+  const replyMut = useMutation({
+    mutationFn: ({ ticketId, message }: { ticketId: string; message: string }) =>
+      api<{ ok: true; action: 'reply' }>(`/puzzle/tickets/${ticketId}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+    onSuccess: (_data, vars) => {
+      setReplyText('');
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', vars.ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
+    },
+  });
+
   return (
-    <div className="space-y-8 p-4 md:p-8">
+    <div className="space-y-6 bg-surface-muted/30 p-4 md:p-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Puzzel Tickets</h1>
@@ -310,23 +363,29 @@ export default function ReceptionPuzzlePage() {
       )}
 
       {tickets.length > 0 && (
-        <>
-          <Card className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+        <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+          <Card className="p-4">
             <label className="block">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Suchen</span>
               <input
                 type="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setExpandedId(null);
+                }}
                 placeholder="Referenz, Betreff, Status oder Text suchen…"
                 className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action"
               />
             </label>
-            <label className="block">
+            <label className="mt-3 block">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</span>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setExpandedId(null);
+                }}
                 className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action"
               >
                 <option value="">Alle Status</option>
@@ -337,7 +396,7 @@ export default function ReceptionPuzzlePage() {
                 ))}
               </select>
             </label>
-            <div className="flex items-end">
+            <div className="mt-3 flex items-end">
               <Button
                 type="button"
                 variant="secondary"
@@ -345,169 +404,234 @@ export default function ReceptionPuzzlePage() {
                 onClick={() => {
                   setSearch('');
                   setStatusFilter('');
+                  setExpandedId(null);
                 }}
               >
                 Filter löschen
               </Button>
             </div>
-          </Card>
 
-          <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border text-left text-sm">
-                <thead className="bg-surface-muted/80">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold text-ink">Referenz</th>
-                    <th className="px-4 py-3 font-semibold text-ink">Ticket</th>
-                    <th className="px-4 py-3 font-semibold text-ink">Status</th>
-                    <th className="px-4 py-3 font-semibold text-ink">Stand</th>
-                    <th className="px-4 py-3 font-semibold text-ink">Aktion</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredTickets.map((t) => {
-                    const expanded = expandedId === t.id;
-                    return (
-                      <Fragment key={t.id}>
-                        <tr className="hover:bg-surface-muted/40">
-                          <td className="whitespace-nowrap px-4 py-3 align-top font-mono text-xs text-ink-muted">
-                            {t.reference ?? '–'}
-                          </td>
-                          <td className="min-w-[320px] max-w-2xl px-4 py-3 align-top text-ink">
-                            <button
-                              type="button"
-                              className="block text-left"
-                              onClick={() => setExpandedId(expanded ? null : t.id)}
-                            >
-                              <span className="line-clamp-2 font-medium leading-snug text-ink">{t.subject}</span>
-                              <span className="mt-1 line-clamp-1 text-xs text-ink-muted">{t.rowSummary}</span>
-                            </button>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 align-top">
-                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone(t.status)}`}>
-                              {t.status ?? 'Unbekannt'}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 align-top text-xs text-ink-muted">
-                            {formatDateTime(t.scrapedAt)}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 align-top">
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                className="text-xs font-medium text-action hover:underline"
-                                onClick={() => setExpandedId(expanded ? null : t.id)}
-                              >
-                                {expanded ? 'Schliessen' : 'Details'}
-                              </button>
-                              {t.detailHref ? (
-                                <a
-                                  href={t.detailHref}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs font-medium text-action hover:underline"
-                                >
-                                  Puzzel öffnen
-                                </a>
-                              ) : (
-                                <span className="text-xs text-ink-muted">Kein Link</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {expanded && (
-                          <tr className="bg-surface-muted/40">
-                            <td colSpan={5} className="px-4 py-4">
-                              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_280px]">
-                                <div>
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                      Nachrichten im Ticket
-                                    </p>
-                                    {isAdmin && (
-                                      <button
-                                        type="button"
-                                        className="text-xs font-medium text-action hover:underline disabled:opacity-50"
-                                        disabled={refreshMessagesMut.isPending}
-                                        onClick={() => refreshMessagesMut.mutate(t.id)}
-                                      >
-                                        Nachrichten neu laden
-                                      </button>
-                                    )}
-                                  </div>
-
-                                  {messagesQuery.isLoading && (
-                                    <p className="mt-3 rounded-xl border border-border bg-surface p-3 text-sm text-ink-muted">
-                                      Nachrichten werden aus Puzzel geladen…
-                                    </p>
-                                  )}
-                                  {messagesQuery.isError && (
-                                    <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                                      {(messagesQuery.error as Error).message}
-                                    </p>
-                                  )}
-                                  {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 && (
-                                    <p className="mt-3 rounded-xl border border-border bg-surface p-3 text-sm text-ink-muted">
-                                      Keine Nachrichten gespeichert.
-                                    </p>
-                                  )}
-                                  <ol className="mt-3 space-y-3">
-                                    {(messagesQuery.data ?? []).map((message) => (
-                                      <li
-                                        key={message.id}
-                                        className={`rounded-xl border p-4 ${
-                                          message.direction === 'outbound'
-                                            ? 'border-sky-200 bg-sky-50'
-                                            : 'border-border bg-surface'
-                                        }`}
-                                      >
-                                        <div className="flex flex-wrap items-start justify-between gap-2">
-                                          <div>
-                                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                                              {message.direction === 'outbound' ? 'Antwort vom Hotel' : 'Nachricht vom Gast'}
-                                            </p>
-                                            <p className="mt-1 text-sm font-medium text-ink">
-                                              {message.fromText ?? 'Unbekannt'} → {message.toText ?? 'Unbekannt'}
-                                            </p>
-                                          </div>
-                                          <span className="text-xs text-ink-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
-                                        </div>
-                                        <p className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg bg-white/80 p-3 text-sm leading-relaxed text-ink">
-                                          {message.bodyText}
-                                        </p>
-                                      </li>
-                                    ))}
-                                  </ol>
-                                </div>
-                                <dl className="grid content-start gap-2 rounded-xl border border-border bg-surface p-3 text-xs">
-                                  <div>
-                                    <dt className="font-semibold uppercase tracking-wide text-ink-muted">Ticket-Zeile</dt>
-                                    <dd className="mt-1 text-ink-muted">{t.rowSummary || t.subject}</dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-semibold uppercase tracking-wide text-ink-muted">External Key</dt>
-                                    <dd className="mt-1 break-all font-mono text-ink-muted">{t.externalKey}</dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-semibold uppercase tracking-wide text-ink-muted">Gescraped</dt>
-                                    <dd className="mt-1 text-ink-muted">{formatDateTime(t.scrapedAt)}</dd>
-                                  </div>
-                                </dl>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="mt-4 space-y-2">
+              {filteredTickets.map((ticket) => {
+                const selected = selectedTicket?.id === ticket.id;
+                const team = metaText(ticket, 'team');
+                const lastActivity = metaText(ticket, 'lastActivity') ?? metaText(ticket, 'lastInboundActivity');
+                return (
+                  <button
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => {
+                      setExpandedId(ticket.id);
+                      setReplyText('');
+                    }}
+                    className={`w-full rounded-2xl border p-4 text-left transition ${
+                      selected
+                        ? 'border-action bg-action/5 shadow-card'
+                        : 'border-border bg-surface hover:border-action/40 hover:bg-surface-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs text-ink-muted">{ticket.reference ?? 'No reference'}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(ticket.status)}`}>
+                            {ticket.status ?? 'Unknown'}
+                          </span>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-ink">{ticket.subject}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-surface-muted px-2 py-1 text-[11px] text-ink-muted">
+                        {formatDateTime(ticket.scrapedAt)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-ink-muted">
+                      {team && <span className="rounded-full bg-surface-muted px-2 py-1">Team: {team}</span>}
+                      {lastActivity && <span className="rounded-full bg-surface-muted px-2 py-1">Last activity: {lastActivity}</span>}
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-ink-muted">{ticket.rowSummary}</p>
+                  </button>
+                );
+              })}
             </div>
             {filteredTickets.length === 0 && (
-              <p className="p-6 text-sm text-ink-muted">Keine Tickets passen zu den aktuellen Filtern.</p>
+              <p className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+                Keine Tickets passen zu den aktuellen Filtern.
+              </p>
             )}
-          </div>
-        </>
+          </Card>
+
+          <Card className="min-h-[620px] overflow-hidden">
+            {selectedTicket ? (
+              <div className="flex h-full flex-col">
+                <div className="border-b border-border bg-surface p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs text-ink-muted">{selectedTicket.reference ?? 'No reference'}</span>
+                        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(selectedTicket.status)}`}>
+                          {selectedTicket.status ?? 'Unknown'}
+                        </span>
+                      </div>
+                      <h2 className="mt-2 text-xl font-semibold leading-tight text-ink">{selectedTicket.subject}</h2>
+                      <p className="mt-1 text-sm text-ink-muted">
+                        Synced {formatDateTime(selectedTicket.scrapedAt)}
+                        {metaText(selectedTicket, 'lastActivity') ? ` · Last activity ${metaText(selectedTicket, 'lastActivity')}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="min-h-[40px]"
+                        disabled={assignMut.isPending}
+                        onClick={() => assignMut.mutate(selectedTicket.id)}
+                      >
+                        {assignMut.isPending ? 'Assigning…' : 'Assign to me'}
+                      </Button>
+                      {selectedTicket.detailHref && (
+                        <a
+                          href={selectedTicket.detailHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex min-h-[40px] items-center rounded-btn border border-border px-3 text-sm font-medium text-ink hover:bg-surface-muted"
+                        >
+                          Open in Puzzel
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  {(assignMut.isError || replyMut.isError) && (
+                    <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                      {((assignMut.error || replyMut.error) as Error).message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-4 overflow-auto bg-gradient-to-b from-surface-muted/60 to-surface p-5">
+                  <div className="rounded-2xl border border-border bg-surface p-4 text-xs text-ink-muted">
+                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Ticket summary</p>
+                    <p className="mt-2 leading-relaxed">{selectedTicket.rowSummary || selectedTicket.subject}</p>
+                  </div>
+
+                  {messagesQuery.isLoading && (
+                    <p className="rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+                      Loading chat history from Puzzel…
+                    </p>
+                  )}
+                  {messagesQuery.isError && (
+                    <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                      {(messagesQuery.error as Error).message}
+                    </p>
+                  )}
+                  {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 && (
+                    <p className="rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+                      No messages saved yet.
+                    </p>
+                  )}
+
+                  <ol className="space-y-4">
+                    {(messagesQuery.data ?? []).map((message) => {
+                      const outbound = message.direction === 'outbound';
+                      return (
+                        <li key={message.id} className={`flex gap-3 ${outbound ? 'justify-end' : 'justify-start'}`}>
+                          {!outbound && (
+                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-semibold text-amber-900">
+                              {initials(message.fromText)}
+                            </div>
+                          )}
+                          <article
+                            className={`max-w-[780px] rounded-2xl border p-4 shadow-sm ${
+                              outbound
+                                ? 'border-sky-200 bg-sky-50 text-sky-950'
+                                : 'border-border bg-white text-ink'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                  {outbound ? 'Hotel reply' : 'Guest message'}
+                                </p>
+                                <p className="mt-1 text-sm font-medium">
+                                  {message.fromText ?? 'Unknown'} → {message.toText ?? 'Unknown'}
+                                </p>
+                              </div>
+                              <span className="text-xs text-ink-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
+                            </div>
+                            <div className="mt-3 max-h-[560px] overflow-auto whitespace-pre-wrap rounded-xl bg-white/80 p-3 text-sm leading-7">
+                              {message.bodyText}
+                            </div>
+                          </article>
+                          {outbound && (
+                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-900">
+                              {initials(message.fromText)}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </div>
+
+                <div className="border-t border-border bg-surface p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-ink-muted">
+                      Reply is sent through Puzzel with line breaks preserved.
+                    </p>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-action hover:underline disabled:opacity-50"
+                        disabled={refreshMessagesMut.isPending}
+                        onClick={() => refreshMessagesMut.mutate(selectedTicket.id)}
+                      >
+                        Refresh messages
+                      </button>
+                    )}
+                  </div>
+                  <form
+                    className="mt-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!replyText.trim()) return;
+                      replyMut.mutate({ ticketId: selectedTicket.id, message: replyText });
+                    }}
+                  >
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      rows={5}
+                      placeholder="Write a reply to the guest…"
+                      className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-ink outline-none focus:border-action"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-ink-muted">
+                        Use the same signature/business data you want to send in Puzzel.
+                      </p>
+                      <Button
+                        type="submit"
+                        variant="action"
+                        className="min-h-[44px]"
+                        disabled={replyMut.isPending || !replyText.trim()}
+                      >
+                        {replyMut.isPending ? 'Sending…' : 'Send reply via Puzzel'}
+                      </Button>
+                    </div>
+                    {replyMut.isSuccess && (
+                      <p className="mt-2 text-sm font-medium text-emerald-800">Reply sent through Puzzel.</p>
+                    )}
+                  </form>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-[520px] items-center justify-center p-8 text-center">
+                <div>
+                  <p className="text-lg font-semibold text-ink">Select a ticket</p>
+                  <p className="mt-1 text-sm text-ink-muted">The chat history and actions will appear here.</p>
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
       )}
     </div>
   );
