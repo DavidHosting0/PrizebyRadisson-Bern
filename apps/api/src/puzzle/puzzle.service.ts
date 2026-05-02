@@ -93,16 +93,17 @@ export class PuzzleService {
   async assignTicketToMe(ticketId: string) {
     const { ticket, opts } = await this.buildTicketActionOpts(ticketId);
     const result = await assignPuzzelTicketToMe(opts);
+    const assignedAt = new Date().toISOString();
     await this.prisma.puzzelTicket.update({
       where: { id: ticket.id },
       data: {
         metadata: {
           ...this.metadataRecord(ticket.metadata),
-          lastAssignedViaPrizeBernAt: new Date().toISOString(),
+          lastAssignedViaPrizeBernAt: assignedAt,
         } as Prisma.InputJsonValue,
       },
     });
-    return result;
+    return { ...result, assignedAt };
   }
 
   async replyToTicket(ticketId: string, body: { message?: string }) {

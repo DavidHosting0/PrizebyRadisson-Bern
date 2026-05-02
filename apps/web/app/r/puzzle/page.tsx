@@ -86,6 +86,10 @@ function metaText(ticket: PuzzelTicket, key: string) {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+function assignedAt(ticket: PuzzelTicket) {
+  return metaText(ticket, 'lastAssignedViaPrizeBernAt');
+}
+
 function initials(value: string | null | undefined) {
   const text = value?.trim() || '?';
   return text
@@ -196,8 +200,22 @@ export default function ReceptionPuzzlePage() {
   });
 
   const assignMut = useMutation({
-    mutationFn: (ticketId: string) => api<{ ok: true; action: 'assign' }>(`/puzzle/tickets/${ticketId}/assign-to-me`, { method: 'POST' }),
-    onSuccess: (_data, ticketId) => {
+    mutationFn: (ticketId: string) =>
+      api<{ ok: true; action: 'assign'; assignedAt: string }>(`/puzzle/tickets/${ticketId}/assign-to-me`, { method: 'POST' }),
+    onSuccess: (data, ticketId) => {
+      queryClient.setQueryData<PuzzelTicket[]>(['puzzle', 'tickets'], (current) =>
+        current?.map((ticket) =>
+          ticket.id === ticketId
+            ? {
+                ...ticket,
+                metadata: {
+                  ...metadataRecord(ticket.metadata),
+                  lastAssignedViaPrizeBernAt: data.assignedAt,
+                },
+              }
+            : ticket,
+        ),
+      );
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', ticketId] });
     },
@@ -416,6 +434,7 @@ export default function ReceptionPuzzlePage() {
                 const selected = selectedTicket?.id === ticket.id;
                 const team = metaText(ticket, 'team');
                 const lastActivity = metaText(ticket, 'lastActivity') ?? metaText(ticket, 'lastInboundActivity');
+                const ticketAssignedAt = assignedAt(ticket);
                 return (
                   <button
                     key={ticket.id}
@@ -437,6 +456,11 @@ export default function ReceptionPuzzlePage() {
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(ticket.status)}`}>
                             {ticket.status ?? 'Unknown'}
                           </span>
+                          {ticketAssignedAt && (
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
+                              Assigned to me
+                            </span>
+                          )}
                         </div>
                         <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-ink">{ticket.subject}</p>
                       </div>
@@ -471,6 +495,11 @@ export default function ReceptionPuzzlePage() {
                         <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(selectedTicket.status)}`}>
                           {selectedTicket.status ?? 'Unknown'}
                         </span>
+                        {assignedAt(selectedTicket) && (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900">
+                            Assigned to me
+                          </span>
+                        )}
                       </div>
                       <h2 className="mt-2 text-xl font-semibold leading-tight text-ink">{selectedTicket.subject}</h2>
                       <p className="mt-1 text-sm text-ink-muted">
@@ -483,10 +512,10 @@ export default function ReceptionPuzzlePage() {
                         type="button"
                         variant="secondary"
                         className="min-h-[40px]"
-                        disabled={assignMut.isPending}
+                        disabled={assignMut.isPending || Boolean(assignedAt(selectedTicket))}
                         onClick={() => assignMut.mutate(selectedTicket.id)}
                       >
-                        {assignMut.isPending ? 'Assigning…' : 'Assign to me'}
+                        {assignMut.isPending ? 'Assigning…' : assignedAt(selectedTicket) ? 'Assigned to me' : 'Assign to me'}
                       </Button>
                       {selectedTicket.detailHref && (
                         <a
