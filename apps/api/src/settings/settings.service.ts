@@ -20,6 +20,7 @@ export type PuzzelTicketSyncStored = {
   lastError?: string | null;
   lastTicketCount?: number;
   inProgress?: boolean;
+  startedAt?: string | null;
 };
 
 export type PuzzelTicketFilterStored = {
@@ -157,6 +158,7 @@ export class SettingsService {
       lastError: typeof o.lastError === 'string' ? o.lastError : o.lastError === null ? null : undefined,
       lastTicketCount: typeof o.lastTicketCount === 'number' ? o.lastTicketCount : 0,
       inProgress: o.inProgress === true,
+      startedAt: typeof o.startedAt === 'string' ? o.startedAt : o.startedAt === null ? null : undefined,
     };
   }
 

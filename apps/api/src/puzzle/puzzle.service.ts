@@ -89,7 +89,21 @@ export class PuzzleService {
   }
 
   async getSyncStatus() {
-    return this.settings.getPuzzelTicketSyncMeta();
+    const status = await this.settings.getPuzzelTicketSyncMeta();
+    if (status.inProgress && !this.syncInFlight) {
+      const msg = 'Vorherige Puzzel-Synchronisation wurde unterbrochen (API-Neustart oder Prozessabbruch).';
+      await this.settings.mergePuzzelTicketSyncMeta({
+        inProgress: false,
+        lastError: msg,
+      });
+      this.log.warn(msg);
+      return {
+        ...status,
+        inProgress: false,
+        lastError: msg,
+      };
+    }
+    return status;
   }
 
   async getFilter() {
@@ -163,7 +177,11 @@ export class PuzzleService {
   }
 
   private async runSync() {
-    await this.settings.mergePuzzelTicketSyncMeta({ inProgress: true, lastError: null });
+    await this.settings.mergePuzzelTicketSyncMeta({
+      inProgress: true,
+      lastError: null,
+      startedAt: new Date().toISOString(),
+    });
     try {
       const creds = await this.settings.getPuzzelLoginSecrets();
       if (!creds?.password?.trim() || !creds.email?.trim()) {
@@ -266,11 +284,12 @@ export class PuzzleService {
         lastError: null,
         lastSyncedAt: now.toISOString(),
         lastTicketCount: rows.length,
+        startedAt: null,
       });
       this.log.log(`Puzzle sync OK: ${rows.length} tickets, ${staleTargets.length} ticket timelines refreshed`);
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
-      await this.settings.mergePuzzelTicketSyncMeta({ inProgress: false, lastError: msg });
+      await this.settings.mergePuzzelTicketSyncMeta({ inProgress: false, lastError: msg, startedAt: null });
       this.log.warn(`Puzzle sync failed: ${msg}`);
     }
   }
