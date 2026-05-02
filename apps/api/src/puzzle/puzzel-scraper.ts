@@ -156,7 +156,7 @@ function ticketFingerprint(mapped: ReturnType<typeof mapTicketColumns>, rowText:
     .digest('hex');
 }
 
-async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
+export async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   progress(opts, `Login prüfen: ${page.url()}`);
   const userField = page
     .locator(
@@ -223,7 +223,7 @@ async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   }
 }
 
-async function openLoggedInPage(page: Page, url: string, opts: PuzzelScrapeOpts) {
+export async function openLoggedInPage(page: Page, url: string, opts: PuzzelScrapeOpts) {
   progress(opts, `Öffne Puzzel-Seite: ${url}`);
   await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
   await tryPuzzelLogin(page, opts);
@@ -529,6 +529,83 @@ async function clickNextPage(page: Page): Promise<boolean> {
 }
 
 /**
+ * Scrape ticket rows on an already logged-in page. The page is navigated to the
+ * tickets URL by this function. Browser lifecycle is owned by the caller.
+ */
+export async function scrapePuzzelTicketsOnPage(
+  page: Page,
+  opts: PuzzelScrapeOpts,
+  gotoLoggedIn: (url: string) => Promise<void>,
+): Promise<PuzzelScrapedRow[]> {
+  const baseUrl = normBase(opts.baseUrl);
+  const ticketUrl = `${baseUrl}${opts.ticketsPath.startsWith('/') ? '' : '/'}${opts.ticketsPath}`;
+
+  progress(opts, 'Ticketlisten-Sync startet');
+  await gotoLoggedIn(ticketUrl);
+  await sleep(2000);
+  await page
+    .waitForResponse((r) => r.url().includes('/tickets/table.json') && r.status() === 200, { timeout: 30_000 })
+    .catch(() => {});
+
+  const savedSearchName = opts.savedSearchName ?? "My Favourite Team's Open Tickets";
+  progress(opts, `Saved Search auswählen: ${savedSearchName}`);
+  const savedSearchSelected = await selectSavedSearch(page, savedSearchName);
+  progress(opts, savedSearchSelected ? 'Saved Search ausgewählt' : 'Saved Search nicht gefunden, aktueller Filter wird genutzt');
+  const filterState = await validateRelevantFilter(page, opts);
+  progress(
+    opts,
+    `Filterstatus: Team=${filterState.hasTeam ? 'ok' : 'fehlt'}, Status=${filterState.hasStatus ? 'ok' : 'fehlt'}, Zeitraum=${filterState.hasTimePeriod ? 'ok' : 'fehlt'}, Tickets=${filterState.hasTickets ? 'ok' : 'fehlt'}`,
+  );
+  progress(opts, 'Setze Ticketliste auf 100 Einträge pro Seite');
+  await setPageSizeTo100(page);
+  await page
+    .waitForSelector('table:visible tbody tr:visible, [role="row"]:visible [role="gridcell"]', { timeout: 30_000 })
+    .catch(() => {});
+
+  const all: PuzzelScrapedRow[] = [];
+  const maxPages = 400;
+  let lastFingerprint = '';
+
+  for (let p = 0; p < maxPages; p++) {
+    await sleep(500);
+    let batch = await extractTableLikeRows(page, p, baseUrl);
+    if (batch.length === 0 && p === 0) {
+      await sleep(2500);
+      batch = await extractTableLikeRows(page, p, baseUrl);
+    }
+    const fp = `${batch.length}:${batch[0]?.rowSummary.slice(0, 120) ?? ''}`;
+    if (!batch.length && p > 0) break;
+    if (fp === lastFingerprint && p > 0) break;
+    lastFingerprint = fp;
+    progress(opts, `Ticketseite ${p + 1}: ${batch.length} Tickets erkannt (${all.length + batch.length} gesamt bisher)`);
+    all.push(
+      ...batch.map((row) => ({
+        ...row,
+        metadata: {
+          ...(row.metadata ?? {}),
+          filterState,
+        },
+      })),
+    );
+
+    const moved = await clickNextPage(page);
+    progress(opts, moved ? `Wechsle auf Ticketseite ${p + 2}` : 'Keine weitere Ticketseite gefunden');
+    if (!moved) break;
+  }
+
+  if (!all.length) {
+    throw new Error('Keine Ticket-Zeilen gefunden — DOM-Abweichung oder kein Ticket-Zugang nach Login.');
+  }
+
+  const uniq = new Map<string, PuzzelScrapedRow>();
+  for (const row of all) {
+    uniq.set(row.externalKey, row);
+  }
+  progress(opts, `Ticketlisten-Sync fertig: ${uniq.size} eindeutige Tickets erkannt`);
+  return [...uniq.values()];
+}
+
+/**
  * Headless scrape: establishes a fresh browser session per call.
  * Caller must persist rows; timeouts assume relatively fast CM instance.
  */
@@ -641,7 +718,7 @@ function parseTimelineSummary(summary: string): Pick<
   };
 }
 
-async function extractPuzzelMessagesFromPage(page: Page): Promise<PuzzelScrapedMessage[]> {
+export async function extractPuzzelMessagesFromPage(page: Page): Promise<PuzzelScrapedMessage[]> {
   await page
     .waitForSelector('iframe[src*="/emails/"], text=Timeline', { timeout: 45_000 })
     .catch(() => {});
@@ -785,6 +862,14 @@ async function fillFirstVisible(page: Page, selectors: string[], value: string, 
     }
   }
   return false;
+}
+
+export async function assignPuzzelTicketToMeOnPage(page: Page, opts: PuzzelTicketActionOpts) {
+  return assignTicketToLoggedInUser(page, opts);
+}
+
+export async function replyToPuzzelTicketOnPage(page: Page, opts: PuzzelTicketActionOpts) {
+  return replyToTicket(page, opts);
 }
 
 async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOpts) {

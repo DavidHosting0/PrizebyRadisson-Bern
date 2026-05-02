@@ -3,13 +3,16 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import {
-  assignPuzzelTicketToMe,
-  replyToPuzzelTicket,
-  scrapePuzzelTicketMessages,
-  scrapePuzzelTicketMessagesBatch,
-  scrapePuzzelTickets,
+  assignPuzzelTicketToMeOnPage,
+  extractPuzzelMessagesFromPage,
+  replyToPuzzelTicketOnPage,
+  scrapePuzzelTicketsOnPage,
   type PuzzelScrapedMessage,
+  type PuzzelScrapeOpts,
 } from './puzzel-scraper';
+import { PuzzelBrowserSessionService } from './puzzel-session.service';
+
+const PRESERVED_METADATA_KEYS = ['lastAssignedViaPrizeBernAt'] as const;
 
 @Injectable()
 export class PuzzleService {
@@ -21,6 +24,7 @@ export class PuzzleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly session: PuzzelBrowserSessionService,
   ) {}
 
   private progress(message: string) {
@@ -57,29 +61,11 @@ export class PuzzleService {
       throw new Error('Puzzel ticket has no detail URL/reference.');
     }
 
-    const creds = await this.settings.getPuzzelLoginSecrets();
-    if (!creds?.password?.trim() || !creds.email?.trim()) {
-      throw new Error('Puzzle-Zugangsdaten unvollständig (E-Mail oder Passwort fehlt). Admin → Puzzle.');
-    }
-
-    const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
-    const ticketsPath = process.env.PUZZEL_TICKETS_PATH ?? '/tickets';
-    const filter = await this.settings.getPuzzelTicketFilter();
-    const headless = process.env.PUZZEL_HEADLESS !== 'false';
-
-    const messages = await scrapePuzzelTicketMessages({
-      baseUrl,
-      ticketsPath,
-      savedSearchName: filter.savedSearchName,
-      teamName: filter.teamName,
-      statusName: filter.statusName,
-      timePeriod: filter.timePeriod,
-      ticketUrl,
-      email: creds.email.trim(),
-      password: creds.password,
-      totpSecret: creds.totpSecret?.trim() || undefined,
-      headless,
-      progress: (message) => this.progress(message),
+    const opts = await this.buildBaseOpts();
+    const messages = await this.session.run(opts, async ({ gotoLoggedIn, page }) => {
+      await gotoLoggedIn(ticketUrl);
+      this.progress(`[Puzzel] Nachrichten laden für Ticket ${ticket.reference ?? ticket.externalKey}`);
+      return extractPuzzelMessagesFromPage(page);
     });
 
     await this.replaceMessages(ticketId, ticket.externalKey, messages);
@@ -91,8 +77,18 @@ export class PuzzleService {
   }
 
   async assignTicketToMe(ticketId: string) {
-    const { ticket, opts } = await this.buildTicketActionOpts(ticketId);
-    const result = await assignPuzzelTicketToMe(opts);
+    const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) throw new Error('Puzzel ticket not found.');
+    const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
+    if (!ticketUrl) throw new Error('Puzzel ticket has no detail URL/reference.');
+
+    const opts = await this.buildBaseOpts();
+    const actionOpts = { ...opts, ticketUrl } as PuzzelScrapeOpts & { ticketUrl: string; replyText?: string };
+    await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
+      await gotoLoggedIn(ticketUrl);
+      await assignPuzzelTicketToMeOnPage(page, actionOpts);
+    });
+
     const assignedAt = new Date().toISOString();
     await this.prisma.puzzelTicket.update({
       where: { id: ticket.id },
@@ -103,7 +99,7 @@ export class PuzzleService {
         } as Prisma.InputJsonValue,
       },
     });
-    return { ...result, assignedAt };
+    return { ok: true as const, action: 'assign' as const, assignedAt };
   }
 
   async replyToTicket(ticketId: string, body: { message?: string }) {
@@ -111,12 +107,27 @@ export class PuzzleService {
     if (!message) {
       throw new Error('Reply message is empty.');
     }
-    const { ticket, opts } = await this.buildTicketActionOpts(ticketId, message);
-    const result = await replyToPuzzelTicket(opts);
+    const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) throw new Error('Puzzel ticket not found.');
+    const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
+    if (!ticketUrl) throw new Error('Puzzel ticket has no detail URL/reference.');
+
+    const opts = await this.buildBaseOpts(message);
+    const actionOpts = { ...opts, ticketUrl, replyText: message } as PuzzelScrapeOpts & {
+      ticketUrl: string;
+      replyText: string;
+    };
+
+    await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
+      await gotoLoggedIn(ticketUrl);
+      await replyToPuzzelTicketOnPage(page, actionOpts);
+    });
+
     await this.refreshTicketMessages(ticket.id).catch((e) => {
       this.log.warn(`Puzzel reply sent, but message refresh failed: ${(e as Error).message ?? String(e)}`);
     });
-    return result;
+
+    return { ok: true as const, action: 'reply' as const };
   }
 
   async getSyncStatus() {
@@ -156,38 +167,27 @@ export class PuzzleService {
     return `${baseUrl.replace(/\/+$/, '')}/tickets/${encodeURIComponent(reference)}`;
   }
 
-  private async buildTicketActionOpts(ticketId: string, replyText?: string) {
-    const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
-    if (!ticket) {
-      throw new Error('Puzzel ticket not found.');
-    }
-    const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
-    if (!ticketUrl) {
-      throw new Error('Puzzel ticket has no detail URL/reference.');
-    }
+  private async buildBaseOpts(replyText?: string) {
     const creds = await this.settings.getPuzzelLoginSecrets();
     if (!creds?.password?.trim() || !creds.email?.trim()) {
       throw new Error('Puzzle-Zugangsdaten unvollständig (E-Mail oder Passwort fehlt). Admin → Puzzle.');
     }
     const filter = await this.settings.getPuzzelTicketFilter();
-    return {
-      ticket,
-      opts: {
-        baseUrl: process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com',
-        ticketsPath: process.env.PUZZEL_TICKETS_PATH ?? '/tickets',
-        savedSearchName: filter.savedSearchName,
-        teamName: filter.teamName,
-        statusName: filter.statusName,
-        timePeriod: filter.timePeriod,
-        ticketUrl,
-        email: creds.email.trim(),
-        password: creds.password,
-        totpSecret: creds.totpSecret?.trim() || undefined,
-        headless: process.env.PUZZEL_HEADLESS !== 'false',
-        replyText,
-        progress: (message: string) => this.progress(message),
-      },
+    const opts: PuzzelScrapeOpts & { ticketUrl?: string; replyText?: string } = {
+      baseUrl: process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com',
+      ticketsPath: process.env.PUZZEL_TICKETS_PATH ?? '/tickets',
+      savedSearchName: filter.savedSearchName,
+      teamName: filter.teamName,
+      statusName: filter.statusName,
+      timePeriod: filter.timePeriod,
+      email: creds.email.trim(),
+      password: creds.password,
+      totpSecret: creds.totpSecret?.trim() || undefined,
+      headless: process.env.PUZZEL_HEADLESS !== 'false',
+      replyText,
+      progress: (message: string) => this.progress(message),
     };
+    return opts;
   }
 
   private metadataRecord(raw: unknown): Record<string, unknown> {
@@ -198,6 +198,20 @@ export class PuzzleService {
   private rowFingerprint(raw: unknown): string | null {
     const metadata = this.metadataRecord(raw);
     return typeof metadata.syncFingerprint === 'string' ? metadata.syncFingerprint : null;
+  }
+
+  private mergeMetadataPreservingPrizeBernKeys(
+    previousMetadata: unknown,
+    nextScrapeMetadata: Record<string, unknown> | undefined,
+  ): Record<string, unknown> {
+    const merged: Record<string, unknown> = { ...(nextScrapeMetadata ?? {}) };
+    const previous = this.metadataRecord(previousMetadata);
+    for (const key of PRESERVED_METADATA_KEYS) {
+      if (previous[key] !== undefined && merged[key] === undefined) {
+        merged[key] = previous[key];
+      }
+    }
+    return merged;
   }
 
   private async replaceMessages(
@@ -248,110 +262,95 @@ export class PuzzleService {
       startedAt: new Date().toISOString(),
     });
     try {
-      const creds = await this.settings.getPuzzelLoginSecrets();
-      if (!creds?.password?.trim() || !creds.email?.trim()) {
-        throw new Error('Puzzle-Zugangsdaten unvollständig (E-Mail oder Passwort fehlt). Admin → Puzzle.');
-      }
-      const baseUrl = process.env.PUZZEL_BASE_URL ?? 'https://radissonemea.cm.puzzel.com';
-      const ticketsPath = process.env.PUZZEL_TICKETS_PATH ?? '/tickets';
-      const filter = await this.settings.getPuzzelTicketFilter();
-      const headless = process.env.PUZZEL_HEADLESS !== 'false';
+      const opts = await this.buildBaseOpts();
 
-      const rows = await scrapePuzzelTickets({
-        baseUrl,
-        ticketsPath,
-        savedSearchName: filter.savedSearchName,
-        teamName: filter.teamName,
-        statusName: filter.statusName,
-        timePeriod: filter.timePeriod,
-        email: creds.email.trim(),
-        password: creds.password,
-        totpSecret: creds.totpSecret?.trim() || undefined,
-        headless,
-        progress: (message) => this.progress(message),
-      });
+      const { rows, staleTargetsToScrape } = await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
+        const scraped = await scrapePuzzelTicketsOnPage(page, opts, gotoLoggedIn);
 
-      const now = new Date();
-      this.progress(`[Puzzel] Ticketliste gespeichert/aktualisiert: ${rows.length} Tickets werden geprüft`);
-      const existing = await this.prisma.puzzelTicket.findMany({
-        where: { externalKey: { in: rows.map((r) => r.externalKey.slice(0, 500)) } },
-        include: { _count: { select: { messages: true } } },
-      });
-      const existingByKey = new Map(existing.map((t) => [t.externalKey, t]));
-      const staleTargets: { ticketId: string; externalKey: string; ticketUrl: string }[] = [];
+        const now = new Date();
+        this.progress(`[Puzzel] Ticketliste gespeichert/aktualisiert: ${scraped.length} Tickets werden geprüft`);
 
-      for (const r of rows) {
-        const externalKey = r.externalKey.slice(0, 500);
-        const previous = existingByKey.get(externalKey);
-        const nextFingerprint = this.rowFingerprint(r.metadata);
-        const previousFingerprint = previous ? this.rowFingerprint(previous.metadata) : null;
-
-        const saved = await this.prisma.puzzelTicket.upsert({
-          where: { externalKey },
-          create: {
-            externalKey,
-            subject: r.subject.slice(0, 2000),
-            reference: r.reference?.slice(0, 256) ?? null,
-            status: r.status?.slice(0, 256) ?? null,
-            detailHref: r.detailHref?.slice(0, 2000) ?? null,
-            rowSummary: r.rowSummary.slice(0, 8000),
-            metadata: (r.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-            scrapedAt: now,
-          },
-          update: {
-            subject: r.subject.slice(0, 2000),
-            reference: r.reference?.slice(0, 256) ?? null,
-            status: r.status?.slice(0, 256) ?? null,
-            detailHref: r.detailHref?.slice(0, 2000) ?? null,
-            rowSummary: r.rowSummary.slice(0, 8000),
-            metadata: (r.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-            scrapedAt: now,
-          },
+        const externalKeys = scraped.map((r) => r.externalKey.slice(0, 500));
+        const existing = await this.prisma.puzzelTicket.findMany({
+          where: { externalKey: { in: externalKeys } },
+          include: { _count: { select: { messages: true } } },
         });
+        const existingByKey = new Map(existing.map((t) => [t.externalKey, t]));
+        const stale: { ticketId: string; externalKey: string; ticketUrl: string }[] = [];
 
-        const ticketUrl = saved.detailHref || this.ticketUrlFromReference(saved.reference);
-        const needsMessages =
-          !previous ||
-          previous._count.messages === 0 ||
-          (nextFingerprint !== null && previousFingerprint !== null && nextFingerprint !== previousFingerprint);
-        if (needsMessages && ticketUrl) {
-          staleTargets.push({ ticketId: saved.id, externalKey: saved.externalKey, ticketUrl });
-        }
-      }
+        for (const r of scraped) {
+          const externalKey = r.externalKey.slice(0, 500);
+          const previous = existingByKey.get(externalKey);
+          const nextFingerprint = this.rowFingerprint(r.metadata);
+          const previousFingerprint = previous ? this.rowFingerprint(previous.metadata) : null;
+          const mergedMetadata = this.mergeMetadataPreservingPrizeBernKeys(previous?.metadata, r.metadata);
 
-      this.progress(`[Puzzel] Nachrichten-Sync nötig für ${staleTargets.length}/${rows.length} Tickets`);
-      if (staleTargets.length > 0) {
-        const batches = await scrapePuzzelTicketMessagesBatch(
-          {
-            baseUrl,
-            ticketsPath,
-            savedSearchName: filter.savedSearchName,
-            teamName: filter.teamName,
-            statusName: filter.statusName,
-            timePeriod: filter.timePeriod,
-            email: creds.email.trim(),
-            password: creds.password,
-            totpSecret: creds.totpSecret?.trim() || undefined,
-            headless,
-            progress: (message) => this.progress(message),
-          },
-          staleTargets,
-        );
-        for (const batch of batches) {
-          if (batch.messages.length > 0) {
-            await this.replaceMessages(batch.ticketId, batch.externalKey, batch.messages, now);
+          const saved = await this.prisma.puzzelTicket.upsert({
+            where: { externalKey },
+            create: {
+              externalKey,
+              subject: r.subject.slice(0, 2000),
+              reference: r.reference?.slice(0, 256) ?? null,
+              status: r.status?.slice(0, 256) ?? null,
+              detailHref: r.detailHref?.slice(0, 2000) ?? null,
+              rowSummary: r.rowSummary.slice(0, 8000),
+              metadata: mergedMetadata as Prisma.InputJsonValue,
+              scrapedAt: now,
+            },
+            update: {
+              subject: r.subject.slice(0, 2000),
+              reference: r.reference?.slice(0, 256) ?? null,
+              status: r.status?.slice(0, 256) ?? null,
+              detailHref: r.detailHref?.slice(0, 2000) ?? null,
+              rowSummary: r.rowSummary.slice(0, 8000),
+              metadata: mergedMetadata as Prisma.InputJsonValue,
+              scrapedAt: now,
+            },
+          });
+
+          const ticketUrl = saved.detailHref || this.ticketUrlFromReference(saved.reference);
+          const needsMessages =
+            !previous ||
+            previous._count.messages === 0 ||
+            (nextFingerprint !== null && previousFingerprint !== null && nextFingerprint !== previousFingerprint);
+          if (needsMessages && ticketUrl) {
+            stale.push({ ticketId: saved.id, externalKey: saved.externalKey, ticketUrl });
           }
         }
-      }
 
+        this.progress(`[Puzzel] Nachrichten-Sync nötig für ${stale.length}/${scraped.length} Tickets`);
+
+        for (let i = 0; i < stale.length; i++) {
+          const target = stale[i];
+          this.progress(`[Puzzel] Nachrichten-Sync ${i + 1}/${stale.length}: Ticket ${target.externalKey}`);
+          try {
+            await gotoLoggedIn(target.ticketUrl);
+            const messages = await extractPuzzelMessagesFromPage(page);
+            this.progress(`[Puzzel] Nachrichten-Sync ${i + 1}/${stale.length}: ${messages.length} Nachrichten erkannt`);
+            if (messages.length > 0) {
+              await this.replaceMessages(target.ticketId, target.externalKey, messages, now);
+            }
+          } catch (err) {
+            this.progress(
+              `[Puzzel] Nachrichten-Sync ${i + 1}/${stale.length}: fehlgeschlagen (${(err as Error).message ?? String(err)})`,
+            );
+          }
+        }
+
+        return { rows: scraped, staleTargetsToScrape: stale };
+      });
+
+      const finishedAt = new Date();
       await this.settings.mergePuzzelTicketSyncMeta({
         inProgress: false,
         lastError: null,
-        lastSyncedAt: now.toISOString(),
+        lastSyncedAt: finishedAt.toISOString(),
         lastTicketCount: rows.length,
         startedAt: null,
       });
-      this.log.log(`Puzzle sync OK: ${rows.length} tickets, ${staleTargets.length} ticket timelines refreshed`);
+      this.log.log(
+        `Puzzle sync OK: ${rows.length} tickets, ${staleTargetsToScrape.length} ticket timelines refreshed`,
+      );
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
       await this.settings.mergePuzzelTicketSyncMeta({ inProgress: false, lastError: msg, startedAt: null });
