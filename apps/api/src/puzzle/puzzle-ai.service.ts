@@ -31,10 +31,42 @@ export type PuzzelTicketBookingDetails = {
   otherDetails: string[];
 };
 
+/**
+ * What the guest actually needs regarding the invoice (finer than requestType).
+ * Must stay consistent with `requestType` per the system-prompt rules.
+ */
+export type PuzzelInvoiceAction =
+  | 'resend_only'
+  | 'correct_and_reissue'
+  | 'new_or_additional_invoice'
+  | 'vat_tax_legal'
+  | 'payment_refund'
+  | 'invoice_question'
+  | 'other_billing'
+  | 'unclear';
+
 export type PuzzelTicketUrgency = 'critical' | 'high' | 'normal' | 'low';
+
+/** When stored analysis rows lack `invoiceAction`, infer from legacy `requestType`. */
+export function defaultInvoiceActionForRequestType(
+  requestType: PuzzelTicketRequestType,
+): PuzzelInvoiceAction {
+  const map: Record<PuzzelTicketRequestType, PuzzelInvoiceAction> = {
+    invoice_resend: 'resend_only',
+    invoice_correction: 'correct_and_reissue',
+    invoice_other: 'other_billing',
+    unknown: 'unclear',
+  };
+  return map[requestType];
+}
 
 export type PuzzelTicketAiAnalysis = {
   requestType: PuzzelTicketRequestType;
+  /**
+   * Structured invoice intent: send-only vs fix-content vs payment etc.
+   * Distinct from requestType labels — use for routing and agent expectations.
+   */
+  invoiceAction: PuzzelInvoiceAction;
   /** Short human-readable issue label (German preferred if ticket is DE; English if EN). */
   issueTypeLabel: string;
   /** Operational urgency inferred from wording, deadlines, and tone (not the same as confidence). */
@@ -46,7 +78,7 @@ export type PuzzelTicketAiAnalysis = {
 };
 
 /** Bumps when AI JSON schema / semantics change so cached analyses are invalidated. */
-export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v3';
+export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v4';
 
 /**
  * A SHA-256 fingerprint over the messages used as input to the AI. Used to
@@ -85,27 +117,42 @@ Dein Job (Entity-Extraktion, NER-Stil):
 
 1. Lies alle Nachrichten chronologisch. Identifiziere Gast/Anfragesteller vs. Hotel-Antworten anhand der übergebenen Richtung (GAST → HOTEL / HOTEL → GAST).
 
-2. "requestType" — genau eine von:
-   • "invoice_correction" — Korrektur einer Rechnung (Adresse, USt-ID, Betrag, Storno, Doppelbuchung, …)
-   • "invoice_resend" — Rechnung erneut senden / PDF-Kopie / "nicht erhalten"
-   • "invoice_other" — andere Rechnungs-/Zahlungsthemen ohne klare Korrektur/Versand
-   • "unknown" — aus dem Text nicht eindeutig
+2. "invoiceAction" — **was genau** bezüglich der Rechnung nötig ist (präzise wählen):
+   • "resend_only" — nur erneut zusenden: PDF fehlt, E-Mail nicht angekommen, falsche Mailbox, Kopie — **ohne** dass der Rechnungs**inhalt** geändert werden muss
+   • "correct_and_reissue" — Inhalt ist falsch und muss korrigiert/neu ausgestellt werden: Adresse/Firmenname, Betrag, Positionen, Zimmer/Gast, Storno, Doppelbuchung, falscher MWSt-Satz auf der Rechnung
+   • "new_or_additional_invoice" — zusätzliche oder gesplittete Rechnung, Pro-forma, „zweite Rechnung“, Aufteilung Kosten — nicht nur „nochmal dieselbe schicken“
+   • "vat_tax_legal" — USt-IdNr./VAT ID auf Rechnung, Steuerbescheinigung, Formular für Finanzamt, Reverse-Charge-Hinweis — oft Korrektur, kann aber nur Rückfrage sein
+   • "payment_refund" — Zahlung, Rückerstattung, Chargeback, Lastschrift, Kartenabrechnung, „bereits bezahlt“
+   • "invoice_question" — Rückfrage zu bestehender Rechnung (Zeilen, Datum) **ohne** klare Bitte um Korrektur oder erneuten Versand
+   • "other_billing" — sonstiges Buchhaltungs-/Zahlungsthema (Skonto, Mahnung, SEPA, Bankdaten …), passt nicht in die obigen Kategorien
+   • "unclear" — aus dem Text nicht eindeutig
 
-3. "issueTypeLabel" — eine kurze Benutzer-Label-Zeile (max. 80 Zeichen), z. B. "Rechnungskorrektur — Firmenadresse" oder "Invoice PDF erneut senden". Keine technischen Enum-Namen.
+   **Entscheidungshilfe (DE/EN-Signale):**
+   - „Rechnung nochmal / PDF / nicht erhalten / resend / forward / duplicate email“ **und kein Hinweis auf falschen Betrag/Adresse** → "resend_only"
+   - „falsche Adresse / wrong amount / korrigieren / Storno / MwSt / VAT / bitte neue Rechnung mit …“ → "correct_and_reissue" (außer es ist eindeutig nur Zahlungsstreit → "payment_refund")
+   - „split invoice / separate bill / pro forma / zusätzliche Rechnung“ → "new_or_additional_invoice"
 
-4. "urgencyLevel" — geschätzte Dringlichkeit für die Bearbeitung:
+3. "requestType" — muss zur gewählten "invoiceAction" **passen**:
+   • invoiceAction "resend_only" → requestType "invoice_resend"
+   • invoiceAction "correct_and_reissue" oder "new_or_additional_invoice" oder "vat_tax_legal" → requestType "invoice_correction" **wenn** hauptsächlich Inhalt/Beleg geändert werden soll; wenn nur Steuer**frage** ohne Korrektur → "invoice_other"
+   • invoiceAction "payment_refund" oder "invoice_question" oder "other_billing" → requestType "invoice_other"
+   • invoiceAction "unclear" → requestType "unknown"
+
+4. "issueTypeLabel" — eine kurze Benutzer-Label-Zeile (max. 80 Zeichen), die **konkret** sagt was fehlt (z. B. „PDF erneut an xy@…“, „Betrag Berichtigung Position Übernachtung“, „Firmenadresse auf Rechnung“). Keine technischen Enum-Namen.
+
+5. "urgencyLevel" — geschätzte Dringlichkeit für die Bearbeitung:
    • "critical" — z. B. heute/ASAP, rechtliche Frist, Hotel noch vor Ort, massiver Fehler
    • "high" — enge Frist, wiederholte Nachfragen, klare Eskalation
    • "normal" — Standardfall
    • "low" — kein Zeitdruck erkennbar
 
-5. "bookingDetails": Extrahiere nur was im Text steht; sonst null (nicht raten). bookingPlatform: z. B. "Booking.com", "Expedia", "HRS", "Direct / Hotel", "Corporate", "OTA (sonstiges)", oder null wenn nicht erkennbar.
+6. "bookingDetails": Extrahiere nur was im Text steht; sonst null (nicht raten). bookingPlatform: z. B. "Booking.com", "Expedia", "HRS", "Direct / Hotel", "Corporate", "OTA (sonstiges)", oder null wenn nicht erkennbar.
 
-6. "summary" — **eine** prägnante Zeile (max. 140 Zeichen) für die Rezeption: was ist zu tun?
+7. "summary" — **eine** prägnante Zeile (max. 140 Zeichen) für die Rezeption: was ist zu tun? Soll erkennbar machen ob **Versand**, **Korrektur** oder **Sonstiges**.
 
-7. "rationale" — ein Absatz auf Deutsch oder Englisch (passend zur Hauptsprache des Tickets), der die Einordnung begründet.
+8. "rationale" — ein Absatz auf Deutsch oder Englisch (passend zur Hauptsprache des Tickets), der die Einordnung begründet; nenne kurz **warum** diese invoiceAction passt.
 
-8. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
+9. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
 
 Regeln:
 - Nichts erfinden. Unklare Felder = null.
@@ -121,6 +168,19 @@ const ANALYSIS_JSON_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     properties: {
+      invoiceAction: {
+        type: 'string',
+        enum: [
+          'resend_only',
+          'correct_and_reissue',
+          'new_or_additional_invoice',
+          'vat_tax_legal',
+          'payment_refund',
+          'invoice_question',
+          'other_billing',
+          'unclear',
+        ],
+      },
       requestType: {
         type: 'string',
         enum: [
@@ -167,6 +227,7 @@ const ANALYSIS_JSON_SCHEMA = {
       confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     },
     required: [
+      'invoiceAction',
       'requestType',
       'issueTypeLabel',
       'urgencyLevel',
@@ -305,6 +366,7 @@ export class PuzzleAiService {
     }
     const o = raw as Record<string, unknown>;
     const requestType = this.coerceRequestType(o.requestType);
+    const invoiceAction = this.coerceInvoiceAction(o.invoiceAction, requestType);
     const issueTypeLabel =
       typeof o.issueTypeLabel === 'string' && o.issueTypeLabel.trim().length > 0
         ? o.issueTypeLabel.trim().slice(0, 200)
@@ -345,6 +407,7 @@ export class PuzzleAiService {
         : 'medium';
     return {
       requestType,
+      invoiceAction,
       issueTypeLabel,
       urgencyLevel,
       summary,
@@ -369,6 +432,26 @@ export class PuzzleAiService {
       return value;
     }
     return 'normal';
+  }
+
+  private coerceInvoiceAction(
+    value: unknown,
+    requestType: PuzzelTicketRequestType,
+  ): PuzzelInvoiceAction {
+    const actions: PuzzelInvoiceAction[] = [
+      'resend_only',
+      'correct_and_reissue',
+      'new_or_additional_invoice',
+      'vat_tax_legal',
+      'payment_refund',
+      'invoice_question',
+      'other_billing',
+      'unclear',
+    ];
+    if (typeof value === 'string' && (actions as string[]).includes(value)) {
+      return value as PuzzelInvoiceAction;
+    }
+    return defaultInvoiceActionForRequestType(requestType);
   }
 
   private coerceRequestType(value: unknown): PuzzelTicketRequestType {

@@ -13,7 +13,9 @@ import {
 import { PuzzelBrowserSessionService } from './puzzel-session.service';
 import {
   PuzzleAiService,
+  defaultInvoiceActionForRequestType,
   fingerprintMessages,
+  type PuzzelInvoiceAction,
   type PuzzelTicketAiAnalysis,
   type PuzzelTicketUrgency,
 } from './puzzle-ai.service';
@@ -24,6 +26,7 @@ export type PuzzelTicketAnalysisResult = {
   id: string;
   ticketId: string;
   requestType: PuzzelTicketAiAnalysis['requestType'];
+  invoiceAction: PuzzelInvoiceAction;
   issueTypeLabel: string;
   urgencyLevel: PuzzelTicketUrgency;
   summary: string;
@@ -464,6 +467,7 @@ export class PuzzleService {
       confidence: analysis.confidence,
       issueTypeLabel: analysis.issueTypeLabel,
       urgencyLevel: analysis.urgencyLevel,
+      invoiceAction: analysis.invoiceAction,
     } as unknown as Prisma.InputJsonValue;
     return this.prisma.puzzelTicketAnalysis.upsert({
       where: { ticketId },
@@ -497,7 +501,24 @@ export class PuzzleService {
       confidence?: PuzzelTicketAiAnalysis['confidence'];
       issueTypeLabel?: string;
       urgencyLevel?: PuzzelTicketUrgency;
+      invoiceAction?: PuzzelInvoiceAction;
     };
+    const reqType = row.requestType as PuzzelTicketAiAnalysis['requestType'];
+    const invoiceActions: PuzzelInvoiceAction[] = [
+      'resend_only',
+      'correct_and_reissue',
+      'new_or_additional_invoice',
+      'vat_tax_legal',
+      'payment_refund',
+      'invoice_question',
+      'other_billing',
+      'unclear',
+    ];
+    const invoiceAction =
+      typeof det.invoiceAction === 'string' &&
+      (invoiceActions as string[]).includes(det.invoiceAction)
+        ? det.invoiceAction
+        : defaultInvoiceActionForRequestType(reqType);
     const urgencyLevel =
       det.urgencyLevel === 'critical' ||
       det.urgencyLevel === 'high' ||
@@ -508,7 +529,8 @@ export class PuzzleService {
     return {
       id: row.id,
       ticketId: row.ticketId,
-      requestType: row.requestType as PuzzelTicketAiAnalysis['requestType'],
+      requestType: reqType,
+      invoiceAction,
       issueTypeLabel:
         typeof det.issueTypeLabel === 'string' && det.issueTypeLabel.trim().length > 0
           ? det.issueTypeLabel.trim()

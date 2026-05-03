@@ -46,10 +46,21 @@ type PuzzelTicketAnalysisRequestType =
 
 type PuzzelTicketUrgency = 'critical' | 'high' | 'normal' | 'low';
 
+type PuzzelInvoiceAction =
+  | 'resend_only'
+  | 'correct_and_reissue'
+  | 'new_or_additional_invoice'
+  | 'vat_tax_legal'
+  | 'payment_refund'
+  | 'invoice_question'
+  | 'other_billing'
+  | 'unclear';
+
 type PuzzelTicketAnalysis = {
   id: string;
   ticketId: string;
   requestType: PuzzelTicketAnalysisRequestType;
+  invoiceAction: PuzzelInvoiceAction;
   issueTypeLabel: string;
   urgencyLevel: PuzzelTicketUrgency;
   summary: string;
@@ -69,6 +80,29 @@ type PuzzelTicketAnalysis = {
   stale: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+const INVOICE_ACTION_LABEL: Record<PuzzelInvoiceAction, string> = {
+  resend_only: 'Nur Zusendung — gleicher Inhalt (PDF/E-Mail)',
+  correct_and_reissue: 'Korrektur — Rechnung inhaltlich ändern & neu',
+  new_or_additional_invoice: 'Zusätzliche / geteilte / Pro-forma-Rechnung',
+  vat_tax_legal: 'USt / Steuer / VAT / Formulierung auf Beleg',
+  payment_refund: 'Zahlung / Rückerstattung / Abbuchung',
+  invoice_question: 'Rückfrage zur Rechnung (kein klarer Auftrag)',
+  other_billing: 'Sonstiges Buchhaltungs-/Zahlungsthema',
+  unclear: 'Anliegen unklar',
+};
+
+/** Distinct badge colour so “resend” vs “correct” is scannable. */
+const INVOICE_ACTION_TONE: Record<PuzzelInvoiceAction, string> = {
+  resend_only: 'border-sky-300 bg-sky-100 text-sky-950',
+  correct_and_reissue: 'border-amber-300 bg-amber-100 text-amber-950',
+  new_or_additional_invoice: 'border-violet-300 bg-violet-100 text-violet-950',
+  vat_tax_legal: 'border-indigo-300 bg-indigo-100 text-indigo-950',
+  payment_refund: 'border-rose-300 bg-rose-100 text-rose-950',
+  invoice_question: 'border-teal-300 bg-teal-100 text-teal-950',
+  other_billing: 'border-slate-300 bg-slate-100 text-slate-900',
+  unclear: 'border-border bg-surface-muted text-ink-muted',
 };
 
 const REQUEST_TYPE_LABEL: Record<PuzzelTicketAnalysisRequestType, string> = {
@@ -948,6 +982,10 @@ function AiSummaryCard({
     value && String(value).trim().length > 0 ? String(value).trim() : MISSING_FIELD;
 
   const primaryRows: { label: string; value: string }[] = [
+    {
+      label: 'Invoice request (AI)',
+      value: INVOICE_ACTION_LABEL[analysis.invoiceAction] ?? analysis.invoiceAction,
+    },
     { label: 'Guest name', value: fmt(bd.guestName) },
     { label: 'Reservation number', value: fmt(bd.reservationNumber) },
     { label: 'Check-in date', value: fmt(bd.checkInDate) },
@@ -988,6 +1026,12 @@ function AiSummaryCard({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${INVOICE_ACTION_TONE[analysis.invoiceAction]}`}
+              title={analysis.invoiceAction}
+            >
+              {INVOICE_ACTION_LABEL[analysis.invoiceAction]}
+            </span>
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${REQUEST_TYPE_TONE[analysis.requestType]}`}
             >
