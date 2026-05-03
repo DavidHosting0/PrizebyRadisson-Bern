@@ -25,17 +25,28 @@ export type PuzzelTicketBookingDetails = {
   checkOutDate: string | null;
   guestName: string | null;
   invoiceNumber: string | null;
+  /** OTA or channel (e.g. Booking.com, Expedia, direct, corporate travel). */
+  bookingPlatform: string | null;
   /** Free-form extras the AI thought worth surfacing (e.g. VAT requests). */
   otherDetails: string[];
 };
 
+export type PuzzelTicketUrgency = 'critical' | 'high' | 'normal' | 'low';
+
 export type PuzzelTicketAiAnalysis = {
   requestType: PuzzelTicketRequestType;
+  /** Short human-readable issue label (German preferred if ticket is DE; English if EN). */
+  issueTypeLabel: string;
+  /** Operational urgency inferred from wording, deadlines, and tone (not the same as confidence). */
+  urgencyLevel: PuzzelTicketUrgency;
   summary: string;
   bookingDetails: PuzzelTicketBookingDetails;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
 };
+
+/** Bumps when AI JSON schema / semantics change so cached analyses are invalidated. */
+export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v3';
 
 /**
  * A SHA-256 fingerprint over the messages used as input to the AI. Used to
@@ -50,6 +61,7 @@ export function fingerprintMessages(
   >[],
 ): string {
   const hasher = createHash('sha256');
+  hasher.update(`${PUZZEL_AI_ANALYSIS_SCHEMA_VERSION}\n`);
   hasher.update(`${ticket.externalKey}\n${ticket.subject}\n${ticket.rowSummary}\n`);
   for (const m of messages) {
     hasher.update(
@@ -65,27 +77,42 @@ export function fingerprintMessages(
   return hasher.digest('hex');
 }
 
-const SYSTEM_PROMPT = `Du bist ein deutschsprachiger Hotel-Buchhaltungs-Assistent für das "Prize by Radisson Bern City". Du bekommst ein Ticket aus dem Puzzel-Ticketsystem, in dem ausschließlich Rechnungs- und Buchhaltungsanliegen landen.
+const SYSTEM_PROMPT = `Du bist ein Hotel-Support-Assistent für "Prize by Radisson Bern City". Die Puzzel-Queue enthält vor allem Rechnungs- und Buchhaltungsfälle, aber du sollst robust mit beliebigem unstrukturierten Text umgehen (copy-pastete E-Mails, Signaturen, mehrere Sprachen).
 
-Dein Job:
+Sprachen: Die Ticket-Nachrichten können Deutsch und/oder Englisch sein. Antworte strukturiert im JSON-Schema; Freitext-Felder ("summary", "issueTypeLabel", "rationale") sollen in der Hauptsprache des Gastes/Anfragestellers formuliert sein — ist die Hauptsprache nicht erkennbar, nutze Deutsch.
 
-1. Verstehe das Anliegen aus den Nachrichten des Anfragestellers (z. B. Gast, Travel-Agent, Buchungsplattform).
-2. Klassifiziere den Anfragetyp ("requestType") in genau eine der vier Kategorien:
-   • "invoice_correction" — der Anfragesteller will eine bestehende Rechnung korrigieren (Adresse, MwSt-Nr., Zahlweise, Stornierung, Betragsfehler, doppelte Buchung, …)
-   • "invoice_resend" — eine Rechnung soll (erneut) zugestellt werden (bitte Kopie, Re-Send, „nicht erhalten", PDF anfordern)
-   • "invoice_other" — ein anderes Rechnungsthema (z. B. Zahlungsstatus-Klärung, Erstattung-Frage), das nicht 1:1 zu Korrektur oder Versand passt
-   • "unknown" — du kannst das Anliegen mit den vorhandenen Informationen nicht eindeutig zuordnen
-3. Extrahiere die im Ticket genannten Buchungsdetails. Felder, die nicht vorkommen, lasse als null oder leere Liste.
-4. Schreibe einen "summary" — eine **einzige** kurze deutsche Zeile (max. 140 Zeichen), die einer Rezeptionistin sofort zeigt, was zu tun ist. Beispiel: "Rechnung Nr. 12345 soll auf Firma X umgeschrieben werden (Zimmer 217, 12.–15.04.)".
-5. Schreibe ein einsätziges "rationale" auf Deutsch, das deine Einordnung begründet (für Audit/Debug).
-6. Setze "confidence" auf "high", wenn der Wunsch und die Buchungsdaten klar genannt sind; "medium", wenn das Anliegen klar ist, aber Felder fehlen; "low", wenn unklar.
+Dein Job (Entity-Extraktion, NER-Stil):
 
-Wichtig:
-- Nutze ausschließlich Informationen aus dem Ticket, erfinde nichts.
-- Datumsangaben so übernehmen, wie sie im Ticket stehen (also z. B. "12.04.2026" oder "April 12, 2026"), nicht umrechnen.
-- Reservationsnummern und Rechnungsnummern haben oft Buchstaben/Sonderzeichen; übernimm sie wortgleich.
-- "otherDetails" ist optional und sollte nur Punkte enthalten, die für die Bearbeitung wichtig sind und nicht in andere Felder passen (z. B. "MwSt-Nummer fehlt", "PDF gewünscht").
-- Antworte ausschließlich im vorgegebenen JSON-Schema.`;
+1. Lies alle Nachrichten chronologisch. Identifiziere Gast/Anfragesteller vs. Hotel-Antworten anhand der übergebenen Richtung (GAST → HOTEL / HOTEL → GAST).
+
+2. "requestType" — genau eine von:
+   • "invoice_correction" — Korrektur einer Rechnung (Adresse, USt-ID, Betrag, Storno, Doppelbuchung, …)
+   • "invoice_resend" — Rechnung erneut senden / PDF-Kopie / "nicht erhalten"
+   • "invoice_other" — andere Rechnungs-/Zahlungsthemen ohne klare Korrektur/Versand
+   • "unknown" — aus dem Text nicht eindeutig
+
+3. "issueTypeLabel" — eine kurze Benutzer-Label-Zeile (max. 80 Zeichen), z. B. "Rechnungskorrektur — Firmenadresse" oder "Invoice PDF erneut senden". Keine technischen Enum-Namen.
+
+4. "urgencyLevel" — geschätzte Dringlichkeit für die Bearbeitung:
+   • "critical" — z. B. heute/ASAP, rechtliche Frist, Hotel noch vor Ort, massiver Fehler
+   • "high" — enge Frist, wiederholte Nachfragen, klare Eskalation
+   • "normal" — Standardfall
+   • "low" — kein Zeitdruck erkennbar
+
+5. "bookingDetails": Extrahiere nur was im Text steht; sonst null (nicht raten). bookingPlatform: z. B. "Booking.com", "Expedia", "HRS", "Direct / Hotel", "Corporate", "OTA (sonstiges)", oder null wenn nicht erkennbar.
+
+6. "summary" — **eine** prägnante Zeile (max. 140 Zeichen) für die Rezeption: was ist zu tun?
+
+7. "rationale" — ein Absatz auf Deutsch oder Englisch (passend zur Hauptsprache des Tickets), der die Einordnung begründet.
+
+8. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
+
+Regeln:
+- Nichts erfinden. Unklare Felder = null.
+- Zahlen, Namen, Buchungs- und Rechnungs-Referenzen wortgleich übernehmen.
+- Datumsformate nicht normalisieren (so wie im Original).
+- Signatur- und Disclaimer-Blöcke ignorieren, außer sie enthalten relevante Buchungsdaten.
+- Antwort ausschließlich als gültiges JSON gemäß Schema.`;
 
 const ANALYSIS_JSON_SCHEMA = {
   name: 'PuzzelTicketAnalysis',
@@ -103,6 +130,11 @@ const ANALYSIS_JSON_SCHEMA = {
           'unknown',
         ],
       },
+      issueTypeLabel: { type: 'string' },
+      urgencyLevel: {
+        type: 'string',
+        enum: ['critical', 'high', 'normal', 'low'],
+      },
       summary: { type: 'string' },
       bookingDetails: {
         type: 'object',
@@ -114,6 +146,7 @@ const ANALYSIS_JSON_SCHEMA = {
           checkOutDate: { type: ['string', 'null'] },
           guestName: { type: ['string', 'null'] },
           invoiceNumber: { type: ['string', 'null'] },
+          bookingPlatform: { type: ['string', 'null'] },
           otherDetails: {
             type: 'array',
             items: { type: 'string' },
@@ -126,6 +159,7 @@ const ANALYSIS_JSON_SCHEMA = {
           'checkOutDate',
           'guestName',
           'invoiceNumber',
+          'bookingPlatform',
           'otherDetails',
         ],
       },
@@ -134,6 +168,8 @@ const ANALYSIS_JSON_SCHEMA = {
     },
     required: [
       'requestType',
+      'issueTypeLabel',
+      'urgencyLevel',
       'summary',
       'bookingDetails',
       'rationale',
@@ -269,6 +305,11 @@ export class PuzzleAiService {
     }
     const o = raw as Record<string, unknown>;
     const requestType = this.coerceRequestType(o.requestType);
+    const issueTypeLabel =
+      typeof o.issueTypeLabel === 'string' && o.issueTypeLabel.trim().length > 0
+        ? o.issueTypeLabel.trim().slice(0, 200)
+        : this.defaultIssueTypeLabel(requestType);
+    const urgencyLevel = this.coerceUrgency(o.urgencyLevel);
     const summary = typeof o.summary === 'string' ? o.summary.trim() : '';
     if (!summary) {
       throw new Error('AI-Antwort enthält keine Summary.');
@@ -285,6 +326,7 @@ export class PuzzleAiService {
       checkOutDate: this.nullableString(bd.checkOutDate),
       guestName: this.nullableString(bd.guestName),
       invoiceNumber: this.nullableString(bd.invoiceNumber),
+      bookingPlatform: this.nullableString(bd.bookingPlatform),
       otherDetails: Array.isArray(bd.otherDetails)
         ? bd.otherDetails
             .map((v) => (typeof v === 'string' ? v.trim() : ''))
@@ -303,11 +345,30 @@ export class PuzzleAiService {
         : 'medium';
     return {
       requestType,
+      issueTypeLabel,
+      urgencyLevel,
       summary,
       bookingDetails,
       rationale,
       confidence,
     };
+  }
+
+  private defaultIssueTypeLabel(requestType: PuzzelTicketRequestType): string {
+    const map: Record<PuzzelTicketRequestType, string> = {
+      invoice_correction: 'Invoice / billing correction',
+      invoice_resend: 'Invoice resend or copy',
+      invoice_other: 'Billing / invoice inquiry',
+      unknown: 'Issue type unclear',
+    };
+    return map[requestType];
+  }
+
+  private coerceUrgency(value: unknown): PuzzelTicketUrgency {
+    if (value === 'critical' || value === 'high' || value === 'normal' || value === 'low') {
+      return value;
+    }
+    return 'normal';
   }
 
   private coerceRequestType(value: unknown): PuzzelTicketRequestType {

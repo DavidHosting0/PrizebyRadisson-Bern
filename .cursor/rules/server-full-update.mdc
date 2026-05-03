@@ -1,13 +1,20 @@
 ---
-description: When deployment, hosting, SSH, PM2, or server updates are discussed, append the Server full update block at the end of the reply.
+description: Append production deploy steps when deployment is discussed or when shipping repo changes (API/web/prisma/shared). User expects server update commands attached whenever code is updated for the server.
 alwaysApply: true
 ---
 
 # Server full update (append when relevant)
 
-If the user’s question involves **deploying**, **updating the production server**, **git pull on the server**, **PM2**, **migrations**, **Nginx**, or **hosting** this repo, end the reply with a short section titled **Server full update (production)** containing the commands below (adjust path if their deploy dir differs from `/var/www/PrizeByRadissonBern`).
+The maintainer wants **how to update production** attached whenever it helps them ship work—not only when they literally say “deploy.”
 
-Do **not** append this block to purely local/dev-only answers with no server angle.
+**Always end the reply** with a short section titled **Server full update (production)** (commands below) when **any** of these apply:
+
+- The user asks about **deploying**, **production**, **server**, **git pull**, **PM2**, **migrations**, **Nginx**, or **hosting** this repo.
+- You **implemented or changed** anything that affects what runs on the server: `apps/api`, `apps/web`, `packages/shared`, **Prisma schema/migrations**, PM2 ecosystem, or env vars those apps read.
+
+**Skip the block** only for purely local topics with **no** production path (e.g. editor settings, one-off local-only scripts, docs-only discussion with no code changes to ship)—or when the user clearly says they are not deploying.
+
+When you append the block, **adjust the path** if their deploy directory is not `/var/www/PrizeByRadissonBern`.
 
 ```bash
 cd /var/www/PrizeByRadissonBern

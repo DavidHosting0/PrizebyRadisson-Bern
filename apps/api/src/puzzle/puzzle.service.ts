@@ -15,6 +15,7 @@ import {
   PuzzleAiService,
   fingerprintMessages,
   type PuzzelTicketAiAnalysis,
+  type PuzzelTicketUrgency,
 } from './puzzle-ai.service';
 
 const PRESERVED_METADATA_KEYS = ['lastAssignedViaPrizeBernAt'] as const;
@@ -23,6 +24,8 @@ export type PuzzelTicketAnalysisResult = {
   id: string;
   ticketId: string;
   requestType: PuzzelTicketAiAnalysis['requestType'];
+  issueTypeLabel: string;
+  urgencyLevel: PuzzelTicketUrgency;
   summary: string;
   bookingDetails: PuzzelTicketAiAnalysis['bookingDetails'];
   rationale: string;
@@ -459,6 +462,8 @@ export class PuzzleService {
     const details = {
       rationale: analysis.rationale,
       confidence: analysis.confidence,
+      issueTypeLabel: analysis.issueTypeLabel,
+      urgencyLevel: analysis.urgencyLevel,
     } as unknown as Prisma.InputJsonValue;
     return this.prisma.puzzelTicketAnalysis.upsert({
       where: { ticketId },
@@ -487,11 +492,28 @@ export class PuzzleService {
     stale: boolean,
   ): PuzzelTicketAnalysisResult {
     const bd = (row.bookingDetails ?? {}) as Partial<PuzzelTicketAiAnalysis['bookingDetails']>;
-    const det = (row.details ?? {}) as { rationale?: string; confidence?: PuzzelTicketAiAnalysis['confidence'] };
+    const det = (row.details ?? {}) as {
+      rationale?: string;
+      confidence?: PuzzelTicketAiAnalysis['confidence'];
+      issueTypeLabel?: string;
+      urgencyLevel?: PuzzelTicketUrgency;
+    };
+    const urgencyLevel =
+      det.urgencyLevel === 'critical' ||
+      det.urgencyLevel === 'high' ||
+      det.urgencyLevel === 'normal' ||
+      det.urgencyLevel === 'low'
+        ? det.urgencyLevel
+        : 'normal';
     return {
       id: row.id,
       ticketId: row.ticketId,
       requestType: row.requestType as PuzzelTicketAiAnalysis['requestType'],
+      issueTypeLabel:
+        typeof det.issueTypeLabel === 'string' && det.issueTypeLabel.trim().length > 0
+          ? det.issueTypeLabel.trim()
+          : row.requestType.replace(/_/g, ' '),
+      urgencyLevel,
       summary: row.summary,
       bookingDetails: {
         reservationNumber: bd.reservationNumber ?? null,
@@ -500,6 +522,7 @@ export class PuzzleService {
         checkOutDate: bd.checkOutDate ?? null,
         guestName: bd.guestName ?? null,
         invoiceNumber: bd.invoiceNumber ?? null,
+        bookingPlatform: bd.bookingPlatform ?? null,
         otherDetails: Array.isArray(bd.otherDetails) ? bd.otherDetails : [],
       },
       rationale: det.rationale ?? '',

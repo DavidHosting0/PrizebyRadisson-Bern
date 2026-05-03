@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -43,10 +44,14 @@ type PuzzelTicketAnalysisRequestType =
   | 'invoice_other'
   | 'unknown';
 
+type PuzzelTicketUrgency = 'critical' | 'high' | 'normal' | 'low';
+
 type PuzzelTicketAnalysis = {
   id: string;
   ticketId: string;
   requestType: PuzzelTicketAnalysisRequestType;
+  issueTypeLabel: string;
+  urgencyLevel: PuzzelTicketUrgency;
   summary: string;
   bookingDetails: {
     reservationNumber: string | null;
@@ -55,6 +60,7 @@ type PuzzelTicketAnalysis = {
     checkOutDate: string | null;
     guestName: string | null;
     invoiceNumber: string | null;
+    bookingPlatform: string | null;
     otherDetails: string[];
   };
   rationale: string;
@@ -84,6 +90,107 @@ const CONFIDENCE_LABEL: Record<'high' | 'medium' | 'low', string> = {
   medium: 'Mittlere Sicherheit',
   low: 'Niedrige Sicherheit',
 };
+
+const URGENCY_LABEL: Record<PuzzelTicketUrgency, string> = {
+  critical: 'Critical',
+  high: 'High',
+  normal: 'Normal',
+  low: 'Low',
+};
+
+const URGENCY_TONE: Record<PuzzelTicketUrgency, string> = {
+  critical: 'border-rose-300 bg-rose-100 text-rose-950',
+  high: 'border-amber-300 bg-amber-100 text-amber-950',
+  normal: 'border-slate-200 bg-slate-100 text-slate-800',
+  low: 'border-border bg-surface-muted text-ink-muted',
+};
+
+const MISSING_FIELD = 'Not detected';
+
+function mergeIntervals(intervals: { start: number; end: number }[]) {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+  const out: { start: number; end: number }[] = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i];
+    const last = out[out.length - 1];
+    if (cur.start <= last.end) {
+      last.end = Math.max(last.end, cur.end);
+    } else {
+      out.push({ ...cur });
+    }
+  }
+  return out;
+}
+
+/**
+ * Highlights dates, money-like tokens, long numeric references, and exact phrases
+ * from the AI extraction (guest name, reservation, etc.) when they appear in body text.
+ */
+function highlightTicketMessageBody(
+  text: string,
+  analysis: PuzzelTicketAnalysis | null | undefined,
+): ReactNode {
+  if (!text) return null;
+
+  const ranges: { start: number; end: number }[] = [];
+  const phrases: string[] = [];
+  if (analysis?.bookingDetails) {
+    const bd = analysis.bookingDetails;
+    for (const v of [bd.guestName, bd.reservationNumber, bd.invoiceNumber, bd.roomNumber]) {
+      if (typeof v === 'string' && v.trim().length >= 2) phrases.push(v.trim());
+    }
+  }
+
+  for (const phrase of phrases) {
+    const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(esc, 'gi');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      ranges.push({ start: m.index, end: m.index + m[0].length });
+    }
+  }
+
+  const patterns: RegExp[] = [
+    /\b(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{4}-\d{2}-\d{2})\b/g,
+    /\b(?:CHF|EUR|USD)\s*[\d',.]+\b|\b[\d',.]+\s*(?:CHF|EUR|USD)\b/gi,
+    /\B#\d{4,}\b|\b\d{7,}\b/g,
+  ];
+  for (const re of patterns) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      ranges.push({ start: m.index, end: m.index + m[0].length });
+    }
+  }
+
+  const merged = mergeIntervals(ranges);
+  if (merged.length === 0) return text;
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  merged.forEach((iv, idx) => {
+    if (iv.start > cursor) {
+      nodes.push(
+        <Fragment key={`t-${idx}-a`}>{text.slice(cursor, iv.start)}</Fragment>,
+      );
+    }
+    const slice = text.slice(iv.start, iv.end);
+    nodes.push(
+      <mark
+        key={`h-${idx}`}
+        className="rounded-sm bg-amber-200/90 px-0.5 text-inherit dark:bg-amber-500/40"
+      >
+        {slice}
+      </mark>,
+    );
+    cursor = iv.end;
+  });
+  if (cursor < text.length) {
+    nodes.push(<Fragment key="t-end">{text.slice(cursor)}</Fragment>);
+  }
+  return nodes;
+}
 
 type PuzzelFilter = {
   savedSearchName: string;
@@ -673,7 +780,7 @@ export default function ReceptionPuzzlePage() {
                               <span className="text-xs text-ink-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
                             </div>
                             <div className="mt-3 max-h-[560px] overflow-auto whitespace-pre-wrap rounded-xl bg-white/80 p-3 text-sm leading-7">
-                              {message.bodyText}
+                              {highlightTicketMessageBody(message.bodyText, analysisQuery.data ?? null)}
                             </div>
                           </article>
                           {outbound && (
@@ -837,39 +944,67 @@ function AiSummaryCard({
   }
 
   const bd = analysis.bookingDetails;
-  const detailRows: { label: string; value: string | null }[] = [
-    { label: 'Reservation #', value: bd.reservationNumber },
-    { label: 'Rechnungs-Nr.', value: bd.invoiceNumber },
-    { label: 'Gast', value: bd.guestName },
-    { label: 'Zimmer', value: bd.roomNumber },
-    { label: 'Check-In', value: bd.checkInDate },
-    { label: 'Check-Out', value: bd.checkOutDate },
+  const fmt = (value: string | null | undefined) =>
+    value && String(value).trim().length > 0 ? String(value).trim() : MISSING_FIELD;
+
+  const primaryRows: { label: string; value: string }[] = [
+    { label: 'Guest name', value: fmt(bd.guestName) },
+    { label: 'Reservation number', value: fmt(bd.reservationNumber) },
+    { label: 'Check-in date', value: fmt(bd.checkInDate) },
+    { label: 'Check-out date', value: fmt(bd.checkOutDate) },
+    { label: 'Booking platform', value: fmt(bd.bookingPlatform) },
+    { label: 'Issue type', value: fmt(analysis.issueTypeLabel) },
+    {
+      label: 'Urgency',
+      value: `${URGENCY_LABEL[analysis.urgencyLevel]} (${analysis.urgencyLevel})`,
+    },
   ];
-  const visibleRows = detailRows.filter((row) => row.value);
+  const secondaryRows: { label: string; value: string }[] = [
+    { label: 'Invoice number', value: fmt(bd.invoiceNumber) },
+    { label: 'Room', value: fmt(bd.roomNumber) },
+    { label: 'Category', value: REQUEST_TYPE_LABEL[analysis.requestType] },
+    { label: 'Extraction confidence', value: CONFIDENCE_LABEL[analysis.confidence] },
+  ];
+
+  const missing = (v: string) => v === MISSING_FIELD;
 
   return (
-    <section className="rounded-2xl border border-action/30 bg-action/5 p-4 shadow-card">
+    <section className="sticky top-0 z-20 rounded-2xl border border-action/35 bg-surface/95 p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/[0.04] backdrop-blur-md supports-[backdrop-filter]:bg-surface/90">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-action">
-            KI-Übersicht
-          </span>
-          <span
-            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${REQUEST_TYPE_TONE[analysis.requestType]}`}
-          >
-            {REQUEST_TYPE_LABEL[analysis.requestType]}
-          </span>
-          <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-muted">
-            {CONFIDENCE_LABEL[analysis.confidence]}
-          </span>
+        <div className="min-w-0 flex flex-1 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-action">
+              AI summary
+            </span>
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${URGENCY_TONE[analysis.urgencyLevel]}`}
+            >
+              {URGENCY_LABEL[analysis.urgencyLevel]}
+            </span>
+            {analysis.stale && (
+              <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-950">
+                Outdated — new messages
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${REQUEST_TYPE_TONE[analysis.requestType]}`}
+            >
+              {REQUEST_TYPE_LABEL[analysis.requestType]}
+            </span>
+            <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+              {CONFIDENCE_LABEL[analysis.confidence]}
+            </span>
+          </div>
         </div>
         <button
           type="button"
           onClick={onRefresh}
           disabled={isRefreshing}
-          className="text-xs font-medium text-action hover:underline disabled:opacity-50"
+          className="shrink-0 text-xs font-medium text-action hover:underline disabled:opacity-50"
         >
-          {isRefreshing ? 'Aktualisiere …' : 'Neu analysieren'}
+          {isRefreshing ? 'Refreshing…' : 'Re-analyze'}
         </button>
       </div>
 
@@ -877,23 +1012,48 @@ function AiSummaryCard({
         {analysis.summary}
       </p>
 
-      {visibleRows.length > 0 && (
-        <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleRows.map((row) => (
+      <div className="mt-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+          Key fields
+        </p>
+        <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {primaryRows.map((row) => (
             <div
               key={row.label}
-              className="rounded-lg border border-border bg-surface px-3 py-2"
+              className={`rounded-xl border px-3 py-2.5 ${
+                missing(row.value) ? 'border-dashed border-border bg-surface-muted/50' : 'border-border bg-surface'
+              }`}
             >
               <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                 {row.label}
               </dt>
-              <dd className="mt-0.5 break-words text-sm font-medium text-ink">
+              <dd
+                className={`mt-1 break-words text-sm font-medium leading-snug ${
+                  missing(row.value) ? 'text-ink-muted italic' : 'text-ink'
+                }`}
+              >
                 {row.value}
               </dd>
             </div>
           ))}
         </dl>
-      )}
+      </div>
+
+      <div className="mt-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+          Additional
+        </p>
+        <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {secondaryRows.map((row) => (
+            <div key={row.label} className="rounded-xl border border-border bg-surface px-3 py-2">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                {row.label}
+              </dt>
+              <dd className="mt-1 break-words text-sm font-medium text-ink">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
 
       {bd.otherDetails.length > 0 && (
         <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-ink">
@@ -906,16 +1066,16 @@ function AiSummaryCard({
       {analysis.rationale && (
         <details className="mt-3">
           <summary className="cursor-pointer text-xs font-medium text-ink-muted hover:text-ink">
-            KI-Begründung anzeigen
+            AI rationale
           </summary>
-          <p className="mt-2 whitespace-pre-wrap rounded-lg border border-border bg-surface p-3 text-xs text-ink-muted">
+          <p className="mt-2 whitespace-pre-wrap rounded-lg border border-border bg-surface-muted/40 p-3 text-xs leading-relaxed text-ink-muted">
             {analysis.rationale}
           </p>
         </details>
       )}
 
       <p className="mt-3 text-[10px] uppercase tracking-wide text-ink-muted">
-        Modell: {analysis.model}
+        Model: {analysis.model}
       </p>
     </section>
   );
