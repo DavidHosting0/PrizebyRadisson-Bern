@@ -4,11 +4,17 @@ import { PuzzelBrowserSessionService } from './puzzel-session.service';
 import { PuzzleController } from './puzzle.controller';
 import { PuzzleScheduler } from './puzzle.scheduler';
 import { PuzzleService } from './puzzle.service';
+import { PuzzleAiService } from './puzzle-ai.service';
 
 @Module({
   imports: [SettingsModule],
   controllers: [PuzzleController],
-  providers: [PuzzleService, PuzzleScheduler, PuzzelBrowserSessionService],
+  providers: [
+    PuzzleService,
+    PuzzleScheduler,
+    PuzzelBrowserSessionService,
+    PuzzleAiService,
+  ],
   exports: [PuzzleService],
 })
 export class PuzzleModule {}

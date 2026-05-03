@@ -154,6 +154,7 @@ model PuzzelTicket {
   metadata    Json?
   scrapedAt   DateTime @default(now())
   messages    PuzzelTicketMessage[]
+  analysis    PuzzelTicketAnalysis?
 
   @@index([scrapedAt])
 }
@@ -175,6 +176,30 @@ model PuzzelTicketMessage {
 
   @@index([ticketId])
   @@index([scrapedAt])
+}
+
+/// AI-generated summary of a Puzzel ticket: detected request type and extracted booking details.
+/// One row per ticket; rebuilt automatically when the underlying messages change.
+model PuzzelTicketAnalysis {
+  id                  String       @id @default(cuid())
+  ticketId            String       @unique
+  ticket              PuzzelTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the message bodies used as input. When the live messages hash differs we re-run the AI.
+  messagesFingerprint String
+  /// 'invoice_correction' | 'invoice_resend' | 'invoice_other' | 'unknown'
+  requestType         String
+  /// Short German one-liner that the receptionist sees first.
+  summary             String
+  /// { reservationNumber, roomNumber, checkInDate, checkOutDate, guestName, invoiceNumber, otherDetails }
+  bookingDetails      Json
+  /// Verbose AI rationale + raw extracted fields (for debugging).
+  details             Json
+  /// AI model identifier used for this analysis (e.g. "gpt-4o-mini").
+  model               String
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([ticketId])
 }
 
 model User {

@@ -37,6 +37,54 @@ type PuzzelTicketMessage = {
   scrapedAt: string;
 };
 
+type PuzzelTicketAnalysisRequestType =
+  | 'invoice_correction'
+  | 'invoice_resend'
+  | 'invoice_other'
+  | 'unknown';
+
+type PuzzelTicketAnalysis = {
+  id: string;
+  ticketId: string;
+  requestType: PuzzelTicketAnalysisRequestType;
+  summary: string;
+  bookingDetails: {
+    reservationNumber: string | null;
+    roomNumber: string | null;
+    checkInDate: string | null;
+    checkOutDate: string | null;
+    guestName: string | null;
+    invoiceNumber: string | null;
+    otherDetails: string[];
+  };
+  rationale: string;
+  confidence: 'high' | 'medium' | 'low';
+  model: string;
+  stale: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const REQUEST_TYPE_LABEL: Record<PuzzelTicketAnalysisRequestType, string> = {
+  invoice_correction: 'Rechnungskorrektur',
+  invoice_resend: 'Rechnung zusenden',
+  invoice_other: 'Sonstige Rechnungsfrage',
+  unknown: 'Unklar',
+};
+
+const REQUEST_TYPE_TONE: Record<PuzzelTicketAnalysisRequestType, string> = {
+  invoice_correction: 'border-amber-200 bg-amber-50 text-amber-900',
+  invoice_resend: 'border-sky-200 bg-sky-50 text-sky-900',
+  invoice_other: 'border-violet-200 bg-violet-50 text-violet-900',
+  unknown: 'border-border bg-surface-muted text-ink-muted',
+};
+
+const CONFIDENCE_LABEL: Record<'high' | 'medium' | 'low', string> = {
+  high: 'Hohe Sicherheit',
+  medium: 'Mittlere Sicherheit',
+  low: 'Niedrige Sicherheit',
+};
+
 type PuzzelFilter = {
   savedSearchName: string;
   teamName: string;
@@ -196,6 +244,28 @@ export default function ReceptionPuzzlePage() {
       api<PuzzelTicketMessage[]>(`/puzzle/tickets/${ticketId}/messages/refresh`, { method: 'POST' }),
     onSuccess: (_data, ticketId) => {
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-analysis', ticketId] });
+    },
+  });
+
+  const analysisQuery = useQuery({
+    queryKey: ['puzzle', 'ticket-analysis', expandedId],
+    // The endpoint generates the analysis on-demand; we only fire it once
+    // per selected ticket and reuse the cached result on tab-switches.
+    queryFn: () =>
+      api<PuzzelTicketAnalysis>(`/puzzle/tickets/${expandedId}/analysis`),
+    enabled: !!expandedId && (messagesQuery.data?.length ?? 0) > 0,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const refreshAnalysisMut = useMutation({
+    mutationFn: (ticketId: string) =>
+      api<PuzzelTicketAnalysis>(`/puzzle/tickets/${ticketId}/analysis/refresh`, {
+        method: 'POST',
+      }),
+    onSuccess: (data, ticketId) => {
+      queryClient.setQueryData(['puzzle', 'ticket-analysis', ticketId], data);
     },
   });
 
@@ -537,6 +607,22 @@ export default function ReceptionPuzzlePage() {
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-auto bg-gradient-to-b from-surface-muted/60 to-surface p-5">
+                  <AiSummaryCard
+                    ticketId={selectedTicket.id}
+                    analysis={analysisQuery.data ?? null}
+                    isLoading={analysisQuery.isLoading}
+                    isRefreshing={refreshAnalysisMut.isPending}
+                    error={
+                      analysisQuery.isError
+                        ? (analysisQuery.error as Error).message
+                        : refreshAnalysisMut.isError
+                          ? (refreshAnalysisMut.error as Error).message
+                          : null
+                    }
+                    hasMessages={(messagesQuery.data?.length ?? 0) > 0}
+                    onRefresh={() => refreshAnalysisMut.mutate(selectedTicket.id)}
+                  />
+
                   <div className="rounded-2xl border border-border bg-surface p-4 text-xs text-ink-muted">
                     <p className="font-semibold uppercase tracking-wide text-ink-muted">Ticket summary</p>
                     <p className="mt-2 leading-relaxed">{selectedTicket.rowSummary || selectedTicket.subject}</p>
@@ -663,5 +749,174 @@ export default function ReceptionPuzzlePage() {
         </div>
       )}
     </div>
+  );
+}
+
+type AiSummaryCardProps = {
+  ticketId: string;
+  analysis: PuzzelTicketAnalysis | null;
+  isLoading: boolean;
+  isRefreshing: boolean;
+  error: string | null;
+  hasMessages: boolean;
+  onRefresh: () => void;
+};
+
+/**
+ * AI-generated overview of a Puzzel billing ticket: detected request type
+ * (Rechnungskorrektur / Zusendung / sonstiges) and extracted booking details
+ * (reservation #, room #, dates, guest name, …). Sits at the top of the
+ * selected ticket's right pane so the receptionist sees the gist before
+ * scrolling through the message thread.
+ */
+function AiSummaryCard({
+  ticketId,
+  analysis,
+  isLoading,
+  isRefreshing,
+  error,
+  hasMessages,
+  onRefresh,
+}: AiSummaryCardProps) {
+  // Re-render hint: tie key off ticketId so React resets internal state when switching tickets.
+  void ticketId;
+
+  if (!hasMessages) {
+    return (
+      <section className="rounded-2xl border border-dashed border-border bg-surface p-4 text-sm text-ink-muted">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          KI-Übersicht
+        </p>
+        <p className="mt-2 leading-relaxed">
+          Sobald die Nachrichten dieses Tickets aus Puzzel geladen sind, fasst die KI das
+          Anliegen automatisch zusammen.
+        </p>
+      </section>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <section className="rounded-2xl border border-border bg-surface p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          KI-Übersicht
+        </p>
+        <p className="mt-2 text-sm text-ink-muted">
+          Analyse läuft … (üblicherweise 3–8 Sekunden)
+        </p>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-900">
+            KI-Übersicht — Fehler
+          </p>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="text-xs font-medium text-rose-900 underline disabled:opacity-50"
+          >
+            {isRefreshing ? 'Wiederholt …' : 'Erneut versuchen'}
+          </button>
+        </div>
+        <p className="mt-2 break-words leading-relaxed">{error}</p>
+        <p className="mt-2 text-xs text-rose-900/80">
+          Falls noch kein OpenAI-API-Key hinterlegt ist: Admin → Settings → AI Config.
+        </p>
+      </section>
+    );
+  }
+
+  if (!analysis) {
+    return null;
+  }
+
+  const bd = analysis.bookingDetails;
+  const detailRows: { label: string; value: string | null }[] = [
+    { label: 'Reservation #', value: bd.reservationNumber },
+    { label: 'Rechnungs-Nr.', value: bd.invoiceNumber },
+    { label: 'Gast', value: bd.guestName },
+    { label: 'Zimmer', value: bd.roomNumber },
+    { label: 'Check-In', value: bd.checkInDate },
+    { label: 'Check-Out', value: bd.checkOutDate },
+  ];
+  const visibleRows = detailRows.filter((row) => row.value);
+
+  return (
+    <section className="rounded-2xl border border-action/30 bg-action/5 p-4 shadow-card">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-action">
+            KI-Übersicht
+          </span>
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${REQUEST_TYPE_TONE[analysis.requestType]}`}
+          >
+            {REQUEST_TYPE_LABEL[analysis.requestType]}
+          </span>
+          <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+            {CONFIDENCE_LABEL[analysis.confidence]}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          className="text-xs font-medium text-action hover:underline disabled:opacity-50"
+        >
+          {isRefreshing ? 'Aktualisiere …' : 'Neu analysieren'}
+        </button>
+      </div>
+
+      <p className="mt-3 text-base font-semibold leading-snug text-ink">
+        {analysis.summary}
+      </p>
+
+      {visibleRows.length > 0 && (
+        <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleRows.map((row) => (
+            <div
+              key={row.label}
+              className="rounded-lg border border-border bg-surface px-3 py-2"
+            >
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                {row.label}
+              </dt>
+              <dd className="mt-0.5 break-words text-sm font-medium text-ink">
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {bd.otherDetails.length > 0 && (
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-ink">
+          {bd.otherDetails.map((detail, idx) => (
+            <li key={idx}>{detail}</li>
+          ))}
+        </ul>
+      )}
+
+      {analysis.rationale && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs font-medium text-ink-muted hover:text-ink">
+            KI-Begründung anzeigen
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap rounded-lg border border-border bg-surface p-3 text-xs text-ink-muted">
+            {analysis.rationale}
+          </p>
+        </details>
+      )}
+
+      <p className="mt-3 text-[10px] uppercase tracking-wide text-ink-muted">
+        Modell: {analysis.model}
+      </p>
+    </section>
   );
 }

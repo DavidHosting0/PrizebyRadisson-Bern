@@ -88,4 +88,19 @@ export class PuzzleController {
   triggerSync() {
     return this.puzzle.requestBackgroundSync();
   }
+
+  @Get('tickets/:id/analysis')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  getTicketAnalysis(@Param('id') id: string) {
+    return this.puzzle.getTicketAnalysis(id);
+  }
+
+  @Post('tickets/:id/analysis/refresh')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  refreshTicketAnalysis(@Param('id') id: string) {
+    return this.puzzle.refreshTicketAnalysis(id);
+  }
 }

@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { Prisma, PuzzelTicketAnalysis as PuzzelTicketAnalysisRow } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import {
@@ -11,8 +11,28 @@ import {
   type PuzzelScrapeOpts,
 } from './puzzel-scraper';
 import { PuzzelBrowserSessionService } from './puzzel-session.service';
+import {
+  PuzzleAiService,
+  fingerprintMessages,
+  type PuzzelTicketAiAnalysis,
+} from './puzzle-ai.service';
 
 const PRESERVED_METADATA_KEYS = ['lastAssignedViaPrizeBernAt'] as const;
+
+export type PuzzelTicketAnalysisResult = {
+  id: string;
+  ticketId: string;
+  requestType: PuzzelTicketAiAnalysis['requestType'];
+  summary: string;
+  bookingDetails: PuzzelTicketAiAnalysis['bookingDetails'];
+  rationale: string;
+  confidence: PuzzelTicketAiAnalysis['confidence'];
+  model: string;
+  /** True if the underlying messages have changed since this analysis was produced. */
+  stale: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class PuzzleService {
@@ -25,6 +45,7 @@ export class PuzzleService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly session: PuzzelBrowserSessionService,
+    private readonly ai: PuzzleAiService,
   ) {}
 
   private progress(message: string) {
@@ -356,5 +377,137 @@ export class PuzzleService {
       await this.settings.mergePuzzelTicketSyncMeta({ inProgress: false, lastError: msg, startedAt: null });
       this.log.warn(`Puzzle sync failed: ${msg}`);
     }
+  }
+
+  // ------------------------- AI ticket analysis ----------------------------
+
+  /**
+   * Return the AI analysis for the given ticket. If none exists yet, or if the
+   * underlying messages have changed since the last analysis was produced, the
+   * AI is called once to (re)build it.
+   */
+  async getTicketAnalysis(ticketId: string): Promise<PuzzelTicketAnalysisResult> {
+    const ticket = await this.prisma.puzzelTicket.findUnique({
+      where: { id: ticketId },
+      include: {
+        analysis: true,
+        messages: { orderBy: [{ scrapedAt: 'asc' }, { externalKey: 'asc' }] },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Puzzel ticket not found.');
+    }
+
+    const liveFingerprint = fingerprintMessages(ticket, ticket.messages);
+    if (
+      ticket.analysis &&
+      ticket.analysis.messagesFingerprint === liveFingerprint
+    ) {
+      return this.toAnalysisResult(ticket.analysis, false);
+    }
+
+    const { analysis, model } = await this.ai.analyzeTicket(
+      ticket,
+      ticket.messages,
+    );
+    const saved = await this.upsertAnalysis(
+      ticket.id,
+      liveFingerprint,
+      analysis,
+      model,
+    );
+    return this.toAnalysisResult(saved, false);
+  }
+
+  /**
+   * Force a fresh AI analysis even if a cached one matches the current
+   * messages fingerprint. Useful for retrying after model upgrades or when the
+   * receptionist suspects the cached analysis is wrong.
+   */
+  async refreshTicketAnalysis(ticketId: string): Promise<PuzzelTicketAnalysisResult> {
+    const ticket = await this.prisma.puzzelTicket.findUnique({
+      where: { id: ticketId },
+      include: {
+        messages: { orderBy: [{ scrapedAt: 'asc' }, { externalKey: 'asc' }] },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Puzzel ticket not found.');
+    }
+
+    const liveFingerprint = fingerprintMessages(ticket, ticket.messages);
+    const { analysis, model } = await this.ai.analyzeTicket(
+      ticket,
+      ticket.messages,
+    );
+    const saved = await this.upsertAnalysis(
+      ticket.id,
+      liveFingerprint,
+      analysis,
+      model,
+    );
+    return this.toAnalysisResult(saved, false);
+  }
+
+  private async upsertAnalysis(
+    ticketId: string,
+    messagesFingerprint: string,
+    analysis: PuzzelTicketAiAnalysis,
+    model: string,
+  ): Promise<PuzzelTicketAnalysisRow> {
+    const bookingDetails = analysis.bookingDetails as unknown as Prisma.InputJsonValue;
+    const details = {
+      rationale: analysis.rationale,
+      confidence: analysis.confidence,
+    } as unknown as Prisma.InputJsonValue;
+    return this.prisma.puzzelTicketAnalysis.upsert({
+      where: { ticketId },
+      create: {
+        ticketId,
+        messagesFingerprint,
+        requestType: analysis.requestType,
+        summary: analysis.summary,
+        bookingDetails,
+        details,
+        model,
+      },
+      update: {
+        messagesFingerprint,
+        requestType: analysis.requestType,
+        summary: analysis.summary,
+        bookingDetails,
+        details,
+        model,
+      },
+    });
+  }
+
+  private toAnalysisResult(
+    row: PuzzelTicketAnalysisRow,
+    stale: boolean,
+  ): PuzzelTicketAnalysisResult {
+    const bd = (row.bookingDetails ?? {}) as Partial<PuzzelTicketAiAnalysis['bookingDetails']>;
+    const det = (row.details ?? {}) as { rationale?: string; confidence?: PuzzelTicketAiAnalysis['confidence'] };
+    return {
+      id: row.id,
+      ticketId: row.ticketId,
+      requestType: row.requestType as PuzzelTicketAiAnalysis['requestType'],
+      summary: row.summary,
+      bookingDetails: {
+        reservationNumber: bd.reservationNumber ?? null,
+        roomNumber: bd.roomNumber ?? null,
+        checkInDate: bd.checkInDate ?? null,
+        checkOutDate: bd.checkOutDate ?? null,
+        guestName: bd.guestName ?? null,
+        invoiceNumber: bd.invoiceNumber ?? null,
+        otherDetails: Array.isArray(bd.otherDetails) ? bd.otherDetails : [],
+      },
+      rationale: det.rationale ?? '',
+      confidence: det.confidence ?? 'medium',
+      model: row.model,
+      stale,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
   }
 }

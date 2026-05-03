@@ -86,6 +86,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 EMMA
               </Link>
+              <Link
+                href="/a/ai"
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  pathname.startsWith('/a/ai') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
+                }`}
+              >
+                AI
+              </Link>
             </nav>
           </div>
           <span className="truncate text-sm text-ink-muted">{user.email}</span>

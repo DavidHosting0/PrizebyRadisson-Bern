@@ -6,6 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { UpdatePuzzleLoginDto } from './dto/update-puzzle-login.dto';
 import { UpdateEmmaLoginDto } from './dto/update-emma-login.dto';
+import { UpdateAiConfigDto } from './dto/update-ai-config.dto';
 import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('settings')
@@ -50,5 +51,19 @@ export class SettingsController {
   @Roles(UserRole.ADMIN)
   patchEmmaLogin(@Body() dto: UpdateEmmaLoginDto) {
     return this.settings.updateEmmaLogin(dto);
+  }
+
+  @Get('ai-config')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  aiConfigMeta() {
+    return this.settings.getAiConfigMeta();
+  }
+
+  @Patch('ai-config')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  patchAiConfig(@Body() dto: UpdateAiConfigDto) {
+    return this.settings.updateAiConfig(dto);
   }
 }

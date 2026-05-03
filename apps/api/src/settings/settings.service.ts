@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import type { UpdatePuzzleLoginDto } from './dto/update-puzzle-login.dto';
 import type { UpdateEmmaLoginDto } from './dto/update-emma-login.dto';
+import type { UpdateAiConfigDto } from './dto/update-ai-config.dto';
 
 /** Stored under HotelSettings.settings JSON key `puzzelLogin` */
 export type PuzzelLoginStored = {
@@ -41,10 +42,25 @@ type EmmaLoginPersisted = {
   baseUrl?: string;
 };
 
+/** Plaintext shape of the AI config returned to server-side automation. */
+export type AiConfigStored = {
+  openaiApiKey?: string;
+  openaiModel?: string;
+};
+
+/** Persisted shape (api key is AES-GCM ciphertext, base64). */
+type AiConfigPersisted = {
+  openaiApiKeyEnc?: string;
+  openaiModel?: string;
+};
+
+const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+
 const PUZZEL_KEY = 'puzzelLogin';
 const PUZZEL_TICKET_SYNC_KEY = 'puzzelTicketSync';
 const PUZZEL_TICKET_FILTER_KEY = 'puzzelTicketFilter';
 const EMMA_KEY = 'emmaLogin';
+const AI_KEY = 'aiConfig';
 
 export type PuzzelTicketSyncStored = {
   lastSyncedAt?: string | null;
@@ -205,6 +221,44 @@ export class SettingsService {
     return this.metaFromEmmaRaw(this.asRecord(updated.settings)[EMMA_KEY]);
   }
 
+  // ------------------------- AI / OpenAI config ----------------------------
+
+  /** Public shape for the admin UI (no plaintext API key). */
+  async getAiConfigMeta() {
+    const row = await this.ensureRow();
+    return this.metaFromAiRaw(this.asRecord(row.settings)[AI_KEY]);
+  }
+
+  async updateAiConfig(dto: UpdateAiConfigDto) {
+    const current = await this.ensureRow();
+    const s = this.asRecord(current.settings);
+    const prev = this.parseAiPersisted(s[AI_KEY]);
+    const next = this.mergeAiInput(prev, dto);
+
+    const updated = await this.prisma.hotelSettings.update({
+      where: { id: current.id },
+      data: {
+        settings: { ...s, [AI_KEY]: next } as object,
+      },
+    });
+    return this.metaFromAiRaw(this.asRecord(updated.settings)[AI_KEY]);
+  }
+
+  /**
+   * Plaintext API key + model for server-side use. Returns null if no API key
+   * is configured.
+   */
+  async getAiConfigSecrets(): Promise<AiConfigStored | null> {
+    const row = await this.ensureRow();
+    const persisted = this.parseAiPersisted(this.asRecord(row.settings)[AI_KEY]);
+    const apiKey = this.cipher.decryptSafe(persisted.openaiApiKeyEnc);
+    if (!apiKey?.trim()) return null;
+    return {
+      openaiApiKey: apiKey.trim(),
+      openaiModel: persisted.openaiModel?.trim() || DEFAULT_OPENAI_MODEL,
+    };
+  }
+
   /**
    * Full EMMA credentials for server-side automation. Decrypts the encrypted
    * fields. Returns null if no EMMA login has been configured yet.
@@ -336,6 +390,9 @@ export class SettingsService {
         // endpoint — admins must use the dedicated /settings/emma-login route
         // so credentials get encrypted properly. Drop the patch silently.
         continue;
+      } else if (key === AI_KEY) {
+        // Same rule for the AI/OpenAI key — must go through /settings/ai-config.
+        continue;
       } else {
         next[key] = val;
       }
@@ -351,6 +408,9 @@ export class SettingsService {
     }
     if (raw[EMMA_KEY] && typeof raw[EMMA_KEY] === 'object' && !Array.isArray(raw[EMMA_KEY])) {
       out[EMMA_KEY] = this.metaFromEmmaRaw(raw[EMMA_KEY]);
+    }
+    if (raw[AI_KEY] && typeof raw[AI_KEY] === 'object' && !Array.isArray(raw[AI_KEY])) {
+      out[AI_KEY] = this.metaFromAiRaw(raw[AI_KEY]);
     }
     return out;
   }
@@ -426,6 +486,42 @@ export class SettingsService {
       hasTotpSecret: !!p.totpSecretEnc,
       hasSapPassword: !!p.sapPasswordEnc,
       hasOperatorPassword: !!p.operatorPasswordEnc,
+    };
+  }
+
+  // ------------------------- AI helpers -----------------------------------
+
+  private parseAiPersisted(raw: unknown): AiConfigPersisted {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const o = raw as Record<string, unknown>;
+    return {
+      openaiApiKeyEnc:
+        typeof o.openaiApiKeyEnc === 'string' ? o.openaiApiKeyEnc : undefined,
+      openaiModel:
+        typeof o.openaiModel === 'string' ? o.openaiModel : undefined,
+    };
+  }
+
+  private mergeAiInput(
+    prev: AiConfigPersisted,
+    dto: UpdateAiConfigDto,
+  ): AiConfigPersisted {
+    const next: AiConfigPersisted = { ...prev };
+    if (dto.openaiApiKey !== undefined && dto.openaiApiKey.trim().length > 0) {
+      next.openaiApiKeyEnc = this.cipher.encrypt(dto.openaiApiKey.trim());
+    }
+    if (dto.openaiModel !== undefined) {
+      const m = dto.openaiModel.trim();
+      next.openaiModel = m.length > 0 ? m : undefined;
+    }
+    return next;
+  }
+
+  private metaFromAiRaw(raw: unknown) {
+    const p = this.parseAiPersisted(raw);
+    return {
+      hasOpenaiApiKey: !!p.openaiApiKeyEnc,
+      openaiModel: p.openaiModel?.trim() || DEFAULT_OPENAI_MODEL,
     };
   }
 }
