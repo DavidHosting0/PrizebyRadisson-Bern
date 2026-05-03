@@ -1,5 +1,5 @@
 import { generateSync } from 'otplib';
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 
 /**
  * EMMA = SAP Fiori Launchpad for Radisson Hotel Group properties.
@@ -208,21 +208,110 @@ async function emmaLoginStage3Sap(page: Page, opts: EmmaLoginOpts) {
     .first();
   await submit.click();
   progress(opts, '[EMMA] Stage 3/4 SAP — gesendet');
-  await sleep(3000);
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => undefined);
+  await sleep(2000);
+}
+
+/**
+ * Stage 4 — property / operator popup after SAP Log On. RHG renders this as a
+ * UI5 `sap.m.Dialog`: prefers **Login** (one word), not **Log On** (stage 3).
+ * Do not require `input[type="password"]` — operator password is often a plain
+ * textbox in the DOM while still masked in the UI.
+ */
+function emmaPropertyOperatorModal(page: Page): Locator {
+  const propertyLogin = page.getByRole('button', { name: 'Login', exact: true });
+  return page
+    .locator(
+      [
+        'div.sapMDialog:visible',
+        'section.sapMDialog:visible',
+        '[role="dialog"]:visible',
+        'div[aria-modal="true"]:visible',
+      ].join(', '),
+    )
+    .filter({ has: propertyLogin })
+    .first();
+}
+
+/**
+ * Primary action in the property dialog — SAP often delays the modal until the
+ * shell home is ready; the accessible name may be "Login", "Anmelden", or only
+ * a title on a DIV with role=button.
+ */
+async function emmaPropertyDialogLoginButton(
+  modal: Locator,
+): Promise<Locator | null> {
+  const footerScoped = modal
+    .locator(
+      '.sapMDialogFooter, .sapMBtnDefault.sapMDialogBtn, .sapMBar.sapMBarBottom',
+    )
+    .getByRole('button', { name: /^(Login|Anmelden)$/i })
+    .first();
+
+  const candidates: Locator[] = [
+    modal.getByRole('button', { name: 'Login', exact: true }),
+    modal.getByRole('button', { name: /^Login$/i }),
+    modal.getByRole('button', { name: /Anmelden/i }),
+    footerScoped,
+    modal.locator('button[title="Login" i]').first(),
+    modal.locator('[role="button"][title="Login" i]').first(),
+    modal
+      .locator('button, [role="button"].sapMBtn')
+      .filter({ hasText: /^Login$/i })
+      .first(),
+  ];
+
+  const deadlineMs = 10_000;
+  const started = Date.now();
+  while (Date.now() - started < deadlineMs) {
+    for (const loc of candidates) {
+      if (await loc.isVisible().catch(() => false)) {
+        return loc;
+      }
+    }
+    await sleep(250);
+  }
+  return null;
+}
+
+/** Second row: UI5 ComboBox — click and fill inner input, confirm with Enter. */
+async function fillEmmaOperatorCodeCombobox(modal: Locator, code: string) {
+  const combos = modal.getByRole('combobox');
+  const second = combos.nth(1);
+  await second.waitFor({ state: 'visible', timeout: 15_000 });
+  await second.click();
+  await sleep(250);
+  const inner = second.locator('input').first();
+  if (await inner.isVisible().catch(() => false)) {
+    await inner.fill('');
+    await inner.fill(code.trim());
+  } else {
+    await second.pressSequentially(code.trim());
+  }
+  await second.press('Enter').catch(() => undefined);
+  await sleep(300);
 }
 
 async function emmaLoginStage4OperatorModal(page: Page, opts: EmmaLoginOpts) {
-  // After the launchpad loads, a modal pops up asking for the operator code +
-  // password (per-property login). The dialog contains the only "Login"
-  // button (one word, capital L) — distinct from the "Log On" of stage 3.
-  const loginBtn = page.getByRole('button', { name: 'Login', exact: true });
-  if (!(await loginBtn.isVisible({ timeout: 30_000 }).catch(() => false))) {
+  // After SAP Log On, the launchpad redirects to #Shell-home; the property modal
+  // often appears several seconds later (same as emmaOpenLoggedIn — no extra magic;
+  // we only wait/poll long enough for the shell to attach it).
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => undefined);
+
+  const modal = emmaPropertyOperatorModal(page);
+  const dialogWaitMs = 90_000;
+  try {
+    await modal.waitFor({ state: 'visible', timeout: dialogWaitMs });
+  } catch {
     progress(
       opts,
       '[EMMA] Stage 4/4 — kein Property-Modal sichtbar, übersprungen',
     );
     return;
   }
+
   progress(opts, '[EMMA] Stage 4/4 Property-Login — Modal erkannt');
 
   if (!opts.operatorCode?.trim() || !opts.operatorPassword) {
@@ -231,48 +320,59 @@ async function emmaLoginStage4OperatorModal(page: Page, opts: EmmaLoginOpts) {
     );
   }
 
-  // Scope to the dialog so we don't hit the global Fiori search bar.
-  const dialog = page
-    .locator('[role="dialog"]:has(button[title="Login"]), [role="dialog"]:has-text("Login")')
-    .first();
-  // Visible inputs in the dialog: 3 in total (property combobox prefilled,
-  // operator code combobox empty, operator password empty).
-  const inputs = dialog.locator('input:visible');
-  const count = await inputs.count();
-  if (count === 0) {
-    throw new Error(
-      'EMMA Stage 4: Property-Modal hat keine sichtbaren Eingabefelder.',
-    );
-  }
+  await fillEmmaOperatorCodeCombobox(modal, opts.operatorCode);
 
-  let codeFilled = false;
   let passFilled = false;
-  for (let i = 0; i < count; i++) {
-    const inp = inputs.nth(i);
-    const type = (await inp.getAttribute('type'))?.toLowerCase() ?? 'text';
-    if (type === 'password') {
-      if (!passFilled) {
-        await inp.fill(opts.operatorPassword);
-        passFilled = true;
-      }
-      continue;
-    }
-    if (codeFilled) continue;
-    const value = (await inp.inputValue().catch(() => '')).trim();
-    if (value) continue; // property combobox is prefilled — skip it
-    await inp.fill(opts.operatorCode.trim());
-    codeFilled = true;
+  const pwdInput = modal.locator('input[type="password"]:visible').first();
+  if (await pwdInput.isVisible().catch(() => false)) {
+    await pwdInput.fill(opts.operatorPassword);
+    passFilled = true;
   }
-  if (!codeFilled || !passFilled) {
+  if (!passFilled) {
+    const textboxes = modal.getByRole('textbox');
+    const n = await textboxes.count();
+    for (let i = n - 1; i >= 0; i--) {
+      const tb = textboxes.nth(i);
+      if (!(await tb.isVisible().catch(() => false))) continue;
+      const val = (await tb.inputValue().catch(() => '')).trim();
+      if (val) continue;
+      await tb.fill(opts.operatorPassword);
+      passFilled = true;
+      break;
+    }
+  }
+  if (!passFilled) {
+    const inputs = modal.locator('input:visible');
+    const ic = await inputs.count();
+    const empty: Locator[] = [];
+    for (let i = 0; i < ic; i++) {
+      const inp = inputs.nth(i);
+      const type = (await inp.getAttribute('type'))?.toLowerCase() ?? 'text';
+      if (type === 'password') continue;
+      const value = (await inp.inputValue().catch(() => '')).trim();
+      if (!value) empty.push(inp);
+    }
+    if (empty.length > 0) {
+      await empty[empty.length - 1].fill(opts.operatorPassword);
+      passFilled = true;
+    }
+  }
+  if (!passFilled) {
     throw new Error(
-      'EMMA Stage 4: konnte Operator-Code/-Passwort-Felder nicht eindeutig zuordnen.',
+      'EMMA Stage 4: Operator-Passwort-Feld nicht gefunden (kein password-type, kein leeres Textfeld).',
     );
   }
 
+  const loginBtn = await emmaPropertyDialogLoginButton(modal);
+  if (!loginBtn) {
+    throw new Error(
+      'EMMA Stage 4: Property-Modal hat keinen sichtbaren Login-/Anmelden-Button.',
+    );
+  }
   await loginBtn.click();
   progress(opts, '[EMMA] Stage 4/4 Property-Login — gesendet');
-  await dialog
-    .waitFor({ state: 'hidden', timeout: 15_000 })
+  await modal
+    .waitFor({ state: 'hidden', timeout: 25_000 })
     .catch(() => undefined);
   await sleep(1000);
 }
@@ -304,13 +404,8 @@ export async function emmaIsOnLoginScreen(page: Page): Promise<boolean> {
   ) {
     return true;
   }
-  // Stage 4 property modal still up?
-  if (
-    (await page
-      .locator('[role="dialog"] button[title="Login"], [role="dialog"]:has-text("Login")')
-      .count()
-      .catch(() => 0)) > 0
-  ) {
+  // Stage 4 — UI5 property modal: **Login** (not Log On) inside sapMDialog / dialog.
+  if (await emmaPropertyOperatorModal(page).isVisible().catch(() => false)) {
     return true;
   }
   return false;
