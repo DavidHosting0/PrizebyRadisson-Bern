@@ -1,14 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { tryPuzzelLogin, type PuzzelScrapeOpts } from './puzzel-scraper';
-
-const LOGIN_URL_PATTERNS = [
-  /\/Account\/Login/i,
-  /\/adfs\/ls/i,
-  /\/connect\/authorize/i,
-];
-
-const LOGIN_FIELD_SELECTOR = '#Input_Username, #userNameInput, #Input_Password, #passwordInput';
+import {
+  tryPuzzelLogin,
+  puzzelPageIndicatesLoginRequired,
+  puzzelUrlHostname,
+  type PuzzelScrapeOpts,
+} from './puzzel-scraper';
 
 export type PuzzelSessionHelpers = {
   page: Page;
@@ -91,28 +88,49 @@ export class PuzzelBrowserSessionService implements OnModuleDestroy {
   }
 
   private async gotoLoggedIn(page: Page, url: string, opts: PuzzelScrapeOpts) {
-    opts.progress?.(`[Puzzel] Öffne Puzzel-Seite (Session reuse): ${url}`);
+    let appHost: string;
+    try {
+      appHost = new URL(opts.baseUrl.replace(/\/+$/, '')).hostname.toLowerCase();
+    } catch {
+      appHost = '';
+    }
+
+    opts.progress?.(`[Puzzel] Öffne (Session): ${url}`);
     await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
 
-    if (await this.isOnLoginScreen(page)) {
-      opts.progress?.('[Puzzel] Session abgelaufen oder erstmaliger Login — neu authentifizieren');
+    if (await puzzelPageIndicatesLoginRequired(page)) {
+      opts.progress?.('[Puzzel] Session abgelaufen oder nicht eingeloggt — authentifizieren');
       await tryPuzzelLogin(page, opts);
-      if (await this.isOnLoginScreen(page)) {
+      await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+      if (await puzzelPageIndicatesLoginRequired(page)) {
         await tryPuzzelLogin(page, opts);
+        await page.waitForLoadState('domcontentloaded').catch(() => undefined);
       }
-      if (!page.url().includes(new URL(url).pathname)) {
-        await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
-      }
-      opts.progress?.(`[Puzzel] Login abgeschlossen, Zielseite: ${page.url()}`);
-    } else {
-      opts.progress?.(`[Puzzel] Bestehende Session genutzt: ${page.url()}`);
     }
-  }
 
-  private async isOnLoginScreen(page: Page): Promise<boolean> {
-    const url = page.url();
-    if (LOGIN_URL_PATTERNS.some((re) => re.test(url))) return true;
-    return (await page.locator(LOGIN_FIELD_SELECTOR).count()) > 0;
+    if (appHost && puzzelUrlHostname(page.url()) !== appHost) {
+      opts.progress?.(`[Puzzel] Erwarteter App-Host ${appHost}, navigiere erneut zu ${url}`);
+      await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+      await new Promise((r) => setTimeout(r, 500));
+      if (await puzzelPageIndicatesLoginRequired(page)) {
+        await tryPuzzelLogin(page, opts);
+        await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+      }
+    }
+
+    if (await puzzelPageIndicatesLoginRequired(page)) {
+      throw new Error(
+        `[Puzzel] Nicht eingeloggt (Cookies/Session). Letzte URL: ${page.url()}`,
+      );
+    }
+
+    if (appHost && puzzelUrlHostname(page.url()) !== appHost) {
+      throw new Error(
+        `[Puzzel] Falscher Host nach Login: erwartet ${appHost}, ist ${puzzelUrlHostname(page.url())} — ${page.url()}`,
+      );
+    }
+
+    opts.progress?.(`[Puzzel] Session OK: ${page.url()}`);
   }
 
   private async cleanup() {

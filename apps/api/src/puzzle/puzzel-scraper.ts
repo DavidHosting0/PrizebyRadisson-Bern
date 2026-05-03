@@ -78,6 +78,41 @@ function normBase(url: string) {
   return url.replace(/\/+$/, '');
 }
 
+/** Hostname from any full URL, lowercased (empty if invalid). */
+export function puzzelUrlHostname(fullUrl: string): string {
+  try {
+    return new URL(fullUrl).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** URLs that indicate we are not yet on the Puzzel app shell. */
+const PUZZEL_IDP_URL_REGEXES = [
+  /\/Account\/Login/i,
+  /\/adfs\/ls/i,
+  /\/connect\/authorize/i,
+  /login\.microsoftonline\.com/i,
+  /login\.microsoft\.com/i,
+];
+
+/**
+ * True while still on an IdP / login URL or a visible username/password step.
+ * Used to decide whether to continue the login flow and to assert session is valid.
+ */
+export async function puzzelPageIndicatesLoginRequired(page: Page): Promise<boolean> {
+  const url = page.url();
+  if (PUZZEL_IDP_URL_REGEXES.some((re) => re.test(url))) {
+    return true;
+  }
+  const visibleLogin = page
+    .locator(
+      '#Input_Username:visible, #Input_Password:visible, #userNameInput:visible, #passwordInput:visible, input#i0116:visible, input#i0118:visible',
+    )
+    .first();
+  return visibleLogin.isVisible({ timeout: 800 }).catch(() => false);
+}
+
 function hrefKey(href: string | null, base: string): string {
   if (!href) return '';
   try {
@@ -104,6 +139,51 @@ function normalizeCellText(value: string) {
 
 function progress(opts: Pick<PuzzelScrapeOpts, 'progress'>, message: string) {
   opts.progress?.(`[Puzzel] ${message}`);
+}
+
+/**
+ * IdP login screens (Entra / ADFS / Puzzel) change often. Try several known
+ * controls instead of one compound selector (which times out if none match).
+ */
+async function clickFirstAuthSubmit(
+  page: Page,
+  opts: Pick<PuzzelScrapeOpts, 'progress'>,
+  context: string,
+  prepend: Locator[] = [],
+): Promise<void> {
+  const candidates: Locator[] = [
+    ...prepend,
+    page.locator('form#mainForm button.submit-button'),
+    page.locator('button.submit-button'),
+    /** Microsoft Entra / login.microsoftonline.com */
+    page.locator('#idSIButton9'),
+    page.locator('input.win-button.button_primary[type="submit"]'),
+    page.locator('input#submitButton'),
+    page.getByRole('button', { name: /^next$/i }),
+    page.getByRole('button', { name: /^weiter$/i }),
+    page.getByRole('button', { name: /^continue$/i }),
+    page.getByRole('button', { name: /sign in|log in|anmelden|einloggen|absenden/i }),
+    page.locator('form button[type="submit"]'),
+    page.locator('button[type="submit"]'),
+    page.locator('input[type="submit"]'),
+  ];
+
+  for (const loc of candidates) {
+    const el = loc.first();
+    try {
+      await el.waitFor({ state: 'visible', timeout: 2000 });
+      await el.scrollIntoViewIfNeeded().catch(() => {});
+      await el.click({ timeout: 8000 });
+      progress(opts, `${context}: Fortfahren geklickt`);
+      return;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `${context}: Kein Weiter-/Submit-Button gefunden. Tipp: API mit PUZZEL_HEADLESS=false starten und manuell prüfen. URL: ${page.url()}`,
+  );
 }
 
 function mapTicketColumns(parts: string[], rowText: string) {
@@ -168,10 +248,7 @@ export async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   if (await userField.isVisible({ timeout: 8000 }).catch(() => false)) {
     progress(opts, 'Login Schritt 1/4: Puzzel E-Mail eintragen');
     await userField.fill(opts.email);
-    const nextBtn = page
-      .locator('form#mainForm button.submit-button, button.submit-button, input#submitButton, input[type="submit"], button:has-text("Next")')
-      .first();
-    await nextBtn.click();
+    await clickFirstAuthSubmit(page, opts, 'Login Schritt 1/4');
     progress(opts, 'Login Schritt 1/4: Puzzel E-Mail gesendet');
     await sleep(1200);
   }
@@ -192,12 +269,7 @@ export async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
   if (await passField.isVisible({ timeout: 20000 }).catch(() => false)) {
     progress(opts, 'Login Schritt 3/4: Passwort eintragen');
     await passField.fill(opts.password);
-    const submit = page
-      .locator(
-        '#submitButton, input[type="submit"], form button[type="submit"], button.submit-button, button:has-text("Sign in"), button:has-text("Next")',
-      )
-      .first();
-    await submit.click();
+    await clickFirstAuthSubmit(page, opts, 'Login Schritt 3/4');
     progress(opts, 'Login Schritt 3/4: Passwort gesendet');
     await sleep(2000);
   }
@@ -216,34 +288,50 @@ export async function tryPuzzelLogin(page: Page, opts: PuzzelScrapeOpts) {
       secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
     });
     await otp.fill(code);
-    const go = page
-      .locator('#submitButton, input[type="submit"], button[type="submit"], button:has-text("Verify"), button:has-text("Next")')
-      .first();
-    await go.click();
+    await clickFirstAuthSubmit(page, opts, 'Login Schritt 4/4', [
+      page.getByRole('button', { name: /^verify$/i }),
+      page.getByRole('button', { name: /verify|bestätigen|abschließen/i }),
+    ]);
     progress(opts, 'Login Schritt 4/4: 2FA-Code gesendet');
     await sleep(2500);
   }
 }
 
 export async function openLoggedInPage(page: Page, url: string, opts: PuzzelScrapeOpts) {
-  progress(opts, `Öffne Puzzel-Seite: ${url}`);
-  await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
-  await tryPuzzelLogin(page, opts);
+  const appHost = puzzelUrlHostname(normBase(opts.baseUrl));
+  const targetPrefix = normBase(url);
 
-  if (
-    page.url().includes('/Account/Login') ||
-    page.url().includes('/adfs/ls') ||
-    (await page.locator('#Input_Username, #userNameInput').count()) > 0
-  ) {
-    progress(opts, 'Login noch nicht abgeschlossen, wiederhole Login-Prüfung');
-    await tryPuzzelLogin(page, opts);
-  }
-
-  if (page.url() !== url) {
-    progress(opts, 'Zur Zielseite nach erfolgreichem Login zurückkehren');
+  for (let round = 0; round < 3; round++) {
+    progress(opts, `Öffne Puzzel-Ziel (${round + 1}/3): ${url}`);
     await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await tryPuzzelLogin(page, opts);
+      await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+      await sleep(attempt === 0 ? 1400 : 900);
+      if (!(await puzzelPageIndicatesLoginRequired(page))) {
+        break;
+      }
+      progress(opts, 'Anmeldemaske oder IdP noch aktiv — Login erneut ausführen');
+    }
+
+    const host = puzzelUrlHostname(page.url());
+    if (appHost && host === appHost && !(await puzzelPageIndicatesLoginRequired(page))) {
+      if (!page.url().startsWith(targetPrefix)) {
+        progress(opts, 'Zur Ziel-URL nach Anmeldung navigieren');
+        await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+        await sleep(700);
+      }
+      if (!(await puzzelPageIndicatesLoginRequired(page)) && puzzelUrlHostname(page.url()) === appHost) {
+        progress(opts, `Puzzel-Session bestätigt (App-Host ${appHost}): ${page.url()}`);
+        return;
+      }
+    }
   }
-  progress(opts, `Login/Zielseite bereit: ${page.url()}`);
+
+  throw new Error(
+    `Puzzel: Anmeldung nicht bestätigt. Erwarteter App-Host: ${appHost}, aktuell: ${puzzelUrlHostname(page.url())} — ${page.url()}`,
+  );
 }
 
 async function selectSavedSearch(page: Page, name: string) {
