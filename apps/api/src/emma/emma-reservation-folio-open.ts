@@ -44,6 +44,23 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+/** Launchpad tiles live on Fiori home (`#Shell-home`); other hashes hide them. */
+async function ensureEmmaHomeForTiles(page: Page) {
+  const u = page.url();
+  if (!/emma\.rhg\.radissonhotels\.com/i.test(u)) {
+    throw new Error(`EMMA Launchpad erwartet, aktuelle URL: ${u}`);
+  }
+  const parsed = new URL(u);
+  if (!/#Shell-home/i.test(parsed.hash)) {
+    parsed.hash = 'Shell-home';
+    await page.goto(parsed.toString(), {
+      timeout: 90_000,
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => undefined);
+  }
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -73,10 +90,20 @@ export async function runEmmaSearchReservationAndOpenFolio(
 
   emit('search_tile', 'Search Reservations öffnen …');
   await page.waitForLoadState('domcontentloaded');
-  await page
-    .getByRole('link', { name: /Search\s+Reser.*vations/i })
-    .first()
-    .click({ timeout: 60_000 });
+  await ensureEmmaHomeForTiles(page);
+
+  const searchTile = page
+    .getByRole('link', { name: /Search[\s\u00ad]*Reser[\u00ad\s]*vations?/i })
+    .first();
+  try {
+    await searchTile.waitFor({ state: 'visible', timeout: 30_000 });
+    await searchTile.scrollIntoViewIfNeeded().catch(() => undefined);
+    await searchTile.click({ timeout: 60_000 });
+  } catch {
+    await ensureEmmaHomeForTiles(page);
+    await searchTile.scrollIntoViewIfNeeded().catch(() => undefined);
+    await searchTile.click({ timeout: 60_000 });
+  }
 
   const shell = page.getByRole('searchbox', {
     name: EMMA_SHELL_RESERVATION_SEARCHBOX_NAME,

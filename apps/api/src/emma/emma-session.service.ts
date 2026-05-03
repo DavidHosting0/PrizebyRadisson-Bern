@@ -15,10 +15,11 @@ import {
 export type EmmaSessionHelpers = {
   page: Page;
   /**
-   * Navigate the existing page to the given URL and re-run the EMMA login
-   * flow if the persistent session has expired. Subsequent calls within the
-   * same browser context reuse the session cookies, so a real login only
-   * happens once per process lifetime (or until invalidated).
+   * Navigate to the launchpad URL. If any login screen is detected (ADFS,
+   * MFA, SAP Log On, property modal), runs {@link emmaLogin} with the same
+   * {@link EmmaLoginOpts} built from Admin → Settings → EMMA (ADFS, TOTP,
+   * SAP user/password, operator code/password, optional base URL).
+   * With a warm persistent context, stages no-op when their prompts are absent.
    */
   gotoLoggedIn: (url: string) => Promise<void>;
 };
@@ -96,10 +97,48 @@ export class EmmaBrowserSessionService implements OnModuleDestroy {
   private async gotoLoggedIn(page: Page, url: string, opts: EmmaLoginOpts) {
     opts.progress?.(`[EMMA] Öffne (Session-Reuse): ${url}`);
     await page.goto(url, { timeout: 120_000, waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => undefined);
 
-    if (await emmaIsOnLoginScreen(page)) {
+    // SAML can flip the URL after domcontentloaded — wait until stable enough to decide.
+    for (let i = 0; i < 50; i++) {
+      if (await emmaIsOnLoginScreen(page)) {
+        break;
+      }
+      const here = page.url();
+      if (
+        here.includes('emma.rhg.radissonhotels.com') &&
+        (await page
+          .getByRole('link', { name: /Search Reservation/i })
+          .first()
+          .isVisible()
+          .catch(() => false))
+      ) {
+        break;
+      }
+      await new Promise<void>((r) => setTimeout(r, 200));
+    }
+
+    let onLogin = await emmaIsOnLoginScreen(page);
+    const finalBeforeBranch = page.url();
+    if (!onLogin && /signon\.radissonhotels\.com|\/adfs\//i.test(finalBeforeBranch)) {
+      onLogin = true;
+      opts.progress?.(
+        `[EMMA] SSO-Zwischenseite erkannt, Login nötig: ${finalBeforeBranch}`,
+      );
+    }
+    if (!onLogin && !finalBeforeBranch.includes('emma.rhg.radissonhotels.com')) {
+      onLogin = true;
+      opts.progress?.(
+        `[EMMA] Nicht auf EMMA-Host, Login nötig: ${finalBeforeBranch}`,
+      );
+    }
+
+    if (onLogin) {
       opts.progress?.(
         '[EMMA] Session abgelaufen oder erstmaliger Login — neu authentifizieren',
+      );
+      opts.progress?.(
+        '[EMMA] Anmeldung gemäß Admin-Einstellungen: ADFS → MFA → SAP → Property',
       );
       await emmaLogin(page, opts);
       if (await emmaIsOnLoginScreen(page)) {

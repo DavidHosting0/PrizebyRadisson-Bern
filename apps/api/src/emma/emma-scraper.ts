@@ -283,6 +283,11 @@ async function emmaLoginStage4OperatorModal(page: Page, opts: EmmaLoginOpts) {
  */
 export async function emmaIsOnLoginScreen(page: Page): Promise<boolean> {
   const url = page.url();
+  const title = await page.title().catch(() => '');
+  // Stage 2 — Microsoft MFA page title in the RHG flow.
+  if (/RHGMFA/i.test(title)) return true;
+  // ADFS / corporate SSO — often still in flight right after launchpad goto.
+  if (/signon\.radissonhotels\.com/i.test(url)) return true;
   if (/\/adfs\/ls/i.test(url)) return true;
   if (/[?&]ssoCookie=/i.test(url)) return true; // RHGMFA stage
   // SAP Fiori Logon page renders inputs with placeholder="User"/"Password"

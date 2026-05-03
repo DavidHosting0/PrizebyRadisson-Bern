@@ -151,8 +151,10 @@ export class EmmaService {
   }
 
   /**
-   * Build a complete `EmmaLoginOpts` from the encrypted secrets in
-   * HotelSettings. Throws if any required field is missing.
+   * Build {@link EmmaLoginOpts} from `HotelSettings.settings.emmaLogin`
+   * (Admin UI: Stufe 1 ADFS, 2 TOTP, 3 SAP, 4 Property, optional Launchpad-URL).
+   * Used for every Playwright run; {@link emmaLogin} consumes this object as-is.
+   * Throws if stages 1–3 required fields are missing.
    */
   private async buildLoginOpts(
     onSessionLog?: (message: string) => void,
