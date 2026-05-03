@@ -1,8 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   SettingsService,
   type EmmaLoginStored,
 } from '../settings/settings.service';
+import {
+  runEmmaSearchReservationAndOpenFolio,
+  type EmmaOpenFolioProgressEvent,
+} from './emma-reservation-folio-open';
 import { emmaLaunchpadUrl, type EmmaLoginOpts } from './emma-scraper';
 import { EmmaBrowserSessionService } from './emma-session.service';
 
@@ -12,6 +16,15 @@ export type EmmaLoginTestResult = {
   title: string;
   durationMs: number;
 };
+
+export type EmmaOpenReservationFolioResult = {
+  ok: true;
+  url: string;
+  title: string;
+  durationMs: number;
+};
+
+export type { EmmaOpenFolioProgressEvent } from './emma-reservation-folio-open';
 
 /**
  * High-level entry point for EMMA work. Today this is just a `testLogin`
@@ -74,10 +87,76 @@ export class EmmaService {
   }
 
   /**
+   * Log in (reusing session when possible), run **Search Reservations** with the
+   * shell box + date filters, open the PMS row by double-clicking the reservation
+   * column cell, then open **Folio Management** for that stay.
+   *
+   * @param onStep optional live progress (e.g. NDJSON stream to the PrizeBern UI).
+   */
+  async openReservationFolio(
+    body: {
+      shellSearch: string;
+      gridReservationId: string;
+      checkInDate?: string | null;
+      checkOutDate?: string | null;
+      headless?: boolean;
+    },
+    onStep?: (event: EmmaOpenFolioProgressEvent) => void,
+  ): Promise<EmmaOpenReservationFolioResult> {
+    const shellSearch = body.shellSearch?.trim();
+    const gridReservationId = body.gridReservationId?.trim();
+    if (!shellSearch || !gridReservationId) {
+      throw new BadRequestException(
+        'shellSearch and gridReservationId are required.',
+      );
+    }
+
+    const emit = (event: EmmaOpenFolioProgressEvent) => {
+      onStep?.(event);
+    };
+
+    const opts = await this.buildLoginOpts((msg) =>
+      emit({ step: 'session_login', message: msg }),
+    );
+    const startedAt = Date.now();
+    this.log.log('[EMMA] openReservationFolio gestartet');
+
+    const result = await this.session.run(
+      opts,
+      async ({ page, gotoLoggedIn }) => {
+        emit({
+          step: 'session_launch',
+          message: 'Launchpad laden (Session / Login) …',
+        });
+        await gotoLoggedIn(emmaLaunchpadUrl(opts));
+        await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
+        emit({ step: 'session_ready', message: 'Launchpad bereit.' });
+        return runEmmaSearchReservationAndOpenFolio(
+          page,
+          {
+            shellSearch,
+            gridReservationId,
+            checkInDate: body.checkInDate,
+            checkOutDate: body.checkOutDate,
+          },
+          onStep,
+        );
+      },
+      { headless: body.headless ?? true },
+    );
+
+    const durationMs = Date.now() - startedAt;
+    this.log.log(`[EMMA] openReservationFolio OK (${durationMs}ms): ${result.url}`);
+    return { ok: true, durationMs, ...result };
+  }
+
+  /**
    * Build a complete `EmmaLoginOpts` from the encrypted secrets in
    * HotelSettings. Throws if any required field is missing.
    */
-  private async buildLoginOpts(): Promise<EmmaLoginOpts> {
+  private async buildLoginOpts(
+    onSessionLog?: (message: string) => void,
+  ): Promise<EmmaLoginOpts> {
     const creds = await this.settings.getEmmaLoginSecrets();
     this.assertCredentialsComplete(creds);
     return {
@@ -89,7 +168,10 @@ export class EmmaService {
       operatorCode: creds.operatorCode || undefined,
       operatorPassword: creds.operatorPassword || undefined,
       baseUrl: creds.baseUrl || undefined,
-      progress: (msg) => this.log.log(msg),
+      progress: (msg) => {
+        this.log.log(msg);
+        onSessionLog?.(msg);
+      },
     };
   }
 

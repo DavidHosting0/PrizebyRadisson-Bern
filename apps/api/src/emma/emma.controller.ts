@@ -5,12 +5,17 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { EmmaService } from './emma.service';
+import {
+  type EmmaOpenReservationFolioResult,
+  EmmaService,
+} from './emma.service';
 
 @Controller('emma')
 export class EmmaController {
@@ -44,5 +49,70 @@ export class EmmaController {
   @Roles(UserRole.ADMIN)
   invalidate() {
     return this.emma.invalidateSession();
+  }
+
+  /**
+   * Search Reservations → open PMS row → Folio Management (for invoice handling).
+   */
+  @Post('reservation/open-folio')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTION)
+  openReservationFolio(
+    @Body()
+    body: {
+      shellSearch: string;
+      gridReservationId: string;
+      checkInDate?: string | null;
+      checkOutDate?: string | null;
+      headless?: boolean;
+    },
+  ): Promise<EmmaOpenReservationFolioResult> {
+    return this.emma.openReservationFolio(body);
+  }
+
+  /**
+   * Same as {@link openReservationFolio} but streams NDJSON lines:
+   * `{"type":"step","step":"...","message":"..."}` then
+   * `{"type":"done","ok":true,"url":"...","title":"...","durationMs":n}` or
+   * `{"type":"error","message":"..."}`.
+   */
+  @Post('reservation/open-folio-stream')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTION)
+  async openReservationFolioStream(
+    @Body()
+    body: {
+      shellSearch: string;
+      gridReservationId: string;
+      checkInDate?: string | null;
+      checkOutDate?: string | null;
+      headless?: boolean;
+    },
+    @Res({ passthrough: false }) res: Response,
+  ): Promise<void> {
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+      const result = await this.emma.openReservationFolio(body, (ev) => {
+        res.write(`${JSON.stringify({ type: 'step', ...ev })}\n`);
+      });
+      res.write(
+        `${JSON.stringify({
+          type: 'done',
+          ok: true,
+          url: result.url,
+          title: result.title,
+          durationMs: result.durationMs,
+        })}\n`,
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.write(`${JSON.stringify({ type: 'error', message })}\n`);
+    }
+    res.end();
   }
 }

@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, postNdjsonStream } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -327,6 +327,42 @@ function assignedAt(ticket: PuzzelTicket) {
   return metaText(ticket, 'lastAssignedViaPrizeBernAt');
 }
 
+/** Build EMMA search/open payload: Puzzel reference + optional AI PMS id. */
+function buildEmmaOpenFolioPayload(
+  ticket: PuzzelTicket,
+  analysis: PuzzelTicketAnalysis | null | undefined,
+): {
+  shellSearch: string;
+  gridReservationId: string;
+  checkInDate?: string | null;
+  checkOutDate?: string | null;
+} | null {
+  const ref = ticket.reference?.trim() || null;
+  const resNum = analysis?.bookingDetails?.reservationNumber?.trim() || null;
+  if (!ref && !resNum) return null;
+  const shellSearch = ref ?? resNum!;
+  const gridReservationId = resNum ?? ref!;
+  return {
+    shellSearch,
+    gridReservationId,
+    checkInDate: analysis?.bookingDetails?.checkInDate ?? undefined,
+    checkOutDate: analysis?.bookingDetails?.checkOutDate ?? undefined,
+  };
+}
+
+const EMMA_STEP_TITLE_DE: Record<string, string> = {
+  session_launch: 'EMMA: Launchpad / Session',
+  session_login: 'EMMA: Anmeldung',
+  session_ready: 'Launchpad bereit',
+  search_tile: 'Search Reservations öffnen',
+  filters_restore: 'Filter zurücksetzen',
+  fill_shell_search: 'Suchbegriff setzen',
+  fill_date_filters: 'Anreise / Abreise',
+  search_go: 'Suche ausführen',
+  open_reservation_row: 'Reservation öffnen',
+  open_folio_management: 'Folio Management',
+};
+
 function initials(value: string | null | undefined) {
   const text = value?.trim() || '?';
   return text
@@ -492,6 +528,18 @@ export default function ReceptionPuzzlePage() {
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
     },
   });
+
+  const [emmaSteps, setEmmaSteps] = useState<{ step: string; message: string }[]>([]);
+  const [emmaBusy, setEmmaBusy] = useState(false);
+  const [emmaError, setEmmaError] = useState<string | null>(null);
+  const [emmaDone, setEmmaDone] = useState<{ url: string; title: string; durationMs: number } | null>(null);
+
+  useEffect(() => {
+    setEmmaSteps([]);
+    setEmmaBusy(false);
+    setEmmaError(null);
+    setEmmaDone(null);
+  }, [expandedId]);
 
   return (
     <div className="space-y-6 bg-surface-muted/30 p-4 md:p-8">
@@ -747,6 +795,100 @@ export default function ReceptionPuzzlePage() {
             {selectedTicket ? (
               <div className="flex h-full flex-col">
                 <div className="border-b border-border bg-surface p-5">
+                  {(() => {
+                    const emmaPayload = buildEmmaOpenFolioPayload(selectedTicket, analysisQuery.data);
+                    return (
+                      <div className="mb-4 rounded-2xl border border-indigo-200/80 bg-indigo-50/60 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-900/80">EMMA</p>
+                            <p className="mt-0.5 text-sm font-medium text-indigo-950">
+                              Buchung in EMMA suchen und Folio öffnen
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="action"
+                            className="min-h-[44px] shrink-0"
+                            disabled={emmaBusy || !emmaPayload}
+                            onClick={async () => {
+                              const payload = buildEmmaOpenFolioPayload(selectedTicket, analysisQuery.data);
+                              if (!payload) return;
+                              setEmmaBusy(true);
+                              setEmmaError(null);
+                              setEmmaDone(null);
+                              setEmmaSteps([]);
+                              try {
+                                await postNdjsonStream(
+                                  '/emma/reservation/open-folio-stream',
+                                  { ...payload, headless: true },
+                                  (line) => {
+                                    if (line.type === 'step') {
+                                      setEmmaSteps((prev) => [
+                                        ...prev,
+                                        { step: line.step, message: line.message },
+                                      ]);
+                                    } else if (line.type === 'done') {
+                                      setEmmaDone({
+                                        url: line.url,
+                                        title: line.title,
+                                        durationMs: line.durationMs,
+                                      });
+                                      setEmmaBusy(false);
+                                    } else if (line.type === 'error') {
+                                      setEmmaError(line.message);
+                                      setEmmaBusy(false);
+                                    }
+                                  },
+                                );
+                              } catch (e) {
+                                setEmmaError((e as Error).message);
+                                setEmmaBusy(false);
+                              }
+                            }}
+                          >
+                            {emmaBusy ? 'EMMA läuft…' : 'Puzzel-Anfrage in Emma suchen'}
+                          </Button>
+                        </div>
+                        {!emmaPayload && (
+                          <p className="mt-2 text-xs text-indigo-900/70">
+                            {analysisQuery.isLoading
+                              ? 'KI-Analyse lädt … Referenz oder Reservierungsnummer wird gleich nutzbar.'
+                              : 'Benötigt die Ticket-Referenz oder eine Reservierungsnummer aus der KI-Zusammenfassung (Nachrichten laden).'}
+                          </p>
+                        )}
+                        {(emmaSteps.length > 0 || emmaError || emmaDone) && (
+                          <div className="mt-3 max-h-48 overflow-auto rounded-xl border border-indigo-100 bg-white/80 p-3 text-xs">
+                            <ol className="space-y-2">
+                              {emmaSteps.map((row, i) => (
+                                <li
+                                  key={`${row.step}-${i}-${row.message.slice(0, 24)}`}
+                                  className={`border-l-2 pl-2 ${
+                                    i === emmaSteps.length - 1 && emmaBusy
+                                      ? 'border-action font-medium text-ink'
+                                      : 'border-indigo-200 text-ink-muted'
+                                  }`}
+                                >
+                                  <span className="font-semibold text-indigo-950">
+                                    {EMMA_STEP_TITLE_DE[row.step] ?? row.step}
+                                  </span>
+                                  <span className="mt-0.5 block text-[11px] leading-snug text-ink-muted">{row.message}</span>
+                                </li>
+                              ))}
+                            </ol>
+                            {emmaDone && (
+                              <p className="mt-2 border-t border-indigo-100 pt-2 text-[11px] font-medium text-emerald-800">
+                                Fertig in {(emmaDone.durationMs / 1000).toFixed(1)}s — {emmaDone.title}
+                              </p>
+                            )}
+                            {emmaError && (
+                              <p className="mt-2 text-[11px] font-medium text-rose-800">{emmaError}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

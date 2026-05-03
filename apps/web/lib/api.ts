@@ -106,6 +106,64 @@ export async function api<T>(
   return res.json() as Promise<T>;
 }
 
+/** NDJSON stream from POST (one JSON object per line). */
+export type EmmaOpenFolioStreamLine =
+  | { type: 'step'; step: string; message: string }
+  | { type: 'done'; ok: true; url: string; title: string; durationMs: number }
+  | { type: 'error'; message: string };
+
+/**
+ * POST and consume `application/x-ndjson` (e.g. EMMA open-folio progress).
+ * Reuses the same 401 → refresh behaviour as {@link api}.
+ */
+export async function postNdjsonStream(
+  path: string,
+  body: unknown,
+  onLine: (line: EmmaOpenFolioStreamLine) => void,
+): Promise<void> {
+  const postOnce = async (access: string | null): Promise<Response> => {
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/json');
+    if (access) headers.set('Authorization', `Bearer ${access}`);
+    return fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  };
+
+  let access = getTokens().access;
+  let res = await postOnce(access);
+  if (res.status === 401 && access) {
+    access = await refreshAccess();
+    if (access) res = await postOnce(access);
+  }
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || res.statusText);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Kein Response-Stream');
+
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split('\n');
+    buf = parts.pop() ?? '';
+    for (const line of parts) {
+      if (!line.trim()) continue;
+      onLine(JSON.parse(line) as EmmaOpenFolioStreamLine);
+    }
+  }
+  if (buf.trim()) {
+    onLine(JSON.parse(buf) as EmmaOpenFolioStreamLine);
+  }
+}
+
 export async function loginRequest(email: string, password: string) {
   const data = await api<{
     accessToken: string;
