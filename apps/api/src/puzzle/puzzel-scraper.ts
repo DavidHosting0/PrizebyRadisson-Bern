@@ -1383,6 +1383,13 @@ export async function resolvePuzzelTicketOnPage(page: Page, opts: PuzzelTicketAc
   await sleep(400);
 
   const tryResolve = async (): Promise<boolean> => {
+    const idBtn = page.locator('#resolve-ticket-btn').first();
+    if (await idBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await idBtn.scrollIntoViewIfNeeded().catch(() => {});
+      await idBtn.click({ timeout: 10_000 });
+      return true;
+    }
+
     const candidates: Locator[] = [
       page.getByRole('button', { name: /^Resolve Ticket$/i }),
       page.getByRole('button', { name: /resolve ticket/i }),
@@ -1408,8 +1415,13 @@ export async function resolvePuzzelTicketOnPage(page: Page, opts: PuzzelTicketAc
     const cssHit = await clickFirstVisible(
       page,
       [
-        'button:has-text("Resolve Ticket")',
+        '#resolve-ticket-btn',
+        'a#resolve-ticket-btn',
+        'a.btn-primary-ruby:has-text("Resolve Ticket")',
+        'a.btn-primary-ruby:has-text("Resolve ticket")',
         'a:has-text("Resolve Ticket")',
+        'a:has-text("Resolve ticket")',
+        'button:has-text("Resolve Ticket")',
         'button:has-text("Resolve ticket")',
         '[aria-label*="Resolve Ticket"]',
         '[aria-label*="Resolve ticket"]',

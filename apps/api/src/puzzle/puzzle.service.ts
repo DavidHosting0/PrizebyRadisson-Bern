@@ -514,11 +514,16 @@ export class PuzzleService {
     }
 
     const liveFingerprint = fingerprintMessages(ticket, ticket.messages);
-    if (
-      ticket.analysis &&
-      ticket.analysis.messagesFingerprint === liveFingerprint
-    ) {
-      return this.toAnalysisResult(ticket.analysis, false);
+    const cacheOk =
+      ticket.analysis && ticket.analysis.messagesFingerprint === liveFingerprint;
+    if (cacheOk) {
+      const cached = this.toAnalysisResult(ticket.analysis!, false);
+      if (cached.suggestedGuestReply.trim().length > 0) {
+        return cached;
+      }
+      this.log.warn(
+        `[Puzzel] Ticket-Analyse-Cache unvollständig (kein Antwortvorschlag) — KI erneut (${ticketId})`,
+      );
     }
 
     const { analysis, model } = await this.ai.analyzeTicket(

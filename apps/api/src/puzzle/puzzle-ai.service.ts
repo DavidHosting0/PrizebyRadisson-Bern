@@ -197,15 +197,15 @@ export type PuzzelTicketAiAnalysis = {
 };
 
 /** Bumps when AI JSON schema / semantics change so cached analyses are invalidated. */
-export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v7';
+export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v8';
 
 /**
- * A SHA-256 fingerprint over the messages used as input to the AI. Used to
- * detect when an existing analysis is stale (new messages arrived) and to
- * cache results in `PuzzelTicketAnalysis.messagesFingerprint`.
+ * SHA-256 over stable AI input: ticket id key + message bodies/headers.
+ * Deliberately excludes `subject` / `rowSummary`: those change on every list sync
+ * while the thread is unchanged, which would otherwise invalidate the DB cache constantly.
  */
 export function fingerprintMessages(
-  ticket: Pick<PuzzelTicket, 'externalKey' | 'subject' | 'rowSummary'>,
+  ticket: Pick<PuzzelTicket, 'externalKey'>,
   messages: Pick<
     PuzzelTicketMessage,
     'direction' | 'fromText' | 'sentAtText' | 'bodyText'
@@ -213,7 +213,7 @@ export function fingerprintMessages(
 ): string {
   const hasher = createHash('sha256');
   hasher.update(`${PUZZEL_AI_ANALYSIS_SCHEMA_VERSION}\n`);
-  hasher.update(`${ticket.externalKey}\n${ticket.subject}\n${ticket.rowSummary}\n`);
+  hasher.update(`${ticket.externalKey}\n`);
   for (const m of messages) {
     hasher.update(
       [

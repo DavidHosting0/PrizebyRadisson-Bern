@@ -142,7 +142,7 @@ enum PuzzelTicketPrizeCategory {
 
 model HotelSettings {
   id        String   @id @default(cuid())
-  name      String   @default("Hotel")
+  name      String   @default("Prize by Radisson Bern")
   timezone  String   @default("UTC")
   settings  Json     @default("{}")
   updatedAt DateTime @updatedAt
@@ -193,7 +193,7 @@ model PuzzelTicketAnalysis {
   id                  String       @id @default(cuid())
   ticketId            String       @unique
   ticket              PuzzelTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  /// SHA-256 of the message bodies used as input. When the live messages hash differs we re-run the AI.
+  /// SHA-256 of externalKey + message contents (see `fingerprintMessages`). When new mail arrives or the hash algorithm version bumps, we re-run the AI.
   messagesFingerprint String
   /// 'invoice_correction' | 'invoice_resend' | 'invoice_other' | 'unknown'
   requestType         String

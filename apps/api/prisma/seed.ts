@@ -25,7 +25,7 @@ const AssignmentStatus = { ACTIVE: 'ACTIVE' } as const;
 async function main() {
   const hsCount = await prisma.hotelSettings.count();
   if (hsCount === 0) {
-    await prisma.hotelSettings.create({ data: { name: 'Demo Hotel', timezone: 'UTC' } });
+    await prisma.hotelSettings.create({ data: { timezone: 'UTC' } });
   }
 
   const passwordHash = await bcrypt.hash('Password123!', 10);

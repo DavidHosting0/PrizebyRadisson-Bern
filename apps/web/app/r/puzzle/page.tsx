@@ -469,6 +469,15 @@ function initials(value: string | null | undefined) {
     .join('') || '?';
 }
 
+/** Open / in-progress tickets in the left list — not only the „Aktiv“ tab. */
+function canReplyOrResolveInBucket(
+  bucket: 'active' | 'resolved' | 'all',
+  ticketStatus: string | null | undefined,
+): boolean {
+  if (isPuzzelTicketArchivedStatus(ticketStatus)) return false;
+  return bucket !== 'resolved';
+}
+
 export default function ReceptionPuzzlePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -476,7 +485,7 @@ export default function ReceptionPuzzlePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<PuzzelTicketPrizeCategory | ''>('');
-  const [ticketBucket, setTicketBucket] = useState<'active' | 'resolved'>('active');
+  const [ticketBucket, setTicketBucket] = useState<'active' | 'resolved' | 'all'>('active');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replyFiles, setReplyFiles] = useState<File[]>([]);
@@ -540,7 +549,12 @@ export default function ReceptionPuzzlePage() {
     () => tickets.filter((t) => isPuzzelTicketArchivedStatus(t.status)),
     [tickets],
   );
-  const bucketTickets = ticketBucket === 'active' ? activeTickets : resolvedTickets;
+  const bucketTickets =
+    ticketBucket === 'active'
+      ? activeTickets
+      : ticketBucket === 'resolved'
+        ? resolvedTickets
+        : tickets;
 
   const statuses = useMemo(() => {
     return Array.from(
@@ -560,9 +574,16 @@ export default function ReceptionPuzzlePage() {
   }, [search, statusFilter, categoryFilter, bucketTickets]);
 
   useEffect(() => {
+    if (statusFilter && !statuses.includes(statusFilter)) {
+      setStatusFilter('');
+    }
+  }, [statusFilter, statuses]);
+
+  useEffect(() => {
     if (!expandedId) return;
     const t = tickets.find((x) => x.id === expandedId);
     if (!t) return;
+    if (ticketBucket === 'all') return;
     if (ticketBucket === 'active' && isPuzzelTicketArchivedStatus(t.status)) {
       setExpandedId(null);
     }
@@ -598,7 +619,7 @@ export default function ReceptionPuzzlePage() {
   });
 
   const analysisQuery = useQuery({
-    queryKey: ['puzzle', 'ticket-analysis', expandedId],
+    queryKey: ['puzzle', 'ticket-analysis', expandedId, 'sgr'],
     // The endpoint generates the analysis on-demand; we only fire it once
     // per selected ticket and reuse the cached result on tab-switches.
     queryFn: () =>
@@ -634,7 +655,7 @@ export default function ReceptionPuzzlePage() {
         method: 'POST',
       }),
     onSuccess: (data, ticketId) => {
-      queryClient.setQueryData(['puzzle', 'ticket-analysis', ticketId], data);
+      queryClient.setQueryData(['puzzle', 'ticket-analysis', ticketId, 'sgr'], data);
       queryClient.setQueryData<PuzzelTicket[]>(['puzzle', 'tickets'], (curr) =>
         curr?.map((t) =>
           t.id === ticketId
@@ -661,7 +682,7 @@ export default function ReceptionPuzzlePage() {
       );
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', ticketId] });
-      setTicketBucket('resolved');
+      setTicketBucket((prev) => (prev === 'active' ? 'resolved' : prev));
       setExpandedId(ticketId);
     },
   });
@@ -709,7 +730,7 @@ export default function ReceptionPuzzlePage() {
       );
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', vars.ticketId] });
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
-      setTicketBucket('resolved');
+      setTicketBucket((prev) => (prev === 'active' ? 'resolved' : prev));
       setExpandedId(vars.ticketId);
     },
   });
@@ -832,10 +853,22 @@ export default function ReceptionPuzzlePage() {
           >
             Erledigt — Resolved ({resolvedTickets.length})
           </Button>
+          <Button
+            type="button"
+            variant={ticketBucket === 'all' ? 'action' : 'secondary'}
+            className="min-h-[44px]"
+            onClick={() => {
+              setTicketBucket('all');
+              setExpandedId(null);
+            }}
+          >
+            Alle Tickets ({tickets.length})
+          </Button>
         </div>
         <p className="mt-2 text-xs text-ink-muted">
-          Tickets mit Status Resolved oder Closed erscheinen nur unter „Erledigt“. Nach dem Senden einer Antwort über
-          PrizeBern wird der Status hier wie in Puzzel auf Resolved gesetzt.
+          Unter „Alle Status“ (Filter) siehst du nur Status-Werte der aktuellen Ansicht — bei „Aktiv“ bzw. „Erledigt“
+          jeweils eine Teilmenge. Für die komplette Liste „Alle Tickets“ wählen. Resolved/Closed erscheinen unter
+          „Erledigt“. Nach dem Senden einer Antwort über PrizeBern wird der Status wie in Puzzel auf Resolved gesetzt.
         </p>
       </Card>
 
@@ -1284,7 +1317,8 @@ export default function ReceptionPuzzlePage() {
                       >
                         {assignMut.isPending ? 'Assigning…' : assignedAt(selectedTicket) ? 'Assigned to me' : 'Assign to me'}
                       </Button>
-                      {ticketBucket === 'active' && showPuzzelResolveTicketAction(selectedTicket.status) && (
+                      {canReplyOrResolveInBucket(ticketBucket, selectedTicket.status) &&
+                        showPuzzelResolveTicketAction(selectedTicket.status) && (
                         <Button
                           type="button"
                           variant="secondary"
@@ -1329,6 +1363,28 @@ export default function ReceptionPuzzlePage() {
                     }
                     hasMessages={(messagesQuery.data?.length ?? 0) > 0}
                     onRefresh={() => refreshAnalysisMut.mutate(selectedTicket.id)}
+                  />
+
+                  {analysisQuery.isSuccess &&
+                    analysisQuery.data &&
+                    (messagesQuery.data?.length ?? 0) > 0 &&
+                    !analysisQuery.data.suggestedGuestReply?.trim() && (
+                      <div className="rounded-2xl border border-amber-200/90 bg-amber-50/90 p-4 text-sm text-amber-950">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                          Antwortvorschlag fehlt
+                        </p>
+                        <p className="mt-2 text-xs leading-relaxed text-amber-900/90">
+                          Gespeicherte KI-Analyse ohne Gast-Antwort. Oben in der KI-Übersicht{' '}
+                          <strong className="font-semibold text-amber-950">Re-analyze</strong> wählen (oder Ticket
+                          erneut öffnen), damit ein Vorschlag erzeugt wird.
+                        </p>
+                      </div>
+                    )}
+
+                  <SuggestedGuestReplyPanel
+                    text={analysisQuery.data?.suggestedGuestReply}
+                    showApply={canReplyOrResolveInBucket(ticketBucket, selectedTicket.status)}
+                    onApply={setReplyText}
                   />
 
                   <div className="rounded-2xl border border-border bg-surface p-4 text-xs text-ink-muted">
@@ -1411,36 +1467,8 @@ export default function ReceptionPuzzlePage() {
                       </button>
                     )}
                   </div>
-                  {ticketBucket === 'active' &&
-                  !isPuzzelTicketArchivedStatus(selectedTicket.status) ? (
+                  {canReplyOrResolveInBucket(ticketBucket, selectedTicket.status) ? (
                   <>
-                    {analysisQuery.data?.suggestedGuestReply?.trim() && (
-                      <div className="mt-3 rounded-2xl border border-emerald-200/90 bg-emerald-50/80 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900/90">
-                              KI-Antwortvorschlag
-                            </p>
-                            <p className="mt-1 text-xs leading-snug text-emerald-950/80">
-                              Entwurf für den Gast — bitte Lesen. Wenn die KI eine Rechnung im Anhang erwähnt,{' '}
-                              <strong className="font-semibold">vor dem Senden das PDF anhängen</strong>. Nicht
-                              blind übernehmen.
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="min-h-[40px] shrink-0"
-                            onClick={() => setReplyText(analysisQuery.data!.suggestedGuestReply)}
-                          >
-                            In Antwort übernehmen
-                          </Button>
-                        </div>
-                        <div className="mt-3 max-h-56 overflow-auto rounded-xl border border-emerald-200/60 bg-white/90 p-3 text-sm leading-6 text-ink whitespace-pre-wrap">
-                          {analysisQuery.data.suggestedGuestReply}
-                        </div>
-                      </div>
-                    )}
                   <form
                     className="mt-3"
                     onSubmit={(e) => {
@@ -1533,7 +1561,7 @@ export default function ReceptionPuzzlePage() {
                   </>
                   ) : (
                     <p className="mt-3 rounded-xl border border-border bg-surface-muted/40 p-4 text-sm text-ink-muted">
-                      {ticketBucket === 'resolved'
+                      {ticketBucket === 'resolved' || isPuzzelTicketArchivedStatus(selectedTicket.status)
                         ? 'Archiv: Tickets mit Status Resolved oder Closed in Puzzel. Es können hier keine neuen Antworten mehr gesendet werden.'
                         : 'Dieses Ticket ist erledigt — Antworten über PrizeBern sind deaktiviert.'}
                     </p>
@@ -1551,6 +1579,42 @@ export default function ReceptionPuzzlePage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function SuggestedGuestReplyPanel({
+  text,
+  showApply,
+  onApply,
+}: {
+  text: string | undefined;
+  showApply: boolean;
+  onApply: (value: string) => void;
+}) {
+  const body = text?.trim() ?? '';
+  if (!body) {
+    return null;
+  }
+  return (
+    <div className="rounded-2xl border border-emerald-200/90 bg-emerald-50/80 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900/90">KI-Antwortvorschlag</p>
+          <p className="mt-1 text-xs leading-snug text-emerald-950/80">
+            Entwurf für den Gast — bitte prüfen. Wenn die KI eine Rechnung im Anhang erwähnt,{' '}
+            <strong className="font-semibold">vor dem Senden das PDF anhängen</strong>.
+          </p>
+        </div>
+        {showApply && (
+          <Button type="button" variant="secondary" className="min-h-[40px] shrink-0" onClick={() => onApply(body)}>
+            In Antwort übernehmen
+          </Button>
+        )}
+      </div>
+      <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-emerald-200/60 bg-white/90 p-3 text-sm leading-6 text-ink whitespace-pre-wrap">
+        {body}
+      </div>
     </div>
   );
 }

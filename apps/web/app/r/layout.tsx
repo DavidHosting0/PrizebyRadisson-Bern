@@ -194,7 +194,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const hotelTitle = settings?.name ?? 'Front Office';
+  const hotelTitle = settings?.name ?? 'Prize by Radisson Bern';
 
   return (
     <div className="flex min-h-screen flex-col bg-surface-muted">
