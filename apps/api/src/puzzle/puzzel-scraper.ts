@@ -1333,28 +1333,103 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
 }
 
 /**
+ * Some tenants show **Resolve** only under Actions / ⋮ — open menu then pick item.
+ */
+async function tryResolveFromOverflowMenu(page: Page): Promise<boolean> {
+  const opened = await clickFirstVisible(
+    page,
+    [
+      'button:has-text("Actions")',
+      'a:has-text("Actions")',
+      '[aria-label*="Actions"]',
+      '[aria-label*="actions"]',
+      'button:has-text("More")',
+      '[aria-label*="More options"]',
+      '[aria-label*="more options"]',
+    ],
+    1500,
+  );
+  if (!opened) {
+    return false;
+  }
+  await sleep(450);
+  const picked = await clickFirstVisible(
+    page,
+    [
+      '[role="menuitem"]:has-text("Resolve Ticket")',
+      '[role="menuitem"]:has-text("Resolve")',
+      'li:has-text("Resolve Ticket")',
+      'li:has-text("Resolve ticket")',
+      'a:has-text("Resolve Ticket")',
+      'button:has-text("Resolve Ticket")',
+      '[role="option"]:has-text("Resolve")',
+    ],
+    4000,
+  );
+  if (!picked) {
+    await page.keyboard.press('Escape').catch(() => undefined);
+    return false;
+  }
+  return true;
+}
+
+/**
  * Clicks Puzzel’s primary **Resolve Ticket** control (same label as in CM), then any confirm dialog.
  */
 export async function resolvePuzzelTicketOnPage(page: Page, opts: PuzzelTicketActionOpts) {
-  progress(opts, 'Ticket-Aktion: „Resolve Ticket“ suchen');
+  progress(opts, 'Ticket-Aktion: „Resolve“ / Ticket abschließen suchen');
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+  await page.evaluate(() => window.scrollTo(0, 0)).catch(() => undefined);
+  await sleep(400);
 
   const tryResolve = async (): Promise<boolean> => {
-    const candidates = [
+    const candidates: Locator[] = [
       page.getByRole('button', { name: /^Resolve Ticket$/i }),
       page.getByRole('button', { name: /resolve ticket/i }),
+      page.getByRole('button', { name: /^Resolve$/i }),
+      page.getByRole('button', { name: /mark as resolved/i }),
+      page.getByRole('button', { name: /set to resolved/i }),
+      page.getByRole('button', { name: /close ticket/i }),
       page.getByRole('link', { name: /resolve ticket/i }),
-      page.locator('button:has-text("Resolve Ticket")'),
-      page.locator('a:has-text("Resolve Ticket")'),
+      page.getByRole('link', { name: /^Resolve$/i }),
+      page.getByRole('button', { name: /ticket abschließen/i }),
+      page.getByRole('button', { name: /als erledigt/i }),
+      page.getByRole('button', { name: /^Abschließen$/i }),
     ];
     for (const loc of candidates) {
       const el = loc.first();
-      if (await el.isVisible({ timeout: 1800 }).catch(() => false)) {
+      if (await el.isVisible({ timeout: 2500 }).catch(() => false)) {
         await el.scrollIntoViewIfNeeded().catch(() => {});
         await el.click({ timeout: 10_000 });
         return true;
       }
     }
-    return false;
+
+    const cssHit = await clickFirstVisible(
+      page,
+      [
+        'button:has-text("Resolve Ticket")',
+        'a:has-text("Resolve Ticket")',
+        'button:has-text("Resolve ticket")',
+        '[aria-label*="Resolve Ticket"]',
+        '[aria-label*="Resolve ticket"]',
+        '[aria-label*="resolve ticket"]',
+        'button[title*="Resolve Ticket"]',
+        'button[title*="Resolve ticket"]',
+        '[title*="Resolve ticket"]',
+        'button:has-text("Mark as resolved")',
+        'button:has-text("Set to Resolved")',
+        'button:has-text("Ticket abschließen")',
+        'a:has-text("Ticket abschließen")',
+        '[aria-label*="Resolve"]',
+      ],
+      2500,
+    );
+    if (cssHit) {
+      return true;
+    }
+
+    return tryResolveFromOverflowMenu(page);
   };
 
   if (!(await tryResolve())) {
@@ -1365,7 +1440,9 @@ export async function resolvePuzzelTicketOnPage(page: Page, opts: PuzzelTicketAc
       progress(opts, `Ticket-Aktion: Assign vor Resolve fehlgeschlagen (${(e as Error).message})`);
     }
     if (!(await tryResolve())) {
-      throw new Error('Puzzel: Steuerung „Resolve Ticket“ nicht gefunden.');
+      throw new Error(
+        'Puzzel: Steuerung „Resolve Ticket“ nicht gefunden (auch nicht unter Actions/Menü). Bitte exaktes UI-Label melden.',
+      );
     }
   }
 

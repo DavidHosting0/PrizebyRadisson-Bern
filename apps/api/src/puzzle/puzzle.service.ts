@@ -47,6 +47,8 @@ export type PuzzelTicketAnalysisResult = {
   companyInvoiceBillingDetails: PuzzelTicketAiAnalysis['companyInvoiceBillingDetails'];
   rationale: string;
   confidence: PuzzelTicketAiAnalysis['confidence'];
+  /** KI-Entwurf für die Antwort an den Gast (E-Mail-Text; manuell prüfen & versenden). */
+  suggestedGuestReply: string;
   model: string;
   /** True if the underlying messages have changed since this analysis was produced. */
   stale: boolean;
@@ -576,6 +578,7 @@ export class PuzzleService {
       urgencyLevel: analysis.urgencyLevel,
       invoiceAction: analysis.invoiceAction,
       companyInvoiceBillingDetails: analysis.companyInvoiceBillingDetails,
+      suggestedGuestReply: analysis.suggestedGuestReply.slice(0, 32_000),
     } as unknown as Prisma.InputJsonValue;
     return this.prisma.puzzelTicketAnalysis.upsert({
       where: { ticketId },
@@ -613,6 +616,7 @@ export class PuzzleService {
       urgencyLevel?: PuzzelTicketUrgency;
       invoiceAction?: PuzzelInvoiceAction;
       companyInvoiceBillingDetails?: unknown;
+      suggestedGuestReply?: string;
     };
     const reqType = row.requestType as PuzzelTicketAiAnalysis['requestType'];
     const invoiceActions: PuzzelInvoiceAction[] = [
@@ -664,6 +668,10 @@ export class PuzzleService {
       ),
       rationale: det.rationale ?? '',
       confidence: det.confidence ?? 'medium',
+      suggestedGuestReply:
+        typeof det.suggestedGuestReply === 'string' && det.suggestedGuestReply.trim().length > 0
+          ? det.suggestedGuestReply.trim()
+          : '',
       model: row.model,
       stale,
       createdAt: row.createdAt,

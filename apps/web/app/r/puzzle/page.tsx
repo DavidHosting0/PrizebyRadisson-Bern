@@ -118,6 +118,8 @@ type PuzzelTicketAnalysis = {
   companyInvoiceBillingDetails: CompanyInvoiceBillingDetails;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
+  /** KI-Entwurf für die E-Mail-Antwort an den Gast — vor Versand prüfen und ggf. PDF anhängen. */
+  suggestedGuestReply: string;
   model: string;
   stale: boolean;
   createdAt: string;
@@ -1411,6 +1413,34 @@ export default function ReceptionPuzzlePage() {
                   </div>
                   {ticketBucket === 'active' &&
                   !isPuzzelTicketArchivedStatus(selectedTicket.status) ? (
+                  <>
+                    {analysisQuery.data?.suggestedGuestReply?.trim() && (
+                      <div className="mt-3 rounded-2xl border border-emerald-200/90 bg-emerald-50/80 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900/90">
+                              KI-Antwortvorschlag
+                            </p>
+                            <p className="mt-1 text-xs leading-snug text-emerald-950/80">
+                              Entwurf für den Gast — bitte Lesen. Wenn die KI eine Rechnung im Anhang erwähnt,{' '}
+                              <strong className="font-semibold">vor dem Senden das PDF anhängen</strong>. Nicht
+                              blind übernehmen.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-[40px] shrink-0"
+                            onClick={() => setReplyText(analysisQuery.data!.suggestedGuestReply)}
+                          >
+                            In Antwort übernehmen
+                          </Button>
+                        </div>
+                        <div className="mt-3 max-h-56 overflow-auto rounded-xl border border-emerald-200/60 bg-white/90 p-3 text-sm leading-6 text-ink whitespace-pre-wrap">
+                          {analysisQuery.data.suggestedGuestReply}
+                        </div>
+                      </div>
+                    )}
                   <form
                     className="mt-3"
                     onSubmit={(e) => {
@@ -1500,6 +1530,7 @@ export default function ReceptionPuzzlePage() {
                       <p className="mt-2 text-sm font-medium text-emerald-800">Sent through Puzzel.</p>
                     )}
                   </form>
+                  </>
                   ) : (
                     <p className="mt-3 rounded-xl border border-border bg-surface-muted/40 p-4 text-sm text-ink-muted">
                       {ticketBucket === 'resolved'

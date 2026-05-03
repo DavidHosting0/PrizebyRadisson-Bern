@@ -190,10 +190,14 @@ export type PuzzelTicketAiAnalysis = {
   companyInvoiceBillingDetails: CompanyInvoiceBillingDetails;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
+  /**
+   * Entwurf einer höflichen Antwort vom Hotel an den Gast (E-Mail-Stil), zum Anpassen und Versand durch die Rezeption.
+   */
+  suggestedGuestReply: string;
 };
 
 /** Bumps when AI JSON schema / semantics change so cached analyses are invalidated. */
-export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v6';
+export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v7';
 
 /**
  * A SHA-256 fingerprint over the messages used as input to the AI. Used to
@@ -226,7 +230,7 @@ export function fingerprintMessages(
 
 const SYSTEM_PROMPT = `Du bist ein Hotel-Support-Assistent für "Prize by Radisson Bern City". Die Puzzel-Queue dient vor allem Rechnungs- und Buchhaltungsfällen, kann aber auch irrelevante oder Mehrfach-Anfragen enthalten — du sollst robust mit beliebigem unstrukturierten Text umgehen (copy-pastete E-Mails, Signaturen, mehrere Sprachen).
 
-Sprachen: Die Ticket-Nachrichten können Deutsch und/oder Englisch sein. Antworte strukturiert im JSON-Schema; Freitext-Felder ("summary", "issueTypeLabel", "rationale") sollen in der Hauptsprache des Gastes/Anfragestellers formuliert sein — ist die Hauptsprache nicht erkennbar, nutze Deutsch.
+Sprachen: Die Ticket-Nachrichten können Deutsch und/oder Englisch sein. Antworte strukturiert im JSON-Schema; Freitext-Felder ("summary", "issueTypeLabel", "rationale", "suggestedGuestReply") sollen in der Hauptsprache des Gastes/Anfragestellers formuliert sein — ist die Hauptsprache nicht erkennbar, nutze Deutsch.
 
 Dein Job (Entity-Extraktion, NER-Stil):
 
@@ -292,7 +296,16 @@ Dein Job (Entity-Extraktion, NER-Stil):
 
 9. "rationale" — ein Absatz auf Deutsch oder Englisch (passend zur Hauptsprache des Tickets), der die Einordnung begründet; bei invoiceAction/Korrektur kurz sagen ob **Firmendaten auf Rechnung** relevant sind.
 
-10. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
+10. "suggestedGuestReply" — **Entwurf einer Antwort-E-Mail vom Hotel an den Gast** (Rezeption kopiert und passt an; nicht automatisch versandt). Regeln:
+   • Ton und Sprache wie die **Hauptsprache des Gastes** im Thread (DE → Sie-Form, professionell; EN → polite "you").
+   • Nur **Nachrichtentext** (kein Betreff). Begrüßung + kurzer Kern + Grußformel mit Signaturzeile z. B. „Prize by Radisson Bern City · Front Office“.
+   • **Nur Zusenden / Kopie der Rechnung** (Kategorie "RECHNUNG_ANGEFRAGT" oder invoiceAction "resend_only"): Formulierung, dass die **angeforderte Rechnung diesem Schreiben als PDF im Anhang** beigefügt ist bzw. beigefügt wird. Die Rezeption **muss** das PDF vor dem Versand anhängen; der Text ist eine Vorlage.
+   • **Korrektur / neue Rechnung**: **keinen** Anhang behaupten; z. B. Bearbeitung bestätigen, korrigierte Rechnung folgt in Kürze.
+   • **Spam / kein Rechnungsthema**: höflich kurz abweisen oder auf den richtigen Kanal verweisen.
+   • Keine erfundenen Buchungs- oder Rechnungsnummern; im Ticket genannte Daten **wortgleich** nutzen.
+   • Länge: kompakt (ca. 120–280 Wörter je nach Fall).
+
+11. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
 
 Regeln:
 - Nichts erfinden. Unklare Felder = null.
@@ -430,6 +443,7 @@ const ANALYSIS_JSON_SCHEMA = {
       },
       rationale: { type: 'string' },
       confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      suggestedGuestReply: { type: 'string' },
     },
     required: [
       'prizeCategory',
@@ -442,6 +456,7 @@ const ANALYSIS_JSON_SCHEMA = {
       'bookingDetails',
       'rationale',
       'confidence',
+      'suggestedGuestReply',
     ],
   },
 } as const;
@@ -615,6 +630,13 @@ export class PuzzleAiService {
       typeof o.rationale === 'string' && o.rationale.trim().length > 0
         ? o.rationale.trim()
         : '(keine Begründung)';
+    const suggestedGuestReply =
+      typeof o.suggestedGuestReply === 'string' && o.suggestedGuestReply.trim().length > 0
+        ? o.suggestedGuestReply.trim()
+        : '';
+    if (!suggestedGuestReply) {
+      throw new Error('AI-Antwort enthält keinen suggestedGuestReply.');
+    }
     const confidence =
       o.confidence === 'high' ||
       o.confidence === 'medium' ||
@@ -632,6 +654,7 @@ export class PuzzleAiService {
       companyInvoiceBillingDetails,
       rationale,
       confidence,
+      suggestedGuestReply,
     };
   }
 
