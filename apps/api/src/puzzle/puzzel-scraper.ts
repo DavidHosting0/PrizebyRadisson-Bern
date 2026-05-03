@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chromium, type Page } from 'playwright';
+import { chromium, type Locator, type Page } from 'playwright';
 import { generateSync } from 'otplib';
 
 type PuzzelProgress = (message: string) => void;
@@ -53,6 +53,8 @@ export type PuzzelMessageScrapeOpts = PuzzelScrapeOpts & {
 
 export type PuzzelTicketActionOpts = PuzzelMessageScrapeOpts & {
   replyText?: string;
+  /** Local paths for Playwright `setInputFiles` (e.g. temp files from multer). */
+  replyAttachmentPaths?: string[];
 };
 
 export type PuzzelBatchMessageTarget = {
@@ -832,10 +834,10 @@ export async function scrapePuzzelTicketMessagesBatch(
   }
 }
 
-async function clickFirstVisible(page: Page, selectors: string[], timeout = 3000) {
+async function clickFirstVisible(root: Page | Locator, selectors: string[], timeout = 3000) {
   for (const selector of selectors) {
     try {
-      const loc = page.locator(selector).first();
+      const loc = root.locator(selector).first();
       if (await loc.isVisible({ timeout }).catch(() => false)) {
         await loc.scrollIntoViewIfNeeded().catch(() => {});
         await loc.click({ force: true });
@@ -848,10 +850,10 @@ async function clickFirstVisible(page: Page, selectors: string[], timeout = 3000
   return false;
 }
 
-async function fillFirstVisible(page: Page, selectors: string[], value: string, timeout = 3000) {
+async function fillFirstVisible(root: Page | Locator, selectors: string[], value: string, timeout = 3000) {
   for (const selector of selectors) {
     try {
-      const loc = page.locator(selector).first();
+      const loc = root.locator(selector).first();
       if (await loc.isVisible({ timeout }).catch(() => false)) {
         await loc.scrollIntoViewIfNeeded().catch(() => {});
         await loc.fill(value);
@@ -864,6 +866,146 @@ async function fillFirstVisible(page: Page, selectors: string[], value: string, 
   return false;
 }
 
+/**
+ * Nach Klick auf „Reply“ öffnet Puzzel zuerst ein Modal/Overlay mit dem Editor — nicht inline auf der Timeline.
+ */
+async function waitForPuzzelReplyComposerRoot(
+  page: Page,
+  opts: PuzzelTicketActionOpts,
+  timeoutMs = 20_000,
+): Promise<Locator> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const dialog = page
+      .getByRole('dialog')
+      .filter({
+        has: page.locator('textarea, [contenteditable="true"], [role="textbox"]'),
+      })
+      .first();
+    if (await dialog.isVisible().catch(() => false)) {
+      progress(opts, 'Ticket-Aktion: Reply-Fenster (Dialog) bereit');
+      return dialog;
+    }
+    const anyModal = page
+      .locator(
+        '[aria-modal="true"]:visible, .modal-dialog:visible, [class*="modal"]:visible, [class*="compose"]:visible, [class*="Compose"]:visible',
+      )
+      .filter({
+        has: page.locator('textarea:visible, [contenteditable="true"]:visible'),
+      })
+      .first();
+    if (await anyModal.isVisible().catch(() => false)) {
+      progress(opts, 'Ticket-Aktion: Reply-Composer-Panel bereit');
+      return anyModal;
+    }
+    await sleep(200);
+  }
+  progress(opts, 'Ticket-Aktion: Kein separates Reply-Fenster — Editor auf Seite');
+  return page.locator('body');
+}
+
+/** Puzzel reply composer: „Attach File“ + `input[type=file]`; viele UIs erlauben nur eine Datei pro Durchgang — dann sequentiell. */
+async function attachFilesToPuzzelReplyComposer(
+  composer: Locator,
+  page: Page,
+  paths: string[],
+  opts: PuzzelTicketActionOpts,
+) {
+  const clean = paths.filter((p) => p?.trim());
+  if (clean.length === 0) return;
+
+  progress(opts, `Ticket-Aktion: ${clean.length} Datei(en) an Puzzel anhängen`);
+
+  const trySet = async (files: string[]): Promise<boolean> => {
+    for (const root of [composer, page.locator('body')]) {
+      const inputs = root.locator('input[type="file"]');
+      const n = await inputs.count();
+      for (let i = n - 1; i >= 0; i--) {
+        try {
+          await inputs.nth(i).setInputFiles(files);
+          return true;
+        } catch {
+          continue;
+        }
+      }
+    }
+    return false;
+  };
+
+  const attachBtn = composer.getByRole('button', { name: /Attach File/i }).first();
+
+  if (await trySet(clean)) {
+    await sleep(800);
+    return;
+  }
+
+  if (await attachBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await attachBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await attachBtn.click();
+    await sleep(600);
+    if (await trySet(clean)) {
+      await sleep(800);
+      return;
+    }
+  }
+
+  for (let idx = 0; idx < clean.length; idx++) {
+    if (idx > 0) {
+      if (await attachBtn.isVisible({ timeout: 4000 }).catch(() => false)) {
+        await attachBtn.click();
+        await sleep(600);
+      }
+    }
+    if (!(await trySet([clean[idx]]))) {
+      throw new Error(
+        `Puzzel: Datei ${idx + 1} von ${clean.length} konnte nicht angehängt werden.`,
+      );
+    }
+    await sleep(500);
+  }
+}
+
+async function clickPuzzelComposerSend(composer: Locator, page: Page): Promise<boolean> {
+  const sendLink = composer.getByRole('link', { name: /^Send$/i }).first();
+  if (await sendLink.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await sendLink.scrollIntoViewIfNeeded().catch(() => {});
+    await sendLink.click({ force: true });
+    return true;
+  }
+  const sendBtn = composer.getByRole('button', { name: /^Send$/i }).first();
+  if (await sendBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+    await sendBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await sendBtn.click({ force: true });
+    return true;
+  }
+  if (
+    await clickFirstVisible(composer, [
+      'button:has-text("Send reply")',
+      'button:has-text("Send follow-up")',
+      'a:has-text("Send reply")',
+      'a:has-text("Send follow-up")',
+      'button:has-text("Send")',
+      'a:has-text("Send")',
+      'button:has-text("Submit")',
+      'button:has-text("Senden")',
+      'button:has-text("Antwort senden")',
+      '[aria-label*="Send" i]',
+    ], 4000)
+  ) {
+    return true;
+  }
+  return clickFirstVisible(page, [
+    'button:has-text("Send reply")',
+    'button:has-text("Send follow-up")',
+    'a:has-text("Send")',
+    'button:has-text("Send")',
+    'button:has-text("Submit")',
+    'button:has-text("Senden")',
+    'button:has-text("Antwort senden")',
+    '[aria-label*="Send" i]',
+  ], 3500);
+}
+
 export async function assignPuzzelTicketToMeOnPage(page: Page, opts: PuzzelTicketActionOpts) {
   return assignTicketToLoggedInUser(page, opts);
 }
@@ -872,8 +1014,50 @@ export async function replyToPuzzelTicketOnPage(page: Page, opts: PuzzelTicketAc
   return replyToTicket(page, opts);
 }
 
+/** Nach Self-Assign: primärer pinker „Reply“-Button in der Timeline-Leiste (exakter Name). */
+function puzzelTimelineReplyButton(page: Page) {
+  return page.getByRole('button', { name: /^Reply$/i }).first();
+}
+
+async function waitForPuzzelReplyOrFollowUp(
+  page: Page,
+  opts: PuzzelTicketActionOpts,
+  timeoutMs = 25_000,
+) {
+  const replyBtn = puzzelTimelineReplyButton(page);
+  const followUp = page.getByRole('link', { name: /Add Follow-Up/i }).first();
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await replyBtn.isVisible().catch(() => false)) {
+      progress(opts, 'Ticket-Aktion: Reply-Button in der Timeline sichtbar');
+      return;
+    }
+    if (await followUp.isVisible().catch(() => false)) {
+      progress(opts, 'Ticket-Aktion: Add Follow-Up sichtbar');
+      return;
+    }
+    await sleep(350);
+  }
+  progress(
+    opts,
+    'Ticket-Aktion: Weder Reply noch Follow-Up nach Zuweisung — Composer wird trotzdem versucht',
+  );
+}
+
 async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOpts) {
   progress(opts, 'Ticket-Aktion: "Assign to me" suchen');
+  const directAssign = page.getByRole('button', { name: /assign to me/i }).first();
+  if (await directAssign.isVisible({ timeout: 2500 }).catch(() => false)) {
+    await directAssign.scrollIntoViewIfNeeded().catch(() => {});
+    await directAssign.click();
+    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+    await puzzelTimelineReplyButton(page)
+      .waitFor({ state: 'visible', timeout: 25_000 })
+      .catch(() => undefined);
+    progress(opts, 'Ticket-Aktion: Ticket wurde an den eingeloggten Puzzel-User zugewiesen');
+    return;
+  }
+
   const openedMenu = await clickFirstVisible(page, [
     'button:has-text("Assign")',
     'a:has-text("Assign")',
@@ -884,7 +1068,9 @@ async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOp
 
   const assigned = await clickFirstVisible(page, [
     'button:has-text("Assign to me")',
+    'button:has-text("Assign To Me")',
     'a:has-text("Assign to me")',
+    'a:has-text("Assign To Me")',
     'button:has-text("Assign ticket to me")',
     'a:has-text("Assign ticket to me")',
     'button:has-text("Take ownership")',
@@ -899,56 +1085,109 @@ async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOp
     throw new Error('Puzzel Assign-to-me Button nicht gefunden.');
   }
   await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+  await puzzelTimelineReplyButton(page)
+    .waitFor({ state: 'visible', timeout: 25_000 })
+    .catch(() => undefined);
   progress(opts, 'Ticket-Aktion: Ticket wurde an den eingeloggten Puzzel-User zugewiesen');
 }
 
 async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
-  const text = opts.replyText?.trim();
-  if (!text) throw new Error('Reply text is empty.');
-
-  progress(opts, 'Ticket-Aktion: Antwort-Composer öffnen');
-  const opened = await clickFirstVisible(page, [
-    'button:has-text("Reply")',
-    'a:has-text("Reply")',
-    'button:has-text("Reply all")',
-    'a:has-text("Reply all")',
-    'button:has-text("Antworten")',
-    'a:has-text("Antworten")',
-    '[aria-label*="Reply" i]',
-  ], 5000);
-  if (!opened) {
-    throw new Error('Puzzel Reply Button nicht gefunden.');
+  const rawText = opts.replyText?.trim() ?? '';
+  const attachPaths = opts.replyAttachmentPaths?.filter(Boolean) ?? [];
+  if (!rawText && attachPaths.length === 0) {
+    throw new Error('Reply: Text oder mindestens eine Datei erforderlich.');
   }
 
-  await sleep(1000);
-  progress(opts, 'Ticket-Aktion: Antworttext eintragen');
-  const filled = await fillFirstVisible(page, [
-    'textarea:visible',
-    '[contenteditable="true"]:visible',
-    '.ql-editor:visible',
-    '[role="textbox"]:visible',
-    'iframe[title*="Rich Text" i]',
-  ], text, 5000);
-  if (!filled) {
-    const frame = page.frames().find((f) => /reply|editor|compose|tinymce|ckeditor/i.test(f.url()));
-    const frameBody = frame?.locator('body').first();
-    if (frameBody && (await frameBody.isVisible({ timeout: 2000 }).catch(() => false))) {
-      await frameBody.fill(text);
-    } else {
-      throw new Error('Puzzel Antwortfeld nicht gefunden.');
+  // Puzzel zeigt Reply / Follow-Up erst nach Self-Assign des Tickets.
+  progress(opts, 'Ticket-Aktion: Vor dem Antworten an eingeloggten Agent zuweisen');
+  try {
+    await assignTicketToLoggedInUser(page, opts);
+  } catch (e) {
+    progress(
+      opts,
+      `Ticket-Aktion: Assign-to-me fehlgeschlagen — weiter mit Antwort (${(e as Error).message})`,
+    );
+  }
+  await waitForPuzzelReplyOrFollowUp(page, opts);
+
+  progress(opts, 'Ticket-Aktion: Antwort-Composer öffnen');
+  // Nach Zuweisung: Timeline-Kopf mit exakt „Reply“ (Button, pink) — vorher nur Follow-Up/Note.
+  let opened = false;
+  const primaryReply = puzzelTimelineReplyButton(page);
+  if (await primaryReply.isVisible({ timeout: 4000 }).catch(() => false)) {
+    await primaryReply.scrollIntoViewIfNeeded().catch(() => {});
+    await primaryReply.click();
+    opened = true;
+  }
+  if (!opened) {
+    opened = await clickFirstVisible(
+      page,
+      [
+        'a:has-text("Reply")',
+        'button:has-text("Reply all")',
+        'a:has-text("Reply all")',
+        'button:has-text("Antworten")',
+        'a:has-text("Antworten")',
+        '[aria-label*="Reply" i]',
+      ],
+      3000,
+    );
+  }
+  if (!opened) {
+    opened = await clickFirstVisible(page, [
+      'a:has-text("Add Follow-Up")',
+      'button:has-text("Add Follow-Up")',
+      'a:has-text("Follow-Up")',
+      'button:has-text("Follow-Up")',
+      '[aria-label*="Follow-Up" i]',
+      'a:has-text("Add follow-up")',
+    ], 6000);
+  }
+  if (!opened) {
+    const followUp = page.getByRole('link', { name: /Add Follow-Up/i }).first();
+    if (await followUp.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await followUp.scrollIntoViewIfNeeded().catch(() => {});
+      await followUp.click({ force: true }).catch(() => {});
+      opened = true;
     }
+  }
+  if (!opened) {
+    throw new Error(
+      'Puzzel Reply / Add Follow-Up nicht gefunden — Ticket-Oberfläche abweichend.',
+    );
+  }
+
+  const composer = await waitForPuzzelReplyComposerRoot(page, opts);
+  await sleep(300);
+
+  if (rawText) {
+    progress(opts, 'Ticket-Aktion: Antworttext eintragen');
+    const filled = await fillFirstVisible(composer, [
+      'textarea:visible',
+      '[contenteditable="true"]:visible',
+      '.ql-editor:visible',
+      '[role="textbox"]:visible',
+      'iframe[title*="Rich Text" i]',
+    ], rawText, 5000);
+    if (!filled) {
+      const frame = page.frames().find((f) => /reply|editor|compose|tinymce|ckeditor/i.test(f.url()));
+      const frameBody = frame?.locator('body').first();
+      if (frameBody && (await frameBody.isVisible({ timeout: 2000 }).catch(() => false))) {
+        await frameBody.fill(rawText);
+      } else {
+        throw new Error('Puzzel Antwortfeld nicht gefunden.');
+      }
+    }
+  } else {
+    progress(opts, 'Ticket-Aktion: Nur Anhänge (ohne Nachrichtentext)');
+  }
+
+  if (attachPaths.length > 0) {
+    await attachFilesToPuzzelReplyComposer(composer, page, attachPaths, opts);
   }
 
   progress(opts, 'Ticket-Aktion: Antwort senden');
-  const sent = await clickFirstVisible(page, [
-    'button:has-text("Send")',
-    'a:has-text("Send")',
-    'button:has-text("Send reply")',
-    'button:has-text("Reply")',
-    'button:has-text("Senden")',
-    'button:has-text("Antwort senden")',
-    '[aria-label*="Send" i]',
-  ], 5000);
+  const sent = await clickPuzzelComposerSend(composer, page);
   if (!sent) {
     throw new Error('Puzzel Send Button nicht gefunden.');
   }

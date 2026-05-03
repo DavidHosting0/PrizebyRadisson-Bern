@@ -131,6 +131,15 @@ enum TeamChatReactionType {
   EXCLAMATION_QUESTION
 }
 
+/// PrizeBern / Rezeption: Kategorisierung der Puzzel-Tickets (KI).
+enum PuzzelTicketPrizeCategory {
+  SPAM
+  RECHNUNG_ANGEFRAGT
+  RECHNUNGSKORREKTUR
+  MEHRERE_RECHNUNGSANFRAGEN
+  SONSTIGES
+}
+
 model HotelSettings {
   id        String   @id @default(cuid())
   name      String   @default("Hotel")
@@ -188,6 +197,8 @@ model PuzzelTicketAnalysis {
   messagesFingerprint String
   /// 'invoice_correction' | 'invoice_resend' | 'invoice_other' | 'unknown'
   requestType         String
+  /// Reception routing category (PrizeBern UI).
+  prizeCategory       PuzzelTicketPrizeCategory @default(SONSTIGES)
   /// Short German one-liner that the receptionist sees first.
   summary             String
   /// { reservationNumber, roomNumber, checkInDate, checkOutDate, guestName, invoiceNumber, otherDetails }

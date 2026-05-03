@@ -1,5 +1,14 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Prisma, PuzzelTicketAnalysis as PuzzelTicketAnalysisRow } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import type { Express } from 'express';
+import type {
+  Prisma,
+  PuzzelTicketAnalysis as PuzzelTicketAnalysisRow,
+  PuzzelTicketPrizeCategory,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import {
@@ -7,6 +16,7 @@ import {
   extractPuzzelMessagesFromPage,
   replyToPuzzelTicketOnPage,
   scrapePuzzelTicketsOnPage,
+  type PuzzelTicketActionOpts,
   type PuzzelScrapedMessage,
   type PuzzelScrapeOpts,
 } from './puzzel-scraper';
@@ -26,6 +36,7 @@ const PRESERVED_METADATA_KEYS = ['lastAssignedViaPrizeBernAt'] as const;
 export type PuzzelTicketAnalysisResult = {
   id: string;
   ticketId: string;
+  prizeCategory: PuzzelTicketPrizeCategory;
   requestType: PuzzelTicketAiAnalysis['requestType'];
   invoiceAction: PuzzelInvoiceAction;
   issueTypeLabel: string;
@@ -63,6 +74,15 @@ export class PuzzleService {
   listTickets() {
     return this.prisma.puzzelTicket.findMany({
       orderBy: { scrapedAt: 'desc' },
+      include: {
+        analysis: {
+          select: {
+            prizeCategory: true,
+            summary: true,
+            updatedAt: true,
+          },
+        },
+      },
     });
   }
 
@@ -131,26 +151,49 @@ export class PuzzleService {
     return { ok: true as const, action: 'assign' as const, assignedAt };
   }
 
-  async replyToTicket(ticketId: string, body: { message?: string }) {
-    const message = body.message?.trim();
-    if (!message) {
-      throw new Error('Reply message is empty.');
+  async replyToTicket(
+    ticketId: string,
+    body: { message?: string; attachments?: Express.Multer.File[] | Express.Multer.File },
+  ) {
+    const message = body.message?.trim() ?? '';
+    const rawAtt = body.attachments;
+    const uploadsAll = Array.isArray(rawAtt) ? rawAtt : rawAtt ? [rawAtt] : [];
+    /** Align with {@link PuzzleController} `maxCount: 10` — multer may still deliver more in edge cases. */
+    const uploads = uploadsAll.slice(0, 10);
+    if (!message && uploads.length === 0) {
+      throw new Error('Reply message or at least one attachment is required.');
     }
     const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
     if (!ticket) throw new Error('Puzzel ticket not found.');
     const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
     if (!ticketUrl) throw new Error('Puzzel ticket has no detail URL/reference.');
 
-    const opts = await this.buildBaseOpts(message);
-    const actionOpts = { ...opts, ticketUrl, replyText: message } as PuzzelScrapeOpts & {
-      ticketUrl: string;
-      replyText: string;
-    };
+    const replyText = message || ' ';
+    const opts = await this.buildBaseOpts(replyText);
+    /** Browser → API (multipart, RAM) → temp files on API host → Playwright → Puzzel. No durable store on the Next.js site. */
+    const tmpPaths: string[] = [];
+    try {
+      for (const f of uploads) {
+        const safe = (f.originalname || 'attachment').replace(/[^\w.\-()+ @\[\]]/g, '_').slice(0, 200);
+        const p = path.join(os.tmpdir(), `pz-reply-${randomUUID()}-${safe}`);
+        await fs.writeFile(p, f.buffer);
+        tmpPaths.push(p);
+      }
 
-    await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
-      await gotoLoggedIn(ticketUrl);
-      await replyToPuzzelTicketOnPage(page, actionOpts);
-    });
+      const actionOpts: PuzzelTicketActionOpts = {
+        ...opts,
+        ticketUrl,
+        replyText,
+        replyAttachmentPaths: tmpPaths.length > 0 ? tmpPaths : undefined,
+      };
+
+      await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
+        await gotoLoggedIn(ticketUrl);
+        await replyToPuzzelTicketOnPage(page, actionOpts);
+      });
+    } finally {
+      await Promise.all(tmpPaths.map((p) => fs.unlink(p).catch(() => undefined)));
+    }
 
     await this.refreshTicketMessages(ticket.id).catch((e) => {
       this.log.warn(`Puzzel reply sent, but message refresh failed: ${(e as Error).message ?? String(e)}`);
@@ -276,11 +319,11 @@ export class PuzzleService {
     return { status: 'started' };
   }
 
-  /** Used by cron: only enqueue when credentials + env allow */
+  /** Cron: sync when Puzzel credentials exist; set PUZZEL_AUTO_SYNC=false to disable. */
   async runScheduledSyncIfEnabled() {
-    if (process.env.PUZZEL_AUTO_SYNC !== 'true') return;
+    if (process.env.PUZZEL_AUTO_SYNC === 'false') return;
     const creds = await this.settings.getPuzzelLoginSecrets();
-    if (!creds?.password?.trim()) return;
+    if (!creds?.password?.trim() || !creds?.email?.trim()) return;
     this.requestBackgroundSync();
   }
 
@@ -380,10 +423,41 @@ export class PuzzleService {
       this.log.log(
         `Puzzle sync OK: ${rows.length} tickets, ${staleTargetsToScrape.length} ticket timelines refreshed`,
       );
+      void this.backfillMissingAnalysesAfterSync();
     } catch (e) {
       const msg = (e as Error).message ?? String(e);
       await this.settings.mergePuzzelTicketSyncMeta({ inProgress: false, lastError: msg, startedAt: null });
       this.log.warn(`Puzzle sync failed: ${msg}`);
+    }
+  }
+
+  private async backfillMissingAnalysesAfterSync() {
+    try {
+      const cfg = await this.settings.getAiConfigSecrets();
+      if (!cfg?.openaiApiKey?.trim()) {
+        this.log.log('[Puzzel] AI backfill skipped: no OpenAI API key');
+        return;
+      }
+      const pending = await this.prisma.puzzelTicket.findMany({
+        where: {
+          analysis: null,
+          messages: { some: {} },
+        },
+        select: { id: true, externalKey: true, reference: true },
+      });
+      if (pending.length === 0) return;
+      this.log.log(`[Puzzel] AI backfill: ${pending.length} ticket(s) without analysis`);
+      for (const t of pending) {
+        try {
+          await this.getTicketAnalysis(t.id);
+        } catch (e) {
+          this.log.warn(
+            `[Puzzel] AI backfill ticket ${t.reference ?? t.externalKey}: ${(e as Error).message ?? String(e)}`,
+          );
+        }
+      }
+    } catch (e) {
+      this.log.warn(`[Puzzel] AI backfill: ${(e as Error).message ?? String(e)}`);
     }
   }
 
@@ -477,6 +551,7 @@ export class PuzzleService {
       create: {
         ticketId,
         messagesFingerprint,
+        prizeCategory: analysis.prizeCategory as PuzzelTicketPrizeCategory,
         requestType: analysis.requestType,
         summary: analysis.summary,
         bookingDetails,
@@ -485,6 +560,7 @@ export class PuzzleService {
       },
       update: {
         messagesFingerprint,
+        prizeCategory: analysis.prizeCategory as PuzzelTicketPrizeCategory,
         requestType: analysis.requestType,
         summary: analysis.summary,
         bookingDetails,
@@ -533,6 +609,7 @@ export class PuzzleService {
     return {
       id: row.id,
       ticketId: row.ticketId,
+      prizeCategory: row.prizeCategory,
       requestType: reqType,
       invoiceAction,
       issueTypeLabel:

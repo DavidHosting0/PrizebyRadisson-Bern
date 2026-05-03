@@ -5,12 +5,18 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import type { PuzzelTicket, PuzzelTicketMessage } from '@prisma/client';
 import { SettingsService } from '../settings/settings.service';
 
+export type PuzzelTicketPrizeCategory =
+  | 'SPAM'
+  | 'RECHNUNG_ANGEFRAGT'
+  | 'RECHNUNGSKORREKTUR'
+  | 'MEHRERE_RECHNUNGSANFRAGEN'
+  | 'SONSTIGES';
+
 /**
  * Possible high-level intents we expect on a Puzzel ticket.
  *
- * Puzzel is used by Prize by Radisson Bern City *exclusively* for invoice/billing
- * issues, so the request type is always one of these three categories — or
- * `unknown` if the model can't tell yet (e.g. only outbound messages so far).
+ * Puzzel is used by Prize by Radisson Bern City *primarily* for invoice/billing
+ * issues; `prizeCategory` captures Spam and multi-request cases explicitly.
  */
 export type PuzzelTicketRequestType =
   | 'invoice_correction'
@@ -164,6 +170,7 @@ export function defaultInvoiceActionForRequestType(
 }
 
 export type PuzzelTicketAiAnalysis = {
+  prizeCategory: PuzzelTicketPrizeCategory;
   requestType: PuzzelTicketRequestType;
   /**
    * Structured invoice intent: send-only vs fix-content vs payment etc.
@@ -186,7 +193,7 @@ export type PuzzelTicketAiAnalysis = {
 };
 
 /** Bumps when AI JSON schema / semantics change so cached analyses are invalidated. */
-export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v5';
+export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v6';
 
 /**
  * A SHA-256 fingerprint over the messages used as input to the AI. Used to
@@ -217,11 +224,21 @@ export function fingerprintMessages(
   return hasher.digest('hex');
 }
 
-const SYSTEM_PROMPT = `Du bist ein Hotel-Support-Assistent für "Prize by Radisson Bern City". Die Puzzel-Queue enthält vor allem Rechnungs- und Buchhaltungsfälle, aber du sollst robust mit beliebigem unstrukturierten Text umgehen (copy-pastete E-Mails, Signaturen, mehrere Sprachen).
+const SYSTEM_PROMPT = `Du bist ein Hotel-Support-Assistent für "Prize by Radisson Bern City". Die Puzzel-Queue dient vor allem Rechnungs- und Buchhaltungsfällen, kann aber auch irrelevante oder Mehrfach-Anfragen enthalten — du sollst robust mit beliebigem unstrukturierten Text umgehen (copy-pastete E-Mails, Signaturen, mehrere Sprachen).
 
 Sprachen: Die Ticket-Nachrichten können Deutsch und/oder Englisch sein. Antworte strukturiert im JSON-Schema; Freitext-Felder ("summary", "issueTypeLabel", "rationale") sollen in der Hauptsprache des Gastes/Anfragestellers formuliert sein — ist die Hauptsprache nicht erkennbar, nutze Deutsch.
 
 Dein Job (Entity-Extraktion, NER-Stil):
+
+0. "prizeCategory" — **genau eine** Kategorie für die PrizeBern-Ansicht:
+   • "SPAM" — Thema hat **nichts mit Rechnungen** zu tun (z. B. Marketing, Bewertungsplattform, allgemeine Hotelanfrage ohne Rechnung, Off-Topic).
+   • "RECHNUNG_ANGEFRAGT" — es geht **ausschließlich** um **Zusendung/Kopie** der Rechnung (PDF, E-Mail, Post), **ohne** dass der **Inhalt** des Belegs geändert werden muss.
+   • "RECHNUNGSKORREKTUR" — **Inhalt** der Rechnung soll angepasst werden: Adresse, Firma, Betrag, Positionen, Zimmer/Gast, MwSt, Storno, neue Rechnung mit geänderten Daten.
+   • "MEHRERE_RECHNUNGSANFRAGEN" — in **dieser einen** Puzzel-Anfrage werden **mehrere** klar getrennte Rechnungswünsche behandelt (z. B. mehrere Buchungen/Rechnungsnummern, mehrere Korrekturen, „bitte auch noch für Aufenthalt X …“).
+   • "SONSTIGES" — offenbar **rechnungs-/buchhaltungsbezogen**, fällt aber nicht sauber unter ANGEFRAGT, KORREKTUR oder MEHRFACH (und ist nicht SPAM).
+
+   **Vorrang:** Klar kein Rechnungsthema → "SPAM". Mehrere eigenständige Rechnungs-/Korrektur-Themen in einem Thread → "MEHRERE_RECHNUNGSANFRAGEN".
+   Wenn "SPAM": setze "invoiceAction" auf "unclear" und "requestType" auf "unknown".
 
 1. Lies alle Nachrichten chronologisch. Identifiziere Gast/Anfragesteller vs. Hotel-Antworten anhand der übergebenen Richtung (GAST → HOTEL / HOTEL → GAST).
 
@@ -240,7 +257,7 @@ Dein Job (Entity-Extraktion, NER-Stil):
    - „falsche Adresse / wrong amount / korrigieren / Storno / MwSt / VAT / bitte neue Rechnung mit …“ → "correct_and_reissue" (außer es ist eindeutig nur Zahlungsstreit → "payment_refund")
    - „split invoice / separate bill / pro forma / zusätzliche Rechnung“ → "new_or_additional_invoice"
 
-3. "requestType" — muss zur gewählten "invoiceAction" **passen**:
+3. "requestType" — muss zur gewählten "invoiceAction" **passen** (bei SPAM immer "unknown"):
    • invoiceAction "resend_only" → requestType "invoice_resend"
    • invoiceAction "correct_and_reissue" oder "new_or_additional_invoice" oder "vat_tax_legal" → requestType "invoice_correction" **wenn** hauptsächlich Inhalt/Beleg geändert werden soll; wenn nur Steuer**frage** ohne Korrektur → "invoice_other"
    • invoiceAction "payment_refund" oder "invoice_question" oder "other_billing" → requestType "invoice_other"
@@ -291,6 +308,16 @@ const ANALYSIS_JSON_SCHEMA = {
     type: 'object',
     additionalProperties: false,
     properties: {
+      prizeCategory: {
+        type: 'string',
+        enum: [
+          'SPAM',
+          'RECHNUNG_ANGEFRAGT',
+          'RECHNUNGSKORREKTUR',
+          'MEHRERE_RECHNUNGSANFRAGEN',
+          'SONSTIGES',
+        ],
+      },
       invoiceAction: {
         type: 'string',
         enum: [
@@ -405,6 +432,7 @@ const ANALYSIS_JSON_SCHEMA = {
       confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     },
     required: [
+      'prizeCategory',
       'invoiceAction',
       'requestType',
       'issueTypeLabel',
@@ -544,12 +572,18 @@ export class PuzzleAiService {
       throw new Error('Unerwartetes AI-Antwortformat (kein Objekt).');
     }
     const o = raw as Record<string, unknown>;
+    const prizeCategory = this.coercePrizeCategory(o.prizeCategory);
     const requestType = this.coerceRequestType(o.requestType);
-    const invoiceAction = this.coerceInvoiceAction(o.invoiceAction, requestType);
+    let invoiceAction = this.coerceInvoiceAction(o.invoiceAction, requestType);
+    let req = requestType;
+    if (prizeCategory === 'SPAM') {
+      req = 'unknown';
+      invoiceAction = 'unclear';
+    }
     const issueTypeLabel =
       typeof o.issueTypeLabel === 'string' && o.issueTypeLabel.trim().length > 0
         ? o.issueTypeLabel.trim().slice(0, 200)
-        : this.defaultIssueTypeLabel(requestType);
+        : this.defaultIssueTypeLabel(req);
     const urgencyLevel = this.coerceUrgency(o.urgencyLevel);
     const summary = typeof o.summary === 'string' ? o.summary.trim() : '';
     if (!summary) {
@@ -588,7 +622,8 @@ export class PuzzleAiService {
         ? o.confidence
         : 'medium';
     return {
-      requestType,
+      prizeCategory,
+      requestType: req,
       invoiceAction,
       issueTypeLabel,
       urgencyLevel,
@@ -635,6 +670,20 @@ export class PuzzleAiService {
       return value as PuzzelInvoiceAction;
     }
     return defaultInvoiceActionForRequestType(requestType);
+  }
+
+  private coercePrizeCategory(value: unknown): PuzzelTicketPrizeCategory {
+    const allowed: PuzzelTicketPrizeCategory[] = [
+      'SPAM',
+      'RECHNUNG_ANGEFRAGT',
+      'RECHNUNGSKORREKTUR',
+      'MEHRERE_RECHNUNGSANFRAGEN',
+      'SONSTIGES',
+    ];
+    if (typeof value === 'string' && (allowed as string[]).includes(value)) {
+      return value as PuzzelTicketPrizeCategory;
+    }
+    return 'SONSTIGES';
   }
 
   private coerceRequestType(value: unknown): PuzzelTicketRequestType {

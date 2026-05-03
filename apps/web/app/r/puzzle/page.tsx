@@ -1,12 +1,19 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, postNdjsonStream } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+
+type PuzzelTicketPrizeCategory =
+  | 'SPAM'
+  | 'RECHNUNG_ANGEFRAGT'
+  | 'RECHNUNGSKORREKTUR'
+  | 'MEHRERE_RECHNUNGSANFRAGEN'
+  | 'SONSTIGES';
 
 type PuzzelTicket = {
   id: string;
@@ -18,6 +25,11 @@ type PuzzelTicket = {
   rowSummary: string;
   metadata?: unknown;
   scrapedAt: string;
+  analysis?: {
+    prizeCategory: PuzzelTicketPrizeCategory;
+    summary: string;
+    updatedAt: string;
+  } | null;
 };
 
 type SyncStatus = {
@@ -83,6 +95,7 @@ type CompanyInvoiceBillingDetails = {
 type PuzzelTicketAnalysis = {
   id: string;
   ticketId: string;
+  prizeCategory: PuzzelTicketPrizeCategory;
   requestType: PuzzelTicketAnalysisRequestType;
   invoiceAction: PuzzelInvoiceAction;
   issueTypeLabel: string;
@@ -105,6 +118,22 @@ type PuzzelTicketAnalysis = {
   stale: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+const PRIZE_CATEGORY_LABEL: Record<PuzzelTicketPrizeCategory, string> = {
+  SPAM: 'Spam',
+  RECHNUNG_ANGEFRAGT: 'Rechnung angefragt',
+  RECHNUNGSKORREKTUR: 'Rechnungskorrektur',
+  MEHRERE_RECHNUNGSANFRAGEN: 'Mehrere Rechnungsanfragen',
+  SONSTIGES: 'Sonstiges (Rechnung)',
+};
+
+const PRIZE_CATEGORY_TONE: Record<PuzzelTicketPrizeCategory, string> = {
+  SPAM: 'border-slate-300 bg-slate-200 text-slate-900',
+  RECHNUNG_ANGEFRAGT: 'border-sky-300 bg-sky-100 text-sky-950',
+  RECHNUNGSKORREKTUR: 'border-amber-300 bg-amber-100 text-amber-950',
+  MEHRERE_RECHNUNGSANFRAGEN: 'border-violet-300 bg-violet-100 text-violet-950',
+  SONSTIGES: 'border-teal-300 bg-teal-100 text-teal-950',
 };
 
 const INVOICE_ACTION_LABEL: Record<PuzzelInvoiceAction, string> = {
@@ -287,12 +316,17 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 function ticketSearchText(ticket: PuzzelTicket) {
+  const cat = ticket.analysis?.prizeCategory
+    ? PRIZE_CATEGORY_LABEL[ticket.analysis.prizeCategory]
+    : '';
   return [
     ticket.reference,
     ticket.subject,
     ticket.status,
     ticket.rowSummary,
     ticket.externalKey,
+    ticket.analysis?.summary,
+    cat,
   ]
     .filter(Boolean)
     .join(' ')
@@ -379,8 +413,11 @@ export default function ReceptionPuzzlePage() {
   const isAdmin = user?.role === 'ADMIN';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<PuzzelTicketPrizeCategory | ''>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
+  const replyFileInputRef = useRef<HTMLInputElement>(null);
   const [filterDraft, setFilterDraft] = useState<PuzzelFilter>({
     savedSearchName: "My Favourite Team's Open Tickets",
     teamName: 'PZ | Billing Bern',
@@ -442,10 +479,12 @@ export default function ReceptionPuzzlePage() {
     const q = search.trim().toLowerCase();
     return tickets.filter((ticket) => {
       const matchesStatus = !statusFilter || ticket.status === statusFilter;
+      const matchesCategory =
+        !categoryFilter || ticket.analysis?.prizeCategory === categoryFilter;
       const matchesSearch = !q || ticketSearchText(ticket).includes(q);
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesCategory && matchesSearch;
     });
-  }, [search, statusFilter, tickets]);
+  }, [search, statusFilter, categoryFilter, tickets]);
 
   useEffect(() => {
     if (!expandedId && filteredTickets.length > 0) {
@@ -482,7 +521,27 @@ export default function ReceptionPuzzlePage() {
     enabled: !!expandedId && (messagesQuery.data?.length ?? 0) > 0,
     retry: false,
     staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
   });
+
+  useEffect(() => {
+    const data = analysisQuery.data;
+    if (!expandedId || !data) return;
+    queryClient.setQueryData<PuzzelTicket[]>(['puzzle', 'tickets'], (curr) =>
+      curr?.map((t) =>
+        t.id === expandedId
+          ? {
+              ...t,
+              analysis: {
+                prizeCategory: data.prizeCategory,
+                summary: data.summary,
+                updatedAt: data.updatedAt,
+              },
+            }
+          : t,
+      ),
+    );
+  }, [analysisQuery.data, expandedId, queryClient]);
 
   const refreshAnalysisMut = useMutation({
     mutationFn: (ticketId: string) =>
@@ -491,6 +550,20 @@ export default function ReceptionPuzzlePage() {
       }),
     onSuccess: (data, ticketId) => {
       queryClient.setQueryData(['puzzle', 'ticket-analysis', ticketId], data);
+      queryClient.setQueryData<PuzzelTicket[]>(['puzzle', 'tickets'], (curr) =>
+        curr?.map((t) =>
+          t.id === ticketId
+            ? {
+                ...t,
+                analysis: {
+                  prizeCategory: data.prizeCategory,
+                  summary: data.summary,
+                  updatedAt: data.updatedAt,
+                },
+              }
+            : t,
+        ),
+      );
     },
   });
 
@@ -517,13 +590,21 @@ export default function ReceptionPuzzlePage() {
   });
 
   const replyMut = useMutation({
-    mutationFn: ({ ticketId, message }: { ticketId: string; message: string }) =>
-      api<{ ok: true; action: 'reply' }>(`/puzzle/tickets/${ticketId}/reply`, {
+    mutationFn: ({ ticketId, message, files }: { ticketId: string; message: string; files: File[] }) => {
+      const fd = new FormData();
+      fd.append('message', message);
+      for (const f of files) {
+        fd.append('attachments', f);
+      }
+      return api<{ ok: true; action: 'reply' }>(`/puzzle/tickets/${ticketId}/reply`, {
         method: 'POST',
-        body: JSON.stringify({ message }),
-      }),
+        body: fd,
+      });
+    },
     onSuccess: (_data, vars) => {
       setReplyText('');
+      setReplyFiles([]);
+      if (replyFileInputRef.current) replyFileInputRef.current.value = '';
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', vars.ticketId] });
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
     },
@@ -535,6 +616,8 @@ export default function ReceptionPuzzlePage() {
   const [emmaDone, setEmmaDone] = useState<{ url: string; title: string; durationMs: number } | null>(null);
 
   useEffect(() => {
+    setReplyText('');
+    setReplyFiles([]);
     setEmmaSteps([]);
     setEmmaBusy(false);
     setEmmaError(null);
@@ -681,8 +764,9 @@ export default function ReceptionPuzzlePage() {
         <Card className="p-6">
           <p className="text-sm text-ink-muted">
             Noch keine Tickets. Sobald ein Admin unter <strong>Puzzle → Zugangsdaten</strong> E-Mail,
-            Passwort und 2FA-Seed eingetragen hat, kann unter <strong>Jetzt synchronisieren</strong> oder
-            per Cron (<code className="rounded bg-surface-muted px-1">PUZZEL_AUTO_SYNC=true</code>) geholt werden.
+            Passwort und 2FA-Seed eingetragen hat, holt der Server die Liste automatisch etwa alle 15&nbsp;Minuten
+            (deaktivieren: Umgebungsvariable <code className="rounded bg-surface-muted px-1">PUZZEL_AUTO_SYNC=false</code>).
+            Zusätzlich kann ein Admin <strong>Jetzt synchronisieren</strong> auslösen.
           </p>
         </Card>
       )}
@@ -721,6 +805,24 @@ export default function ReceptionPuzzlePage() {
                 ))}
               </select>
             </label>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Kategorie (KI)</span>
+              <select
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter((e.target.value as PuzzelTicketPrizeCategory | '') || '');
+                  setExpandedId(null);
+                }}
+                className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action"
+              >
+                <option value="">Alle Kategorien</option>
+                {(Object.keys(PRIZE_CATEGORY_LABEL) as PuzzelTicketPrizeCategory[]).map((c) => (
+                  <option key={c} value={c}>
+                    {PRIZE_CATEGORY_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="mt-3 flex items-end">
               <Button
                 type="button"
@@ -729,6 +831,7 @@ export default function ReceptionPuzzlePage() {
                 onClick={() => {
                   setSearch('');
                   setStatusFilter('');
+                  setCategoryFilter('');
                   setExpandedId(null);
                 }}
               >
@@ -749,6 +852,7 @@ export default function ReceptionPuzzlePage() {
                     onClick={() => {
                       setExpandedId(ticket.id);
                       setReplyText('');
+                      setReplyFiles([]);
                     }}
                     className={`w-full rounded-2xl border p-4 text-left transition ${
                       selected
@@ -763,9 +867,11 @@ export default function ReceptionPuzzlePage() {
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(ticket.status)}`}>
                             {ticket.status ?? 'Unknown'}
                           </span>
-                          {ticketAssignedAt && (
-                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900">
-                              Assigned to me
+                          {ticket.analysis?.prizeCategory && (
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[ticket.analysis.prizeCategory]}`}
+                            >
+                              {PRIZE_CATEGORY_LABEL[ticket.analysis.prizeCategory]}
                             </span>
                           )}
                         </div>
@@ -1021,7 +1127,7 @@ export default function ReceptionPuzzlePage() {
                 <div className="border-t border-border bg-surface p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs text-ink-muted">
-                      Reply is sent through Puzzel with line breaks preserved.
+                      Reply and attachments are sent through Puzzel (same as the pink Send in the CM composer).
                     </p>
                     {isAdmin && (
                       <button
@@ -1038,8 +1144,13 @@ export default function ReceptionPuzzlePage() {
                     className="mt-3"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      if (!replyText.trim()) return;
-                      replyMut.mutate({ ticketId: selectedTicket.id, message: replyText });
+                      const t = replyText.trim();
+                      if (!t && replyFiles.length === 0) return;
+                      replyMut.mutate({
+                        ticketId: selectedTicket.id,
+                        message: t,
+                        files: replyFiles,
+                      });
                     }}
                   >
                     <textarea
@@ -1049,21 +1160,64 @@ export default function ReceptionPuzzlePage() {
                       placeholder="Write a reply to the guest…"
                       className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-ink outline-none focus:border-action"
                     />
+                    <input
+                      ref={replyFileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      accept="*/*"
+                      onChange={(e) => {
+                        const list = e.target.files;
+                        if (!list?.length) return;
+                        setReplyFiles((prev) => [...prev, ...Array.from(list)]);
+                        e.target.value = '';
+                      }}
+                    />
+                    {replyFiles.length > 0 && (
+                      <ul className="mt-2 space-y-1 rounded-xl border border-border bg-surface-muted/40 px-3 py-2 text-xs text-ink">
+                        {replyFiles.map((f, i) => (
+                          <li key={`${f.name}-${i}-${f.size}`} className="flex items-center justify-between gap-2">
+                            <span className="truncate">{f.name}</span>
+                            <button
+                              type="button"
+                              className="shrink-0 font-medium text-rose-700 hover:underline"
+                              onClick={() => setReplyFiles((prev) => prev.filter((_, j) => j !== i))}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs text-ink-muted">
-                        Use the same signature/business data you want to send in Puzzel.
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-[44px]"
+                          disabled={replyMut.isPending}
+                          onClick={() => replyFileInputRef.current?.click()}
+                        >
+                          Attach files
+                        </Button>
+                        <p className="text-xs text-ink-muted">Up to 10 files, 25 MB each.</p>
+                      </div>
+                      <p className="max-w-md text-xs text-ink-muted">
+                        Use the same signature/business data you want in Puzzel.
                       </p>
                       <Button
                         type="submit"
                         variant="action"
                         className="min-h-[44px]"
-                        disabled={replyMut.isPending || !replyText.trim()}
+                        disabled={
+                          replyMut.isPending || (!replyText.trim() && replyFiles.length === 0)
+                        }
                       >
-                        {replyMut.isPending ? 'Sending…' : 'Send reply via Puzzel'}
+                        {replyMut.isPending ? 'Sending…' : 'Send via Puzzel'}
                       </Button>
                     </div>
                     {replyMut.isSuccess && (
-                      <p className="mt-2 text-sm font-medium text-emerald-800">Reply sent through Puzzel.</p>
+                      <p className="mt-2 text-sm font-medium text-emerald-800">Sent through Puzzel.</p>
                     )}
                   </form>
                 </div>
@@ -1190,7 +1344,8 @@ function AiSummaryCard({
   const secondaryRows: { label: string; value: string }[] = [
     { label: 'Invoice number', value: fmt(bd.invoiceNumber) },
     { label: 'Room', value: fmt(bd.roomNumber) },
-    { label: 'Category', value: REQUEST_TYPE_LABEL[analysis.requestType] },
+    { label: 'Puzzel-Kategorie (PrizeBern)', value: PRIZE_CATEGORY_LABEL[analysis.prizeCategory] },
+    { label: 'Technische KI-Anfrageart', value: REQUEST_TYPE_LABEL[analysis.requestType] },
     { label: 'Extraction confidence', value: CONFIDENCE_LABEL[analysis.confidence] },
   ];
 
@@ -1223,6 +1378,12 @@ function AiSummaryCard({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[analysis.prizeCategory]}`}
+              title={analysis.prizeCategory}
+            >
+              {PRIZE_CATEGORY_LABEL[analysis.prizeCategory]}
+            </span>
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${INVOICE_ACTION_TONE[analysis.invoiceAction]}`}
               title={analysis.invoiceAction}

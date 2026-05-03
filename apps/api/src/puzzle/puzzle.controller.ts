@@ -1,4 +1,19 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import type { Express } from 'express';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -64,14 +79,22 @@ export class PuzzleController {
   @HttpCode(HttpStatus.ACCEPTED)
   @UseGuards(RolesGuard)
   @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  @UseInterceptors(
+    FileFieldsInterceptor([{ name: 'attachments', maxCount: 10 }], {
+      storage: memoryStorage(),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
   replyToTicket(
     @Param('id') id: string,
-    @Body()
-    body: {
-      message?: string;
-    },
+    @Body('message') message: string | undefined,
+    @UploadedFiles()
+    files?: { attachments?: Express.Multer.File[] },
   ) {
-    return this.puzzle.replyToTicket(id, body);
+    return this.puzzle.replyToTicket(id, {
+      message,
+      attachments: files?.attachments as Express.Multer.File[] | Express.Multer.File | undefined,
+    });
   }
 
   @Get('sync-status')
