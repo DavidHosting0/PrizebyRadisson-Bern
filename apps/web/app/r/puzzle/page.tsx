@@ -136,6 +136,28 @@ const PRIZE_CATEGORY_TONE: Record<PuzzelTicketPrizeCategory, string> = {
   SONSTIGES: 'border-teal-300 bg-teal-100 text-teal-950',
 };
 
+const ALL_PRIZE_CATEGORIES = Object.keys(PRIZE_CATEGORY_LABEL) as PuzzelTicketPrizeCategory[];
+
+function countTicketsByPrizeCategory(source: PuzzelTicket[]) {
+  const counts: Record<PuzzelTicketPrizeCategory, number> = {
+    SPAM: 0,
+    RECHNUNG_ANGEFRAGT: 0,
+    RECHNUNGSKORREKTUR: 0,
+    MEHRERE_RECHNUNGSANFRAGEN: 0,
+    SONSTIGES: 0,
+  };
+  let none = 0;
+  for (const t of source) {
+    const c = t.analysis?.prizeCategory;
+    if (c && c in counts) {
+      counts[c]++;
+    } else {
+      none++;
+    }
+  }
+  return { counts, none };
+}
+
 const INVOICE_ACTION_LABEL: Record<PuzzelInvoiceAction, string> = {
   resend_only: 'Nur Zusendung — gleicher Inhalt (PDF/E-Mail)',
   correct_and_reissue: 'Korrektur — Rechnung inhaltlich ändern & neu',
@@ -347,6 +369,21 @@ function statusTone(status: string | null) {
   return 'border-border bg-surface-muted text-ink-muted';
 }
 
+/** Synced Puzzel row status: archive tab (Resolved / Closed in CM). */
+function isPuzzelTicketArchivedStatus(status: string | null | undefined): boolean {
+  if (!status?.trim()) return false;
+  const u = status.trim().toUpperCase();
+  return u === 'RESOLVED' || u === 'CLOSED';
+}
+
+/**
+ * Puzzel shows **Resolve Ticket** while the ticket is still actionable in CM
+ * (not already Resolved/Closed) — same idea as the pink Resolve control in the web UI.
+ */
+function showPuzzelResolveTicketAction(status: string | null | undefined): boolean {
+  return !isPuzzelTicketArchivedStatus(status);
+}
+
 function metadataRecord(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
   return {};
@@ -414,6 +451,7 @@ export default function ReceptionPuzzlePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<PuzzelTicketPrizeCategory | ''>('');
+  const [ticketBucket, setTicketBucket] = useState<'active' | 'resolved'>('active');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replyFiles, setReplyFiles] = useState<File[]>([]);
@@ -469,22 +507,44 @@ export default function ReceptionPuzzlePage() {
 
   const status = syncStatusQuery.data;
   const tickets = ticketsQuery.data ?? [];
+  const activeTickets = useMemo(
+    () => tickets.filter((t) => !isPuzzelTicketArchivedStatus(t.status)),
+    [tickets],
+  );
+  const resolvedTickets = useMemo(
+    () => tickets.filter((t) => isPuzzelTicketArchivedStatus(t.status)),
+    [tickets],
+  );
+  const bucketTickets = ticketBucket === 'active' ? activeTickets : resolvedTickets;
+
   const statuses = useMemo(() => {
-    return Array.from(new Set(tickets.map((ticket) => ticket.status).filter(Boolean) as string[])).sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [tickets]);
+    return Array.from(
+      new Set(bucketTickets.map((ticket) => ticket.status).filter(Boolean) as string[]),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [bucketTickets]);
 
   const filteredTickets = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return tickets.filter((ticket) => {
+    return bucketTickets.filter((ticket) => {
       const matchesStatus = !statusFilter || ticket.status === statusFilter;
       const matchesCategory =
         !categoryFilter || ticket.analysis?.prizeCategory === categoryFilter;
       const matchesSearch = !q || ticketSearchText(ticket).includes(q);
       return matchesStatus && matchesCategory && matchesSearch;
     });
-  }, [search, statusFilter, categoryFilter, tickets]);
+  }, [search, statusFilter, categoryFilter, bucketTickets]);
+
+  useEffect(() => {
+    if (!expandedId) return;
+    const t = tickets.find((x) => x.id === expandedId);
+    if (!t) return;
+    if (ticketBucket === 'active' && isPuzzelTicketArchivedStatus(t.status)) {
+      setExpandedId(null);
+    }
+    if (ticketBucket === 'resolved' && !isPuzzelTicketArchivedStatus(t.status)) {
+      setExpandedId(null);
+    }
+  }, [tickets, expandedId, ticketBucket]);
 
   useEffect(() => {
     if (!expandedId && filteredTickets.length > 0) {
@@ -567,6 +627,20 @@ export default function ReceptionPuzzlePage() {
     },
   });
 
+  const resolveMut = useMutation({
+    mutationFn: (ticketId: string) =>
+      api<{ ok: true; action: string }>(`/puzzle/tickets/${ticketId}/resolve`, { method: 'POST' }),
+    onSuccess: (_data, ticketId) => {
+      queryClient.setQueryData<PuzzelTicket[]>(['puzzle', 'tickets'], (curr) =>
+        curr?.map((t) => (t.id === ticketId ? { ...t, status: 'RESOLVED' } : t)),
+      );
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', ticketId] });
+      setTicketBucket('resolved');
+      setExpandedId(ticketId);
+    },
+  });
+
   const assignMut = useMutation({
     mutationFn: (ticketId: string) =>
       api<{ ok: true; action: 'assign'; assignedAt: string }>(`/puzzle/tickets/${ticketId}/assign-to-me`, { method: 'POST' }),
@@ -605,8 +679,13 @@ export default function ReceptionPuzzlePage() {
       setReplyText('');
       setReplyFiles([]);
       if (replyFileInputRef.current) replyFileInputRef.current.value = '';
+      queryClient.setQueryData<PuzzelTicket[]>(['puzzle', 'tickets'], (curr) =>
+        curr?.map((t) => (t.id === vars.ticketId ? { ...t, status: 'RESOLVED' } : t)),
+      );
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'ticket-messages', vars.ticketId] });
       queryClient.invalidateQueries({ queryKey: ['puzzle', 'tickets'] });
+      setTicketBucket('resolved');
+      setExpandedId(vars.ticketId);
     },
   });
 
@@ -668,13 +747,17 @@ export default function ReceptionPuzzlePage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Tickets gesamt</p>
-          <p className="mt-1 text-2xl font-semibold text-ink">{tickets.length}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Aktive Tickets</p>
+          <p className="mt-1 text-2xl font-semibold text-ink">{activeTickets.length}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Aktuell angezeigt</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Erledigt (Resolved)</p>
+          <p className="mt-1 text-2xl font-semibold text-ink">{resolvedTickets.length}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">In dieser Ansicht</p>
           <p className="mt-1 text-2xl font-semibold text-ink">{filteredTickets.length}</p>
         </Card>
         <Card className="p-4">
@@ -684,6 +767,80 @@ export default function ReceptionPuzzlePage() {
           </p>
         </Card>
       </div>
+
+      <Card className="p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Ticket-Ansicht</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={ticketBucket === 'active' ? 'action' : 'secondary'}
+            className="min-h-[44px]"
+            onClick={() => {
+              setTicketBucket('active');
+              setExpandedId(null);
+            }}
+          >
+            Aktive Tickets ({activeTickets.length})
+          </Button>
+          <Button
+            type="button"
+            variant={ticketBucket === 'resolved' ? 'action' : 'secondary'}
+            className="min-h-[44px]"
+            onClick={() => {
+              setTicketBucket('resolved');
+              setExpandedId(null);
+            }}
+          >
+            Erledigt — Resolved ({resolvedTickets.length})
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-ink-muted">
+          Tickets mit Status Resolved oder Closed erscheinen nur unter „Erledigt“. Nach dem Senden einer Antwort über
+          PrizeBern wird der Status hier wie in Puzzel auf Resolved gesetzt.
+        </p>
+      </Card>
+
+      <Card className="p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Tickets nach KI-Kategorie</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Anzahl pro PrizeBern-Kategorie (Spam, Rechnung angefragt, …), basierend auf der gespeicherten KI-Auswertung.
+        </p>
+        <div className="mt-4 grid gap-5 sm:grid-cols-2">
+          {(
+            [
+              { key: 'active' as const, title: 'Aktive Tickets', list: activeTickets },
+              { key: 'resolved' as const, title: 'Erledigt (Resolved/Closed)', list: resolvedTickets },
+            ] as const
+          ).map(({ key, title, list }) => {
+            const { counts, none } = countTicketsByPrizeCategory(list);
+            return (
+              <div key={key}>
+                <p className="text-xs font-semibold text-ink">
+                  {title}{' '}
+                  <span className="font-normal text-ink-muted">({list.length} gesamt)</span>
+                </p>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {ALL_PRIZE_CATEGORIES.map((cat) => (
+                    <li
+                      key={cat}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5"
+                    >
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[cat]}`}>
+                        {PRIZE_CATEGORY_LABEL[cat]}
+                      </span>
+                      <span className="font-mono tabular-nums text-sm font-semibold text-ink">{counts[cat]}</span>
+                    </li>
+                  ))}
+                  <li className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-surface-muted/50 px-2.5 py-1.5 text-ink-muted">
+                    <span className="text-xs font-medium">Keine KI-Auswertung</span>
+                    <span className="font-mono tabular-nums text-sm font-semibold text-ink">{none}</span>
+                  </li>
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       {ticketsQuery.isLoading && <p className="text-sm text-ink-muted">Lädt Tickets…</p>}
 
@@ -772,7 +929,7 @@ export default function ReceptionPuzzlePage() {
       )}
 
       {tickets.length > 0 && (
-        <div className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
           <Card className="p-4">
             <label className="block">
               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Suchen</span>
@@ -897,10 +1054,10 @@ export default function ReceptionPuzzlePage() {
             )}
           </Card>
 
-          <Card className="min-h-[620px] overflow-hidden">
+          <Card className="flex min-h-[620px] flex-col overflow-hidden xl:sticky xl:top-4 xl:z-10 xl:max-h-[calc(100dvh-2rem)]">
             {selectedTicket ? (
-              <div className="flex h-full flex-col">
-                <div className="border-b border-border bg-surface p-5">
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="shrink-0 border-b border-border bg-surface p-5">
                   {(() => {
                     const emmaPayload = buildEmmaOpenFolioPayload(selectedTicket, analysisQuery.data);
                     return (
@@ -1024,6 +1181,17 @@ export default function ReceptionPuzzlePage() {
                       >
                         {assignMut.isPending ? 'Assigning…' : assignedAt(selectedTicket) ? 'Assigned to me' : 'Assign to me'}
                       </Button>
+                      {ticketBucket === 'active' && showPuzzelResolveTicketAction(selectedTicket.status) && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-[40px]"
+                          disabled={resolveMut.isPending}
+                          onClick={() => resolveMut.mutate(selectedTicket.id)}
+                        >
+                          {resolveMut.isPending ? 'Resolving…' : 'Resolve Ticket'}
+                        </Button>
+                      )}
                       {selectedTicket.detailHref && (
                         <a
                           href={selectedTicket.detailHref}
@@ -1036,14 +1204,14 @@ export default function ReceptionPuzzlePage() {
                       )}
                     </div>
                   </div>
-                  {(assignMut.isError || replyMut.isError) && (
+                  {(assignMut.isError || replyMut.isError || resolveMut.isError) && (
                     <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                      {((assignMut.error || replyMut.error) as Error).message}
+                      {((assignMut.error || replyMut.error || resolveMut.error) as Error).message}
                     </p>
                   )}
                 </div>
 
-                <div className="flex-1 space-y-4 overflow-auto bg-gradient-to-b from-surface-muted/60 to-surface p-5">
+                <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-gradient-to-b from-surface-muted/60 to-surface p-5">
                   <AiSummaryCard
                     ticketId={selectedTicket.id}
                     analysis={analysisQuery.data ?? null}
@@ -1124,7 +1292,7 @@ export default function ReceptionPuzzlePage() {
                   </ol>
                 </div>
 
-                <div className="border-t border-border bg-surface p-4">
+                <div className="shrink-0 border-t border-border bg-surface p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs text-ink-muted">
                       Reply and attachments are sent through Puzzel (same as the pink Send in the CM composer).
@@ -1140,6 +1308,8 @@ export default function ReceptionPuzzlePage() {
                       </button>
                     )}
                   </div>
+                  {ticketBucket === 'active' &&
+                  !isPuzzelTicketArchivedStatus(selectedTicket.status) ? (
                   <form
                     className="mt-3"
                     onSubmit={(e) => {
@@ -1160,19 +1330,6 @@ export default function ReceptionPuzzlePage() {
                       placeholder="Write a reply to the guest…"
                       className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-ink outline-none focus:border-action"
                     />
-                    <input
-                      ref={replyFileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      accept="*/*"
-                      onChange={(e) => {
-                        const list = e.target.files;
-                        if (!list?.length) return;
-                        setReplyFiles((prev) => [...prev, ...Array.from(list)]);
-                        e.target.value = '';
-                      }}
-                    />
                     {replyFiles.length > 0 && (
                       <ul className="mt-2 space-y-1 rounded-xl border border-border bg-surface-muted/40 px-3 py-2 text-xs text-ink">
                         {replyFiles.map((f, i) => (
@@ -1191,15 +1348,37 @@ export default function ReceptionPuzzlePage() {
                     )}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="min-h-[44px]"
-                          disabled={replyMut.isPending}
-                          onClick={() => replyFileInputRef.current?.click()}
+                        <div
+                          className={
+                            replyMut.isPending
+                              ? 'relative inline-flex pointer-events-none opacity-50'
+                              : 'relative inline-flex'
+                          }
                         >
-                          Attach files
-                        </Button>
+                          <input
+                            ref={replyFileInputRef}
+                            type="file"
+                            multiple
+                            disabled={replyMut.isPending}
+                            className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+                            accept="*/*"
+                            aria-label="Attach files"
+                            onChange={(e) => {
+                              const list = e.target.files;
+                              if (!list?.length) return;
+                              setReplyFiles((prev) => [...prev, ...Array.from(list)].slice(0, 10));
+                              e.target.value = '';
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-[44px] pointer-events-none"
+                            tabIndex={-1}
+                          >
+                            Attach files
+                          </Button>
+                        </div>
                         <p className="text-xs text-ink-muted">Up to 10 files, 25 MB each.</p>
                       </div>
                       <p className="max-w-md text-xs text-ink-muted">
@@ -1220,6 +1399,13 @@ export default function ReceptionPuzzlePage() {
                       <p className="mt-2 text-sm font-medium text-emerald-800">Sent through Puzzel.</p>
                     )}
                   </form>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-border bg-surface-muted/40 p-4 text-sm text-ink-muted">
+                      {ticketBucket === 'resolved'
+                        ? 'Archiv: Tickets mit Status Resolved oder Closed in Puzzel. Es können hier keine neuen Antworten mehr gesendet werden.'
+                        : 'Dieses Ticket ist erledigt — Antworten über PrizeBern sind deaktiviert.'}
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (

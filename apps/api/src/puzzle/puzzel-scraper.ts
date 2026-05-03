@@ -955,6 +955,45 @@ async function fillFirstVisible(root: Page | Locator, selectors: string[], value
 }
 
 /**
+ * Quill / contenteditable reply composers often do not apply `fill()` to the document model.
+ * Focus the field and use `keyboard.insertText` so the UI submits real body text.
+ */
+async function fillReplyComposerText(composer: Locator, page: Page, value: string): Promise<boolean> {
+  const selectors = [
+    '[contenteditable="true"]:visible',
+    '.ql-editor:visible',
+    '[role="textbox"]:visible',
+    'textarea:visible',
+  ];
+
+  for (const selector of selectors) {
+    const loc = composer.locator(selector).first();
+    if (!(await loc.isVisible({ timeout: 2500 }).catch(() => false))) continue;
+    await loc.scrollIntoViewIfNeeded().catch(() => {});
+    const tag = await loc.evaluate((el) => el.tagName.toLowerCase()).catch(() => '');
+
+    try {
+      if (tag === 'textarea' || tag === 'input') {
+        await loc.fill(value);
+        return true;
+      }
+      await loc.click({ timeout: 4000 });
+      await page.keyboard.insertText(value);
+      return true;
+    } catch {
+      try {
+        await loc.click({ timeout: 4000 });
+        await page.keyboard.type(value);
+        return true;
+      } catch {
+        continue;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Nach Klick auf „Reply“ öffnet Puzzel zuerst ein Modal/Overlay mit dem Editor — nicht inline auf der Timeline.
  */
 async function waitForPuzzelReplyComposerRoot(
@@ -1138,7 +1177,8 @@ async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOp
   if (await directAssign.isVisible({ timeout: 2500 }).catch(() => false)) {
     await directAssign.scrollIntoViewIfNeeded().catch(() => {});
     await directAssign.click();
-    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+    await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+    await sleep(1200);
     await puzzelTimelineReplyButton(page)
       .waitFor({ state: 'visible', timeout: 25_000 })
       .catch(() => undefined);
@@ -1172,7 +1212,8 @@ async function assignTicketToLoggedInUser(page: Page, opts: PuzzelTicketActionOp
   if (!assigned) {
     throw new Error('Puzzel Assign-to-me Button nicht gefunden.');
   }
-  await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+  await sleep(1200);
   await puzzelTimelineReplyButton(page)
     .waitFor({ state: 'visible', timeout: 25_000 })
     .catch(() => undefined);
@@ -1186,15 +1227,24 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
     throw new Error('Reply: Text oder mindestens eine Datei erforderlich.');
   }
 
-  // Puzzel zeigt Reply / Follow-Up erst nach Self-Assign des Tickets.
-  progress(opts, 'Ticket-Aktion: Vor dem Antworten an eingeloggten Agent zuweisen');
-  try {
-    await assignTicketToLoggedInUser(page, opts);
-  } catch (e) {
-    progress(
-      opts,
-      `Ticket-Aktion: Assign-to-me fehlgeschlagen — weiter mit Antwort (${(e as Error).message})`,
-    );
+  const replyAlready = await puzzelTimelineReplyButton(page).isVisible({ timeout: 2000 }).catch(() => false);
+  const followUpAlready = await page
+    .getByRole('link', { name: /Add Follow-Up/i })
+    .first()
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+  if (!replyAlready && !followUpAlready) {
+    progress(opts, 'Ticket-Aktion: Vor dem Antworten an eingeloggten Agent zuweisen');
+    try {
+      await assignTicketToLoggedInUser(page, opts);
+    } catch (e) {
+      progress(
+        opts,
+        `Ticket-Aktion: Assign-to-me fehlgeschlagen — weiter mit Antwort (${(e as Error).message})`,
+      );
+    }
+  } else {
+    progress(opts, 'Ticket-Aktion: Reply/Follow-Up bereits sichtbar — Zuweisung übersprungen');
   }
   await waitForPuzzelReplyOrFollowUp(page, opts);
 
@@ -1250,22 +1300,20 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
 
   if (rawText) {
     progress(opts, 'Ticket-Aktion: Antworttext eintragen');
-    const filled = await fillFirstVisible(composer, [
-      'textarea:visible',
-      '[contenteditable="true"]:visible',
-      '.ql-editor:visible',
-      '[role="textbox"]:visible',
-      'iframe[title*="Rich Text" i]',
-    ], rawText, 5000);
+    let filled = await fillReplyComposerText(composer, page, rawText);
     if (!filled) {
       const frame = page.frames().find((f) => /reply|editor|compose|tinymce|ckeditor/i.test(f.url()));
       const frameBody = frame?.locator('body').first();
       if (frameBody && (await frameBody.isVisible({ timeout: 2000 }).catch(() => false))) {
-        await frameBody.fill(rawText);
-      } else {
-        throw new Error('Puzzel Antwortfeld nicht gefunden.');
+        await frameBody.click();
+        await page.keyboard.insertText(rawText);
+        filled = true;
       }
     }
+    if (!filled) {
+      throw new Error('Puzzel Antwortfeld nicht gefunden.');
+    }
+    await sleep(250);
   } else {
     progress(opts, 'Ticket-Aktion: Nur Anhänge (ohne Nachrichtentext)');
   }
@@ -1279,8 +1327,70 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
   if (!sent) {
     throw new Error('Puzzel Send Button nicht gefunden.');
   }
-  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+  await sleep(800);
   progress(opts, 'Ticket-Aktion: Antwort wurde gesendet');
+}
+
+/**
+ * Clicks Puzzel’s primary **Resolve Ticket** control (same label as in CM), then any confirm dialog.
+ */
+export async function resolvePuzzelTicketOnPage(page: Page, opts: PuzzelTicketActionOpts) {
+  progress(opts, 'Ticket-Aktion: „Resolve Ticket“ suchen');
+
+  const tryResolve = async (): Promise<boolean> => {
+    const candidates = [
+      page.getByRole('button', { name: /^Resolve Ticket$/i }),
+      page.getByRole('button', { name: /resolve ticket/i }),
+      page.getByRole('link', { name: /resolve ticket/i }),
+      page.locator('button:has-text("Resolve Ticket")'),
+      page.locator('a:has-text("Resolve Ticket")'),
+    ];
+    for (const loc of candidates) {
+      const el = loc.first();
+      if (await el.isVisible({ timeout: 1800 }).catch(() => false)) {
+        await el.scrollIntoViewIfNeeded().catch(() => {});
+        await el.click({ timeout: 10_000 });
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (!(await tryResolve())) {
+    progress(opts, 'Ticket-Aktion: Resolve noch nicht sichtbar — ggf. „Assign to me“');
+    try {
+      await assignTicketToLoggedInUser(page, opts);
+    } catch (e) {
+      progress(opts, `Ticket-Aktion: Assign vor Resolve fehlgeschlagen (${(e as Error).message})`);
+    }
+    if (!(await tryResolve())) {
+      throw new Error('Puzzel: Steuerung „Resolve Ticket“ nicht gefunden.');
+    }
+  }
+
+  await sleep(600);
+  const dialog = page.getByRole('dialog');
+  if (await dialog.isVisible({ timeout: 2500 }).catch(() => false)) {
+    const confirm = dialog
+      .getByRole('button', { name: /^(yes|ok|confirm|resolve|bestätigen|weiter)$/i })
+      .first();
+    if (await confirm.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await confirm.click();
+    }
+  } else {
+    const confirmPatterns = [/^(yes|ok)$/i, /confirm/i, /bestätigen/i, /resolve/i];
+    for (const pattern of confirmPatterns) {
+      const b = page.getByRole('button', { name: pattern }).first();
+      if (await b.isVisible({ timeout: 600 }).catch(() => false)) {
+        await b.click();
+        break;
+      }
+    }
+  }
+  await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+  await sleep(800);
+  progress(opts, 'Ticket-Aktion: „Resolve Ticket“ ausgeführt');
 }
 
 export async function assignPuzzelTicketToMe(opts: PuzzelTicketActionOpts): Promise<PuzzelTicketActionResult> {

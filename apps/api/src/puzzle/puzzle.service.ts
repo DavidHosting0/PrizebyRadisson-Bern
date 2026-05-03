@@ -15,6 +15,7 @@ import {
   assignPuzzelTicketToMeOnPage,
   extractPuzzelMessagesFromPage,
   replyToPuzzelTicketOnPage,
+  resolvePuzzelTicketOnPage,
   scrapePuzzelTicketsOnPage,
   type PuzzelTicketActionOpts,
   type PuzzelScrapedMessage,
@@ -168,8 +169,7 @@ export class PuzzleService {
     const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
     if (!ticketUrl) throw new Error('Puzzel ticket has no detail URL/reference.');
 
-    const replyText = message || ' ';
-    const opts = await this.buildBaseOpts(replyText);
+    const opts = await this.buildBaseOpts(message);
     /** Browser → API (multipart, RAM) → temp files on API host → Playwright → Puzzel. No durable store on the Next.js site. */
     const tmpPaths: string[] = [];
     try {
@@ -183,13 +183,18 @@ export class PuzzleService {
       const actionOpts: PuzzelTicketActionOpts = {
         ...opts,
         ticketUrl,
-        replyText,
+        replyText: message,
         replyAttachmentPaths: tmpPaths.length > 0 ? tmpPaths : undefined,
       };
 
       await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
         await gotoLoggedIn(ticketUrl);
         await replyToPuzzelTicketOnPage(page, actionOpts);
+      });
+
+      await this.prisma.puzzelTicket.update({
+        where: { id: ticket.id },
+        data: { status: 'RESOLVED' },
       });
     } finally {
       await Promise.all(tmpPaths.map((p) => fs.unlink(p).catch(() => undefined)));
@@ -200,6 +205,32 @@ export class PuzzleService {
     });
 
     return { ok: true as const, action: 'reply' as const };
+  }
+
+  async resolveTicket(ticketId: string) {
+    const ticket = await this.prisma.puzzelTicket.findUnique({ where: { id: ticketId } });
+    if (!ticket) throw new Error('Puzzel ticket not found.');
+    const ticketUrl = ticket.detailHref || this.ticketUrlFromReference(ticket.reference);
+    if (!ticketUrl) throw new Error('Puzzel ticket has no detail URL/reference.');
+
+    const opts = await this.buildBaseOpts();
+    const actionOpts: PuzzelTicketActionOpts = { ...opts, ticketUrl };
+
+    await this.session.run(opts, async ({ page, gotoLoggedIn }) => {
+      await gotoLoggedIn(ticketUrl);
+      await resolvePuzzelTicketOnPage(page, actionOpts);
+    });
+
+    await this.prisma.puzzelTicket.update({
+      where: { id: ticket.id },
+      data: { status: 'RESOLVED' },
+    });
+
+    await this.refreshTicketMessages(ticket.id).catch((e) => {
+      this.log.warn(`Puzzel resolve OK, but message refresh failed: ${(e as Error).message ?? String(e)}`);
+    });
+
+    return { ok: true as const, action: 'resolve' as const };
   }
 
   async getSyncStatus() {

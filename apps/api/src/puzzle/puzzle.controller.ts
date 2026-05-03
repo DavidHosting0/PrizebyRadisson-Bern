@@ -17,6 +17,7 @@ import type { Express } from 'express';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PuzzelReplyDto } from './dto/puzzel-reply.dto';
 import { PuzzleService } from './puzzle.service';
 
 @Controller('puzzle')
@@ -87,14 +88,22 @@ export class PuzzleController {
   )
   replyToTicket(
     @Param('id') id: string,
-    @Body('message') message: string | undefined,
+    @Body() body: PuzzelReplyDto,
     @UploadedFiles()
     files?: { attachments?: Express.Multer.File[] },
   ) {
     return this.puzzle.replyToTicket(id, {
-      message,
+      message: body?.message,
       attachments: files?.attachments as Express.Multer.File[] | Express.Multer.File | undefined,
     });
+  }
+
+  @Post('tickets/:id/resolve')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  resolveTicket(@Param('id') id: string) {
+    return this.puzzle.resolveTicket(id);
   }
 
   @Get('sync-status')
