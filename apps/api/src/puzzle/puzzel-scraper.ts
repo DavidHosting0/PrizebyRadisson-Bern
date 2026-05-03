@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
-import { chromium, type Locator, type Page } from 'playwright';
+import { chromium, type Frame, type Locator, type Page } from 'playwright';
+
+/** Root that supports `locator()` (main page, iframe, or scoped locator). */
+type LocatorRoot = Page | Frame | Locator;
 import { generateSync } from 'otplib';
 
 type PuzzelProgress = (message: string) => void;
@@ -922,7 +925,7 @@ export async function scrapePuzzelTicketMessagesBatch(
   }
 }
 
-async function clickFirstVisible(root: Page | Locator, selectors: string[], timeout = 3000) {
+async function clickFirstVisible(root: LocatorRoot, selectors: string[], timeout = 3000) {
   for (const selector of selectors) {
     try {
       const loc = root.locator(selector).first();
@@ -938,7 +941,7 @@ async function clickFirstVisible(root: Page | Locator, selectors: string[], time
   return false;
 }
 
-async function fillFirstVisible(root: Page | Locator, selectors: string[], value: string, timeout = 3000) {
+async function fillFirstVisible(root: LocatorRoot, selectors: string[], value: string, timeout = 3000) {
   for (const selector of selectors) {
     try {
       const loc = root.locator(selector).first();
@@ -1141,9 +1144,94 @@ export async function replyToPuzzelTicketOnPage(page: Page, opts: PuzzelTicketAc
   return replyToTicket(page, opts);
 }
 
-/** Nach Self-Assign: primärer pinker „Reply“-Button in der Timeline-Leiste (exakter Name). */
-function puzzelTimelineReplyButton(page: Page) {
-  return page.getByRole('button', { name: /^Reply$/i }).first();
+/** Timeline / toolbar: opens outbound composer — access names vary by locale and Puzzel release. */
+function puzzelTimelineReplyButton(page: Page): Locator {
+  const exactReply = /^\s*reply\s*$/i;
+  const antwort = /^\s*antwort(en)?\s*$/i;
+  const beantworten = /^\s*beantworten\s*$/i;
+  return page
+    .getByRole('button', { name: exactReply })
+    .or(page.getByRole('link', { name: exactReply }))
+    .or(page.getByRole('button', { name: antwort }))
+    .or(page.getByRole('link', { name: antwort }))
+    .or(page.getByRole('button', { name: beantworten }))
+    .or(page.getByRole('link', { name: beantworten }))
+    .first();
+}
+
+/** „Add Follow-Up“ is sometimes a link, sometimes a button; CM may localize the label. */
+function puzzelAddFollowUpControl(page: Page): Locator {
+  const en = /add follow-?up/i;
+  const de = /(follow-?up|nachverfolgung)\s*hinzufügen/i;
+  const alternatives = /^(new message|compose|write reply|nachricht schreiben)$/i;
+  return page
+    .getByRole('link', { name: en })
+    .or(page.getByRole('button', { name: en }))
+    .or(page.getByRole('link', { name: de }))
+    .or(page.getByRole('button', { name: de }))
+    .or(page.getByRole('button', { name: alternatives }))
+    .or(page.getByRole('link', { name: alternatives }))
+    .first();
+}
+
+async function tryOpenPuzzelReplyInRoot(root: LocatorRoot, opts: PuzzelTicketActionOpts): Promise<boolean> {
+  const replyFirst = root
+    .getByRole('button', { name: /^\s*reply\s*$/i })
+    .or(root.getByRole('link', { name: /^\s*reply\s*$/i }))
+    .or(root.getByRole('button', { name: /^\s*antwort(en)?\s*$/i }))
+    .or(root.getByRole('link', { name: /^\s*antwort(en)?\s*$/i }))
+    .or(root.getByRole('button', { name: /^\s*beantworten\s*$/i }))
+    .first();
+  if (await replyFirst.isVisible({ timeout: 1200 }).catch(() => false)) {
+    await replyFirst.scrollIntoViewIfNeeded().catch(() => {});
+    await replyFirst.click({ force: true }).catch(() => {});
+    progress(opts, 'Ticket-Aktion: Reply/Antwort geklickt (scoped)');
+    return true;
+  }
+  const follow = root
+    .getByRole('link', { name: /add follow-?up/i })
+    .or(root.getByRole('button', { name: /add follow-?up/i }))
+    .or(root.getByRole('link', { name: /(follow-?up|nachverfolgung)\s*hinzufügen/i }))
+    .or(root.getByRole('button', { name: /(follow-?up|nachverfolgung)\s*hinzufügen/i }))
+    .first();
+  if (await follow.isVisible({ timeout: 1200 }).catch(() => false)) {
+    await follow.scrollIntoViewIfNeeded().catch(() => {});
+    await follow.click({ force: true }).catch(() => {});
+    progress(opts, 'Ticket-Aktion: Follow-Up geklickt (scoped)');
+    return true;
+  }
+  return clickFirstVisible(root, [
+    'button:has-text("Reply")',
+    'a:has-text("Reply")',
+    'button:has-text("Antworten")',
+    'a:has-text("Antworten")',
+    'button:has-text("Beantworten")',
+    'a:has-text("Add Follow-Up")',
+    'button:has-text("Add Follow-Up")',
+    'a:has-text("Add follow-up")',
+    'button:has-text("Add follow-up")',
+    'a:has-text("Follow-Up")',
+    'button:has-text("Follow-Up")',
+    'a:has-text("Follow-up hinzufügen")',
+    'button:has-text("Follow-up hinzufügen")',
+    'a:has-text("Follow-Up hinzufügen")',
+    'button:has-text("Follow-Up hinzufügen")',
+    '[aria-label*="Reply" i]',
+    '[aria-label*="Follow-Up" i]',
+    '[aria-label*="follow-up" i]',
+    '[data-action*="reply" i]',
+  ], 2500);
+}
+
+/** Some Radisson/Puzzel builds render the ticket thread inside an iframe — controls may not be on MainFrame. */
+async function tryOpenPuzzelReplyInAnyFrame(page: Page, opts: PuzzelTicketActionOpts): Promise<boolean> {
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    const u = frame.url();
+    if (!u || u === 'about:blank') continue;
+    if (await tryOpenPuzzelReplyInRoot(frame, opts)) return true;
+  }
+  return false;
 }
 
 async function waitForPuzzelReplyOrFollowUp(
@@ -1152,7 +1240,7 @@ async function waitForPuzzelReplyOrFollowUp(
   timeoutMs = 25_000,
 ) {
   const replyBtn = puzzelTimelineReplyButton(page);
-  const followUp = page.getByRole('link', { name: /Add Follow-Up/i }).first();
+  const followUp = puzzelAddFollowUpControl(page);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await replyBtn.isVisible().catch(() => false)) {
@@ -1160,7 +1248,7 @@ async function waitForPuzzelReplyOrFollowUp(
       return;
     }
     if (await followUp.isVisible().catch(() => false)) {
-      progress(opts, 'Ticket-Aktion: Add Follow-Up sichtbar');
+      progress(opts, 'Ticket-Aktion: Add Follow-Up / Composer-Einstieg sichtbar');
       return;
     }
     await sleep(350);
@@ -1228,9 +1316,7 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
   }
 
   const replyAlready = await puzzelTimelineReplyButton(page).isVisible({ timeout: 2000 }).catch(() => false);
-  const followUpAlready = await page
-    .getByRole('link', { name: /Add Follow-Up/i })
-    .first()
+  const followUpAlready = await puzzelAddFollowUpControl(page)
     .isVisible({ timeout: 500 })
     .catch(() => false);
   if (!replyAlready && !followUpAlready) {
@@ -1249,7 +1335,6 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
   await waitForPuzzelReplyOrFollowUp(page, opts);
 
   progress(opts, 'Ticket-Aktion: Antwort-Composer öffnen');
-  // Nach Zuweisung: Timeline-Kopf mit exakt „Reply“ (Button, pink) — vorher nur Follow-Up/Note.
   let opened = false;
   const primaryReply = puzzelTimelineReplyButton(page);
   if (await primaryReply.isVisible({ timeout: 4000 }).catch(() => false)) {
@@ -1261,33 +1346,46 @@ async function replyToTicket(page: Page, opts: PuzzelTicketActionOpts) {
     opened = await clickFirstVisible(
       page,
       [
+        'button:has-text("Reply")',
         'a:has-text("Reply")',
         'button:has-text("Reply all")',
         'a:has-text("Reply all")',
         'button:has-text("Antworten")',
         'a:has-text("Antworten")',
+        'button:has-text("Beantworten")',
+        'a:has-text("Beantworten")',
         '[aria-label*="Reply" i]',
+        '[aria-label*="Antwort" i]',
       ],
       3000,
     );
   }
   if (!opened) {
+    const followCtl = puzzelAddFollowUpControl(page);
+    if (await followCtl.isVisible({ timeout: 4000 }).catch(() => false)) {
+      await followCtl.scrollIntoViewIfNeeded().catch(() => {});
+      await followCtl.click({ force: true }).catch(() => {});
+      opened = true;
+    }
+  }
+  if (!opened) {
     opened = await clickFirstVisible(page, [
       'a:has-text("Add Follow-Up")',
       'button:has-text("Add Follow-Up")',
+      'a:has-text("Add follow-up")',
+      'button:has-text("Add follow-up")',
       'a:has-text("Follow-Up")',
       'button:has-text("Follow-Up")',
+      'a:has-text("Follow-up hinzufügen")',
+      'button:has-text("Follow-up hinzufügen")',
+      'a:has-text("Follow-Up hinzufügen")',
+      'button:has-text("Follow-Up hinzufügen")',
       '[aria-label*="Follow-Up" i]',
-      'a:has-text("Add follow-up")',
-    ], 6000);
+      '[aria-label*="follow-up" i]',
+    ], 5000);
   }
   if (!opened) {
-    const followUp = page.getByRole('link', { name: /Add Follow-Up/i }).first();
-    if (await followUp.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await followUp.scrollIntoViewIfNeeded().catch(() => {});
-      await followUp.click({ force: true }).catch(() => {});
-      opened = true;
-    }
+    opened = await tryOpenPuzzelReplyInAnyFrame(page, opts);
   }
   if (!opened) {
     throw new Error(
