@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   SettingsService,
   type EmmaLoginStored,
@@ -7,6 +8,10 @@ import {
   runEmmaSearchReservationAndOpenFolio,
   type EmmaOpenFolioProgressEvent,
 } from './emma-reservation-folio-open';
+import {
+  runEmmaFolioInvoiceWorkflow,
+  type EmmaFolioInvoiceCompanyInput,
+} from './emma-folio-invoice-workflow';
 import { emmaLaunchpadUrl, type EmmaLoginOpts } from './emma-scraper';
 import { EmmaBrowserSessionService } from './emma-session.service';
 
@@ -22,6 +27,9 @@ export type EmmaOpenReservationFolioResult = {
   url: string;
   title: string;
   durationMs: number;
+  /** Present when Folio invoice workflow requested a PDF and the UI cooperated. */
+  invoicePdfBase64?: string;
+  invoicePdfFileName?: string;
 };
 
 export type { EmmaOpenFolioProgressEvent } from './emma-reservation-folio-open';
@@ -39,6 +47,7 @@ export class EmmaService {
   constructor(
     private readonly settings: SettingsService,
     private readonly session: EmmaBrowserSessionService,
+    private readonly config: ConfigService,
   ) {}
 
   /** Read EMMA credential metadata for the admin UI (no plaintext secrets). */
@@ -100,6 +109,15 @@ export class EmmaService {
       checkInDate?: string | null;
       checkOutDate?: string | null;
       headless?: boolean;
+      /**
+       * Optional second phase on Folio Management: apply KI-extracted company data
+       * and/or try to download a PDF (semi-automatic pipeline — human still reviews in Puzzel).
+       */
+      invoiceWorkflow?: {
+        cancelExistingInvoices?: boolean;
+        companyBilling?: EmmaFolioInvoiceCompanyInput | null;
+        downloadPdf?: boolean;
+      };
     },
     onStep?: (event: EmmaOpenFolioProgressEvent) => void,
   ): Promise<EmmaOpenReservationFolioResult> {
@@ -131,7 +149,7 @@ export class EmmaService {
         await gotoLoggedIn(emmaLaunchpadUrl(opts));
         await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
         emit({ step: 'session_ready', message: 'Launchpad bereit.' });
-        return runEmmaSearchReservationAndOpenFolio(
+        const folio = await runEmmaSearchReservationAndOpenFolio(
           page,
           {
             shellSearch,
@@ -141,6 +159,54 @@ export class EmmaService {
           },
           onStep,
         );
+
+        const iw = body.invoiceWorkflow;
+        const hasCompany =
+          iw?.companyBilling &&
+          Object.values(iw.companyBilling).some(
+            (v) => typeof v === 'string' && v.trim().length > 0,
+          );
+        const wantsInvoiceWorkflow =
+          !!(iw && (iw.cancelExistingInvoices || iw.downloadPdf || hasCompany));
+        const invoiceWorkflowEnabled = this.config.get<boolean>(
+          'emma.invoiceWorkflowEnabled',
+          false,
+        );
+
+        if (wantsInvoiceWorkflow && !invoiceWorkflowEnabled) {
+          this.log.warn(
+            '[EMMA] Folio-Rechnungsworkflow übersprungen — EMMA_INVOICE_WORKFLOW_ENABLED ist nicht true.',
+          );
+          emit({
+            step: 'folio_invoice_wait',
+            message:
+              'Automatische Rechnungsbearbeitung in EMMA ist auf diesem Server deaktiviert (Umgebungsvariable EMMA_INVOICE_WORKFLOW_ENABLED). Folio wurde nur geöffnet.',
+          });
+          return folio;
+        }
+
+        if (wantsInvoiceWorkflow && invoiceWorkflowEnabled) {
+          const secrets = await this.settings.getEmmaLoginSecrets();
+          const inv = await runEmmaFolioInvoiceWorkflow(
+            page,
+            {
+              cancelExistingInvoices: iw.cancelExistingInvoices ?? false,
+              tillName: secrets?.tillName ?? undefined,
+              tillEmployeeCode: secrets?.operatorCode ?? undefined,
+              tillEmployeePassword: secrets?.operatorPassword ?? undefined,
+              companyBilling: iw.companyBilling ?? undefined,
+              downloadPdf: iw.downloadPdf ?? false,
+            },
+            onStep,
+          );
+          return {
+            ...folio,
+            invoicePdfBase64: inv.invoicePdfBase64,
+            invoicePdfFileName: inv.invoicePdfFileName,
+          };
+        }
+
+        return folio;
       },
       { headless: body.headless ?? true },
     );

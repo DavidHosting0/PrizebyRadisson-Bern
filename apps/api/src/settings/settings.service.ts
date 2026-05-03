@@ -27,6 +27,8 @@ export type EmmaLoginStored = {
   sapPassword?: string;
   operatorCode?: string;
   operatorPassword?: string;
+  /** Till line in Folio “Till and Employee” (e.g. FD1013 – David Eich). */
+  tillName?: string;
   baseUrl?: string;
 };
 
@@ -39,6 +41,7 @@ type EmmaLoginPersisted = {
   sapPasswordEnc?: string;
   operatorCode?: string;
   operatorPasswordEnc?: string;
+  tillName?: string;
   baseUrl?: string;
 };
 
@@ -278,6 +281,7 @@ export class SettingsService {
       operatorCode: persisted.operatorCode?.trim() || undefined,
       operatorPassword:
         this.cipher.decryptSafe(persisted.operatorPasswordEnc) ?? undefined,
+      tillName: persisted.tillName?.trim() || undefined,
       baseUrl: persisted.baseUrl?.trim() || undefined,
     };
   }
@@ -443,6 +447,7 @@ export class SettingsService {
       sapPasswordEnc: pickStr('sapPasswordEnc'),
       operatorCode: pickStr('operatorCode'),
       operatorPasswordEnc: pickStr('operatorPasswordEnc'),
+      tillName: pickStr('tillName'),
       baseUrl: pickStr('baseUrl'),
     };
   }
@@ -455,6 +460,10 @@ export class SettingsService {
     if (dto.adfsEmail !== undefined) next.adfsEmail = dto.adfsEmail.trim();
     if (dto.sapUser !== undefined) next.sapUser = dto.sapUser.trim();
     if (dto.operatorCode !== undefined) next.operatorCode = dto.operatorCode.trim();
+    if (dto.tillName !== undefined) {
+      const t = dto.tillName.trim();
+      next.tillName = t.length > 0 ? t : undefined;
+    }
     if (dto.baseUrl !== undefined) {
       const v = dto.baseUrl.trim();
       next.baseUrl = v.length > 0 ? v : undefined;
@@ -481,6 +490,7 @@ export class SettingsService {
       adfsEmail: p.adfsEmail?.trim() || null,
       sapUser: p.sapUser?.trim() || null,
       operatorCode: p.operatorCode?.trim() || null,
+      tillName: p.tillName?.trim() || null,
       baseUrl: p.baseUrl?.trim() || null,
       hasAdfsPassword: !!p.adfsPasswordEnc,
       hasTotpSecret: !!p.totpSecretEnc,

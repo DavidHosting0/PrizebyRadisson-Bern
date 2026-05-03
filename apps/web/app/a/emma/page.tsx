@@ -8,6 +8,7 @@ type EmmaMeta = {
   adfsEmail: string | null;
   sapUser: string | null;
   operatorCode: string | null;
+  tillName: string | null;
   baseUrl: string | null;
   hasAdfsPassword: boolean;
   hasTotpSecret: boolean;
@@ -23,6 +24,7 @@ type SavePayload = {
   sapPassword?: string;
   operatorCode?: string;
   operatorPassword?: string;
+  tillName?: string;
   baseUrl?: string;
 };
 
@@ -46,6 +48,7 @@ export default function AdminEmmaCredentialsPage() {
   const [sapUser, setSapUser] = useState('');
   const [sapPassword, setSapPassword] = useState('');
   const [operatorCode, setOperatorCode] = useState('');
+  const [tillName, setTillName] = useState('');
   const [operatorPassword, setOperatorPassword] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
 
@@ -54,6 +57,7 @@ export default function AdminEmmaCredentialsPage() {
       setAdfsEmail(metaQuery.data.adfsEmail ?? '');
       setSapUser(metaQuery.data.sapUser ?? '');
       setOperatorCode(metaQuery.data.operatorCode ?? '');
+      setTillName(metaQuery.data.tillName ?? '');
       setBaseUrl(metaQuery.data.baseUrl ?? '');
     }
   }, [metaQuery.data, metaQuery.isFetching]);
@@ -124,6 +128,9 @@ export default function AdminEmmaCredentialsPage() {
               if (sapPassword.length > 0) body.sapPassword = sapPassword;
               if (operatorCode.trim() !== (meta?.operatorCode ?? '')) {
                 body.operatorCode = operatorCode.trim();
+              }
+              if (tillName.trim() !== (meta?.tillName ?? '')) {
+                body.tillName = tillName.trim();
               }
               if (operatorPassword.length > 0) {
                 body.operatorPassword = operatorPassword;
@@ -261,6 +268,24 @@ export default function AdminEmmaCredentialsPage() {
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
                   placeholder="z. B. 47032"
                 />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Till (Folio / Rechnung)
+                </span>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={tillName}
+                  onChange={(e) => setTillName(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  placeholder="z. B. FD1013 - David Eich"
+                />
+                <p className="mt-1 text-xs text-ink-muted">
+                  Exakter Text wie in der EMMA-Combobox „Tills“ (Till and Employee nach Cancel
+                  Invoice).
+                </p>
               </label>
 
               <label className="block">

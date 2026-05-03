@@ -8,6 +8,10 @@ import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 
+/** Gleiche Schaltung wie API `EMMA_INVOICE_WORKFLOW_ENABLED` — ohne `true` keine Rechnungs-Checkboxen. */
+const EMMA_INVOICE_WORKFLOW_UI =
+  process.env.NEXT_PUBLIC_EMMA_INVOICE_WORKFLOW_ENABLED === 'true';
+
 type PuzzelTicketPrizeCategory =
   | 'SPAM'
   | 'RECHNUNG_ANGEFRAGT'
@@ -432,7 +436,26 @@ const EMMA_STEP_TITLE_DE: Record<string, string> = {
   search_go: 'Suche ausführen',
   open_reservation_row: 'Reservation öffnen',
   open_folio_management: 'Folio Management',
+  folio_invoice_wait: 'Folio: Ansicht',
+  folio_invoice_cancel: 'Folio: Cancel Invoice',
+  folio_invoice_cancel_dialog: 'Folio: Rechnungen wählen',
+  folio_invoice_cancel_reason: 'Folio: Stornogrund',
+  folio_invoice_cancel_till: 'Folio: Till & Mitarbeiter',
+  folio_invoice_nav: 'Folio: Rechnung / Billing',
+  folio_invoice_edit_open: 'Folio: Bearbeiten',
+  folio_invoice_fill_company: 'Folio: Firmendaten',
+  folio_invoice_save: 'Folio: Speichern',
+  folio_invoice_download_pdf: 'Folio: PDF',
 };
+
+function base64PdfToFile(base64: string, fileName: string): File {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return new File([bytes], fileName || 'invoice.pdf', { type: 'application/pdf' });
+}
 
 function initials(value: string | null | undefined) {
   const text = value?.trim() || '?';
@@ -692,7 +715,21 @@ export default function ReceptionPuzzlePage() {
   const [emmaSteps, setEmmaSteps] = useState<{ step: string; message: string }[]>([]);
   const [emmaBusy, setEmmaBusy] = useState(false);
   const [emmaError, setEmmaError] = useState<string | null>(null);
-  const [emmaDone, setEmmaDone] = useState<{ url: string; title: string; durationMs: number } | null>(null);
+  const [emmaDone, setEmmaDone] = useState<{
+    url: string;
+    title: string;
+    durationMs: number;
+    invoicePdfFileName?: string;
+    invoicePdfBase64?: string;
+  } | null>(null);
+  const [emmaPrepareInvoice, setEmmaPrepareInvoice] = useState(false);
+  const [emmaCancelInvoiceFirst, setEmmaCancelInvoiceFirst] = useState(false);
+
+  useEffect(() => {
+    if (!EMMA_INVOICE_WORKFLOW_UI) return;
+    const cat = analysisQuery.data?.prizeCategory;
+    setEmmaCancelInvoiceFirst(cat === 'RECHNUNGSKORREKTUR');
+  }, [expandedId, analysisQuery.data?.prizeCategory]);
 
   useEffect(() => {
     setReplyText('');
@@ -1077,6 +1114,16 @@ export default function ReceptionPuzzlePage() {
                             onClick={async () => {
                               const payload = buildEmmaOpenFolioPayload(selectedTicket, analysisQuery.data);
                               if (!payload) return;
+                              const extracted =
+                                analysisQuery.data?.companyInvoiceBillingDetails?.extracted ?? null;
+                              const invoiceWorkflow =
+                                EMMA_INVOICE_WORKFLOW_UI && emmaPrepareInvoice
+                                ? {
+                                    cancelExistingInvoices: emmaCancelInvoiceFirst,
+                                    companyBilling: extracted ?? undefined,
+                                    downloadPdf: true,
+                                  }
+                                : undefined;
                               setEmmaBusy(true);
                               setEmmaError(null);
                               setEmmaDone(null);
@@ -1084,7 +1131,11 @@ export default function ReceptionPuzzlePage() {
                               try {
                                 await postNdjsonStream(
                                   '/emma/reservation/open-folio-stream',
-                                  { ...payload, headless: true },
+                                  {
+                                    ...payload,
+                                    headless: true,
+                                    ...(invoiceWorkflow ? { invoiceWorkflow } : {}),
+                                  },
                                   (line) => {
                                     if (line.type === 'step') {
                                       setEmmaSteps((prev) => [
@@ -1096,6 +1147,8 @@ export default function ReceptionPuzzlePage() {
                                         url: line.url,
                                         title: line.title,
                                         durationMs: line.durationMs,
+                                        invoicePdfBase64: line.invoicePdfBase64,
+                                        invoicePdfFileName: line.invoicePdfFileName,
                                       });
                                       setEmmaBusy(false);
                                     } else if (line.type === 'error') {
@@ -1113,6 +1166,37 @@ export default function ReceptionPuzzlePage() {
                             {emmaBusy ? 'EMMA läuft…' : 'Puzzel-Anfrage in Emma suchen'}
                           </Button>
                         </div>
+                        {emmaPayload && EMMA_INVOICE_WORKFLOW_UI && (
+                          <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs text-indigo-950">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-4 w-4 rounded border-indigo-300 text-action focus:ring-action"
+                              checked={emmaPrepareInvoice}
+                              onChange={(e) => setEmmaPrepareInvoice(e.target.checked)}
+                            />
+                            <span>
+                              Danach Rechnung in EMMA vorbereiten: KI-Firmendaten eintragen (falls erkannt) und PDF
+                              holen — <strong>bitte in EMMA prüfen</strong>; PDF kann als Anhang in die Antwort
+                              übernommen werden. Senden wie bisher nur manuell.
+                            </span>
+                          </label>
+                        )}
+                        {emmaPayload && EMMA_INVOICE_WORKFLOW_UI && emmaPrepareInvoice && (
+                          <label className="mt-2 ml-6 flex cursor-pointer items-start gap-2 text-xs text-indigo-950">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-4 w-4 rounded border-indigo-300 text-action focus:ring-action"
+                              checked={emmaCancelInvoiceFirst}
+                              onChange={(e) => setEmmaCancelInvoiceFirst(e.target.checked)}
+                            />
+                            <span>
+                              Zuerst{' '}
+                              <strong className="font-semibold">Cancel Invoice</strong> in EMMA (bestehende Rechnung
+                              stornieren) — typisch bei Rechnungskorrektur. Standard an, wenn die KI-Kategorie
+                              „Rechnungskorrektur“ ist.
+                            </span>
+                          </label>
+                        )}
                         {!emmaPayload && (
                           <p className="mt-2 text-xs text-indigo-900/70">
                             {analysisQuery.isLoading
@@ -1140,9 +1224,26 @@ export default function ReceptionPuzzlePage() {
                               ))}
                             </ol>
                             {emmaDone && (
-                              <p className="mt-2 border-t border-indigo-100 pt-2 text-[11px] font-medium text-emerald-800">
-                                Fertig in {(emmaDone.durationMs / 1000).toFixed(1)}s — {emmaDone.title}
-                              </p>
+                              <div className="mt-2 space-y-2 border-t border-indigo-100 pt-2 text-[11px] font-medium text-emerald-800">
+                                <p>
+                                  Fertig in {(emmaDone.durationMs / 1000).toFixed(1)}s — {emmaDone.title}
+                                </p>
+                                {emmaDone.invoicePdfBase64 && emmaDone.invoicePdfFileName && (
+                                  <button
+                                    type="button"
+                                    className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100"
+                                    onClick={() => {
+                                      const f = base64PdfToFile(
+                                        emmaDone.invoicePdfBase64!,
+                                        emmaDone.invoicePdfFileName!,
+                                      );
+                                      setReplyFiles((prev) => [...prev, f].slice(0, 10));
+                                    }}
+                                  >
+                                    PDF als Anhang übernehmen ({emmaDone.invoicePdfFileName})
+                                  </button>
+                                )}
+                              </div>
                             )}
                             {emmaError && (
                               <p className="mt-2 text-[11px] font-medium text-rose-800">{emmaError}</p>
@@ -1545,7 +1646,7 @@ function AiSummaryCard({
   ).filter((k) => cib.fieldsRequestedOnInvoice[k]);
 
   return (
-    <section className="sticky top-0 z-20 rounded-2xl border border-action/35 bg-surface/95 p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/[0.04] backdrop-blur-md supports-[backdrop-filter]:bg-surface/90">
+    <section className="relative rounded-2xl border border-action/35 bg-surface p-4 shadow-sm ring-1 ring-black/[0.04]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">

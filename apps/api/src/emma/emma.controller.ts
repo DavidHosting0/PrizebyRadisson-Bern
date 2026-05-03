@@ -17,6 +17,10 @@ import {
   EmmaService,
 } from './emma.service';
 
+/**
+ * EMMA läuft nur nach expliziten authentifizierten Requests (Admin/Reception).
+ * Beim Server-Start oder per Cron wird nichts gestartet; Chromium öffnet erst bei einem dieser Endpunkte.
+ */
 @Controller('emma')
 export class EmmaController {
   constructor(private readonly emma: EmmaService) {}
@@ -66,6 +70,11 @@ export class EmmaController {
       checkInDate?: string | null;
       checkOutDate?: string | null;
       headless?: boolean;
+      invoiceWorkflow?: {
+        cancelExistingInvoices?: boolean;
+        companyBilling?: Record<string, string | null | undefined> | null;
+        downloadPdf?: boolean;
+      };
     },
   ): Promise<EmmaOpenReservationFolioResult> {
     return this.emma.openReservationFolio(body);
@@ -89,6 +98,11 @@ export class EmmaController {
       checkInDate?: string | null;
       checkOutDate?: string | null;
       headless?: boolean;
+      invoiceWorkflow?: {
+        cancelExistingInvoices?: boolean;
+        companyBilling?: Record<string, string | null | undefined> | null;
+        downloadPdf?: boolean;
+      };
     },
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
@@ -107,6 +121,8 @@ export class EmmaController {
           url: result.url,
           title: result.title,
           durationMs: result.durationMs,
+          invoicePdfFileName: result.invoicePdfFileName,
+          invoicePdfBase64: result.invoicePdfBase64,
         })}\n`,
       );
     } catch (err: unknown) {

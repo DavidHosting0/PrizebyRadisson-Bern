@@ -30,7 +30,18 @@ export type EmmaOpenFolioProgressStep =
   | 'fill_date_filters'
   | 'search_go'
   | 'open_reservation_row'
-  | 'open_folio_management';
+  | 'open_folio_management'
+  /** After Folio Management opens: invoice / company billing automation (semi-automatic pipeline). */
+  | 'folio_invoice_wait'
+  | 'folio_invoice_cancel'
+  | 'folio_invoice_cancel_dialog'
+  | 'folio_invoice_cancel_reason'
+  | 'folio_invoice_cancel_till'
+  | 'folio_invoice_nav'
+  | 'folio_invoice_edit_open'
+  | 'folio_invoice_fill_company'
+  | 'folio_invoice_save'
+  | 'folio_invoice_download_pdf';
 
 export type EmmaOpenFolioProgressEvent = {
   step: EmmaOpenFolioProgressStep;

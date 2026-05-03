@@ -10,7 +10,8 @@ import { EmmaBrowserSessionService } from './emma-session.service';
  * This module owns:
  *   - the four-stage login automation (`emma-scraper.ts`)
  *   - a long-lived Playwright session (`emma-session.service.ts`)
- *   - the high-level service used by controllers/cron jobs (`emma.service.ts`)
+ *   - the high-level service used by HTTP controllers only — no schedulers call EMMA
+ *     (`emma.service.ts`)
  *
  * Future EMMA actions (room status, reservations, check-in/out, etc.) should
  * be added as new methods on `EmmaService` reusing the same session service.

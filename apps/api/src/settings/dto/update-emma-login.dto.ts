@@ -44,6 +44,12 @@ export class UpdateEmmaLoginDto {
   @MaxLength(512)
   operatorPassword?: string;
 
+  /** Till for Folio invoice cancellation / payment (exact label from EMMA combobox). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  tillName?: string;
+
   /** Optional override for the EMMA Fiori launchpad URL. */
   @IsOptional()
   @IsUrl({ require_tld: false })

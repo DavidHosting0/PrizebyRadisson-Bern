@@ -109,7 +109,15 @@ export async function api<T>(
 /** NDJSON stream from POST (one JSON object per line). */
 export type EmmaOpenFolioStreamLine =
   | { type: 'step'; step: string; message: string }
-  | { type: 'done'; ok: true; url: string; title: string; durationMs: number }
+  | {
+      type: 'done';
+      ok: true;
+      url: string;
+      title: string;
+      durationMs: number;
+      invoicePdfFileName?: string;
+      invoicePdfBase64?: string;
+    }
   | { type: 'error'; message: string };
 
 /**
