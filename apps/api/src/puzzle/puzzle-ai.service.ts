@@ -47,6 +47,109 @@ export type PuzzelInvoiceAction =
 
 export type PuzzelTicketUrgency = 'critical' | 'high' | 'normal' | 'low';
 
+/**
+ * Whether the requester wants company / full billing details printed on the invoice,
+ * and which parts they asked for (Firmenname, Straße, Hausnummer, PLZ, Ort, Land, USt/VAT).
+ */
+export type CompanyBillingOnInvoiceIntent = 'yes' | 'no' | 'unclear' | 'not_mentioned';
+
+export type CompanyInvoiceBillingDetails = {
+  intent: CompanyBillingOnInvoiceIntent;
+  /** True when the guest explicitly asked for this element to appear (or be corrected) on the invoice. */
+  fieldsRequestedOnInvoice: {
+    companyName: boolean;
+    street: boolean;
+    houseNumber: boolean;
+    postalCode: boolean;
+    city: boolean;
+    country: boolean;
+    vatNumber: boolean;
+  };
+  /** Verbatim from the ticket when stated; otherwise null. */
+  extracted: {
+    companyName: string | null;
+    street: string | null;
+    houseNumber: string | null;
+    postalCode: string | null;
+    city: string | null;
+    country: string | null;
+    vatNumber: string | null;
+  };
+};
+
+export function defaultCompanyInvoiceBillingDetails(): CompanyInvoiceBillingDetails {
+  return {
+    intent: 'not_mentioned',
+    fieldsRequestedOnInvoice: {
+      companyName: false,
+      street: false,
+      houseNumber: false,
+      postalCode: false,
+      city: false,
+      country: false,
+      vatNumber: false,
+    },
+    extracted: {
+      companyName: null,
+      street: null,
+      houseNumber: null,
+      postalCode: null,
+      city: null,
+      country: null,
+      vatNumber: null,
+    },
+  };
+}
+
+/** When stored analysis rows lack company billing extraction. */
+export function mergeCompanyInvoiceBillingDetails(
+  raw: unknown,
+): CompanyInvoiceBillingDetails {
+  const base = defaultCompanyInvoiceBillingDetails();
+  if (!raw || typeof raw !== 'object') return base;
+  const o = raw as Record<string, unknown>;
+  const intent =
+    o.intent === 'yes' || o.intent === 'no' || o.intent === 'unclear' || o.intent === 'not_mentioned'
+      ? o.intent
+      : base.intent;
+  const fr = o.fieldsRequestedOnInvoice;
+  const fields =
+    fr && typeof fr === 'object'
+      ? (fr as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const ex = o.extracted;
+  const ext = ex && typeof ex === 'object' ? (ex as Record<string, unknown>) : {};
+
+  const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+  const ns = (v: unknown): string | null => {
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    return t.length > 0 ? t : null;
+  };
+
+  return {
+    intent,
+    fieldsRequestedOnInvoice: {
+      companyName: bool(fields.companyName, base.fieldsRequestedOnInvoice.companyName),
+      street: bool(fields.street, base.fieldsRequestedOnInvoice.street),
+      houseNumber: bool(fields.houseNumber, base.fieldsRequestedOnInvoice.houseNumber),
+      postalCode: bool(fields.postalCode, base.fieldsRequestedOnInvoice.postalCode),
+      city: bool(fields.city, base.fieldsRequestedOnInvoice.city),
+      country: bool(fields.country, base.fieldsRequestedOnInvoice.country),
+      vatNumber: bool(fields.vatNumber, base.fieldsRequestedOnInvoice.vatNumber),
+    },
+    extracted: {
+      companyName: ns(ext.companyName) ?? base.extracted.companyName,
+      street: ns(ext.street) ?? base.extracted.street,
+      houseNumber: ns(ext.houseNumber) ?? base.extracted.houseNumber,
+      postalCode: ns(ext.postalCode) ?? base.extracted.postalCode,
+      city: ns(ext.city) ?? base.extracted.city,
+      country: ns(ext.country) ?? base.extracted.country,
+      vatNumber: ns(ext.vatNumber) ?? base.extracted.vatNumber,
+    },
+  };
+}
+
 /** When stored analysis rows lack `invoiceAction`, infer from legacy `requestType`. */
 export function defaultInvoiceActionForRequestType(
   requestType: PuzzelTicketRequestType,
@@ -73,12 +176,17 @@ export type PuzzelTicketAiAnalysis = {
   urgencyLevel: PuzzelTicketUrgency;
   summary: string;
   bookingDetails: PuzzelTicketBookingDetails;
+  /**
+   * Firma / vollständige Rechnungsadresse auf der Rechnung (inkl. USt-IdNr.),
+   * sofern der Gast das anfragt oder Daten liefert.
+   */
+  companyInvoiceBillingDetails: CompanyInvoiceBillingDetails;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
 };
 
 /** Bumps when AI JSON schema / semantics change so cached analyses are invalidated. */
-export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v4';
+export const PUZZEL_AI_ANALYSIS_SCHEMA_VERSION = 'v5';
 
 /**
  * A SHA-256 fingerprint over the messages used as input to the AI. Used to
@@ -146,13 +254,28 @@ Dein Job (Entity-Extraktion, NER-Stil):
    • "normal" — Standardfall
    • "low" — kein Zeitdruck erkennbar
 
-6. "bookingDetails": Extrahiere nur was im Text steht; sonst null (nicht raten). bookingPlatform: z. B. "Booking.com", "Expedia", "HRS", "Direct / Hotel", "Corporate", "OTA (sonstiges)", oder null wenn nicht erkennbar.
+6. "companyInvoiceBillingDetails" — will der **Anfragesteller**, dass die Rechnung **Firmen- bzw. vollständige Rechnungsdaten** enthält (nicht nur Privat/Person)?
+   **intent** (genau eine):
+   • "yes" — klar: Rechnung soll auf Firma / mit Firmenangaben / Geschäftsadresse / USt-IdNr. (UID, VAT ID, MWST-Nr.) ausgestellt oder korrigiert werden
+     Signale DE: „auf die Firma“, „Firmenname auf Rechnung“, „Rechnungsadresse“, „USt-Id“, „MwSt-Nr.“, „buchhaltungsrelevant“
+     Signale EN: „company details on invoice“, „business address“, „VAT number on the invoice“
+   • "no" — eindeutig nur Privatperson / keine Firmenrechnung gewünscht, oder ausdrücklich keine solchen Angaben nötig
+   • "unclear" — widersprüchlich oder zu wenig Kontext
+   • "not_mentioned" — kein Bezug zu Firma vs. Privat oder Rechnungsadresse
 
-7. "summary" — **eine** prägnante Zeile (max. 140 Zeichen) für die Rezeption: was ist zu tun? Soll erkennbar machen ob **Versand**, **Korrektur** oder **Sonstiges**.
+   **fieldsRequestedOnInvoice**: pro Feld **true**, wenn der Gast **explizit** will, dass dieses Element **auf der Rechnung steht oder korrigiert wird** — sonst **false**:
+   companyName (Firmenname), street (Straße), houseNumber (Hausnummer), postalCode (PLZ), city (Stadt/Ort), country (Land), vatNumber (USt-IdNr./VAT)
 
-8. "rationale" — ein Absatz auf Deutsch oder Englisch (passend zur Hauptsprache des Tickets), der die Einordnung begründet; nenne kurz **warum** diese invoiceAction passt.
+   **extracted**: nur wortgetreu aus dem Text; nichts erfinden; null wenn nicht genannt.
+   Straße und Hausnummer trennen wenn im Text klar getrennt (z. B. „Musterstrasse 12a“ → street „Musterstrasse“, houseNumber „12a“); sonst ggf. volle Adresszeile in street und houseNumber null.
 
-9. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
+7. "bookingDetails": Extrahiere nur was im Text steht; sonst null (nicht raten). bookingPlatform: z. B. "Booking.com", "Expedia", "HRS", "Direct / Hotel", "Corporate", "OTA (sonstiges)", oder null wenn nicht erkennbar.
+
+8. "summary" — **eine** prägnante Zeile (max. 140 Zeichen) für die Rezeption: was ist zu tun? Wenn Firmenrechnung/USt-Thema zentral ist, kurz erwähnen.
+
+9. "rationale" — ein Absatz auf Deutsch oder Englisch (passend zur Hauptsprache des Tickets), der die Einordnung begründet; bei invoiceAction/Korrektur kurz sagen ob **Firmendaten auf Rechnung** relevant sind.
+
+10. "confidence": "high" | "medium" | "low" — Qualität deiner Extraktion, nicht Dringlichkeit.
 
 Regeln:
 - Nichts erfinden. Unklare Felder = null.
@@ -196,6 +319,61 @@ const ANALYSIS_JSON_SCHEMA = {
         enum: ['critical', 'high', 'normal', 'low'],
       },
       summary: { type: 'string' },
+      companyInvoiceBillingDetails: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          intent: {
+            type: 'string',
+            enum: ['yes', 'no', 'unclear', 'not_mentioned'],
+          },
+          fieldsRequestedOnInvoice: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              companyName: { type: 'boolean' },
+              street: { type: 'boolean' },
+              houseNumber: { type: 'boolean' },
+              postalCode: { type: 'boolean' },
+              city: { type: 'boolean' },
+              country: { type: 'boolean' },
+              vatNumber: { type: 'boolean' },
+            },
+            required: [
+              'companyName',
+              'street',
+              'houseNumber',
+              'postalCode',
+              'city',
+              'country',
+              'vatNumber',
+            ],
+          },
+          extracted: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              companyName: { type: ['string', 'null'] },
+              street: { type: ['string', 'null'] },
+              houseNumber: { type: ['string', 'null'] },
+              postalCode: { type: ['string', 'null'] },
+              city: { type: ['string', 'null'] },
+              country: { type: ['string', 'null'] },
+              vatNumber: { type: ['string', 'null'] },
+            },
+            required: [
+              'companyName',
+              'street',
+              'houseNumber',
+              'postalCode',
+              'city',
+              'country',
+              'vatNumber',
+            ],
+          },
+        },
+        required: ['intent', 'fieldsRequestedOnInvoice', 'extracted'],
+      },
       bookingDetails: {
         type: 'object',
         additionalProperties: false,
@@ -232,6 +410,7 @@ const ANALYSIS_JSON_SCHEMA = {
       'issueTypeLabel',
       'urgencyLevel',
       'summary',
+      'companyInvoiceBillingDetails',
       'bookingDetails',
       'rationale',
       'confidence',
@@ -395,6 +574,9 @@ export class PuzzleAiService {
             .filter((s): s is string => s.length > 0)
         : [],
     };
+    const companyInvoiceBillingDetails = mergeCompanyInvoiceBillingDetails(
+      o.companyInvoiceBillingDetails,
+    );
     const rationale =
       typeof o.rationale === 'string' && o.rationale.trim().length > 0
         ? o.rationale.trim()
@@ -412,6 +594,7 @@ export class PuzzleAiService {
       urgencyLevel,
       summary,
       bookingDetails,
+      companyInvoiceBillingDetails,
       rationale,
       confidence,
     };

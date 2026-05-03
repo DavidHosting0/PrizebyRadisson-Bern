@@ -15,6 +15,7 @@ import {
   PuzzleAiService,
   defaultInvoiceActionForRequestType,
   fingerprintMessages,
+  mergeCompanyInvoiceBillingDetails,
   type PuzzelInvoiceAction,
   type PuzzelTicketAiAnalysis,
   type PuzzelTicketUrgency,
@@ -31,6 +32,7 @@ export type PuzzelTicketAnalysisResult = {
   urgencyLevel: PuzzelTicketUrgency;
   summary: string;
   bookingDetails: PuzzelTicketAiAnalysis['bookingDetails'];
+  companyInvoiceBillingDetails: PuzzelTicketAiAnalysis['companyInvoiceBillingDetails'];
   rationale: string;
   confidence: PuzzelTicketAiAnalysis['confidence'];
   model: string;
@@ -468,6 +470,7 @@ export class PuzzleService {
       issueTypeLabel: analysis.issueTypeLabel,
       urgencyLevel: analysis.urgencyLevel,
       invoiceAction: analysis.invoiceAction,
+      companyInvoiceBillingDetails: analysis.companyInvoiceBillingDetails,
     } as unknown as Prisma.InputJsonValue;
     return this.prisma.puzzelTicketAnalysis.upsert({
       where: { ticketId },
@@ -502,6 +505,7 @@ export class PuzzleService {
       issueTypeLabel?: string;
       urgencyLevel?: PuzzelTicketUrgency;
       invoiceAction?: PuzzelInvoiceAction;
+      companyInvoiceBillingDetails?: unknown;
     };
     const reqType = row.requestType as PuzzelTicketAiAnalysis['requestType'];
     const invoiceActions: PuzzelInvoiceAction[] = [
@@ -547,6 +551,9 @@ export class PuzzleService {
         bookingPlatform: bd.bookingPlatform ?? null,
         otherDetails: Array.isArray(bd.otherDetails) ? bd.otherDetails : [],
       },
+      companyInvoiceBillingDetails: mergeCompanyInvoiceBillingDetails(
+        det.companyInvoiceBillingDetails,
+      ),
       rationale: det.rationale ?? '',
       confidence: det.confidence ?? 'medium',
       model: row.model,

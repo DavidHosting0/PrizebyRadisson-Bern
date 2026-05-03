@@ -56,6 +56,30 @@ type PuzzelInvoiceAction =
   | 'other_billing'
   | 'unclear';
 
+type CompanyBillingOnInvoiceIntent = 'yes' | 'no' | 'unclear' | 'not_mentioned';
+
+type CompanyInvoiceBillingDetails = {
+  intent: CompanyBillingOnInvoiceIntent;
+  fieldsRequestedOnInvoice: {
+    companyName: boolean;
+    street: boolean;
+    houseNumber: boolean;
+    postalCode: boolean;
+    city: boolean;
+    country: boolean;
+    vatNumber: boolean;
+  };
+  extracted: {
+    companyName: string | null;
+    street: string | null;
+    houseNumber: string | null;
+    postalCode: string | null;
+    city: string | null;
+    country: string | null;
+    vatNumber: string | null;
+  };
+};
+
 type PuzzelTicketAnalysis = {
   id: string;
   ticketId: string;
@@ -74,6 +98,7 @@ type PuzzelTicketAnalysis = {
     bookingPlatform: string | null;
     otherDetails: string[];
   };
+  companyInvoiceBillingDetails: CompanyInvoiceBillingDetails;
   rationale: string;
   confidence: 'high' | 'medium' | 'low';
   model: string;
@@ -141,6 +166,23 @@ const URGENCY_TONE: Record<PuzzelTicketUrgency, string> = {
 
 const MISSING_FIELD = 'Not detected';
 
+const COMPANY_BILLING_INTENT_LABEL: Record<CompanyBillingOnInvoiceIntent, string> = {
+  yes: 'Guest wants company / full billing details on the invoice',
+  no: 'Private billing only / no company invoice requested',
+  unclear: 'Unclear whether company details belong on the invoice',
+  not_mentioned: 'Not mentioned',
+};
+
+const COMPANY_BILLING_FIELD_LABEL: Record<keyof CompanyInvoiceBillingDetails['fieldsRequestedOnInvoice'], string> = {
+  companyName: 'Company name',
+  street: 'Street',
+  houseNumber: 'No.',
+  postalCode: 'Postal code',
+  city: 'City',
+  country: 'Country',
+  vatNumber: 'VAT / UID',
+};
+
 function mergeIntervals(intervals: { start: number; end: number }[]) {
   if (intervals.length === 0) return [];
   const sorted = [...intervals].sort((a, b) => a.start - b.start);
@@ -172,6 +214,12 @@ function highlightTicketMessageBody(
   if (analysis?.bookingDetails) {
     const bd = analysis.bookingDetails;
     for (const v of [bd.guestName, bd.reservationNumber, bd.invoiceNumber, bd.roomNumber]) {
+      if (typeof v === 'string' && v.trim().length >= 2) phrases.push(v.trim());
+    }
+  }
+  const ex = analysis?.companyInvoiceBillingDetails?.extracted;
+  if (ex) {
+    for (const v of Object.values(ex)) {
       if (typeof v === 'string' && v.trim().length >= 2) phrases.push(v.trim());
     }
   }
@@ -1006,6 +1054,13 @@ function AiSummaryCard({
 
   const missing = (v: string) => v === MISSING_FIELD;
 
+  const cib = analysis.companyInvoiceBillingDetails;
+  const requestedOnInvoice = (
+    Object.keys(cib.fieldsRequestedOnInvoice) as Array<
+      keyof CompanyInvoiceBillingDetails['fieldsRequestedOnInvoice']
+    >
+  ).filter((k) => cib.fieldsRequestedOnInvoice[k]);
+
   return (
     <section className="sticky top-0 z-20 rounded-2xl border border-action/35 bg-surface/95 p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/[0.04] backdrop-blur-md supports-[backdrop-filter]:bg-surface/90">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1077,6 +1132,58 @@ function AiSummaryCard({
                 }`}
               >
                 {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-border bg-surface-muted/35 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+          Company / invoice address (AI)
+        </p>
+        <p className="mt-2 text-sm font-medium leading-snug text-ink">
+          {COMPANY_BILLING_INTENT_LABEL[cib.intent]}
+        </p>
+        {requestedOnInvoice.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {requestedOnInvoice.map((k) => (
+              <span
+                key={k}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900"
+              >
+                On invoice: {COMPANY_BILLING_FIELD_LABEL[k]}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-ink-muted">
+            No line-items explicitly flagged as “must appear on invoice” (may still be a firm booking — see intent above).
+          </p>
+        )}
+        <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {(
+            Object.keys(COMPANY_BILLING_FIELD_LABEL) as Array<
+              keyof typeof COMPANY_BILLING_FIELD_LABEL
+            >
+          ).map((key) => (
+            <div
+              key={key}
+              className={`rounded-lg border px-3 py-2 ${
+                missing(fmt(cib.extracted[key]))
+                  ? 'border-dashed border-border bg-surface/60'
+                  : 'border-border bg-surface'
+              }`}
+            >
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                {COMPANY_BILLING_FIELD_LABEL[key]} (from message)
+              </dt>
+              <dd
+                className={`mt-0.5 break-words text-sm font-medium ${
+                  missing(fmt(cib.extracted[key])) ? 'text-ink-muted italic' : 'text-ink'
+                }`}
+              >
+                {fmt(cib.extracted[key])}
               </dd>
             </div>
           ))}
