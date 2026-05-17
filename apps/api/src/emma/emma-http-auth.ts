@@ -83,10 +83,22 @@ function isMfaPage(html: string, title: string, url = ''): boolean {
   return isPrivacyIdeaMfaPage(html, url) || isLegacyRhMfaPage(html, title);
 }
 
-function isSapLogonPage(html: string): boolean {
+/** SAP session active — launchpad URL after successful logon (HAR: ?sap-client=…). */
+function isSapSessionEstablished(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.searchParams.has('sap-client') && /\/sap\/bc\/ui2\/flp/i.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function isSapLogonPage(html: string, url: string): boolean {
+  if (isSapSessionEstablished(url)) return false;
   return (
-    /sap-user|name=["']sap-user["']/i.test(html) &&
-    /Log On|sap-password/i.test(html)
+    /name=["']sap-password["']/i.test(html) &&
+    /name=["']sap-user["']/i.test(html) &&
+    /name=["']sap-login-XSRF["']/i.test(html)
   );
 }
 
@@ -122,7 +134,7 @@ function isLoginIncomplete(url: string, html: string, title: string): boolean {
     isAdfsFormsLoginPage(html, url) ||
     isMfaPage(html, title, url) ||
     isAdfsSamlResponsePage(html, url) ||
-    isSapLogonPage(html)
+    isSapLogonPage(html, url)
   ) {
     return true;
   }
@@ -145,6 +157,15 @@ function extractAdfsLoginError(html: string): string | null {
     /loginMessage["']?\s*[^>]*>([^<]{4,200})/i.exec(html);
   const msg = m?.[1]?.replace(/\s+/g, ' ').trim();
   return msg && /invalid|incorrect|failed|fehlgeschlagen|error/i.test(msg) ? msg : null;
+}
+
+function extractSapLoginError(html: string): string | null {
+  const m =
+    /class=["'][^"']*sapUiMsgError[^"']*["'][^>]*>([^<]+)/i.exec(html) ??
+    /id=["']LOGIN_ERROR_BLOCK["'][^>]*>([\s\S]{0,400})/i.exec(html) ??
+    /loginErrorMessage["']?\s*[^>]*>([^<]{4,300})/i.exec(html);
+  const msg = m?.[1]?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return msg && msg.length > 3 ? msg : null;
 }
 
 function extractSapLoginXsrf(html: string): string | null {
@@ -254,6 +275,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   let page = await emmaHttpFetch(jar, launchUrl);
   let samlRelayCount = 0;
   let adfsCredentialsPosted = false;
+  let sapCredentialsPosted = false;
 
   for (let round = 0; round < MAX_LOGIN_ROUNDS; round++) {
     const stepHint = page.url.replace(/^https?:\/\//, '').slice(0, 72);
@@ -373,9 +395,22 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       }
     }
 
-    if (isSapLogonPage(page.html)) {
+    if (isSapSessionEstablished(page.url) && !isSapLogonPage(page.html, page.url)) {
+      opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — Session aktiv');
+      break;
+    }
+
+    if (isSapLogonPage(page.html, page.url)) {
       if (!opts.sapUser?.trim() || !opts.sapPassword) {
         throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
+      }
+      if (sapCredentialsPosted) {
+        const err = extractSapLoginError(page.html);
+        throw new Error(
+          err
+            ? `EMMA HTTP Stage 3: SAP abgelehnt — ${err}`
+            : 'EMMA HTTP Stage 3: SAP-Logon wiederholt sich (Benutzer/Passwort in Admin → EMMA prüfen).',
+        );
       }
       opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon');
       const xsrf = extractSapLoginXsrf(page.html);
@@ -383,11 +418,14 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         throw new Error('EMMA HTTP Stage 3: sap-login-XSRF missing on logon page.');
       }
       const sapClient = sapClientFromOpts(opts);
+      const sapAction = extractFormAction(page.html, page.url) ?? page.url;
+      const sapHidden = extractHiddenFields(page.html);
+      sapCredentialsPosted = true;
       page = await postForm(
         jar,
-        page.url,
+        sapAction,
         {
-          ...extractHiddenFields(page.html),
+          ...sapHidden,
           'sap-system-login-oninputprocessing': 'onLogin',
           'sap-urlscheme': '',
           'sap-system-login': 'onLogin',
@@ -398,12 +436,19 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
           'sap-login-XSRF': xsrf,
           'sap-system-login-cookie_disabled': '',
           'sap-hash': '',
-          'hidden_message_to_show': '',
           'sap-user': opts.sapUser.trim(),
           'sap-password': opts.sapPassword,
         },
         page.url,
       );
+      if (isSapSessionEstablished(page.url)) {
+        opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
+        break;
+      }
+      const sapErr = extractSapLoginError(page.html);
+      if (sapErr) {
+        throw new Error(`EMMA HTTP Stage 3: SAP abgelehnt — ${sapErr}`);
+      }
       await sleep(2000);
       continue;
     }
