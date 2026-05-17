@@ -40,10 +40,17 @@ export class RoomsService {
     this.emma?.scheduleRoomStatusSync(source);
   }
 
+  private emmaOnRoomsViewed(source: string) {
+    this.emma?.scheduleRoomStatusSyncOnView(source);
+  }
+
   async findAll(
     user: User,
     query: { floor?: number; status?: string; mine?: boolean },
   ) {
+    this.emmaOnRoomsViewed(
+      query.mine ? 'rooms.list.mine' : query.floor != null ? 'rooms.list.floor' : 'rooms.list',
+    );
     const where: Prisma.RoomWhereInput = {};
     if (query.floor != null) where.floor = query.floor;
 
@@ -82,6 +89,7 @@ export class RoomsService {
   }
 
   async findOne(id: string, viewer?: User) {
+    this.emmaOnRoomsViewed('rooms.detail');
     const room = await this.prisma.room.findUnique({
       where: { id },
       include: {

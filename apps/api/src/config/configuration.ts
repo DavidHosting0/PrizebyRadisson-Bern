@@ -23,5 +23,9 @@ export default () => ({
     autoSyncCron: process.env.EMMA_AUTO_SYNC_CRON ?? '0 */5 * * * *',
     /** Debounce ms after room activity before OData pull (default 20s). */
     actionSyncDebounceMs: parseInt(process.env.EMMA_ACTION_SYNC_DEBOUNCE_MS ?? '20000', 10),
+    /** Wait after first room list/detail read before pulling EMMA (default 5s). */
+    viewSyncDebounceMs: parseInt(process.env.EMMA_VIEW_SYNC_DEBOUNCE_MS ?? '5000', 10),
+    /** Minimum gap between view-triggered EMMA pulls (default 90s). */
+    viewSyncMinIntervalMs: parseInt(process.env.EMMA_VIEW_SYNC_MIN_INTERVAL_MS ?? '90000', 10),
   },
 });

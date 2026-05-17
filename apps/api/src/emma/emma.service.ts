@@ -21,7 +21,7 @@ import {
  * EMMA integration: HTTP session + fast OData room-status sync.
  * Folio / reservation flows will be reimplemented without a browser.
  */
-export type EmmaRoomSyncTriggerKind = 'cron' | 'action';
+export type EmmaRoomSyncTriggerKind = 'cron' | 'action' | 'view';
 
 @Injectable()
 export class EmmaService {
@@ -29,6 +29,8 @@ export class EmmaService {
   private backgroundSyncInProgress = false;
   private suppressActivityScheduling = false;
   private activityDebounce: ReturnType<typeof setTimeout> | null = null;
+  private viewDebounce: ReturnType<typeof setTimeout> | null = null;
+  private viewSyncNotBefore = 0;
 
   constructor(
     private readonly settings: SettingsService,
@@ -123,6 +125,30 @@ export class EmmaService {
     this.activityDebounce = setTimeout(() => {
       this.activityDebounce = null;
       void this.runBackgroundRoomStatusSync('action', source);
+    }, debounceMs);
+  }
+
+  /**
+   * Pull EMMA when someone opens a room board / floor plan (GET /rooms).
+   * Debounced + throttled so 15s React Query refetches do not hammer EMMA.
+   */
+  scheduleRoomStatusSyncOnView(source: string): void {
+    if (this.suppressActivityScheduling) return;
+    if (process.env.EMMA_AUTO_SYNC === 'false') return;
+    if (this.backgroundSyncInProgress) return;
+
+    const now = Date.now();
+    if (now < this.viewSyncNotBefore) return;
+    if (this.viewDebounce) return;
+
+    const debounceMs = parseInt(process.env.EMMA_VIEW_SYNC_DEBOUNCE_MS ?? '5000', 10);
+    const minIntervalMs = parseInt(process.env.EMMA_VIEW_SYNC_MIN_INTERVAL_MS ?? '90000', 10);
+
+    this.viewDebounce = setTimeout(() => {
+      this.viewDebounce = null;
+      if (Date.now() < this.viewSyncNotBefore) return;
+      this.viewSyncNotBefore = Date.now() + minIntervalMs;
+      void this.runBackgroundRoomStatusSync('view', source);
     }, debounceMs);
   }
 
