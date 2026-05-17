@@ -24,7 +24,7 @@ export function floorFromRoomNumber(roomNumber: string): number | null {
   const n = parseInt(roomNumber, 10);
   if (!Number.isFinite(n)) return null;
   if (n >= 1 && n <= 17) return -1;
-  if (n >= 18 && n <= 28) return 0;
+  if (n >= 21 && n <= 37) return 0;
   for (let f = 1; f <= UPPER_FLOOR_RANGES.length; f++) {
     const [lo, hi] = UPPER_FLOOR_RANGES[f - 1];
     if (n >= lo && n <= hi) return f;
@@ -38,7 +38,7 @@ export function allHotelRoomNumbers(): string[] {
     if (n % 100 === 13) continue;
     out.push(String(n));
   }
-  for (let n = 18; n <= 28; n++) {
+  for (let n = 21; n <= 37; n++) {
     out.push(String(n));
   }
   for (const [lo, hi] of UPPER_FLOOR_RANGES) {
