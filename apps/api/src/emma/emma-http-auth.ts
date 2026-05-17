@@ -118,13 +118,24 @@ function isSapSessionEstablished(url: string): boolean {
   }
 }
 
-function isSapLogonPage(html: string, url: string): boolean {
-  if (isSapSessionEstablished(url)) return false;
+/**
+ * SAP UI2 logon form is detected purely by HTML markers — never by URL.
+ * The same URL `/sap/bc/ui2/flp?sap-client=100` may render either the launchpad
+ * (after auth) or the logon form (FIP rejected, no session). Title is `Logon`
+ * either way until JavaScript runs.
+ */
+function isSapLogonPage(html: string, _url: string): boolean {
   return (
     /name=["']sap-password["']/i.test(html) &&
     /name=["']sap-user["']/i.test(html) &&
     /name=["']sap-login-XSRF["']/i.test(html)
   );
+}
+
+/** True if the current page is the actual Fiori shell, not the logon form. */
+function isSapAuthenticated(page: EmmaHttpFetchResult): boolean {
+  if (isSapLogonPage(page.html, page.url)) return false;
+  return isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html);
 }
 
 function isF5PolicyPage(url: string, html: string): boolean {
@@ -600,12 +611,12 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       sapCredentialsPosted = true;
 
       // Stage 3a — SAP Federated Identity Provider (preferred path):
-      // After SAML, SAP rejects sap-user/sap-password silently (HTTP 200 echo of logon page)
-      // unless we either (a) submit the form WITHOUT credentials to claim the FIP session,
-      // or (b) jump straight to the launchpad with ?sap-client=… so SAP recognises the
-      // pre-existing SAML session and 302s us in.
+      // After SAML, jumping to the launchpad with ?sap-client=… either (i) lands
+      // straight in the Fiori shell (FIP session honoured) or (ii) re-renders the
+      // logon form on the new URL, in which case the credentials POST below uses
+      // the fresh XSRF / form action from this URL — which is what the browser does.
       if (isFipSession) {
-        opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — FIP-Session erkannt, kein User/Pwd-POST');
+        opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — FIP-Session erkannt, GET kanonische Launchpad-URL');
         const root = emmaServerRoot(opts);
         const canon = sapLaunchpadUrl(root, sapClient, hiddenMsg);
         opts.progress?.(
@@ -620,12 +631,16 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
             Referer: page.url,
           },
         });
-        emmaHttpDebug(dbg, 'nach-fip-canonical', page, jar);
-        if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
+        emmaHttpDebug(dbg, 'nach-fip-canonical', page, jar, {
+          authenticated: isSapAuthenticated(page),
+        });
+        if (isSapAuthenticated(page)) {
           opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK (FIP)');
           break;
         }
-        // Some installations need the form POST without credentials to "consume" the FIP session.
+        // Logon form is still showing — try a "claim FIP session" POST without
+        // credentials first; if SAP still won't yield, fall through to the
+        // classic credentials POST using the fresh XSRF below.
         if (isSapLogonPage(page.html, page.url)) {
           const xsrf2 = extractSapLoginXsrf(page.html) ?? xsrf;
           const action2 = extractFormAction(page.html, page.url) ?? page.url;
@@ -652,33 +667,46 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
             'Sec-Fetch-Site': 'same-origin',
             'Sec-Fetch-User': '?1',
           });
-          emmaHttpDebug(dbg, 'nach-fip-post', page, jar);
-          if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
+          emmaHttpDebug(dbg, 'nach-fip-post', page, jar, {
+            authenticated: isSapAuthenticated(page),
+          });
+          if (isSapAuthenticated(page)) {
             opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK (FIP-POST)');
             break;
           }
         }
-        // FIP path failed; fall through to credentials POST as a last resort.
-        opts.progress?.('[EMMA HTTP] FIP-Pfad ohne Erfolg — versuche Fallback mit User/Pwd');
+        opts.progress?.('[EMMA HTTP] FIP-Pfad ohne Erfolg — Fallback mit User/Pwd auf der frischen Logon-Seite');
       }
 
-      // Stage 3b — Classic SAP credentials POST (fallback / non-FIP).
+      // Stage 3b — Classic SAP credentials POST. Uses the *current* page (which
+      // may now be the canonical /flp?sap-client=100 logon form rendered after
+      // the FIP attempt) — fresh XSRF, fresh form action, fresh hidden fields.
       if (!opts.sapUser?.trim() || !opts.sapPassword) {
         throw new Error(
           'EMMA HTTP Stage 3: SAP credentials missing (FIP-Pfad fehlgeschlagen, klassischer Login nicht möglich).',
         );
       }
+      if (!isSapLogonPage(page.html, page.url)) {
+        opts.progress?.('[EMMA HTTP] SAP-Logon-Seite verschwunden, hole sie erneut.');
+        const root = emmaServerRoot(opts);
+        page = await emmaHttpFetch(jar, sapLaunchpadUrl(root, sapClient, hiddenMsg), {
+          headers: { Referer: page.url },
+        });
+        emmaHttpDebug(dbg, 'logon-refresh', page, jar);
+      }
+      const xsrfNow = extractSapLoginXsrf(page.html) ?? xsrf;
+      const actionNow = extractFormAction(page.html, page.url) ?? sapAction;
+      const hiddenNow = extractHiddenFields(page.html);
+      const hiddenMsgNow = hiddenNow.hidden_message_to_show ?? hiddenMsg;
       const sapUser = normalizeSapUser(opts.sapUser ?? '');
       const sapPassword = opts.sapPassword;
-      const beforePostHidden = Object.keys(sapHidden);
+      const beforePostHidden = Object.keys(hiddenNow);
       const beforePostInputs = extractInputNames(page.html);
       const beforePostBytes = page.html.length;
       opts.progress?.(
-        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} action=${sapAction.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrf.length} hiddenMsgLen=${hiddenMsg.length} pwdLen=${sapPassword.length} cookies=[${cookieNames.join(',')}]`,
+        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} action=${actionNow.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrfNow.length} hiddenMsgLen=${hiddenMsgNow.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
       );
 
-      const xsrfNow = extractSapLoginXsrf(page.html) ?? xsrf;
-      const actionNow = extractFormAction(page.html, page.url) ?? sapAction;
       const sapPairs: Array<[string, string]> = [
         ['sap-system-login-oninputprocessing', 'onLogin'],
         ['sap-urlscheme', ''],
@@ -690,7 +718,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         ['sap-login-XSRF', xsrfNow],
         ['sap-system-login-cookie_disabled', ''],
         ['sap-hash', ''],
-        ['hidden_message_to_show', hiddenMsg],
+        ['hidden_message_to_show', hiddenMsgNow],
         ['sap-user', sapUser],
         ['sap-password', sapPassword],
       ];
@@ -703,20 +731,23 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       });
       emmaHttpDebug(dbg, 'nach-sap-post', page, jar, {
         sapUser,
+        authenticated: isSapAuthenticated(page),
         sapLogonStill: isSapLogonPage(page.html, page.url),
         expectedRedirect: page.statusTrail.includes(302),
       });
-      if (isSapSessionEstablished(page.url)) {
+      if (isSapAuthenticated(page)) {
         opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
         break;
       }
       if (isFioriLaunchpadShell(page.html) && !isSapLogonPage(page.html, page.url)) {
         const root = emmaServerRoot(opts);
-        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsg);
+        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsgNow);
         opts.progress?.(`[EMMA HTTP] SAP Fiori-Shell → kanonische URL ${canon.replace(/^https?:\/\//, '').slice(0, 100)}`);
         page = await emmaHttpFetch(jar, canon);
-        emmaHttpDebug(dbg, 'nach-sap-kanonisch', page, jar);
-        if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
+        emmaHttpDebug(dbg, 'nach-sap-kanonisch', page, jar, {
+          authenticated: isSapAuthenticated(page),
+        });
+        if (isSapAuthenticated(page)) {
           opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
           break;
         }
@@ -728,7 +759,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         const lostInputs = beforePostInputs.filter((n) => !afterInputs.includes(n));
         const afterHidden = extractHiddenFields(page.html);
         const changedHidden = beforePostHidden.filter(
-          (k) => sapHidden[k] !== afterHidden[k] && k !== 'sap-login-XSRF',
+          (k) => hiddenNow[k] !== afterHidden[k] && k !== 'sap-login-XSRF',
         );
         const visible = htmlVisibleText(page.html, 800);
         opts.progress?.(
