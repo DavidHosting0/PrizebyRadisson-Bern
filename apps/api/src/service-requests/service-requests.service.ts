@@ -1,8 +1,11 @@
 import {
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ChecklistTaskStatus,
@@ -16,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
+import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
 
 @Injectable()
 export class ServiceRequestsService {
@@ -23,6 +27,9 @@ export class ServiceRequestsService {
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
+    @Optional()
+    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
+    private readonly emmaSync?: EmmaRoomSyncTrigger,
   ) {}
 
   async list(query: {
@@ -91,6 +98,7 @@ export class ServiceRequestsService {
     const room = await this.rooms.findOne(dto.roomId);
     this.realtime.emitRoomStatus(room);
     this.realtime.emitServiceRequest('service_request.created', req);
+    this.emmaSync?.afterRoomActivity('serviceRequests.create');
     return req;
   }
 
@@ -201,6 +209,7 @@ export class ServiceRequestsService {
     } else {
       this.realtime.emitServiceRequest('service_request.updated', updated);
     }
+    this.emmaSync?.afterRoomActivity('serviceRequests.updateStatus');
     return updated;
   }
 
@@ -208,10 +217,12 @@ export class ServiceRequestsService {
     if (user.role !== UserRole.RECEPTION && user.role !== UserRole.SUPERVISOR && user.role !== UserRole.ADMIN) {
       throw new ForbiddenException();
     }
-    return this.prisma.serviceRequest.update({
+    const updated = await this.prisma.serviceRequest.update({
       where: { id },
       data: { status: ServiceRequestStatus.CANCELLED },
     });
+    this.emmaSync?.afterRoomActivity('serviceRequests.cancel');
+    return updated;
   }
 
   types() {

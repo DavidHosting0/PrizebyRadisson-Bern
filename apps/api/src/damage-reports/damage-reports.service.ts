@@ -1,8 +1,11 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import {
   AssignmentStatus,
@@ -16,12 +19,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { CreateDamageReportDto } from './dto/create-damage-report.dto';
 import { UpdateDamageReportDto } from './dto/update-damage-report.dto';
+import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
 
 @Injectable()
 export class DamageReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
+    @Optional()
+    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
+    private readonly emmaSync?: EmmaRoomSyncTrigger,
   ) {}
 
   private async assertHousekeeperRoom(user: User, roomId: string) {
@@ -81,7 +88,7 @@ export class DamageReportsService {
     if (user.role === UserRole.HOUSEKEEPER) {
       await this.assertHousekeeperRoom(user, dto.roomId);
     }
-    return this.prisma.roomDamageReport.create({
+    const row = await this.prisma.roomDamageReport.create({
       data: {
         roomId: dto.roomId,
         damageType: dto.damageType,
@@ -93,6 +100,8 @@ export class DamageReportsService {
         room: { select: { id: true, roomNumber: true } },
       },
     });
+    this.emmaSync?.afterRoomActivity('damageReports.create');
+    return row;
   }
 
   async update(id: string, dto: UpdateDamageReportDto) {
@@ -101,7 +110,7 @@ export class DamageReportsService {
     if (dto.status === undefined) {
       throw new BadRequestException('No fields to update');
     }
-    return this.prisma.roomDamageReport.update({
+    const updated = await this.prisma.roomDamageReport.update({
       where: { id },
       data: { status: dto.status },
       include: {
@@ -109,5 +118,7 @@ export class DamageReportsService {
         reportedBy: { select: userPublicSelect },
       },
     });
+    this.emmaSync?.afterRoomActivity('damageReports.update');
+    return updated;
   }
 }

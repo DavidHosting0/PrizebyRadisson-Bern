@@ -13,8 +13,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { EmmaService } from './emma.service';
 
 /**
- * EMMA runs only on authenticated requests (Admin/Reception). No schedulers;
- * HTTP session + OData sync are explicit API calls.
+ * EMMA: HTTP session (Admin) + room-status sync (API, cron every 5 min, debounced after room actions).
  */
 @Controller('emma')
 export class EmmaController {

@@ -1,3 +1,4 @@
+import { DerivedRoomStatus } from '@housekeeping/shared';
 import type { EmmaCookieJar } from './emma-cookie-jar';
 import {
   emmaHttpFetchCsrfToken,
@@ -228,18 +229,105 @@ export async function fetchEmmaRoomStatusSnapshotsHttp(
   return snapshotsFromRows(detailRows, statusRows);
 }
 
+/** Map EMMA housekeeping code/label → PrizeBern board status (source of truth after sync). */
+export function mapEmmaToDerivedStatus(
+  snap: Pick<EmmaRoomStatusSnapshot, 'statusCode' | 'statusLabel' | 'outOfOrder'>,
+): DerivedRoomStatus | null {
+  if (snap.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;
+
+  const code = (snap.statusCode ?? '').toUpperCase().replace(/\s+/g, '');
+  const label = (snap.statusLabel ?? '').toLowerCase();
+
+  if (
+    /^O(OO|OS|OOO)?$/.test(code) ||
+    /out\s*of\s*order|out-of-order|außer\s*betrieb|outoforder/.test(label)
+  ) {
+    return DerivedRoomStatus.OUT_OF_ORDER;
+  }
+  if (
+    /^INS(P|PECT|PECTED)?$/.test(code) ||
+    /^VI(S)?$/.test(code) ||
+    /inspect/.test(label)
+  ) {
+    return DerivedRoomStatus.INSPECTED;
+  }
+  if (
+    /^CL(EAN|N|R)?$/.test(code) ||
+    /^VC$/.test(code) ||
+    (/\bclean\b/.test(label) && !/dirty/.test(label) && !/inspect/.test(label))
+  ) {
+    return DerivedRoomStatus.CLEAN;
+  }
+  if (
+    /^IP(R|ROG)?$/.test(code) ||
+    /^INP(ROG|ROGRESS)?$/.test(code) ||
+    /^PIC(KUP)?$/.test(code) ||
+    /in\s*prog|in-progress|pickup|attending|being\s*cleaned/.test(label)
+  ) {
+    return DerivedRoomStatus.IN_PROGRESS;
+  }
+  if (
+    /^DI(R(TY)?)?$/.test(code) ||
+    /^D$/.test(code) ||
+    /^SO$/.test(code) ||
+    /^DEP/.test(code) ||
+    /dirty|departure|check-?out|checkout|unmade/.test(label)
+  ) {
+    return DerivedRoomStatus.DIRTY;
+  }
+  return null;
+}
+
+export type EmmaMetadataStored = {
+  roomId: string;
+  statusCode: string | null;
+  statusLabel: string | null;
+  derivedStatus: DerivedRoomStatus | null;
+  outOfOrder: boolean;
+  floorId: string | null;
+  buildingId: string;
+  syncedAt: string;
+};
+
 /** Metadata shape stored on `Room.metadata`. */
 export function emmaMetadataPatch(snap: EmmaRoomStatusSnapshot, syncedAt: string): Record<string, unknown> {
+  const derivedStatus = mapEmmaToDerivedStatus(snap);
+  const emma: EmmaMetadataStored = {
+    roomId: snap.emmaRoomId,
+    statusCode: snap.statusCode,
+    statusLabel: snap.statusLabel,
+    derivedStatus,
+    outOfOrder: snap.outOfOrder,
+    floorId: snap.floorId,
+    buildingId: snap.buildingId ?? EMMA_DEFAULT_BUILDING_ID,
+    syncedAt,
+  };
+  return { emma };
+}
+
+export function readEmmaMetadata(metadata: unknown): EmmaMetadataStored | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const emma = (metadata as { emma?: unknown }).emma;
+  if (!emma || typeof emma !== 'object' || Array.isArray(emma)) return null;
+  const row = emma as Record<string, unknown>;
+  const derived = row.derivedStatus;
+  const derivedStatus =
+    derived === DerivedRoomStatus.OUT_OF_ORDER ||
+    derived === DerivedRoomStatus.DIRTY ||
+    derived === DerivedRoomStatus.IN_PROGRESS ||
+    derived === DerivedRoomStatus.CLEAN ||
+    derived === DerivedRoomStatus.INSPECTED
+      ? derived
+      : null;
   return {
-    emma: {
-      roomId: snap.emmaRoomId,
-      statusCode: snap.statusCode,
-      statusLabel: snap.statusLabel,
-      outOfOrder: snap.outOfOrder,
-      floorId: snap.floorId,
-      buildingId: snap.buildingId ?? EMMA_DEFAULT_BUILDING_ID,
-      syncedAt,
-    },
+    roomId: typeof row.roomId === 'string' ? row.roomId : '',
+    statusCode: typeof row.statusCode === 'string' ? row.statusCode : null,
+    statusLabel: typeof row.statusLabel === 'string' ? row.statusLabel : null,
+    derivedStatus,
+    outOfOrder: row.outOfOrder === true,
+    floorId: typeof row.floorId === 'string' ? row.floorId : null,
+    buildingId: typeof row.buildingId === 'string' ? row.buildingId : EMMA_DEFAULT_BUILDING_ID,
+    syncedAt: typeof row.syncedAt === 'string' ? row.syncedAt : '',
   };
 }
 

@@ -16,4 +16,12 @@ export default () => ({
   crypto: {
     secretKey: process.env.FAVUR_ENCRYPTION_KEY ?? process.env.JWT_ACCESS_SECRET,
   },
+  emma: {
+    /** Set `false` to disable cron + action-triggered room-status sync. */
+    autoSync: process.env.EMMA_AUTO_SYNC !== 'false',
+    /** Nest cron expression; default every 5 minutes. */
+    autoSyncCron: process.env.EMMA_AUTO_SYNC_CRON ?? '0 */5 * * * *',
+    /** Debounce ms after room activity before OData pull (default 20s). */
+    actionSyncDebounceMs: parseInt(process.env.EMMA_ACTION_SYNC_DEBOUNCE_MS ?? '20000', 10),
+  },
 });

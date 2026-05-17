@@ -1,10 +1,19 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { AssignmentStatus, PhotoUploadStatus, Prisma, User, UserRole } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoomsService } from '../rooms/rooms.service';
+import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
 
 @Injectable()
 export class PhotosService {
@@ -13,6 +22,9 @@ export class PhotosService {
     private readonly s3: S3Service,
     private readonly realtime: RealtimeGateway,
     private readonly rooms: RoomsService,
+    @Optional()
+    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
+    private readonly emmaSync?: EmmaRoomSyncTrigger,
   ) {}
 
   private async assertHousekeeperRoom(user: User, roomId: string) {
@@ -83,6 +95,7 @@ export class PhotosService {
     });
     const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitRoomStatus(room);
+    this.emmaSync?.afterRoomActivity('photos.complete');
     return { ok: true, timeline };
   }
 

@@ -21,9 +21,14 @@ import {
  * EMMA integration: HTTP session + fast OData room-status sync.
  * Folio / reservation flows will be reimplemented without a browser.
  */
+export type EmmaRoomSyncTriggerKind = 'cron' | 'action';
+
 @Injectable()
 export class EmmaService {
   private readonly log = new Logger(EmmaService.name);
+  private backgroundSyncInProgress = false;
+  private suppressActivityScheduling = false;
+  private activityDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly settings: SettingsService,
@@ -108,6 +113,59 @@ export class EmmaService {
     return EmmaCookieJar.fromJSON(stored.cookies);
   }
 
+  /** Debounced sync after local room activity (checklist, clean, assign, …). */
+  scheduleRoomStatusSync(source: string): void {
+    if (this.suppressActivityScheduling) return;
+    if (process.env.EMMA_AUTO_SYNC === 'false') return;
+    const debounceMs = parseInt(process.env.EMMA_ACTION_SYNC_DEBOUNCE_MS ?? '20000', 10);
+    if (this.activityDebounce) clearTimeout(this.activityDebounce);
+    this.activityDebounce = setTimeout(() => {
+      this.activityDebounce = null;
+      void this.runBackgroundRoomStatusSync('action', source);
+    }, debounceMs);
+  }
+
+  /**
+   * Cron / post-action sync. Never throws — logs warnings only.
+   * Reuses {@link syncRoomStatuses} (OData probe + optional refresh-http).
+   */
+  async runBackgroundRoomStatusSync(
+    trigger: EmmaRoomSyncTriggerKind,
+    source?: string,
+  ): Promise<void> {
+    if (process.env.EMMA_AUTO_SYNC === 'false') return;
+    if (this.backgroundSyncInProgress) {
+      this.log.debug(`[EMMA] auto sync skipped (${trigger}): already running`);
+      return;
+    }
+    const creds = await this.settings.getEmmaLoginSecrets();
+    if (!this.hasCompleteCredentials(creds)) {
+      if (trigger === 'cron') {
+        this.log.debug('[EMMA] auto sync skipped: EMMA credentials incomplete');
+      }
+      return;
+    }
+    const session = await this.settings.getEmmaHttpSession();
+    if (!session?.cookies?.length) {
+      this.log.debug(
+        `[EMMA] auto sync skipped (${trigger}): no HTTP session — run refresh-http once in Admin → EMMA`,
+      );
+      return;
+    }
+
+    this.backgroundSyncInProgress = true;
+    const label = source ? `${trigger}:${source}` : trigger;
+    try {
+      this.log.log(`[EMMA] auto room-status sync start (${label})`);
+      await this.syncRoomStatuses({});
+      this.log.log(`[EMMA] auto room-status sync OK (${label})`);
+    } catch (err) {
+      this.log.warn(`[EMMA] auto room-status sync failed (${label}): ${(err as Error).message}`);
+    } finally {
+      this.backgroundSyncInProgress = false;
+    }
+  }
+
   async syncRoomStatuses(
     runOpts: { hotelId?: string; forceAttempt?: boolean } = {},
   ): Promise<EmmaRoomStatusSyncResult> {
@@ -140,29 +198,35 @@ export class EmmaService {
     }
 
     const updatedRoomIds: string[] = [];
-    const snapshots = await fetchEmmaRoomStatusSnapshotsHttp(jar, baseUrl, hotelId, sapClient);
-    this.log.log(`[EMMA] ${snapshots.length} Zimmer aus RoomDetail (${Date.now() - startedAt}ms)`);
+    this.suppressActivityScheduling = true;
+    let result: EmmaRoomStatusSyncResult;
+    try {
+      const snapshots = await fetchEmmaRoomStatusSnapshotsHttp(jar, baseUrl, hotelId, sapClient);
+      this.log.log(`[EMMA] ${snapshots.length} Zimmer aus RoomDetail (${Date.now() - startedAt}ms)`);
 
-    const result = await applyEmmaSnapshotsToRooms(
-      {
-        findRooms: () =>
-          this.prisma.room.findMany({
-            select: { id: true, roomNumber: true, metadata: true, outOfOrder: true },
-          }),
-        updateRoom: async (id, data) => {
-          updatedRoomIds.push(id);
-          await this.prisma.room.update({
-            where: { id },
-            data: {
-              outOfOrder: data.outOfOrder,
-              metadata: data.metadata as Prisma.InputJsonValue,
-            },
-          });
+      result = await applyEmmaSnapshotsToRooms(
+        {
+          findRooms: () =>
+            this.prisma.room.findMany({
+              select: { id: true, roomNumber: true, metadata: true, outOfOrder: true },
+            }),
+          updateRoom: async (id, data) => {
+            updatedRoomIds.push(id);
+            await this.prisma.room.update({
+              where: { id },
+              data: {
+                outOfOrder: data.outOfOrder,
+                metadata: data.metadata as Prisma.InputJsonValue,
+              },
+            });
+          },
         },
-      },
-      snapshots,
-      hotelId,
-    );
+        snapshots,
+        hotelId,
+      );
+    } finally {
+      this.suppressActivityScheduling = false;
+    }
 
     for (const id of updatedRoomIds) {
       try {
@@ -177,6 +241,17 @@ export class EmmaService {
       `[EMMA] syncRoomStatuses OK in ${Date.now() - startedAt}ms: ${result.matched}/${result.emmaRooms} matched, ${result.updated} updated`,
     );
     return result;
+  }
+
+  private hasCompleteCredentials(creds: EmmaLoginStored | null): boolean {
+    if (!creds) return false;
+    return Boolean(
+      creds.adfsEmail?.trim() &&
+        creds.adfsPassword &&
+        creds.totpSecret &&
+        creds.sapUser?.trim() &&
+        creds.sapPassword,
+    );
   }
 
   private async buildLoginOpts(): Promise<EmmaLoginOpts> {

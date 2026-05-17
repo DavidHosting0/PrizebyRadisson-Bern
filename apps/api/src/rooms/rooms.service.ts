@@ -1,8 +1,11 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from '@nestjs/common';
 import {
   AssignmentStatus,
@@ -18,6 +21,8 @@ import { RoomStatusService } from './room-status.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { S3Service } from '../storage/s3.service';
 import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
+import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { readEmmaMetadata } from '../emma/emma-room-status-sync';
 
 @Injectable()
 export class RoomsService {
@@ -26,7 +31,14 @@ export class RoomsService {
     private readonly roomStatus: RoomStatusService,
     private readonly realtime: RealtimeGateway,
     private readonly s3: S3Service,
+    @Optional()
+    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
+    private readonly emmaSync?: EmmaRoomSyncTrigger,
   ) {}
+
+  private emmaAfterRoomActivity(source: string) {
+    this.emmaSync?.afterRoomActivity(source);
+  }
 
   async findAll(
     user: User,
@@ -222,23 +234,8 @@ export class RoomsService {
 
     const out = await this.findOne(roomId, user);
     this.realtime.emitRoomStatus(out);
+    this.emmaAfterRoomActivity('rooms.markHousekeepingClean');
     return out;
-  }
-
-  private readEmmaSyncFromMetadata(metadata: unknown): {
-    statusCode: string | null;
-    statusLabel: string | null;
-    syncedAt: string | null;
-  } | null {
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
-    const emma = (metadata as { emma?: unknown }).emma;
-    if (!emma || typeof emma !== 'object' || Array.isArray(emma)) return null;
-    const row = emma as Record<string, unknown>;
-    return {
-      statusCode: typeof row.statusCode === 'string' ? row.statusCode : null,
-      statusLabel: typeof row.statusLabel === 'string' ? row.statusLabel : null,
-      syncedAt: typeof row.syncedAt === 'string' ? row.syncedAt : null,
-    };
   }
 
   private toRoomDto(room: {
@@ -266,7 +263,8 @@ export class RoomsService {
   }) {
     const state = room.checklistStates[0];
     const tasks = state?.tasks ?? [];
-    const derived = this.roomStatus.derive(room, tasks, room.inspections);
+    const emmaMeta = readEmmaMetadata(room.metadata);
+    const derived = this.roomStatus.derive(room, tasks, room.inspections, emmaMeta);
     const floor =
       room.floor ?? floorFromRoomNumber(room.roomNumber) ?? null;
     return {
@@ -280,7 +278,14 @@ export class RoomsService {
       cleaningDeclaredAt: room.cleaningDeclaredAt,
       roomType: room.roomType,
       derivedStatus: derived,
-      emma: this.readEmmaSyncFromMetadata(room.metadata),
+      emma: emmaMeta
+        ? {
+            statusCode: emmaMeta.statusCode,
+            statusLabel: emmaMeta.statusLabel,
+            derivedStatus: emmaMeta.derivedStatus,
+            syncedAt: emmaMeta.syncedAt,
+          }
+        : null,
       checklist: state
         ? {
             stateId: state.id,
@@ -328,6 +333,7 @@ export class RoomsService {
     });
     const dtoOut = this.toRoomDto(room);
     this.realtime.emitRoomStatus(dtoOut);
+    this.emmaAfterRoomActivity('rooms.updateRoom');
     return dtoOut;
   }
 

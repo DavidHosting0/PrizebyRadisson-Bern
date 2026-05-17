@@ -1,4 +1,12 @@
-import { ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
@@ -9,6 +17,7 @@ import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
 
 @Injectable()
 export class AssignmentsService implements OnModuleInit {
@@ -18,6 +27,9 @@ export class AssignmentsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
+    @Optional()
+    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
+    private readonly emmaSync?: EmmaRoomSyncTrigger,
   ) {}
 
   onModuleInit() {
@@ -60,6 +72,7 @@ export class AssignmentsService implements OnModuleInit {
     });
     const room = await this.rooms.findOne(roomId);
     this.realtime.emitRoomStatus(room);
+    this.emmaSync?.afterRoomActivity('assignments.manualAssign');
     return row;
   }
 
@@ -127,6 +140,9 @@ export class AssignmentsService implements OnModuleInit {
       assigned += 1;
       const r = await this.rooms.findOne(room.id);
       this.realtime.emitRoomStatus(r);
+    }
+    if (assigned > 0) {
+      this.emmaSync?.afterRoomActivity('assignments.autoAssign');
     }
     return { assigned };
   }
