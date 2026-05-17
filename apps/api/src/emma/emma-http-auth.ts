@@ -566,9 +566,6 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
     }
 
     if (isSapLogonPage(page.html, page.url)) {
-      if (!opts.sapUser?.trim() || !opts.sapPassword) {
-        throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
-      }
       if (sapCredentialsPosted) {
         emmaHttpDebug(dbg, 'sap-wiederholung', page, jar, {
           sapUser: normalizeSapUser(opts.sapUser ?? ''),
@@ -583,7 +580,6 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
             : `EMMA HTTP Stage 3: SAP-Logon wiederholt sich (Benutzer/Passwort in Admin → EMMA prüfen).${titleHint} URL ohne sap-client=${!isSapSessionEstablished(page.url)} fioriShell=${isFioriLaunchpadShell(page.html)}`,
         );
       }
-      opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon');
       const xsrf = extractSapLoginXsrf(page.html);
       if (!xsrf) {
         throw new Error('EMMA HTTP Stage 3: sap-login-XSRF missing on logon page.');
@@ -591,17 +587,93 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       const sapClient = sapClientFromOpts(opts);
       const sapAction = extractFormAction(page.html, page.url) ?? page.url;
       const sapHidden = extractHiddenFields(page.html);
-      sapCredentialsPosted = true;
       const hiddenMsg = sapHidden.hidden_message_to_show ?? '';
+      const cookieNames = jar.toJSON().map((c) => c.name);
+      const isFipSession =
+        cookieNames.some((n) => /sap-login-XSRF_FIP/i.test(n)) ||
+        cookieNames.some((n) => /MSISAuthenticated/i.test(n));
+      sapCredentialsPosted = true;
+
+      // Stage 3a — SAP Federated Identity Provider (preferred path):
+      // After SAML, SAP rejects sap-user/sap-password silently (HTTP 200 echo of logon page)
+      // unless we either (a) submit the form WITHOUT credentials to claim the FIP session,
+      // or (b) jump straight to the launchpad with ?sap-client=… so SAP recognises the
+      // pre-existing SAML session and 302s us in.
+      if (isFipSession) {
+        opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — FIP-Session erkannt, kein User/Pwd-POST');
+        const base = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+        const canon = sapLaunchpadUrl(base, sapClient, hiddenMsg);
+        opts.progress?.(
+          `[EMMA HTTP] SAP FIP → GET ${canon.replace(/^https?:\/\//, '').slice(0, 110)}`,
+        );
+        page = await emmaHttpFetch(jar, canon, {
+          headers: {
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            Referer: page.url,
+          },
+        });
+        emmaHttpDebug(dbg, 'nach-fip-canonical', page, jar);
+        if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
+          opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK (FIP)');
+          break;
+        }
+        // Some installations need the form POST without credentials to "consume" the FIP session.
+        if (isSapLogonPage(page.html, page.url)) {
+          const xsrf2 = extractSapLoginXsrf(page.html) ?? xsrf;
+          const action2 = extractFormAction(page.html, page.url) ?? page.url;
+          const fipPairs: Array<[string, string]> = [
+            ['sap-system-login-oninputprocessing', 'onLogin'],
+            ['sap-urlscheme', ''],
+            ['sap-system-login', 'onLogin'],
+            ['sap-system-login-basic_auth', ''],
+            ['sap-client', sapClient],
+            ['sap-language', 'EN'],
+            ['sap-accessibility', ''],
+            ['sap-login-XSRF', xsrf2],
+            ['sap-system-login-cookie_disabled', ''],
+            ['sap-hash', ''],
+            ['hidden_message_to_show', hiddenMsg],
+          ];
+          opts.progress?.(
+            `[EMMA HTTP] SAP FIP → POST ohne Credentials xsrfLen=${xsrf2.length} action=${action2.replace(/^https?:\/\//, '').slice(0, 90)}`,
+          );
+          page = await postFormOrdered(jar, action2, fipPairs, page.url, {
+            'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+          });
+          emmaHttpDebug(dbg, 'nach-fip-post', page, jar);
+          if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
+            opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK (FIP-POST)');
+            break;
+          }
+        }
+        // FIP path failed; fall through to credentials POST as a last resort.
+        opts.progress?.('[EMMA HTTP] FIP-Pfad ohne Erfolg — versuche Fallback mit User/Pwd');
+      }
+
+      // Stage 3b — Classic SAP credentials POST (fallback / non-FIP).
+      if (!opts.sapUser?.trim() || !opts.sapPassword) {
+        throw new Error(
+          'EMMA HTTP Stage 3: SAP credentials missing (FIP-Pfad fehlgeschlagen, klassischer Login nicht möglich).',
+        );
+      }
       const sapUser = normalizeSapUser(opts.sapUser ?? '');
       const sapPassword = opts.sapPassword;
       const beforePostHidden = Object.keys(sapHidden);
       const beforePostInputs = extractInputNames(page.html);
       const beforePostBytes = page.html.length;
       opts.progress?.(
-        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} action=${sapAction.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrf.length} hiddenMsgLen=${hiddenMsg.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
+        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} action=${sapAction.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrf.length} hiddenMsgLen=${hiddenMsg.length} pwdLen=${sapPassword.length} cookies=[${cookieNames.join(',')}]`,
       );
 
+      const xsrfNow = extractSapLoginXsrf(page.html) ?? xsrf;
+      const actionNow = extractFormAction(page.html, page.url) ?? sapAction;
       const sapPairs: Array<[string, string]> = [
         ['sap-system-login-oninputprocessing', 'onLogin'],
         ['sap-urlscheme', ''],
@@ -610,14 +682,14 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         ['sap-client', sapClient],
         ['sap-language', 'EN'],
         ['sap-accessibility', ''],
-        ['sap-login-XSRF', xsrf],
+        ['sap-login-XSRF', xsrfNow],
         ['sap-system-login-cookie_disabled', ''],
         ['sap-hash', ''],
         ['hidden_message_to_show', hiddenMsg],
         ['sap-user', sapUser],
         ['sap-password', sapPassword],
       ];
-      page = await postFormOrdered(jar, sapAction, sapPairs, page.url, {
+      page = await postFormOrdered(jar, actionNow, sapPairs, page.url, {
         'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
