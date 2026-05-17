@@ -39,6 +39,8 @@ export class RoomStatusService {
       });
       if (fromEmma) return fromEmma;
       if (emma.outOfOrder || room.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;
+      // EMMA ist führend nach Sync — keine lokale Checkliste/Inspection anzeigen.
+      return DerivedRoomStatus.DIRTY;
     }
 
     if (room.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;

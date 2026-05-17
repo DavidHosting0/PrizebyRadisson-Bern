@@ -100,10 +100,11 @@ function detectOutOfOrder(row: Record<string, unknown>, statusCode: string | nul
 }
 
 function extractStatusCode(row: Record<string, unknown>): string | null {
+  /** Room Status UI uses `RoomStatus` (e.g. IN, DI) on RoomDetail rows. */
   const raw = pickString(row, [
+    'RoomStatus',
     'HkStatus',
     'HKStatus',
-    'RoomStatus',
     'HousekeepingStatus',
     'FoStatus',
     'Status',
@@ -438,6 +439,7 @@ export function mapEmmaToDerivedStatus(
     return DerivedRoomStatus.OUT_OF_ORDER;
   }
   if (
+    /^IN$/.test(code) ||
     /^INS(P|PECT|PECTED)?$/.test(code) ||
     /^VI(S)?$/.test(code) ||
     /inspect/.test(label)
@@ -447,6 +449,8 @@ export function mapEmmaToDerivedStatus(
   if (
     /^CL(EAN|N|R)?$/.test(code) ||
     /^VC$/.test(code) ||
+    /^OC$/.test(code) ||
+    /^AC$/.test(code) ||
     (/\bclean\b/.test(label) && !/dirty/.test(label) && !/inspect/.test(label))
   ) {
     return DerivedRoomStatus.CLEAN;
@@ -455,6 +459,7 @@ export function mapEmmaToDerivedStatus(
     /^IP(R|ROG)?$/.test(code) ||
     /^INP(ROG|ROGRESS)?$/.test(code) ||
     /^PIC(KUP)?$/.test(code) ||
+    /^PU$/.test(code) ||
     /in\s*prog|in-progress|pickup|attending|being\s*cleaned/.test(label)
   ) {
     return DerivedRoomStatus.IN_PROGRESS;
@@ -462,6 +467,7 @@ export function mapEmmaToDerivedStatus(
   if (
     /^DI(R(TY)?)?$/.test(code) ||
     /^D$/.test(code) ||
+    /^OD$/.test(code) ||
     /^SO$/.test(code) ||
     /^DEP/.test(code) ||
     /dirty|departure|check-?out|checkout|unmade/.test(label)
@@ -552,11 +558,17 @@ export async function applyEmmaSnapshotsToRooms(
       room.metadata && typeof room.metadata === 'object' && !Array.isArray(room.metadata)
         ? (room.metadata as Record<string, unknown>)
         : {};
-    const nextMeta = { ...prevMeta, ...emmaMetadataPatch(snap, syncedAt) };
+    const nextEmma = emmaMetadataPatch(snap, syncedAt).emma as EmmaMetadataStored;
+    const prevEmma = readEmmaMetadata(prevMeta);
+    const nextMeta = { ...prevMeta, emma: nextEmma };
     const nextOoo = snap.outOfOrder;
-    const metaChanged = JSON.stringify(prevMeta.emma) !== JSON.stringify(nextMeta.emma);
+    const statusChanged =
+      !prevEmma ||
+      prevEmma.derivedStatus !== nextEmma.derivedStatus ||
+      prevEmma.statusCode !== nextEmma.statusCode ||
+      prevEmma.outOfOrder !== nextEmma.outOfOrder;
     const oooChanged = room.outOfOrder !== nextOoo;
-    if (!metaChanged && !oooChanged) continue;
+    if (!statusChanged && !oooChanged) continue;
     await deps.updateRoom(room.id, { metadata: nextMeta, outOfOrder: nextOoo });
     updated += 1;
   }

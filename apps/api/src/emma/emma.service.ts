@@ -246,6 +246,21 @@ export class EmmaService {
         emmaDebug,
       );
       this.log.log(`[EMMA] ${snapshots.length} Zimmer aus EMMA (${Date.now() - startedAt}ms)`);
+      const unmapped = snapshots.filter((s) => !mapEmmaToDerivedStatus(s));
+      if (unmapped.length > 0) {
+        const codes = [...new Set(unmapped.map((s) => s.statusCode ?? '?'))].slice(0, 12);
+        this.log.warn(
+          `[EMMA] ${unmapped.length} Zimmer ohne Status-Mapping (EMMA-Codes: ${codes.join(', ')})`,
+        );
+      }
+      const byDerived = new Map<string, number>();
+      for (const s of snapshots) {
+        const d = mapEmmaToDerivedStatus(s) ?? 'UNMAPPED';
+        byDerived.set(d, (byDerived.get(d) ?? 0) + 1);
+      }
+      this.log.log(
+        `[EMMA] Status-Mapping: ${[...byDerived.entries()].map(([k, n]) => `${k}=${n}`).join(', ')}`,
+      );
       if (emmaDebug.verbose && snapshots.length > 0) {
         const sample = snapshots
           .slice(0, 5)
