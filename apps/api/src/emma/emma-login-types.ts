@@ -11,6 +11,8 @@ export type EmmaLoginOpts = {
   operatorCode?: string;
   operatorPassword?: string;
   baseUrl?: string;
+  hotelId?: string;
+  sapClient?: string;
   progress?: EmmaProgress;
 };
 

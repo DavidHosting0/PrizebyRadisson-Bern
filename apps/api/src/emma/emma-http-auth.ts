@@ -32,12 +32,31 @@ function extractFormAction(html: string, baseUrl: string): string | null {
   }
 }
 
-function isAdfsPage(html: string, url: string): boolean {
-  return /signon\.radissonhotels\.com/i.test(url) || /userNameInput|UserName/i.test(html);
+/** ADFS interactive forms login (email + password) — not SAML relay-only pages. */
+function isAdfsFormsLoginPage(html: string, url: string): boolean {
+  if (!/signon\.radissonhotels\.com/i.test(url)) return false;
+  const samlRelayOnly =
+    html.includes('SAMLRequest') &&
+    !/name=["']Password["']|type=["']password["']/i.test(html);
+  if (samlRelayOnly) return false;
+  return /name=["']UserName["']|id=["']userNameInput["']|userNameInput/i.test(html);
+}
+
+/** Radisson RHGMFA (legacy) or privacyIDEA TOTP (current ADFS). */
+function isPrivacyIdeaMfaPage(html: string): boolean {
+  return (
+    /privacyIDEAADFSProvider/i.test(html) ||
+    /one-time-password/i.test(html) ||
+    /name=["']otp["']/i.test(html)
+  );
+}
+
+function isLegacyRhMfaPage(html: string, title: string): boolean {
+  return /RHGMFA/i.test(title) || /ChallengeQuestionAnswer/i.test(html);
 }
 
 function isMfaPage(html: string, title: string): boolean {
-  return /RHGMFA/i.test(title) || /ChallengeQuestionAnswer/i.test(html);
+  return isPrivacyIdeaMfaPage(html) || isLegacyRhMfaPage(html, title);
 }
 
 function isSapLogonPage(html: string): boolean {
@@ -51,11 +70,23 @@ function isF5PolicyPage(url: string, html: string): boolean {
   return /\/my\.policy/i.test(url) || /BIG-IP|F5 Networks/i.test(html);
 }
 
-function isSamlBootstrapPage(html: string): boolean {
-  return (
-    html.includes('SAMLRequest') ||
-    (html.includes('type="hidden"') && /<form[^>]+action=/i.test(html))
-  );
+/**
+ * Auto-submit SAML from EMMA/F5 to ADFS — never on signon.radissonhotels.com
+ * (there every page has hidden fields and would loop forever).
+ */
+function isSamlBootstrapPage(html: string, url: string): boolean {
+  if (/signon\.radissonhotels\.com/i.test(url)) return false;
+  if (html.includes('SAMLRequest') || html.includes('SAMLResponse')) return true;
+  if (/\/saml\/sp\/profile\/post\/acs/i.test(url)) return true;
+  if (isF5PolicyPage(url, html) || isLaunchpadUrl(url) || /emma\.rhg\.radissonhotels\.com/i.test(url)) {
+    const action = extractFormAction(html, url);
+    return Boolean(
+      action &&
+        /signon\.radissonhotels\.com/i.test(action) &&
+        html.includes('type="hidden"'),
+    );
+  }
+  return false;
 }
 
 function isLaunchpadUrl(url: string): boolean {
@@ -63,11 +94,30 @@ function isLaunchpadUrl(url: string): boolean {
 }
 
 function isLoginIncomplete(url: string, html: string, title: string): boolean {
-  if (isAdfsPage(html, url) || isMfaPage(html, title) || isSapLogonPage(html)) return true;
+  if (isAdfsFormsLoginPage(html, url) || isMfaPage(html, title) || isSapLogonPage(html)) {
+    return true;
+  }
   if (isF5PolicyPage(url, html)) return true;
-  if (isSamlBootstrapPage(html)) return true;
-  if (/signon\.radissonhotels\.com/i.test(url)) return true;
+  if (isSamlBootstrapPage(html, url)) return true;
+  if (
+    /signon\.radissonhotels\.com/i.test(url) &&
+    !isPrivacyIdeaMfaPage(html) &&
+    !isAdfsFormsLoginPage(html, url)
+  ) {
+    return true;
+  }
   return false;
+}
+
+function extractSapLoginXsrf(html: string): string | null {
+  const m =
+    /name=["']sap-login-XSRF["'][^>]*value=["']([^"']+)["']/i.exec(html) ??
+    /value=["']([^"']+)["'][^>]*name=["']sap-login-XSRF["']/i.exec(html);
+  return m?.[1] ?? null;
+}
+
+function sapClientFromOpts(opts: EmmaLoginOpts): string {
+  return opts.sapClient?.trim() || '100';
 }
 
 function extractMetaRefreshUrl(html: string, baseUrl: string): string | null {
@@ -164,6 +214,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   const jar = new EmmaCookieJar();
   const launchUrl = emmaLaunchpadUrl(opts);
   let page = await emmaHttpFetch(jar, launchUrl);
+  let samlRelayCount = 0;
 
   for (let round = 0; round < MAX_LOGIN_ROUNDS; round++) {
     const stepHint = page.url.replace(/^https?:\/\//, '').slice(0, 72);
@@ -176,22 +227,12 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       continue;
     }
 
-    if (isSamlBootstrapPage(page.html)) {
-      const action = extractFormAction(page.html, page.url);
-      const hidden = extractHiddenFields(page.html);
-      if (action) {
-        opts.progress?.('[EMMA HTTP] SAML → ADFS');
-        page = await postForm(jar, action, hidden, page.url);
-        await sleep(1000);
-        continue;
-      }
-    }
-
-    if (isAdfsPage(page.html, page.url)) {
+    if (isAdfsFormsLoginPage(page.html, page.url)) {
       if (!opts.adfsEmail?.trim() || !opts.adfsPassword) {
         throw new Error('EMMA HTTP Stage 1: ADFS credentials missing.');
       }
       opts.progress?.('[EMMA HTTP] Stage 1/4 ADFS');
+      samlRelayCount = 0;
       page = await postForm(
         jar,
         page.url,
@@ -207,22 +248,63 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       continue;
     }
 
+    if (isSamlBootstrapPage(page.html, page.url)) {
+      const action = extractFormAction(page.html, page.url);
+      const hidden = extractHiddenFields(page.html);
+      if (action) {
+        samlRelayCount += 1;
+        if (samlRelayCount > 3) {
+          throw new Error(
+            'EMMA HTTP: SAML-Weiterleitung zu ADFS wiederholt sich (kein Login-Formular).',
+          );
+        }
+        opts.progress?.('[EMMA HTTP] SAML → ADFS');
+        page = await postForm(jar, action, hidden, page.url);
+        await sleep(1000);
+        continue;
+      }
+    }
+
     if (isMfaPage(page.html, page.title)) {
       if (!opts.totpSecret?.trim()) {
         throw new Error('EMMA HTTP Stage 2: MFA required but no TOTP seed.');
       }
-      opts.progress?.('[EMMA HTTP] Stage 2/4 MFA');
-      page = await postForm(
-        jar,
-        page.url,
-        {
-          ...extractHiddenFields(page.html),
-          ChallengeQuestionAnswer: generateSync({
-            secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
-          }),
-        },
-        page.url,
-      );
+      const otp = generateSync({
+        secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
+      });
+      opts.progress?.('[EMMA HTTP] Stage 2/4 MFA (TOTP)');
+      if (isPrivacyIdeaMfaPage(page.html)) {
+        page = await postForm(
+          jar,
+          page.url,
+          {
+            ...extractHiddenFields(page.html),
+            AuthMethod: 'privacyIDEAADFSProvider',
+            otp,
+            Submit: 'Submit',
+            autoSubmit: '0',
+            mode: 'otp',
+            pushAvailable: '0',
+            otpAvailable: '1',
+            webAuthnSignRequest: '',
+            webAuthnSignResponse: '',
+            modeChanged: '0',
+            origin: '',
+            authCounter: '0',
+          },
+          page.url,
+        );
+      } else {
+        page = await postForm(
+          jar,
+          page.url,
+          {
+            ...extractHiddenFields(page.html),
+            ChallengeQuestionAnswer: otp,
+          },
+          page.url,
+        );
+      }
       await sleep(2000);
       continue;
     }
@@ -232,11 +314,27 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
       }
       opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon');
+      const xsrf = extractSapLoginXsrf(page.html);
+      if (!xsrf) {
+        throw new Error('EMMA HTTP Stage 3: sap-login-XSRF missing on logon page.');
+      }
+      const sapClient = sapClientFromOpts(opts);
       page = await postForm(
         jar,
         page.url,
         {
           ...extractHiddenFields(page.html),
+          'sap-system-login-oninputprocessing': 'onLogin',
+          'sap-urlscheme': '',
+          'sap-system-login': 'onLogin',
+          'sap-system-login-basic_auth': '',
+          'sap-client': sapClient,
+          'sap-language': 'EN',
+          'sap-accessibility': '',
+          'sap-login-XSRF': xsrf,
+          'sap-system-login-cookie_disabled': '',
+          'sap-hash': '',
+          'hidden_message_to_show': '',
           'sap-user': opts.sapUser.trim(),
           'sap-password': opts.sapPassword,
         },
@@ -274,8 +372,70 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
     break;
   }
 
+  if (isLoginIncomplete(page.url, page.html, page.title)) {
+    throw new Error(
+      `EMMA HTTP-Login unvollständig nach ${MAX_LOGIN_ROUNDS} Schritten (letzte URL: ${page.url}).`,
+    );
+  }
+
+  if (opts.operatorCode?.trim() && opts.operatorPassword) {
+    const baseUrl = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+    await emmaHttpPropertyLogin(
+      jar,
+      baseUrl,
+      sapClientFromOpts(opts),
+      opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR',
+      opts.operatorCode.trim(),
+      opts.operatorPassword,
+      opts.progress,
+    );
+  }
+
   opts.progress?.(`[EMMA HTTP] Login fertig: ${page.url}`);
   return { jar, finalUrl: page.url };
+}
+
+const EMMA_ODATA_HOTEL_SRV = 'ZEYUI_HOTEL_SRV';
+
+/** Stage 4 — property/operator via OData (from HAR capture). */
+export async function emmaHttpPropertyLogin(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  sapClient: string,
+  hotelId: string,
+  operatorCode: string,
+  operatorPassword: string,
+  progress?: (msg: string) => void,
+): Promise<void> {
+  progress?.('[EMMA HTTP] Stage 4/4 Property (OData)');
+  const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_HOTEL_SRV);
+  const q = (s: string) => encodeURIComponent(`'${s}'`);
+  const root = baseUrl.replace(/\/+$/, '');
+  const steps = [
+    `${root}/sap/opu/odata/sap/${EMMA_ODATA_HOTEL_SRV}/SetDefaultHotel?sap-client=${sapClient}&HotelId=${q(hotelId)}`,
+    `${root}/sap/opu/odata/sap/${EMMA_ODATA_HOTEL_SRV}/CheckSharedUser?sap-client=${sapClient}&Employee=${q(operatorCode)}&Password=${q(operatorPassword)}&HotelId=${q(hotelId)}`,
+    `${root}/sap/opu/odata/sap/${EMMA_ODATA_HOTEL_SRV}/FI_SET_EMPLOYEE_LOGIN?sap-client=${sapClient}&Employee=${q(operatorCode)}`,
+  ];
+  for (const url of steps) {
+    const target = new URL(url);
+    const headers = new Headers({
+      'x-csrf-token': csrf,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+      'User-Agent': BROWSER_UA,
+    });
+    const cookie = jar.headerFor(target);
+    if (cookie) headers.set('Cookie', cookie);
+    const res = await fetch(url, { method: 'POST', headers, redirect: 'manual' });
+    const setCookies =
+      typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    jar.ingestSetCookie(setCookies, target);
+    if (!res.ok && res.status !== 204) {
+      const t = await res.text().catch(() => '');
+      throw new Error(`EMMA HTTP Property step failed (${res.status}): ${t.slice(0, 300)}`);
+    }
+  }
 }
 
 /** Quick check: can we read OData metadata with current cookies? */

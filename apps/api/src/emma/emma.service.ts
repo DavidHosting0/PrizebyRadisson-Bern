@@ -149,6 +149,8 @@ export class EmmaService {
       operatorCode: creds.operatorCode || undefined,
       operatorPassword: creds.operatorPassword || undefined,
       baseUrl: creds.baseUrl || undefined,
+      hotelId: creds.hotelId || undefined,
+      sapClient: creds.sapClient || undefined,
       progress: (msg) => this.log.log(msg),
     };
   }
