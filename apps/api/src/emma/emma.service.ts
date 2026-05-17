@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import {
   SettingsService,
   type EmmaLoginStored,
@@ -33,6 +33,7 @@ export class EmmaService {
   constructor(
     private readonly settings: SettingsService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
   ) {}
