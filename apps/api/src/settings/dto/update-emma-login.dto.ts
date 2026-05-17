@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 
 /**
  * Patch DTO for the four-stage EMMA login secrets. All fields are optional;
@@ -6,6 +6,11 @@ import { IsEmail, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator
  * UI can update one credential at a time without re-entering everything.
  */
 export class UpdateEmmaLoginDto {
+  /** When false, disables EMMA sync, HTTP login, and session refresh. */
+  @IsOptional()
+  @IsBoolean()
+  integrationEnabled?: boolean;
+
   // Stage 1 — ADFS forms authentication --------------------------------------
   @IsOptional()
   @IsEmail()

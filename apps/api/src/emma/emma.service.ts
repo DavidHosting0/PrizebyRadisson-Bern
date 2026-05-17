@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  forwardRef,
+} from '@nestjs/common';
 import {
   SettingsService,
   type EmmaLoginStored,
@@ -48,7 +54,38 @@ export class EmmaService {
 
   async invalidateSession() {
     await this.settings.clearEmmaHttpSession();
+    this.clearPendingSyncTimers();
     return { ok: true };
+  }
+
+  private clearPendingSyncTimers(): void {
+    if (this.activityDebounce) {
+      clearTimeout(this.activityDebounce);
+      this.activityDebounce = null;
+    }
+    if (this.viewDebounce) {
+      clearTimeout(this.viewDebounce);
+      this.viewDebounce = null;
+    }
+  }
+
+  private async isIntegrationActive(): Promise<boolean> {
+    if (!(await this.settings.isEmmaIntegrationEnabled())) return false;
+    if (process.env.EMMA_AUTO_SYNC === 'false') return false;
+    return true;
+  }
+
+  private async assertIntegrationActive(): Promise<void> {
+    if (!(await this.settings.isEmmaIntegrationEnabled())) {
+      throw new ForbiddenException(
+        'EMMA-Integration ist deaktiviert. Admin → EMMA → „EMMA-Integration aktiv“ einschalten.',
+      );
+    }
+    if (process.env.EMMA_AUTO_SYNC === 'false') {
+      throw new ForbiddenException(
+        'EMMA ist per Server-Konfiguration deaktiviert (EMMA_AUTO_SYNC=false).',
+      );
+    }
   }
 
   /**
@@ -81,6 +118,7 @@ export class EmmaService {
   }
 
   async refreshHttpSession(): Promise<{ ok: true; savedAt: string; cookieCount: number }> {
+    await this.assertIntegrationActive();
     const opts = await this.buildLoginOpts();
     const startedAt = Date.now();
     this.log.log('[EMMA] refreshHttpSession (HTTP) gestartet');
@@ -121,7 +159,6 @@ export class EmmaService {
   /** Debounced sync after local room activity (checklist, clean, assign, …). */
   scheduleRoomStatusSync(source: string): void {
     if (this.suppressActivityScheduling) return;
-    if (process.env.EMMA_AUTO_SYNC === 'false') return;
     const debounceMs = parseInt(process.env.EMMA_ACTION_SYNC_DEBOUNCE_MS ?? '20000', 10);
     if (this.activityDebounce) clearTimeout(this.activityDebounce);
     this.activityDebounce = setTimeout(() => {
@@ -136,7 +173,6 @@ export class EmmaService {
    */
   scheduleRoomStatusSyncOnView(source: string): void {
     if (this.suppressActivityScheduling) return;
-    if (process.env.EMMA_AUTO_SYNC === 'false') return;
     if (this.backgroundSyncInProgress) return;
 
     const now = Date.now();
@@ -162,7 +198,7 @@ export class EmmaService {
     trigger: EmmaRoomSyncTriggerKind,
     source?: string,
   ): Promise<void> {
-    if (process.env.EMMA_AUTO_SYNC === 'false') return;
+    if (!(await this.isIntegrationActive())) return;
     if (this.backgroundSyncInProgress) {
       this.log.debug(`[EMMA] auto sync skipped (${trigger}): already running`);
       return;
@@ -202,6 +238,7 @@ export class EmmaService {
   async syncRoomStatuses(
     runOpts: { hotelId?: string; forceAttempt?: boolean } = {},
   ): Promise<EmmaRoomStatusSyncResult> {
+    await this.assertIntegrationActive();
     const creds = await this.settings.getEmmaLoginSecrets();
     this.assertCredentialsComplete(creds);
     const hotelId =

@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { PermissionToggle } from '@/components/admin/PermissionToggle';
 
 type EmmaMeta = {
+  integrationEnabled: boolean;
   adfsEmail: string | null;
   sapUser: string | null;
   operatorCode: string | null;
@@ -17,6 +19,7 @@ type EmmaMeta = {
 };
 
 type SavePayload = {
+  integrationEnabled?: boolean;
   adfsEmail?: string;
   adfsPassword?: string;
   totpSecret?: string;
@@ -100,6 +103,17 @@ export default function AdminEmmaCredentialsPage() {
       api<{ ok: true }>('/emma/session/invalidate', { method: 'POST' }),
   });
 
+  const integrationMut = useMutation({
+    mutationFn: (integrationEnabled: boolean) =>
+      api<EmmaMeta>('/settings/emma-login', {
+        method: 'PATCH',
+        body: JSON.stringify({ integrationEnabled }),
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(['settings', 'emma-login'], next);
+    },
+  });
+
   const syncRoomsMut = useMutation({
     mutationFn: () =>
       api<RoomStatusSyncResult>('/emma/room-status/sync', {
@@ -112,6 +126,7 @@ export default function AdminEmmaCredentialsPage() {
   });
 
   const meta = metaQuery.data;
+  const emmaActive = meta?.integrationEnabled !== false;
 
   return (
     <div className="space-y-8 px-4 py-6">
@@ -128,11 +143,41 @@ export default function AdminEmmaCredentialsPage() {
       </header>
 
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+        <h2 className="text-lg font-semibold text-ink">EMMA-Integration</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Schaltet automatischen Zimmerstatus-Sync (Cron, Zimmerlisten, Housekeeping-Aktionen),
+          manuellen Sync und HTTP-Login (Cookies) ab. Zugangsdaten bleiben gespeichert.
+        </p>
+        <div className="mt-4 rounded-xl border border-border bg-surface-muted/40">
+          <PermissionToggle
+            title="EMMA-Integration aktiv"
+            description={
+              emmaActive
+                ? 'Sync und Session-Erneuerung sind erlaubt.'
+                : 'Kein EMMA-Login, kein Sync — nur Zugangsdaten bearbeiten oder Session löschen.'
+            }
+            checked={emmaActive}
+            disabled={integrationMut.isPending || metaQuery.isLoading}
+            onChange={(next) => integrationMut.mutate(next)}
+          />
+        </div>
+        {integrationMut.isError && (
+          <p className="mt-3 text-sm text-rose-700">{(integrationMut.error as Error).message}</p>
+        )}
+        {!emmaActive && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            EMMA ist ausgeschaltet. Hintergrund-Sync und automatischer Re-Login laufen nicht.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+        <h2 className="text-lg font-semibold text-ink">Zugangsdaten</h2>
         {metaQuery.isLoading ? (
-          <p className="text-sm text-ink-muted">Lädt…</p>
+          <p className="mt-3 text-sm text-ink-muted">Lädt…</p>
         ) : (
           <form
-            className="grid max-w-2xl grid-cols-1 gap-6"
+            className="mt-4 grid max-w-2xl grid-cols-1 gap-6"
             onSubmit={(e) => {
               e.preventDefault();
               const body: SavePayload = {};
@@ -391,8 +436,9 @@ export default function AdminEmmaCredentialsPage() {
           <button
             type="button"
             onClick={() => refreshHttpMut.mutate()}
-            disabled={refreshHttpMut.isPending}
+            disabled={refreshHttpMut.isPending || !emmaActive}
             className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            title={!emmaActive ? 'EMMA-Integration ist deaktiviert' : undefined}
           >
             {refreshHttpMut.isPending ? 'Session wird erneuert …' : 'HTTP-Session erneuern'}
           </button>
@@ -438,8 +484,9 @@ export default function AdminEmmaCredentialsPage() {
           <button
             type="button"
             onClick={() => syncRoomsMut.mutate()}
-            disabled={syncRoomsMut.isPending}
+            disabled={syncRoomsMut.isPending || !emmaActive}
             className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            title={!emmaActive ? 'EMMA-Integration ist deaktiviert' : undefined}
           >
             {syncRoomsMut.isPending ? 'Synchronisiere …' : 'Zimmer jetzt synchronisieren'}
           </button>

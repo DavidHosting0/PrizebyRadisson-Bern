@@ -38,6 +38,8 @@ export type EmmaLoginStored = {
 
 /** Persisted shape (passwords/seed are AES-GCM ciphertext, base64). */
 type EmmaLoginPersisted = {
+  /** false = EMMA sync and HTTP session login disabled (default: enabled). */
+  integrationEnabled?: boolean;
   adfsEmail?: string;
   adfsPasswordEnc?: string;
   totpSecretEnc?: string;
@@ -220,6 +222,13 @@ export class SettingsService {
   async getEmmaLoginMeta() {
     const row = await this.ensureRow();
     return this.metaFromEmmaRaw(this.asRecord(row.settings)[EMMA_KEY]);
+  }
+
+  /** Whether EMMA sync / HTTP login is allowed (admin toggle; default true). */
+  async isEmmaIntegrationEnabled(): Promise<boolean> {
+    const row = await this.ensureRow();
+    const p = this.parseEmmaPersisted(this.asRecord(row.settings)[EMMA_KEY]);
+    return p.integrationEnabled !== false;
   }
 
   async updateEmmaLogin(dto: UpdateEmmaLoginDto) {
@@ -507,6 +516,7 @@ export class SettingsService {
     const pickStr = (k: string): string | undefined =>
       typeof o[k] === 'string' ? (o[k] as string) : undefined;
     return {
+      integrationEnabled: o.integrationEnabled === false ? false : undefined,
       adfsEmail: pickStr('adfsEmail'),
       adfsPasswordEnc: pickStr('adfsPasswordEnc'),
       totpSecretEnc: pickStr('totpSecretEnc'),
@@ -527,6 +537,9 @@ export class SettingsService {
     dto: UpdateEmmaLoginDto,
   ): EmmaLoginPersisted {
     const next: EmmaLoginPersisted = { ...prev };
+    if (dto.integrationEnabled !== undefined) {
+      next.integrationEnabled = dto.integrationEnabled;
+    }
     if (dto.adfsEmail !== undefined) next.adfsEmail = dto.adfsEmail.trim();
     if (dto.sapUser !== undefined) next.sapUser = dto.sapUser.trim();
     if (dto.operatorCode !== undefined) next.operatorCode = dto.operatorCode.trim();
@@ -569,6 +582,7 @@ export class SettingsService {
   private metaFromEmmaRaw(raw: unknown) {
     const p = this.parseEmmaPersisted(raw);
     return {
+      integrationEnabled: p.integrationEnabled !== false,
       adfsEmail: p.adfsEmail?.trim() || null,
       sapUser: p.sapUser?.trim() || null,
       operatorCode: p.operatorCode?.trim() || null,
