@@ -9,6 +9,31 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+/** Decode &#x2f; &amp; etc. in URLs from SAP/Fiori HTML (meta refresh, form action). */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"');
+}
+
+function resolveHttpUrl(href: string, baseUrl: string): string | null {
+  const decoded = decodeHtmlEntities(href.trim());
+  try {
+    return new URL(decoded, baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Fiori launchpad loaded (post-SAP) — ignore entity-encoded meta refresh in shell HTML. */
+function isFioriLaunchpadShell(html: string): boolean {
+  return /sap-ui-core|sap\.ushell|sapUShellFullHeight/i.test(html);
+}
+
 function extractHiddenFields(html: string): Record<string, string> {
   const out: Record<string, string> = {};
   const re = /<input[^>]+type=["']hidden["'][^>]*>/gi;
@@ -25,11 +50,7 @@ function extractHiddenFields(html: string): Record<string, string> {
 function extractFormAction(html: string, baseUrl: string): string | null {
   const formMatch = /<form[^>]+action=["']([^"']+)["']/i.exec(html);
   if (!formMatch?.[1]) return null;
-  try {
-    return new URL(formMatch[1], baseUrl).toString();
-  } catch {
-    return null;
-  }
+  return resolveHttpUrl(formMatch[1], baseUrl);
 }
 
 /** ADFS page after password accepted — MFA or SAML relay, not another login. */
@@ -184,11 +205,18 @@ function extractMetaRefreshUrl(html: string, baseUrl: string): string | null {
     /http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'\s>]+)/i,
   );
   if (!m?.[1]) return null;
-  try {
-    return new URL(m[1], baseUrl).toString();
-  } catch {
-    return null;
+  return resolveHttpUrl(m[1], baseUrl);
+}
+
+function sapLaunchpadUrl(baseUrl: string, sapClient: string, hiddenMessage?: string): string {
+  const root = baseUrl.replace(/\/+$/, '');
+  const u = new URL(`${root}/sap/bc/ui2/flp`);
+  u.searchParams.set('sap-client', sapClient);
+  u.searchParams.set('sap-language', 'EN');
+  if (hiddenMessage?.trim()) {
+    u.searchParams.set('hidden_message_to_show', hiddenMessage.trim());
   }
+  return u.toString();
 }
 
 export type EmmaHttpFetchResult = {
@@ -227,7 +255,9 @@ export async function emmaHttpFetch(
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location');
       if (!loc) break;
-      current = new URL(loc, current).toString();
+      const next = resolveHttpUrl(loc, current);
+      if (!next) break;
+      current = next;
       init = { method: 'GET' };
       continue;
     }
@@ -281,8 +311,17 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
     const stepHint = page.url.replace(/^https?:\/\//, '').slice(0, 72);
     opts.progress?.(`[EMMA HTTP] Runde ${round + 1}: ${stepHint}`);
 
+    if (isSapSessionEstablished(page.url) && !isSapLogonPage(page.html, page.url)) {
+      opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — Session aktiv');
+      break;
+    }
+
     const metaRefresh = extractMetaRefreshUrl(page.html, page.url);
-    if (metaRefresh && metaRefresh !== page.url) {
+    const skipMetaRefresh =
+      isSapSessionEstablished(page.url) ||
+      (sapCredentialsPosted && isFioriLaunchpadShell(page.html)) ||
+      (metaRefresh?.includes('&#') ?? false);
+    if (metaRefresh && metaRefresh !== page.url && !skipMetaRefresh) {
       page = await emmaHttpFetch(jar, metaRefresh);
       await sleep(400);
       continue;
@@ -395,11 +434,6 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       }
     }
 
-    if (isSapSessionEstablished(page.url) && !isSapLogonPage(page.html, page.url)) {
-      opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — Session aktiv');
-      break;
-    }
-
     if (isSapLogonPage(page.html, page.url)) {
       if (!opts.sapUser?.trim() || !opts.sapPassword) {
         throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
@@ -421,6 +455,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       const sapAction = extractFormAction(page.html, page.url) ?? page.url;
       const sapHidden = extractHiddenFields(page.html);
       sapCredentialsPosted = true;
+      const hiddenMsg = sapHidden.hidden_message_to_show;
       page = await postForm(
         jar,
         sapAction,
@@ -444,6 +479,17 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       if (isSapSessionEstablished(page.url)) {
         opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
         break;
+      }
+      if (isFioriLaunchpadShell(page.html) && !isSapLogonPage(page.html, page.url)) {
+        const base = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+        page = await emmaHttpFetch(
+          jar,
+          sapLaunchpadUrl(base, sapClient, hiddenMsg),
+        );
+        if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
+          opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
+          break;
+        }
       }
       const sapErr = extractSapLoginError(page.html);
       if (sapErr) {
