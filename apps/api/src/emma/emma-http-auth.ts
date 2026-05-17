@@ -181,12 +181,35 @@ function extractAdfsLoginError(html: string): string | null {
 }
 
 function extractSapLoginError(html: string): string | null {
+  const hidden = extractHiddenFields(html);
+  const banner = hidden.hidden_message_to_show?.replace(/\s+/g, ' ').trim() ?? '';
+  if (
+    banner.length > 3 &&
+    !/credit card|cleartext|tokenized|IMPORTANT|cooperation/i.test(banner)
+  ) {
+    return banner;
+  }
   const m =
+    /sap-system-login-message[^>]*>([^<]{3,400})/i.exec(html) ??
     /class=["'][^"']*sapUiMsgError[^"']*["'][^>]*>([^<]+)/i.exec(html) ??
     /id=["']LOGIN_ERROR_BLOCK["'][^>]*>([\s\S]{0,400})/i.exec(html) ??
-    /loginErrorMessage["']?\s*[^>]*>([^<]{4,300})/i.exec(html);
+    /loginErrorMessage["']?\s*[^>]*>([^<]{4,300})/i.exec(html) ??
+    /class=["'][^"']*urMsgBar[^"']*["'][^>]*>([\s\S]{0,300})/i.exec(html);
   const msg = m?.[1]?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  return msg && msg.length > 3 ? msg : null;
+  if (msg && msg.length > 3) return msg;
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+  const plain = text.match(
+    /(?:password|passwort|logon|anmeldung|user|benutzer).{0,40}(?:invalid|incorrect|failed|falsch|ungültig|denied|gesperrt|locked)/i,
+  );
+  return plain?.[0]?.replace(/\s+/g, ' ').trim() ?? null;
+}
+
+/** SAP technical users are lowercase in EMMA (HAR: chbrnprf2). */
+function normalizeSapUser(user: string): string {
+  return user.trim().toLowerCase();
 }
 
 function extractSapLoginXsrf(html: string): string | null {
@@ -224,6 +247,8 @@ export type EmmaHttpFetchResult = {
   url: string;
   html: string;
   title: string;
+  /** HTTP status codes seen while following redirects (e.g. POST 302 → GET 200). */
+  statusTrail: number[];
 };
 
 export async function emmaHttpFetch(
@@ -233,6 +258,7 @@ export async function emmaHttpFetch(
   maxRedirects = 15,
 ): Promise<EmmaHttpFetchResult> {
   let current = url;
+  const statusTrail: number[] = [];
   for (let i = 0; i < maxRedirects; i++) {
     const target = new URL(current);
     const headers = new Headers(init.headers ?? {});
@@ -244,6 +270,7 @@ export async function emmaHttpFetch(
       headers,
       redirect: 'manual',
     });
+    statusTrail.push(res.status);
     const setCookies =
       typeof res.headers.getSetCookie === 'function'
         ? res.headers.getSetCookie()
@@ -263,7 +290,7 @@ export async function emmaHttpFetch(
     }
     const html = await res.text();
     const title = /<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1]?.trim() ?? '';
-    return { status: res.status, url: current, html, title };
+    return { status: res.status, url: current, html, title, statusTrail };
   }
   throw new Error('EMMA HTTP: zu viele Redirects.');
 }
@@ -273,6 +300,7 @@ async function postForm(
   action: string,
   fields: Record<string, string>,
   referer?: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<EmmaHttpFetchResult> {
   const body = new URLSearchParams();
   for (const [k, v] of Object.entries(fields)) body.set(k, v);
@@ -280,8 +308,10 @@ async function postForm(
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'text/html,application/xhtml+xml',
-      ...(referer ? { Referer: referer } : {}),
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Cache-Control': 'max-age=0',
+      ...(referer ? { Referer: referer, Origin: new URL(referer).origin } : {}),
+      ...extraHeaders,
     },
     body: body.toString(),
   });
@@ -320,8 +350,10 @@ function emmaHttpDebug(
     f5: isF5PolicyPage(page.url, page.html),
     launchpad: isLaunchpadUrl(page.url),
   };
+  const trail =
+    page.statusTrail.length > 0 ? ` trail=[${page.statusTrail.join('→')}]` : '';
   progress(
-    `[EMMA HTTP DEBUG] ${label} status=${page.status} cookies=${jar.toJSON().length} htmlBytes=${page.html.length} sap-client=${sapClientParam ?? '—'}`,
+    `[EMMA HTTP DEBUG] ${label} status=${page.status}${trail} cookies=${jar.toJSON().length} htmlBytes=${page.html.length} sap-client=${sapClientParam ?? '—'}`,
   );
   progress(`[EMMA HTTP DEBUG] ${label} url=${page.url}`);
   if (page.title) {
@@ -497,8 +529,9 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       }
       if (sapCredentialsPosted) {
         emmaHttpDebug(dbg, 'sap-wiederholung', page, jar, {
-          sapUser: opts.sapUser?.trim() ?? '',
+          sapUser: normalizeSapUser(opts.sapUser ?? ''),
           xsrfOnPage: Boolean(extractSapLoginXsrf(page.html)),
+          pwdLen: opts.sapPassword?.trim().length ?? 0,
         });
         const err = extractSapLoginError(page.html);
         const titleHint = page.title ? ` title="${page.title.slice(0, 80)}"` : '';
@@ -518,8 +551,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       const sapHidden = extractHiddenFields(page.html);
       sapCredentialsPosted = true;
       const hiddenMsg = sapHidden.hidden_message_to_show;
+      const sapUser = normalizeSapUser(opts.sapUser ?? '');
+      const sapPassword = opts.sapPassword.trim();
       opts.progress?.(
-        `[EMMA HTTP] SAP POST user=${opts.sapUser?.trim()} client=${sapClient} action=${sapAction.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrf.length} hiddenMsgLen=${hiddenMsg?.length ?? 0}`,
+        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} action=${sapAction.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrf.length} hiddenMsgLen=${hiddenMsg?.length ?? 0} pwdLen=${sapPassword.length}`,
       );
       page = await postForm(
         jar,
@@ -536,15 +571,26 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
           'sap-login-XSRF': xsrf,
           'sap-system-login-cookie_disabled': '',
           'sap-hash': '',
-          'sap-user': opts.sapUser.trim(),
-          'sap-password': opts.sapPassword,
+          'sap-user': sapUser,
+          'sap-password': sapPassword,
         },
         page.url,
+        { 'Accept-Language': 'en-US,en;q=0.9,de;q=0.8' },
       );
       emmaHttpDebug(dbg, 'nach-sap-post', page, jar, {
-        sapUser: opts.sapUser?.trim() ?? '',
+        sapUser,
         sapLogonStill: isSapLogonPage(page.html, page.url),
+        expectedRedirect: page.statusTrail.includes(302),
       });
+      if (page.status === 200 && isSapLogonPage(page.html, page.url)) {
+        const sapHint = extractSapLoginError(page.html);
+        opts.progress?.(
+          `[EMMA HTTP] SAP POST → HTTP 200 ohne Redirect (erwartet: 302 mit ?sap-client=).${sapHint ? ` Meldung: ${sapHint.slice(0, 200)}` : ' Keine Fehlermeldung im HTML.'}`,
+        );
+        if (sapHint) {
+          throw new Error(`EMMA HTTP Stage 3: SAP abgelehnt — ${sapHint}`);
+        }
+      }
       if (isSapSessionEstablished(page.url)) {
         opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
         break;
