@@ -57,6 +57,7 @@ function buildBatchGetPart(
     'X-Requested-With: XMLHttpRequest',
     '',
     '',
+    '',
   ].join('\r\n');
 }
 
