@@ -1,6 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { allHotelRoomNumbers, floorFromRoomNumber } from '../src/rooms/room-layout';
+import {
+  allHotelRoomNumbers,
+  floorFromRoomNumber,
+  RETIRED_HOTEL_ROOM_NUMBERS,
+} from '../src/rooms/room-layout';
 
 const prisma = new PrismaClient();
 
@@ -183,6 +187,34 @@ async function main() {
         roomTypeId: rt.id,
       },
     });
+  }
+
+  const retired = [...RETIRED_HOTEL_ROOM_NUMBERS];
+  const removed = await prisma.room.deleteMany({
+    where: { roomNumber: { in: retired } },
+  });
+  if (removed.count > 0) {
+    console.log(`Removed retired rooms: ${retired.join(', ')} (${removed.count})`);
+  }
+  for (const plan of await prisma.floorPlan.findMany()) {
+    const layout = plan.layout;
+    if (!Array.isArray(layout)) continue;
+    const filtered = layout.filter(
+      (el) =>
+        !(
+          el &&
+          typeof el === 'object' &&
+          (el as { kind?: string }).kind === 'room' &&
+          typeof (el as { roomNumber?: string }).roomNumber === 'string' &&
+          retired.includes((el as { roomNumber: string }).roomNumber)
+        ),
+    );
+    if (filtered.length !== layout.length) {
+      await prisma.floorPlan.update({
+        where: { id: plan.id },
+        data: { layout: filtered },
+      });
+    }
   }
 
   const roomRows = await prisma.room.findMany();

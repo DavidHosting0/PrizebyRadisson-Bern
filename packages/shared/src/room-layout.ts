@@ -3,6 +3,9 @@
  * Rooms whose number ends in …13 do not exist (13, 113, 213, …).
  */
 
+/** Former floor-0 rooms removed from the property (deleted from DB on seed / migration). */
+export const RETIRED_HOTEL_ROOM_NUMBERS = ['18', '19', '20'] as const;
+
 const UPPER_FLOOR_RANGES: ReadonlyArray<readonly [number, number]> = [
   [101, 124],
   [201, 224],
