@@ -34,6 +34,16 @@ type RefreshHttpResult = {
   cookieCount: number;
 };
 
+type RoomStatusSyncResult = {
+  hotelId: string;
+  syncedAt: string;
+  emmaRooms: number;
+  matched: number;
+  updated: number;
+  unmatchedEmma: string[];
+  unmatchedLocal: string[];
+};
+
 export default function AdminEmmaCredentialsPage() {
   const queryClient = useQueryClient();
   const metaQuery = useQuery({
@@ -88,6 +98,17 @@ export default function AdminEmmaCredentialsPage() {
   const invalidateMut = useMutation({
     mutationFn: () =>
       api<{ ok: true }>('/emma/session/invalidate', { method: 'POST' }),
+  });
+
+  const syncRoomsMut = useMutation({
+    mutationFn: () =>
+      api<RoomStatusSyncResult>('/emma/room-status/sync', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    },
   });
 
   const meta = metaQuery.data;
@@ -402,6 +423,43 @@ export default function AdminEmmaCredentialsPage() {
         )}
         {invalidateMut.isSuccess && !invalidateMut.isPending && (
           <p className="mt-3 text-sm text-emerald-800">HTTP-Session zurückgesetzt.</p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+        <h2 className="text-lg font-semibold text-ink">Zimmerstatus-Sync</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Lädt Housekeeping-Status aus EMMA (OData) und schreibt ihn auf die lokalen Zimmer.
+          Dauert typisch einige Sekunden, wenn die HTTP-Session gültig ist — sonst wird zuerst
+          automatisch neu eingeloggt. Zusätzlich läuft der Sync alle 5 Minuten im Hintergrund.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => syncRoomsMut.mutate()}
+            disabled={syncRoomsMut.isPending}
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {syncRoomsMut.isPending ? 'Synchronisiere …' : 'Zimmer jetzt synchronisieren'}
+          </button>
+        </div>
+
+        {syncRoomsMut.isSuccess && syncRoomsMut.data && (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+            <p className="font-semibold">Sync abgeschlossen.</p>
+            <p className="mt-1 text-xs text-emerald-900/80">
+              {syncRoomsMut.data.matched} von {syncRoomsMut.data.emmaRooms} EMMA-Zimmern gematcht ·{' '}
+              {syncRoomsMut.data.updated} aktualisiert · Hotel {syncRoomsMut.data.hotelId} ·{' '}
+              {new Date(syncRoomsMut.data.syncedAt).toLocaleString('de-CH')}
+            </p>
+          </div>
+        )}
+        {syncRoomsMut.isError && (
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+            <p className="font-semibold">Sync fehlgeschlagen.</p>
+            <p className="mt-1 break-words">{(syncRoomsMut.error as Error).message}</p>
+          </div>
         )}
       </section>
     </div>

@@ -6,6 +6,16 @@ export const EMMA_DEFAULT_HOTEL_ID = 'CHBRNPR';
 export const EMMA_DEFAULT_BUILDING_ID = '01';
 export const EMMA_DEFAULT_SAP_CLIENT = '100';
 
+/** UI5-style $filter encoding: encodeURIComponent leaves `'` literal; SAP expects `%27`. */
+export function encodeODataFilter(expr: string): string {
+  return encodeURIComponent(expr).replace(/'/g, '%27');
+}
+
+function createBatchBoundary(): string {
+  const hex = randomBytes(6).toString('hex');
+  return `batch_${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+}
+
 export type EmmaODataBatchPartResult = {
   status: number;
   body: string;
@@ -55,7 +65,7 @@ export function buildODataBatchBody(
   parts: ODataBatchPartSpec[],
   csrfToken: string,
 ): { boundary: string; body: string; contentType: string } {
-  const boundary = `batch_${randomBytes(6).toString('hex')}`;
+  const boundary = createBatchBoundary();
   let body = '\r\n';
   for (const part of parts) {
     body += buildBatchGetPart(boundary, part.path, csrfToken, part);
@@ -132,13 +142,31 @@ export function roomDetailBatchPath(
   skip: number,
   top: number,
 ): string {
-  const filter = encodeURIComponent(`HotelId eq '${hotelId}'`);
+  const filter = encodeODataFilter(`HotelId eq '${hotelId}'`);
   return `RoomDetail?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$filter=${filter}`;
 }
 
 export function roomDetailCountBatchPath(hotelId: string, sapClient: string): string {
-  const filter = encodeURIComponent(`HotelId eq '${hotelId}'`);
+  const filter = encodeODataFilter(`HotelId eq '${hotelId}'`);
   return `RoomDetail/$count?sap-client=${sapClient}&$filter=${filter}`;
+}
+
+export function buildingsFloorsCountBatchPath(
+  hotelId: string,
+  buildingId: string,
+  sapClient: string,
+): string {
+  return `Buildings(HotelId='${hotelId}',BuildingId='${buildingId}')/Floors/$count?sap-client=${sapClient}`;
+}
+
+export function buildingsFloorsListBatchPath(
+  hotelId: string,
+  buildingId: string,
+  sapClient: string,
+  skip = 0,
+  top = 999,
+): string {
+  return `Buildings(HotelId='${hotelId}',BuildingId='${buildingId}')/Floors?sap-client=${sapClient}&$skip=${skip}&$top=${top}`;
 }
 
 export function roomStatusCountBatchPath(sapClient: string): string {
@@ -151,6 +179,16 @@ export function roomStatusListBatchPath(
   top = 999,
 ): string {
   return `RoomStatus?sap-client=${sapClient}&$skip=${skip}&$top=${top}`;
+}
+
+export function floorRoomDetailsCountBatchPath(
+  hotelId: string,
+  buildingId: string,
+  floorId: string,
+  sapClient: string,
+): string {
+  const key = `Floors(HotelId='${hotelId}',BuildingId='${buildingId}',FloorId='${floorId}')`;
+  return `${key}/RoomDetails/$count?sap-client=${sapClient}&search=`;
 }
 
 export function floorRoomDetailsBatchPath(

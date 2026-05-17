@@ -13,6 +13,10 @@ import {
   parseODataBatchResponse,
   parseODataCount,
   parseODataResultsJson,
+  buildingsFloorsCountBatchPath,
+  buildingsFloorsListBatchPath,
+  floorRoomDetailsCountBatchPath,
+  floorRoomDetailsBatchPath,
   roomDetailBatchPath,
   roomDetailCountBatchPath,
   roomStatusCountBatchPath,
@@ -142,6 +146,84 @@ function buildStatusLookup(rows: Record<string, unknown>[]): Map<string, string>
   return m;
 }
 
+function pickFloorIds(rows: Record<string, unknown>[]): string[] {
+  const ids: string[] = [];
+  for (const row of rows) {
+    const id = pickString(row, ['FloorId', 'Floor', 'FloorID']);
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+/** Per-floor RoomDetails batches (same paths as EMMA Room Status UI). */
+async function fetchRoomDetailsViaFloorsHttp(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  hotelId: string,
+  buildingId: string,
+  sapClient: string,
+  csrfToken: string,
+  pageSize = 999,
+): Promise<Record<string, unknown>[]> {
+  const floorsBatch = buildODataBatchBody(
+    [
+      {
+        path: buildingsFloorsCountBatchPath(hotelId, buildingId, sapClient),
+        accept: 'plain',
+      },
+      {
+        path: buildingsFloorsListBatchPath(hotelId, buildingId, sapClient, 0, pageSize),
+      },
+    ],
+    csrfToken,
+  );
+  const floorsText = await emmaHttpPostBatch(
+    jar,
+    baseUrl,
+    EMMA_ODATA_RSRVS_SRV,
+    sapClient,
+    csrfToken,
+    floorsBatch.body,
+    floorsBatch.contentType,
+  );
+  const floorParts = parseODataBatchResponse(floorsText);
+  const floorRows = parseODataResultsJson(floorParts[1]?.body ?? '');
+  const floorIds = pickFloorIds(floorRows);
+  if (!floorIds.length) return [];
+
+  const all: Record<string, unknown>[] = [];
+  const partsPerBatch = 10;
+  for (let i = 0; i < floorIds.length; i += partsPerBatch) {
+    const chunk = floorIds.slice(i, i + partsPerBatch);
+    const batchParts = chunk.flatMap((floorId) => [
+      {
+        path: floorRoomDetailsCountBatchPath(hotelId, buildingId, floorId, sapClient),
+        accept: 'plain' as const,
+      },
+      {
+        path: floorRoomDetailsBatchPath(hotelId, buildingId, floorId, sapClient, 0, pageSize),
+      },
+    ]);
+    const { body, contentType } = buildODataBatchBody(batchParts, csrfToken);
+    const batchText = await emmaHttpPostBatch(
+      jar,
+      baseUrl,
+      EMMA_ODATA_RSRVS_SRV,
+      sapClient,
+      csrfToken,
+      body,
+      contentType,
+    );
+    const responses = parseODataBatchResponse(batchText);
+    for (let j = 0; j < chunk.length; j++) {
+      const dataPart = responses[j * 2 + 1];
+      if (dataPart?.status && dataPart.status >= 400) continue;
+      all.push(...parseODataResultsJson(dataPart?.body ?? ''));
+    }
+  }
+  return all;
+}
+
 async function fetchAllRoomDetailRowsHttp(
   jar: EmmaCookieJar,
   baseUrl: string,
@@ -150,6 +232,21 @@ async function fetchAllRoomDetailRowsHttp(
   csrfToken: string,
   pageSize = 999,
 ): Promise<Record<string, unknown>[]> {
+  try {
+    const viaFloors = await fetchRoomDetailsViaFloorsHttp(
+      jar,
+      baseUrl,
+      hotelId,
+      EMMA_DEFAULT_BUILDING_ID,
+      sapClient,
+      csrfToken,
+      pageSize,
+    );
+    if (viaFloors.length > 0) return viaFloors;
+  } catch {
+    /* fall back to RoomDetail entity set */
+  }
+
   const countBatch = buildODataBatchBody(
     [{ path: roomDetailCountBatchPath(hotelId, sapClient), accept: 'plain' }],
     csrfToken,
