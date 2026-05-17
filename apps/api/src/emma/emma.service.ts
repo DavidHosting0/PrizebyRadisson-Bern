@@ -42,19 +42,20 @@ export class EmmaService {
   }
 
   async refreshHttpSession(): Promise<{ ok: true; savedAt: string; cookieCount: number }> {
-    const opts = await this.buildLoginOpts((msg) => this.log.log(msg));
+    const opts = await this.buildLoginOpts();
     const startedAt = Date.now();
     this.log.log('[EMMA] refreshHttpSession (HTTP) gestartet');
-    const jar = await emmaHttpLogin(opts);
+    const { jar, finalUrl } = await emmaHttpLogin(opts);
     const baseUrl = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
     const sapClient =
       (await this.settings.getEmmaLoginSecrets())?.sapClient?.trim() ||
       process.env.EMMA_SAP_CLIENT?.trim() ||
       EMMA_DEFAULT_SAP_CLIENT;
-    const ok = await emmaHttpProbeOData(jar, baseUrl, sapClient);
-    if (!ok) {
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
       throw new Error(
-        'EMMA HTTP-Login abgeschlossen, aber OData-Probe fehlgeschlagen (evtl. Property-Modal / Stage 4).',
+        `EMMA HTTP-Login endete auf ${finalUrl}, aber OData-Probe fehlgeschlagen: ${probe.reason}. ` +
+          'Prüfe TOTP/SAP/Operator (Stage 2–4) in Admin → EMMA.',
       );
     }
     const savedAt = new Date().toISOString();
@@ -89,8 +90,9 @@ export class EmmaService {
     this.log.log(`[EMMA] syncRoomStatuses (HTTP) gestartet (${hotelId})`);
 
     let jar = await this.loadEmmaHttpJar();
-    if (!(await emmaHttpProbeOData(jar, baseUrl, sapClient))) {
-      this.log.warn('[EMMA] HTTP-Session abgelaufen — erneuter Login');
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[EMMA] HTTP-Session abgelaufen (${probe.reason}) — erneuter Login`);
       await this.refreshHttpSession();
       jar = await this.loadEmmaHttpJar();
     }
@@ -135,7 +137,7 @@ export class EmmaService {
     return result;
   }
 
-  private async buildLoginOpts(onSessionLog?: (message: string) => void): Promise<EmmaLoginOpts> {
+  private async buildLoginOpts(): Promise<EmmaLoginOpts> {
     const creds = await this.settings.getEmmaLoginSecrets();
     this.assertCredentialsComplete(creds);
     return {
@@ -147,10 +149,7 @@ export class EmmaService {
       operatorCode: creds.operatorCode || undefined,
       operatorPassword: creds.operatorPassword || undefined,
       baseUrl: creds.baseUrl || undefined,
-      progress: (msg) => {
-        this.log.log(msg);
-        onSessionLog?.(msg);
-      },
+      progress: (msg) => this.log.log(msg),
     };
   }
 

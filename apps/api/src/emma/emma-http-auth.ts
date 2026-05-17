@@ -47,6 +47,41 @@ function isSapLogonPage(html: string): boolean {
   );
 }
 
+function isF5PolicyPage(url: string, html: string): boolean {
+  return /\/my\.policy/i.test(url) || /BIG-IP|F5 Networks/i.test(html);
+}
+
+function isSamlBootstrapPage(html: string): boolean {
+  return (
+    html.includes('SAMLRequest') ||
+    (html.includes('type="hidden"') && /<form[^>]+action=/i.test(html))
+  );
+}
+
+function isLaunchpadUrl(url: string): boolean {
+  return /\/sap\/bc\/ui2\/flp/i.test(url);
+}
+
+function isLoginIncomplete(url: string, html: string, title: string): boolean {
+  if (isAdfsPage(html, url) || isMfaPage(html, title) || isSapLogonPage(html)) return true;
+  if (isF5PolicyPage(url, html)) return true;
+  if (isSamlBootstrapPage(html)) return true;
+  if (/signon\.radissonhotels\.com/i.test(url)) return true;
+  return false;
+}
+
+function extractMetaRefreshUrl(html: string, baseUrl: string): string | null {
+  const m = html.match(
+    /http-equiv=["']refresh["'][^>]*content=["'][^"']*url=([^"'\s>]+)/i,
+  );
+  if (!m?.[1]) return null;
+  try {
+    return new URL(m[1], baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
 export type EmmaHttpFetchResult = {
   status: number;
   url: string;
@@ -113,77 +148,134 @@ async function postForm(
   });
 }
 
+export type EmmaHttpLoginResult = {
+  jar: EmmaCookieJar;
+  finalUrl: string;
+};
+
+const MAX_LOGIN_ROUNDS = 18;
+
 /**
- * Full EMMA login over HTTP. Same four stages as the legacy browser flow,
- * using form posts. Stage 4 (property modal) is skipped when it does not appear in HTML.
+ * Full EMMA login over HTTP (ADFS → MFA → SAP → Launchpad).
+ * Loops until no further login pages appear or round limit is hit.
+ * F5 `my.policy` is treated as a checkpoint, not success.
  */
-export async function emmaHttpLogin(
-  opts: EmmaLoginOpts,
-): Promise<EmmaCookieJar> {
+export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginResult> {
   const jar = new EmmaCookieJar();
   const launchUrl = emmaLaunchpadUrl(opts);
   let page = await emmaHttpFetch(jar, launchUrl);
 
-  if (page.html.includes('SAMLRequest') || page.html.includes('type="hidden"')) {
-    const action = extractFormAction(page.html, page.url);
-    const hidden = extractHiddenFields(page.html);
-    if (action) {
-      opts.progress?.('[EMMA HTTP] SAML → ADFS');
-      page = await postForm(jar, action, hidden, page.url);
-    }
-  }
+  for (let round = 0; round < MAX_LOGIN_ROUNDS; round++) {
+    const stepHint = page.url.replace(/^https?:\/\//, '').slice(0, 72);
+    opts.progress?.(`[EMMA HTTP] Runde ${round + 1}: ${stepHint}`);
 
-  if (isAdfsPage(page.html, page.url)) {
-    if (!opts.adfsEmail?.trim() || !opts.adfsPassword) {
-      throw new Error('EMMA HTTP Stage 1: ADFS credentials missing.');
+    const metaRefresh = extractMetaRefreshUrl(page.html, page.url);
+    if (metaRefresh && metaRefresh !== page.url) {
+      page = await emmaHttpFetch(jar, metaRefresh);
+      await sleep(400);
+      continue;
     }
-    opts.progress?.('[EMMA HTTP] Stage 1/4 ADFS');
-    const fields = {
-      ...extractHiddenFields(page.html),
-      UserName: opts.adfsEmail.trim(),
-      Password: opts.adfsPassword,
-      AuthMethod: 'FormsAuthentication',
-    };
-    page = await postForm(jar, page.url, fields, page.url);
-    await sleep(1200);
-  }
 
-  if (isMfaPage(page.html, page.title)) {
-    if (!opts.totpSecret?.trim()) {
-      throw new Error('EMMA HTTP Stage 2: MFA required but no TOTP seed.');
+    if (isSamlBootstrapPage(page.html)) {
+      const action = extractFormAction(page.html, page.url);
+      const hidden = extractHiddenFields(page.html);
+      if (action) {
+        opts.progress?.('[EMMA HTTP] SAML → ADFS');
+        page = await postForm(jar, action, hidden, page.url);
+        await sleep(1000);
+        continue;
+      }
     }
-    opts.progress?.('[EMMA HTTP] Stage 2/4 MFA');
-    const code = generateSync({
-      secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
-    });
-    const fields = {
-      ...extractHiddenFields(page.html),
-      ChallengeQuestionAnswer: code,
-    };
-    page = await postForm(jar, page.url, fields, page.url);
-    await sleep(2000);
-  }
 
-  if (isSapLogonPage(page.html)) {
-    if (!opts.sapUser?.trim() || !opts.sapPassword) {
-      throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
+    if (isAdfsPage(page.html, page.url)) {
+      if (!opts.adfsEmail?.trim() || !opts.adfsPassword) {
+        throw new Error('EMMA HTTP Stage 1: ADFS credentials missing.');
+      }
+      opts.progress?.('[EMMA HTTP] Stage 1/4 ADFS');
+      page = await postForm(
+        jar,
+        page.url,
+        {
+          ...extractHiddenFields(page.html),
+          UserName: opts.adfsEmail.trim(),
+          Password: opts.adfsPassword,
+          AuthMethod: 'FormsAuthentication',
+        },
+        page.url,
+      );
+      await sleep(1500);
+      continue;
     }
-    opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon');
-    const fields = {
-      ...extractHiddenFields(page.html),
-      'sap-user': opts.sapUser.trim(),
-      'sap-password': opts.sapPassword,
-    };
-    page = await postForm(jar, page.url, fields, page.url);
-    await sleep(2000);
-  }
 
-  if (!page.url.includes('emma.rhg.radissonhotels.com')) {
-    page = await emmaHttpFetch(jar, launchUrl);
+    if (isMfaPage(page.html, page.title)) {
+      if (!opts.totpSecret?.trim()) {
+        throw new Error('EMMA HTTP Stage 2: MFA required but no TOTP seed.');
+      }
+      opts.progress?.('[EMMA HTTP] Stage 2/4 MFA');
+      page = await postForm(
+        jar,
+        page.url,
+        {
+          ...extractHiddenFields(page.html),
+          ChallengeQuestionAnswer: generateSync({
+            secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
+          }),
+        },
+        page.url,
+      );
+      await sleep(2000);
+      continue;
+    }
+
+    if (isSapLogonPage(page.html)) {
+      if (!opts.sapUser?.trim() || !opts.sapPassword) {
+        throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
+      }
+      opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon');
+      page = await postForm(
+        jar,
+        page.url,
+        {
+          ...extractHiddenFields(page.html),
+          'sap-user': opts.sapUser.trim(),
+          'sap-password': opts.sapPassword,
+        },
+        page.url,
+      );
+      await sleep(2000);
+      continue;
+    }
+
+    if (isF5PolicyPage(page.url, page.html)) {
+      opts.progress?.('[EMMA HTTP] F5 my.policy — Session fortsetzen');
+      const action = extractFormAction(page.html, page.url);
+      if (action) {
+        page = await postForm(jar, action, extractHiddenFields(page.html), page.url);
+        await sleep(1200);
+        continue;
+      }
+      page = await emmaHttpFetch(jar, launchUrl);
+      await sleep(1200);
+      continue;
+    }
+
+    if (isLoginIncomplete(page.url, page.html, page.title)) {
+      page = await emmaHttpFetch(jar, launchUrl);
+      await sleep(800);
+      continue;
+    }
+
+    if (!isLaunchpadUrl(page.url)) {
+      page = await emmaHttpFetch(jar, launchUrl);
+      await sleep(800);
+      continue;
+    }
+
+    break;
   }
 
   opts.progress?.(`[EMMA HTTP] Login fertig: ${page.url}`);
-  return jar;
+  return { jar, finalUrl: page.url };
 }
 
 /** Quick check: can we read OData metadata with current cookies? */
@@ -191,12 +283,13 @@ export async function emmaHttpProbeOData(
   jar: EmmaCookieJar,
   baseUrl: string,
   sapClient: string,
-): Promise<boolean> {
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient);
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (err: unknown) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason };
   }
 }
 
