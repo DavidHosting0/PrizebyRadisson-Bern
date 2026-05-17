@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/Card';
@@ -40,10 +41,7 @@ export function ReceptionRoomBoard({ compact }: Props) {
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<'none' | 'floor' | 'status'>('none');
 
-  const { data: rooms = [], isLoading } = useQuery({
-    queryKey: ['rooms', 'reception'],
-    queryFn: () => api<RoomBoardRow[]>('/rooms'),
-  });
+  const { data: rooms = [], isLoading } = useQuery(roomsListQueryOptions<RoomBoardRow>());
 
   const { data: assignments = [] } = useQuery({
     queryKey: ['assignments'],

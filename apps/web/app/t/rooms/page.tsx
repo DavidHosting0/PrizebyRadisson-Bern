@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { api } from '@/lib/api';
+import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/Card';
 
@@ -21,10 +21,7 @@ function occupancyLabel(status: string): 'empty' | 'notEmpty' | 'ooo' {
 }
 
 export default function TechnicianRoomsPage() {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: () => api<RoomRow[]>('/rooms'),
-  });
+  const { data = [], isLoading } = useQuery(roomsListQueryOptions<RoomRow>());
 
   const { empty, notEmpty, ooo } = useMemo(() => {
     const empty: RoomRow[] = [];

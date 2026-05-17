@@ -4,17 +4,15 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { api } from '@/lib/api';
+import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { KpiStat } from '@/components/supervisor/KpiStat';
 import { ReceptionRoomBoard } from '@/components/reception/ReceptionRoomBoard';
 
-type RoomRow = { id: string; derivedStatus: string };
+type RoomRow = { id: string; roomNumber: string; floor: number | null; derivedStatus: string };
 type ReqRow = { id: string; status: string };
 
 export default function ReceptionDashboardPage() {
-  const { data: rooms = [] } = useQuery({
-    queryKey: ['rooms', 'reception'],
-    queryFn: () => api<RoomRow[]>('/rooms'),
-  });
+  const { data: rooms = [] } = useQuery(roomsListQueryOptions<RoomRow>());
 
   const { data: requests = [] } = useQuery({
     queryKey: ['service-requests'],

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
+import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
 
@@ -36,8 +37,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
   const qc = useQueryClient();
   const toast = useToast();
   const { data: rooms = [] } = useQuery({
-    queryKey: ['rooms'],
-    queryFn: () => api<RoomOpt[]>('/rooms'),
+    ...roomsListQueryOptions<RoomOpt>(),
     enabled: open,
   });
   const { data: types = [] } = useQuery({

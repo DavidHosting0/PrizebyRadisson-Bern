@@ -4,6 +4,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { API_BASE } from '@/lib/api';
+import { ROOMS_LIST_QUERY_KEY } from '@/lib/rooms-query';
 import { formatRoomStatusLabel } from '@/lib/room-status-label';
 import { useToast } from '@/components/toast/ToastProvider';
 
@@ -17,7 +18,7 @@ function findRoomInCache(
   qc: QueryClient,
   roomId: string,
 ): { derivedStatus: string } | undefined {
-  const queries = qc.getQueriesData<RoomStatusPayload[]>({ queryKey: ['rooms'] });
+  const queries = qc.getQueriesData<RoomStatusPayload[]>({ queryKey: ROOMS_LIST_QUERY_KEY });
   for (const [, data] of queries) {
     const hit = data?.find((r) => r.id === roomId);
     if (hit) return hit;
@@ -46,12 +47,12 @@ export function useReceptionRealtime() {
     const onRoom = (payload: unknown) => {
       const room = payload as Partial<RoomStatusPayload>;
       if (!room?.id || !room.roomNumber || !room.derivedStatus) {
-        qc.invalidateQueries({ queryKey: ['rooms'] });
+        void qc.invalidateQueries({ queryKey: ROOMS_LIST_QUERY_KEY });
         return;
       }
 
       const prev = findRoomInCache(qc, room.id);
-      qc.invalidateQueries({ queryKey: ['rooms'] });
+      void qc.invalidateQueries({ queryKey: ROOMS_LIST_QUERY_KEY });
 
       if (prev?.derivedStatus === room.derivedStatus) return;
 

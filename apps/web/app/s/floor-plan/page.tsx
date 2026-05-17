@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api } from '@/lib/api';
+import { roomsListQueryOptions } from '@/lib/rooms-query';
 import type { FloorPlanRoom } from '@/components/rooms/RoomFloorPlan';
 import { RoomFloorPlan } from '@/components/rooms/RoomFloorPlan';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
@@ -10,10 +10,7 @@ import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
 export default function SupervisorFloorPlanPage() {
   const [panelRoomId, setPanelRoomId] = useState<string | null>(null);
 
-  const { data: rooms = [] } = useQuery({
-    queryKey: ['rooms', 'floor-plan'],
-    queryFn: () => api<FloorPlanRoom[]>('/rooms'),
-  });
+  const { data: rooms = [] } = useQuery(roomsListQueryOptions<FloorPlanRoom>());
 
   return (
     <div className="space-y-6 p-4 md:p-8">
