@@ -27,5 +27,7 @@ export default () => ({
     viewSyncDebounceMs: parseInt(process.env.EMMA_VIEW_SYNC_DEBOUNCE_MS ?? '5000', 10),
     /** Minimum gap between view-triggered EMMA pulls (default 90s). */
     viewSyncMinIntervalMs: parseInt(process.env.EMMA_VIEW_SYNC_MIN_INTERVAL_MS ?? '90000', 10),
+    /** `true` / `1` / `verbose` — ausführliche $batch- und Parsing-Logs. */
+    debug: process.env.EMMA_DEBUG,
   },
 });

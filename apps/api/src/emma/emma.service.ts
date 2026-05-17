@@ -14,8 +14,10 @@ import { emmaServerRoot, type EmmaLoginOpts } from './emma-login-types';
 import {
   applyEmmaSnapshotsToRooms,
   fetchEmmaRoomStatusSnapshotsHttp,
+  mapEmmaToDerivedStatus,
   type EmmaRoomStatusSyncResult,
 } from './emma-room-status-sync';
+import { createEmmaSyncDebug } from './emma-sync-debug';
 
 /**
  * EMMA integration: HTTP session + fast OData room-status sync.
@@ -187,7 +189,11 @@ export class EmmaService {
       await this.syncRoomStatuses({});
       this.log.log(`[EMMA] auto room-status sync OK (${label})`);
     } catch (err) {
-      this.log.warn(`[EMMA] auto room-status sync failed (${label}): ${(err as Error).message}`);
+      const msg = (err as Error).message;
+      this.log.warn(`[EMMA] auto room-status sync failed (${label}): ${msg}`);
+      this.log.warn(
+        '[EMMA] Tipp: EMMA_DEBUG=true setzen und pm2 restart — Logs zeigen dann $batch-Label, Pfade und Parsing.',
+      );
     } finally {
       this.backgroundSyncInProgress = false;
     }
@@ -227,9 +233,29 @@ export class EmmaService {
     const updatedRoomIds: string[] = [];
     this.suppressActivityScheduling = true;
     let result: EmmaRoomStatusSyncResult;
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    if (emmaDebug.verbose) {
+      this.log.log('[EMMA] EMMA_DEBUG=verbose — ausführliche OData/Batch-Logs aktiv');
+    }
     try {
-      const snapshots = await fetchEmmaRoomStatusSnapshotsHttp(jar, baseUrl, hotelId, sapClient);
-      this.log.log(`[EMMA] ${snapshots.length} Zimmer aus RoomDetail (${Date.now() - startedAt}ms)`);
+      const snapshots = await fetchEmmaRoomStatusSnapshotsHttp(
+        jar,
+        baseUrl,
+        hotelId,
+        sapClient,
+        emmaDebug,
+      );
+      this.log.log(`[EMMA] ${snapshots.length} Zimmer aus EMMA (${Date.now() - startedAt}ms)`);
+      if (emmaDebug.verbose && snapshots.length > 0) {
+        const sample = snapshots
+          .slice(0, 5)
+          .map(
+            (s) =>
+              `${s.roomNumber}→${mapEmmaToDerivedStatus(s) ?? '?'}(${s.statusCode ?? '-'})`,
+          )
+          .join(', ');
+        this.log.log(`[EMMA debug] Beispiel-Mapping: ${sample}`);
+      }
 
       result = await applyEmmaSnapshotsToRooms(
         {

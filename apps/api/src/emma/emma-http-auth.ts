@@ -1,5 +1,12 @@
 import { generateSync } from 'otplib';
 import { EmmaCookieJar } from './emma-cookie-jar';
+import type { ODataBatchPartSpec } from './emma-odata-client';
+import type { EmmaSyncDebug } from './emma-sync-debug';
+import {
+  logBatchHttpError,
+  logBatchRequest,
+  logBatchResponse,
+} from './emma-sync-debug';
 import {
   emmaLaunchpadUrl,
   emmaServerRoot,
@@ -1073,6 +1080,12 @@ export async function emmaHttpFetchCsrfToken(
   return token;
 }
 
+export type EmmaHttpPostBatchOpts = {
+  label: string;
+  debug?: EmmaSyncDebug;
+  parts?: ODataBatchPartSpec[];
+};
+
 export async function emmaHttpPostBatch(
   jar: EmmaCookieJar,
   baseUrl: string,
@@ -1081,9 +1094,17 @@ export async function emmaHttpPostBatch(
   csrfToken: string,
   body: string,
   contentType: string,
+  opts?: EmmaHttpPostBatchOpts,
 ): Promise<string> {
   const root = emmaOriginOf(baseUrl);
   const url = `${root}/sap/opu/odata/sap/${service}/$batch?sap-client=${encodeURIComponent(sapClient)}`;
+  const label = opts?.label ?? 'batch';
+  const partPaths = opts?.parts?.map((p) => p.path) ?? [];
+  if (opts?.debug && opts.parts) {
+    logBatchRequest(opts.debug, label, url, opts.parts, body, contentType);
+  } else if (opts?.debug) {
+    opts.debug.log(`[EMMA debug] $batch → label=${label} url=${url} bodyBytes=${body.length}`);
+  }
   const target = new URL(url);
   const headers = new Headers({
     Accept: 'multipart/mixed',
@@ -1103,7 +1124,13 @@ export async function emmaHttpPostBatch(
   const res = await fetch(url, { method: 'POST', headers, body, redirect: 'manual' });
   const text = await res.text();
   if (!res.ok && res.status !== 202) {
-    throw new Error(`EMMA OData $batch HTTP ${res.status}: ${text.slice(0, 400)}`);
+    logBatchHttpError(opts?.debug, label, url, res.status, text, partPaths, body);
+    throw new Error(
+      `EMMA OData $batch HTTP ${res.status} [${label}]: ${text.slice(0, 400)} | parts: ${partPaths.join(' ;; ') || '?'}`,
+    );
+  }
+  if (opts?.debug) {
+    logBatchResponse(opts.debug, label, text);
   }
   return text;
 }

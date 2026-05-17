@@ -4,6 +4,12 @@ import {
   emmaHttpFetchCsrfToken,
   emmaHttpPostBatch,
 } from './emma-http-auth';
+import type { EmmaSyncDebug } from './emma-sync-debug';
+import {
+  logParsedSnapshots,
+  logRawRowSample,
+} from './emma-sync-debug';
+import type { ODataBatchPartSpec } from './emma-odata-client';
 import {
   buildODataBatchBody,
   EMMA_DEFAULT_BUILDING_ID,
@@ -146,6 +152,28 @@ function buildStatusLookup(rows: Record<string, unknown>[]): Map<string, string>
   return m;
 }
 
+async function postEmmaBatch(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  sapClient: string,
+  csrfToken: string,
+  label: string,
+  parts: ODataBatchPartSpec[],
+  debug?: EmmaSyncDebug,
+): Promise<string> {
+  const { body, contentType } = buildODataBatchBody(parts, csrfToken);
+  return emmaHttpPostBatch(
+    jar,
+    baseUrl,
+    EMMA_ODATA_RSRVS_SRV,
+    sapClient,
+    csrfToken,
+    body,
+    contentType,
+    { label, debug, parts },
+  );
+}
+
 function pickFloorIds(rows: Record<string, unknown>[]): string[] {
   const ids: string[] = [];
   for (const row of rows) {
@@ -164,31 +192,32 @@ async function fetchRoomDetailsViaFloorsHttp(
   sapClient: string,
   csrfToken: string,
   pageSize = 999,
+  debug?: EmmaSyncDebug,
 ): Promise<Record<string, unknown>[]> {
-  const floorsBatch = buildODataBatchBody(
-    [
-      {
-        path: buildingsFloorsCountBatchPath(hotelId, buildingId, sapClient),
-        accept: 'plain',
-      },
-      {
-        path: buildingsFloorsListBatchPath(hotelId, buildingId, sapClient, 0, pageSize),
-      },
-    ],
-    csrfToken,
-  );
-  const floorsText = await emmaHttpPostBatch(
+  debug?.log(`[EMMA debug] fetch via Floors/RoomDetails hotel=${hotelId} building=${buildingId}`);
+  const floorsParts: ODataBatchPartSpec[] = [
+    {
+      path: buildingsFloorsCountBatchPath(hotelId, buildingId, sapClient),
+      accept: 'plain',
+    },
+    {
+      path: buildingsFloorsListBatchPath(hotelId, buildingId, sapClient, 0, pageSize),
+    },
+  ];
+  const floorsText = await postEmmaBatch(
     jar,
     baseUrl,
-    EMMA_ODATA_RSRVS_SRV,
     sapClient,
     csrfToken,
-    floorsBatch.body,
-    floorsBatch.contentType,
+    'floors.list',
+    floorsParts,
+    debug,
   );
   const floorParts = parseODataBatchResponse(floorsText);
   const floorRows = parseODataResultsJson(floorParts[1]?.body ?? '');
+  logRawRowSample(debug, 'floors', floorRows);
   const floorIds = pickFloorIds(floorRows);
+  debug?.log(`[EMMA debug] floors erkannt: [${floorIds.join(', ')}] (${floorIds.length})`);
   if (!floorIds.length) return [];
 
   const all: Record<string, unknown>[] = [];
@@ -204,21 +233,35 @@ async function fetchRoomDetailsViaFloorsHttp(
         path: floorRoomDetailsBatchPath(hotelId, buildingId, floorId, sapClient, 0, pageSize),
       },
     ]);
-    const { body, contentType } = buildODataBatchBody(batchParts, csrfToken);
-    const batchText = await emmaHttpPostBatch(
+    const batchText = await postEmmaBatch(
       jar,
       baseUrl,
-      EMMA_ODATA_RSRVS_SRV,
       sapClient,
       csrfToken,
-      body,
-      contentType,
+      `floor.roomDetails.${i / partsPerBatch}`,
+      batchParts,
+      debug,
     );
     const responses = parseODataBatchResponse(batchText);
     for (let j = 0; j < chunk.length; j++) {
+      const countPart = responses[j * 2];
       const dataPart = responses[j * 2 + 1];
-      if (dataPart?.status && dataPart.status >= 400) continue;
-      all.push(...parseODataResultsJson(dataPart?.body ?? ''));
+      const floorId = chunk[j];
+      if (countPart?.status && countPart.status >= 400) {
+        debug?.warn(
+          `[EMMA debug] floor ${floorId} $count HTTP ${countPart.status} body=${countPart.body.slice(0, 120)}`,
+        );
+      }
+      if (dataPart?.status && dataPart.status >= 400) {
+        debug?.warn(
+          `[EMMA debug] floor ${floorId} RoomDetails HTTP ${dataPart.status} body=${dataPart.body.slice(0, 120)}`,
+        );
+        continue;
+      }
+      const rows = parseODataResultsJson(dataPart?.body ?? '');
+      debug?.log(`[EMMA debug] floor ${floorId}: ${rows.length} RoomDetail-Zeilen`);
+      logRawRowSample(debug, `floor.${floorId}`, rows);
+      all.push(...rows);
     }
   }
   return all;
@@ -231,6 +274,7 @@ async function fetchAllRoomDetailRowsHttp(
   sapClient: string,
   csrfToken: string,
   pageSize = 999,
+  debug?: EmmaSyncDebug,
 ): Promise<Record<string, unknown>[]> {
   try {
     const viaFloors = await fetchRoomDetailsViaFloorsHttp(
@@ -241,42 +285,54 @@ async function fetchAllRoomDetailRowsHttp(
       sapClient,
       csrfToken,
       pageSize,
+      debug,
     );
-    if (viaFloors.length > 0) return viaFloors;
-  } catch {
-    /* fall back to RoomDetail entity set */
+    if (viaFloors.length > 0) {
+      debug?.log(`[EMMA debug] Floors/RoomDetails: ${viaFloors.length} Zeilen gesamt`);
+      return viaFloors;
+    }
+    debug?.warn('[EMMA debug] Floors/RoomDetails lieferte 0 Zeilen — Fallback RoomDetail');
+  } catch (err) {
+    debug?.warn(
+      `[EMMA debug] Floors/RoomDetails fehlgeschlagen, Fallback RoomDetail: ${(err as Error).message}`,
+    );
   }
 
-  const countBatch = buildODataBatchBody(
-    [{ path: roomDetailCountBatchPath(hotelId, sapClient), accept: 'plain' }],
-    csrfToken,
-  );
-  const countText = await emmaHttpPostBatch(
+  debug?.log('[EMMA debug] fetch via RoomDetail entity set');
+  const countParts: ODataBatchPartSpec[] = [
+    { path: roomDetailCountBatchPath(hotelId, sapClient), accept: 'plain' },
+  ];
+  const countText = await postEmmaBatch(
     jar,
     baseUrl,
-    EMMA_ODATA_RSRVS_SRV,
     sapClient,
     csrfToken,
-    countBatch.body,
-    countBatch.contentType,
+    'roomDetail.count',
+    countParts,
+    debug,
   );
-  const total = parseODataCount(parseODataBatchResponse(countText)[0]?.body ?? '') ?? pageSize;
+  const countBody = parseODataBatchResponse(countText)[0]?.body ?? '';
+  const total = parseODataCount(countBody) ?? pageSize;
+  debug?.log(`[EMMA debug] RoomDetail $count=${total} raw=${countBody.trim().slice(0, 32)}`);
+
   const all: Record<string, unknown>[] = [];
   for (let skip = 0; skip < total; skip += pageSize) {
-    const { body, contentType } = buildODataBatchBody(
-      [{ path: roomDetailBatchPath(hotelId, sapClient, skip, pageSize) }],
-      csrfToken,
-    );
-    const batchText = await emmaHttpPostBatch(
+    const pageParts: ODataBatchPartSpec[] = [
+      { path: roomDetailBatchPath(hotelId, sapClient, skip, pageSize) },
+    ];
+    const batchText = await postEmmaBatch(
       jar,
       baseUrl,
-      EMMA_ODATA_RSRVS_SRV,
       sapClient,
       csrfToken,
-      body,
-      contentType,
+      `roomDetail.page.${skip}`,
+      pageParts,
+      debug,
     );
-    all.push(...parseODataResultsJson(parseODataBatchResponse(batchText)[0]?.body ?? ''));
+    const rows = parseODataResultsJson(parseODataBatchResponse(batchText)[0]?.body ?? '');
+    debug?.log(`[EMMA debug] RoomDetail skip=${skip}: ${rows.length} Zeilen`);
+    logRawRowSample(debug, `roomDetail.${skip}`, rows);
+    all.push(...rows);
   }
   return all;
 }
@@ -284,16 +340,35 @@ async function fetchAllRoomDetailRowsHttp(
 function snapshotsFromRows(
   detailRows: Record<string, unknown>[],
   statusRows: Record<string, unknown>[],
+  debug?: EmmaSyncDebug,
 ): EmmaRoomStatusSnapshot[] {
   const lookup = buildStatusLookup(statusRows);
+  debug?.log(
+    `[EMMA debug] Status-Lookup aus RoomStatus: ${lookup.size} Codes (${[...lookup.entries()].slice(0, 8).map(([k, v]) => `${k}=${v}`).join(', ')}${lookup.size > 8 ? '…' : ''})`,
+  );
   const out: EmmaRoomStatusSnapshot[] = [];
   const seen = new Set<string>();
+  const skipped: Array<{ reason: string; rowKeys: string[] }> = [];
   for (const row of detailRows) {
     const snap = mapEmmaRoomDetailRow(row, lookup);
-    if (!snap || seen.has(snap.roomNumber)) continue;
+    if (!snap) {
+      skipped.push({
+        reason: 'kein RoomId/RoomNumber in Zeile',
+        rowKeys: Object.keys(row).filter((k) => !k.startsWith('__')),
+      });
+      continue;
+    }
+    if (seen.has(snap.roomNumber)) {
+      skipped.push({
+        reason: `Duplikat local=${snap.roomNumber} emmaId=${snap.emmaRoomId}`,
+        rowKeys: Object.keys(row).filter((k) => !k.startsWith('__')),
+      });
+      continue;
+    }
     seen.add(snap.roomNumber);
     out.push(snap);
   }
+  logParsedSnapshots(debug, out, skipped);
   return out;
 }
 
@@ -303,30 +378,35 @@ export async function fetchEmmaRoomStatusSnapshotsHttp(
   baseUrl: string,
   hotelId = EMMA_DEFAULT_HOTEL_ID,
   sapClient = EMMA_DEFAULT_SAP_CLIENT,
+  debug?: EmmaSyncDebug,
 ): Promise<EmmaRoomStatusSnapshot[]> {
+  debug?.log(`[EMMA debug] fetchEmmaRoomStatusSnapshotsHttp hotel=${hotelId} sapClient=${sapClient}`);
   const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient);
+  debug?.log('[EMMA debug] CSRF token erhalten');
   const pageSize = 999;
   let statusRows: Record<string, unknown>[] = [];
   try {
-    const { body, contentType } = buildODataBatchBody(
-      [
-        { path: roomStatusCountBatchPath(sapClient), accept: 'plain', showStatus: 'Y' },
-        { path: roomStatusListBatchPath(sapClient, 0, pageSize), showStatus: 'Y' },
-      ],
-      csrf,
-    );
-    const batchText = await emmaHttpPostBatch(
+    const statusParts: ODataBatchPartSpec[] = [
+      { path: roomStatusCountBatchPath(sapClient), accept: 'plain', showStatus: 'Y' },
+      { path: roomStatusListBatchPath(sapClient, 0, pageSize), showStatus: 'Y' },
+    ];
+    const batchText = await postEmmaBatch(
       jar,
       baseUrl,
-      EMMA_ODATA_RSRVS_SRV,
       sapClient,
       csrf,
-      body,
-      contentType,
+      'roomStatus.lookup',
+      statusParts,
+      debug,
     );
     const parts = parseODataBatchResponse(batchText);
     statusRows = parseODataResultsJson(parts[1]?.body ?? '');
-  } catch {
+    debug?.log(`[EMMA debug] RoomStatus lookup: ${statusRows.length} Zeilen`);
+    logRawRowSample(debug, 'roomStatus', statusRows);
+  } catch (err) {
+    debug?.warn(
+      `[EMMA debug] RoomStatus batch fehlgeschlagen (optional): ${(err as Error).message}`,
+    );
     statusRows = [];
   }
   const detailRows = await fetchAllRoomDetailRowsHttp(
@@ -336,8 +416,10 @@ export async function fetchEmmaRoomStatusSnapshotsHttp(
     sapClient,
     csrf,
     pageSize,
+    debug,
   );
-  return snapshotsFromRows(detailRows, statusRows);
+  debug?.log(`[EMMA debug] detailRows gesamt: ${detailRows.length}`);
+  return snapshotsFromRows(detailRows, statusRows, debug);
 }
 
 /** Map EMMA housekeeping code/label → PrizeBern board status (source of truth after sync). */
