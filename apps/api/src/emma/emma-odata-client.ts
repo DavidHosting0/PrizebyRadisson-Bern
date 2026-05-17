@@ -6,52 +6,59 @@ export const EMMA_DEFAULT_HOTEL_ID = 'CHBRNPR';
 export const EMMA_DEFAULT_BUILDING_ID = '01';
 export const EMMA_DEFAULT_SAP_CLIENT = '100';
 
-const BATCH_HTTP_HEADERS = [
-  'sap-cancel-on-close: true',
-  'show-status: N',
-  'sap-contextid-accept: header',
-  'Accept-Language: en',
-  'DataServiceVersion: 2.0',
-  'MaxDataServiceVersion: 2.0',
-  'X-Requested-With: XMLHttpRequest',
-].join('\r\n');
-
 export type EmmaODataBatchPartResult = {
   status: number;
   body: string;
   contentType: string | null;
 };
 
+export type ODataBatchPartSpec = {
+  path: string;
+  accept?: 'json' | 'plain';
+  /** EMMA RoomStatus uses `show-status: Y` in the browser capture. */
+  showStatus?: 'Y' | 'N';
+};
+
 function buildBatchGetPart(
   boundary: string,
   relativePath: string,
   csrfToken: string,
-  accept: 'json' | 'plain' = 'json',
+  part: ODataBatchPartSpec,
 ): string {
   const acceptHeader =
-    accept === 'plain' ? 'Accept: text/plain, */*;q=0.5' : 'Accept: application/json';
+    part.accept === 'plain'
+      ? 'Accept: text/plain, */*;q=0.5'
+      : 'Accept: application/json';
+  const showStatus = part.showStatus ?? 'N';
   return [
     `--${boundary}`,
     'Content-Type: application/http',
     'Content-Transfer-Encoding: binary',
     '',
     `GET ${relativePath} HTTP/1.1`,
-    BATCH_HTTP_HEADERS,
+    'sap-cancel-on-close: true',
+    `show-status: ${showStatus}`,
+    'sap-contextid-accept: header',
     acceptHeader,
     `x-csrf-token: ${csrfToken}`,
+    'Accept-Language: en',
+    'DataServiceVersion: 2.0',
+    'MaxDataServiceVersion: 2.0',
+    'X-Requested-With: XMLHttpRequest',
     '',
     '',
   ].join('\r\n');
 }
 
+/** Build a UI5-compatible OData v2 $batch body (leading CRLF + part order per browser). */
 export function buildODataBatchBody(
-  parts: Array<{ path: string; accept?: 'json' | 'plain' }>,
+  parts: ODataBatchPartSpec[],
   csrfToken: string,
 ): { boundary: string; body: string; contentType: string } {
   const boundary = `batch_${randomBytes(6).toString('hex')}`;
-  let body = '';
+  let body = '\r\n';
   for (const part of parts) {
-    body += buildBatchGetPart(boundary, part.path, csrfToken, part.accept ?? 'json');
+    body += buildBatchGetPart(boundary, part.path, csrfToken, part);
   }
   body += `--${boundary}--\r\n`;
   return {
@@ -132,6 +139,18 @@ export function roomDetailBatchPath(
 export function roomDetailCountBatchPath(hotelId: string, sapClient: string): string {
   const filter = encodeURIComponent(`HotelId eq '${hotelId}'`);
   return `RoomDetail/$count?sap-client=${sapClient}&$filter=${filter}`;
+}
+
+export function roomStatusCountBatchPath(sapClient: string): string {
+  return `RoomStatus/$count?sap-client=${sapClient}`;
+}
+
+export function roomStatusListBatchPath(
+  sapClient: string,
+  skip = 0,
+  top = 999,
+): string {
+  return `RoomStatus?sap-client=${sapClient}&$skip=${skip}&$top=${top}`;
 }
 
 export function floorRoomDetailsBatchPath(

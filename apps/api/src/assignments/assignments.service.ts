@@ -17,7 +17,7 @@ import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 
 @Injectable()
 export class AssignmentsService implements OnModuleInit {
@@ -28,8 +28,8 @@ export class AssignmentsService implements OnModuleInit {
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   onModuleInit() {
@@ -72,7 +72,7 @@ export class AssignmentsService implements OnModuleInit {
     });
     const room = await this.rooms.findOne(roomId);
     this.realtime.emitRoomStatus(room);
-    this.emmaSync?.afterRoomActivity('assignments.manualAssign');
+    this.emma?.scheduleRoomStatusSync('assignments.manualAssign');
     return row;
   }
 
@@ -142,7 +142,7 @@ export class AssignmentsService implements OnModuleInit {
       this.realtime.emitRoomStatus(r);
     }
     if (assigned > 0) {
-      this.emmaSync?.afterRoomActivity('assignments.autoAssign');
+      this.emma?.scheduleRoomStatusSync('assignments.autoAssign');
     }
     return { assigned };
   }

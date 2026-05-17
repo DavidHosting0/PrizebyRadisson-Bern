@@ -13,7 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoomsService } from '../rooms/rooms.service';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 
 @Injectable()
 export class PhotosService {
@@ -23,8 +23,8 @@ export class PhotosService {
     private readonly realtime: RealtimeGateway,
     private readonly rooms: RoomsService,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   private async assertHousekeeperRoom(user: User, roomId: string) {
@@ -95,7 +95,7 @@ export class PhotosService {
     });
     const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitRoomStatus(room);
-    this.emmaSync?.afterRoomActivity('photos.complete');
+    this.emma?.scheduleRoomStatusSync('photos.complete');
     return { ok: true, timeline };
   }
 

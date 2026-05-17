@@ -19,7 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { CreateDamageReportDto } from './dto/create-damage-report.dto';
 import { UpdateDamageReportDto } from './dto/update-damage-report.dto';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 
 @Injectable()
 export class DamageReportsService {
@@ -27,8 +27,8 @@ export class DamageReportsService {
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   private async assertHousekeeperRoom(user: User, roomId: string) {
@@ -100,7 +100,7 @@ export class DamageReportsService {
         room: { select: { id: true, roomNumber: true } },
       },
     });
-    this.emmaSync?.afterRoomActivity('damageReports.create');
+    this.emma?.scheduleRoomStatusSync('damageReports.create');
     return row;
   }
 
@@ -118,7 +118,7 @@ export class DamageReportsService {
         reportedBy: { select: userPublicSelect },
       },
     });
-    this.emmaSync?.afterRoomActivity('damageReports.update');
+    this.emma?.scheduleRoomStatusSync('damageReports.update');
     return updated;
   }
 }

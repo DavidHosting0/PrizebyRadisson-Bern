@@ -21,7 +21,7 @@ import { RoomStatusService } from './room-status.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { S3Service } from '../storage/s3.service';
 import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 import { readEmmaMetadata } from '../emma/emma-room-status-sync';
 
 @Injectable()
@@ -32,12 +32,12 @@ export class RoomsService {
     private readonly realtime: RealtimeGateway,
     private readonly s3: S3Service,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   private emmaAfterRoomActivity(source: string) {
-    this.emmaSync?.afterRoomActivity(source);
+    this.emma?.scheduleRoomStatusSync(source);
   }
 
   async findAll(

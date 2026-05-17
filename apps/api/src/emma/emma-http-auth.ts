@@ -1082,15 +1082,20 @@ export async function emmaHttpPostBatch(
   body: string,
   contentType: string,
 ): Promise<string> {
-  const url = `${baseUrl.replace(/\/+$/, '')}/sap/opu/odata/sap/${service}/$batch?sap-client=${encodeURIComponent(sapClient)}`;
+  const root = emmaOriginOf(baseUrl);
+  const url = `${root}/sap/opu/odata/sap/${service}/$batch?sap-client=${encodeURIComponent(sapClient)}`;
   const target = new URL(url);
   const headers = new Headers({
     Accept: 'multipart/mixed',
+    'Accept-Language': 'en',
     'Content-Type': contentType,
     'x-csrf-token': csrfToken,
     'DataServiceVersion': '2.0',
     'MaxDataServiceVersion': '2.0',
     'X-Requested-With': 'XMLHttpRequest',
+    'sap-cancel-on-close': 'true',
+    'sap-contextid-accept': 'header',
+    'show-status': 'N',
     'User-Agent': BROWSER_UA,
   });
   const cookie = jar.headerFor(target);

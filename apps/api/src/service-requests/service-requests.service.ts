@@ -19,7 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 
 @Injectable()
 export class ServiceRequestsService {
@@ -28,8 +28,8 @@ export class ServiceRequestsService {
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   async list(query: {
@@ -98,7 +98,7 @@ export class ServiceRequestsService {
     const room = await this.rooms.findOne(dto.roomId);
     this.realtime.emitRoomStatus(room);
     this.realtime.emitServiceRequest('service_request.created', req);
-    this.emmaSync?.afterRoomActivity('serviceRequests.create');
+    this.emma?.scheduleRoomStatusSync('serviceRequests.create');
     return req;
   }
 
@@ -209,7 +209,7 @@ export class ServiceRequestsService {
     } else {
       this.realtime.emitServiceRequest('service_request.updated', updated);
     }
-    this.emmaSync?.afterRoomActivity('serviceRequests.updateStatus');
+    this.emma?.scheduleRoomStatusSync('serviceRequests.updateStatus');
     return updated;
   }
 
@@ -221,7 +221,7 @@ export class ServiceRequestsService {
       where: { id },
       data: { status: ServiceRequestStatus.CANCELLED },
     });
-    this.emmaSync?.afterRoomActivity('serviceRequests.cancel');
+    this.emma?.scheduleRoomStatusSync('serviceRequests.cancel');
     return updated;
   }
 

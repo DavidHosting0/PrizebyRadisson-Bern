@@ -15,6 +15,8 @@ import {
   parseODataResultsJson,
   roomDetailBatchPath,
   roomDetailCountBatchPath,
+  roomStatusCountBatchPath,
+  roomStatusListBatchPath,
 } from './emma-odata-client';
 
 /** Normalized EMMA row for one physical room. */
@@ -206,10 +208,14 @@ export async function fetchEmmaRoomStatusSnapshotsHttp(
   sapClient = EMMA_DEFAULT_SAP_CLIENT,
 ): Promise<EmmaRoomStatusSnapshot[]> {
   const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient);
+  const pageSize = 999;
   let statusRows: Record<string, unknown>[] = [];
   try {
     const { body, contentType } = buildODataBatchBody(
-      [{ path: `RoomStatus?sap-client=${sapClient}&$skip=0&$top=999` }],
+      [
+        { path: roomStatusCountBatchPath(sapClient), accept: 'plain', showStatus: 'Y' },
+        { path: roomStatusListBatchPath(sapClient, 0, pageSize), showStatus: 'Y' },
+      ],
       csrf,
     );
     const batchText = await emmaHttpPostBatch(
@@ -221,11 +227,19 @@ export async function fetchEmmaRoomStatusSnapshotsHttp(
       body,
       contentType,
     );
-    statusRows = parseODataResultsJson(parseODataBatchResponse(batchText)[0]?.body ?? '');
+    const parts = parseODataBatchResponse(batchText);
+    statusRows = parseODataResultsJson(parts[1]?.body ?? '');
   } catch {
     statusRows = [];
   }
-  const detailRows = await fetchAllRoomDetailRowsHttp(jar, baseUrl, hotelId, sapClient, csrf);
+  const detailRows = await fetchAllRoomDetailRowsHttp(
+    jar,
+    baseUrl,
+    hotelId,
+    sapClient,
+    csrf,
+    pageSize,
+  );
   return snapshotsFromRows(detailRows, statusRows);
 }
 

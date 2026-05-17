@@ -3,7 +3,7 @@ import { User, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 
 @Injectable()
 export class InspectionsService {
@@ -12,8 +12,8 @@ export class InspectionsService {
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   async create(
@@ -33,7 +33,7 @@ export class InspectionsService {
     });
     const room = await this.rooms.findOne(dto.roomId);
     this.realtime.emitRoomStatus(room);
-    this.emmaSync?.afterRoomActivity('inspections.create');
+    this.emma?.scheduleRoomStatusSync('inspections.create');
     return { inspection: row, room };
   }
 }

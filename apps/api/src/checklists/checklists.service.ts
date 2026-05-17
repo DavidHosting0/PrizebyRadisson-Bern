@@ -16,7 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { UpdateChecklistTaskDto } from './dto/update-checklist-task.dto';
-import { EmmaRoomSyncTrigger } from '../emma/emma-room-sync.trigger';
+import { EmmaService } from '../emma/emma.service';
 
 @Injectable()
 export class ChecklistsService {
@@ -25,8 +25,8 @@ export class ChecklistsService {
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
     @Optional()
-    @Inject(forwardRef(() => EmmaRoomSyncTrigger))
-    private readonly emmaSync?: EmmaRoomSyncTrigger,
+    @Inject(forwardRef(() => EmmaService))
+    private readonly emma?: EmmaService,
   ) {}
 
   private async assertCanEditRoom(user: User, roomId: string) {
@@ -78,7 +78,7 @@ export class ChecklistsService {
     const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitChecklistTask({ roomId, taskId });
     this.realtime.emitRoomStatus(room);
-    this.emmaSync?.afterRoomActivity('checklists.updateTask');
+    this.emma?.scheduleRoomStatusSync('checklists.updateTask');
     return room;
   }
 
@@ -112,7 +112,7 @@ export class ChecklistsService {
 
     const room = await this.rooms.findOne(roomId, user);
     this.realtime.emitRoomStatus(room);
-    this.emmaSync?.afterRoomActivity('checklists.reopen');
+    this.emma?.scheduleRoomStatusSync('checklists.reopen');
     return room;
   }
 }
