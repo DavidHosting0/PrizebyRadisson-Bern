@@ -55,4 +55,19 @@ export class UpdateEmmaLoginDto {
   @IsUrl({ require_tld: false })
   @MaxLength(512)
   baseUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  hotelId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  buildingId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8)
+  sapClient?: string;
 }

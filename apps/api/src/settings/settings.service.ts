@@ -30,6 +30,10 @@ export type EmmaLoginStored = {
   /** Till line in Folio “Till and Employee” (e.g. FD1013 – David Eich). */
   tillName?: string;
   baseUrl?: string;
+  /** EMMA OData property id (default CHBRNPR). */
+  hotelId?: string;
+  buildingId?: string;
+  sapClient?: string;
 };
 
 /** Persisted shape (passwords/seed are AES-GCM ciphertext, base64). */
@@ -43,6 +47,9 @@ type EmmaLoginPersisted = {
   operatorPasswordEnc?: string;
   tillName?: string;
   baseUrl?: string;
+  hotelId?: string;
+  buildingId?: string;
+  sapClient?: string;
 };
 
 /** Plaintext shape of the AI config returned to server-side automation. */
@@ -63,7 +70,13 @@ const PUZZEL_KEY = 'puzzelLogin';
 const PUZZEL_TICKET_SYNC_KEY = 'puzzelTicketSync';
 const PUZZEL_TICKET_FILTER_KEY = 'puzzelTicketFilter';
 const EMMA_KEY = 'emmaLogin';
+const EMMA_HTTP_SESSION_KEY = 'emmaHttpSession';
 const AI_KEY = 'aiConfig';
+
+export type EmmaHttpSessionStored = {
+  cookies: Array<{ name: string; value: string; domain?: string; path?: string }>;
+  savedAt: string;
+};
 
 export type PuzzelTicketSyncStored = {
   lastSyncedAt?: string | null;
@@ -150,7 +163,7 @@ export class SettingsService {
   }
 
   /**
-   * Full credentials for server-side automation (Playwright, cron, etc.).
+   * Full credentials for server-side EMMA HTTP automation.
    * Do not expose via HTTP to non-admin callers.
    */
   async getPuzzelLoginSecrets(): Promise<PuzzelLoginStored | null> {
@@ -266,6 +279,57 @@ export class SettingsService {
    * Full EMMA credentials for server-side automation. Decrypts the encrypted
    * fields. Returns null if no EMMA login has been configured yet.
    */
+  async getEmmaHttpSession(): Promise<EmmaHttpSessionStored | null> {
+    const row = await this.ensureRow();
+    const s = this.asRecord(row.settings);
+    const encKey = `${EMMA_HTTP_SESSION_KEY}Enc`;
+    const encVal = s[encKey];
+    const enc = typeof encVal === 'string' ? encVal : null;
+    if (enc) {
+      try {
+        const plain = this.cipher.decryptSafe(enc);
+        if (!plain) return null;
+        const parsed = JSON.parse(plain) as EmmaHttpSessionStored;
+        if (!Array.isArray(parsed.cookies) || typeof parsed.savedAt !== 'string') return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+    const raw = s[EMMA_HTTP_SESSION_KEY];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const o = raw as Record<string, unknown>;
+    if (!Array.isArray(o.cookies) || typeof o.savedAt !== 'string') return null;
+    return {
+      cookies: o.cookies as EmmaHttpSessionStored['cookies'],
+      savedAt: o.savedAt,
+    };
+  }
+
+  async saveEmmaHttpSession(session: EmmaHttpSessionStored) {
+    const current = await this.ensureRow();
+    const s = this.asRecord(current.settings);
+    const enc = this.cipher.encrypt(JSON.stringify(session));
+    delete s[EMMA_HTTP_SESSION_KEY];
+    await this.prisma.hotelSettings.update({
+      where: { id: current.id },
+      data: {
+        settings: { ...s, [`${EMMA_HTTP_SESSION_KEY}Enc`]: enc } as object,
+      },
+    });
+  }
+
+  async clearEmmaHttpSession() {
+    const current = await this.ensureRow();
+    const s = { ...this.asRecord(current.settings) };
+    delete s[EMMA_HTTP_SESSION_KEY];
+    delete s[`${EMMA_HTTP_SESSION_KEY}Enc`];
+    await this.prisma.hotelSettings.update({
+      where: { id: current.id },
+      data: { settings: s as object },
+    });
+  }
+
   async getEmmaLoginSecrets(): Promise<EmmaLoginStored | null> {
     const row = await this.ensureRow();
     const persisted = this.parseEmmaPersisted(this.asRecord(row.settings)[EMMA_KEY]);
@@ -283,6 +347,9 @@ export class SettingsService {
         this.cipher.decryptSafe(persisted.operatorPasswordEnc) ?? undefined,
       tillName: persisted.tillName?.trim() || undefined,
       baseUrl: persisted.baseUrl?.trim() || undefined,
+      hotelId: persisted.hotelId?.trim() || undefined,
+      buildingId: persisted.buildingId?.trim() || undefined,
+      sapClient: persisted.sapClient?.trim() || undefined,
     };
   }
 
@@ -449,6 +516,9 @@ export class SettingsService {
       operatorPasswordEnc: pickStr('operatorPasswordEnc'),
       tillName: pickStr('tillName'),
       baseUrl: pickStr('baseUrl'),
+      hotelId: pickStr('hotelId'),
+      buildingId: pickStr('buildingId'),
+      sapClient: pickStr('sapClient'),
     };
   }
 
@@ -467,6 +537,18 @@ export class SettingsService {
     if (dto.baseUrl !== undefined) {
       const v = dto.baseUrl.trim();
       next.baseUrl = v.length > 0 ? v : undefined;
+    }
+    if (dto.hotelId !== undefined) {
+      const v = dto.hotelId.trim();
+      next.hotelId = v.length > 0 ? v : undefined;
+    }
+    if (dto.buildingId !== undefined) {
+      const v = dto.buildingId.trim();
+      next.buildingId = v.length > 0 ? v : undefined;
+    }
+    if (dto.sapClient !== undefined) {
+      const v = dto.sapClient.trim();
+      next.sapClient = v.length > 0 ? v : undefined;
     }
     if (dto.adfsPassword !== undefined && dto.adfsPassword.length > 0) {
       next.adfsPasswordEnc = this.cipher.encrypt(dto.adfsPassword);
@@ -492,6 +574,9 @@ export class SettingsService {
       operatorCode: p.operatorCode?.trim() || null,
       tillName: p.tillName?.trim() || null,
       baseUrl: p.baseUrl?.trim() || null,
+      hotelId: p.hotelId?.trim() || null,
+      buildingId: p.buildingId?.trim() || null,
+      sapClient: p.sapClient?.trim() || null,
       hasAdfsPassword: !!p.adfsPasswordEnc,
       hasTotpSecret: !!p.totpSecretEnc,
       hasSapPassword: !!p.sapPasswordEnc,

@@ -28,11 +28,10 @@ type SavePayload = {
   baseUrl?: string;
 };
 
-type TestResult = {
+type RefreshHttpResult = {
   ok: true;
-  url: string;
-  title: string;
-  durationMs: number;
+  savedAt: string;
+  cookieCount: number;
 };
 
 export default function AdminEmmaCredentialsPage() {
@@ -78,11 +77,11 @@ export default function AdminEmmaCredentialsPage() {
     },
   });
 
-  const testMut = useMutation({
+  const refreshHttpMut = useMutation({
     mutationFn: () =>
-      api<TestResult>('/emma/login/test', {
+      api<RefreshHttpResult>('/emma/session/refresh-http', {
         method: 'POST',
-        body: JSON.stringify({ headless: true }),
+        body: JSON.stringify({}),
       }),
   });
 
@@ -361,51 +360,48 @@ export default function AdminEmmaCredentialsPage() {
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Login testen</h2>
+        <h2 className="text-lg font-semibold text-ink">HTTP-Session</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          Startet einen echten Headless-Chromium-Login mit den oben gespeicherten
-          Daten und durchläuft alle vier Stufen. Dauert üblicherweise 8–15
-          Sekunden. Bei Fehlern siehst du, welche Stufe nicht funktioniert hat.
+          Einmaliger Login per HTTP (ADFS, MFA, SAP) — speichert Cookies für den schnellen
+          Zimmerstatus-Sync. Dauert typisch 30–60 Sekunden. Kein Browser auf dem Server.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => testMut.mutate()}
-            disabled={testMut.isPending}
+            onClick={() => refreshHttpMut.mutate()}
+            disabled={refreshHttpMut.isPending}
             className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {testMut.isPending ? 'Loginversuch läuft …' : 'Login testen'}
+            {refreshHttpMut.isPending ? 'Session wird erneuert …' : 'HTTP-Session erneuern'}
           </button>
           <button
             type="button"
             onClick={() => invalidateMut.mutate()}
             disabled={invalidateMut.isPending}
             className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
-            title="Verwirft die im Server gecachte Browser-Session und erzwingt einen Neulogin beim nächsten Aufruf."
+            title="Löscht gespeicherte EMMA-Cookies; beim nächsten Sync wird neu eingeloggt."
           >
             {invalidateMut.isPending ? 'Setze zurück …' : 'Session zurücksetzen'}
           </button>
         </div>
 
-        {testMut.isSuccess && testMut.data && (
+        {refreshHttpMut.isSuccess && refreshHttpMut.data && (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
-            <p className="font-semibold">Login erfolgreich.</p>
-            <p className="mt-1">Seite: {testMut.data.title || '(ohne Titel)'}</p>
-            <p className="break-all font-mono text-xs">{testMut.data.url}</p>
+            <p className="font-semibold">HTTP-Session gespeichert.</p>
             <p className="mt-1 text-xs text-emerald-900/80">
-              Dauer: {testMut.data.durationMs} ms
+              {refreshHttpMut.data.cookieCount} Cookies · {refreshHttpMut.data.savedAt}
             </p>
           </div>
         )}
-        {testMut.isError && (
+        {refreshHttpMut.isError && (
           <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
-            <p className="font-semibold">Login fehlgeschlagen.</p>
-            <p className="mt-1 break-words">{(testMut.error as Error).message}</p>
+            <p className="font-semibold">Session fehlgeschlagen.</p>
+            <p className="mt-1 break-words">{(refreshHttpMut.error as Error).message}</p>
           </div>
         )}
         {invalidateMut.isSuccess && !invalidateMut.isPending && (
-          <p className="mt-3 text-sm text-emerald-800">Browser-Session zurückgesetzt.</p>
+          <p className="mt-3 text-sm text-emerald-800">HTTP-Session zurückgesetzt.</p>
         )}
       </section>
     </div>

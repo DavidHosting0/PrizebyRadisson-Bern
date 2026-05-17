@@ -225,6 +225,22 @@ export class RoomsService {
     return out;
   }
 
+  private readEmmaSyncFromMetadata(metadata: unknown): {
+    statusCode: string | null;
+    statusLabel: string | null;
+    syncedAt: string | null;
+  } | null {
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+    const emma = (metadata as { emma?: unknown }).emma;
+    if (!emma || typeof emma !== 'object' || Array.isArray(emma)) return null;
+    const row = emma as Record<string, unknown>;
+    return {
+      statusCode: typeof row.statusCode === 'string' ? row.statusCode : null,
+      statusLabel: typeof row.statusLabel === 'string' ? row.statusLabel : null,
+      syncedAt: typeof row.syncedAt === 'string' ? row.syncedAt : null,
+    };
+  }
+
   private toRoomDto(room: {
     id: string;
     roomNumber: string;
@@ -234,6 +250,7 @@ export class RoomsService {
     oooUntil: Date | null;
     notes: string | null;
     cleaningDeclaredAt: Date | null;
+    metadata?: unknown;
     roomType: { name: string; code: string };
     checklistStates: Array<{
       id: string;
@@ -263,6 +280,7 @@ export class RoomsService {
       cleaningDeclaredAt: room.cleaningDeclaredAt,
       roomType: room.roomType,
       derivedStatus: derived,
+      emma: this.readEmmaSyncFromMetadata(room.metadata),
       checklist: state
         ? {
             stateId: state.id,

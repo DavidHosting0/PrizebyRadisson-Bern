@@ -121,7 +121,7 @@ export type EmmaOpenFolioStreamLine =
   | { type: 'error'; message: string };
 
 /**
- * POST and consume `application/x-ndjson` (e.g. EMMA open-folio progress).
+ * POST and consume `application/x-ndjson` line streams.
  * Reuses the same 401 → refresh behaviour as {@link api}.
  */
 export async function postNdjsonStream(

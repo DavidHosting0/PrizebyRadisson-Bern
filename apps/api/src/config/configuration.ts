@@ -16,12 +16,4 @@ export default () => ({
   crypto: {
     secretKey: process.env.FAVUR_ENCRYPTION_KEY ?? process.env.JWT_ACCESS_SECRET,
   },
-  /**
-   * Folio-Rechnungsautomatik in EMMA (Cancel Invoice, Firmendaten, PDF) — standardmäßig aus.
-   * Nur aktiv, wenn auf dem Server `EMMA_INVOICE_WORKFLOW_ENABLED=true` gesetzt ist.
-   */
-  emma: {
-    invoiceWorkflowEnabled:
-      process.env.EMMA_INVOICE_WORKFLOW_ENABLED === 'true',
-  },
 });

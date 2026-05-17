@@ -1,44 +1,25 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   SettingsService,
   type EmmaLoginStored,
 } from '../settings/settings.service';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { RoomsService } from '../rooms/rooms.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { EMMA_DEFAULT_HOTEL_ID, EMMA_DEFAULT_SAP_CLIENT } from './emma-odata-client';
+import { EmmaCookieJar } from './emma-cookie-jar';
+import { emmaHttpLogin, emmaHttpProbeOData } from './emma-http-auth';
+import type { EmmaLoginOpts } from './emma-login-types';
 import {
-  runEmmaSearchReservationAndOpenFolio,
-  type EmmaOpenFolioProgressEvent,
-} from './emma-reservation-folio-open';
-import {
-  runEmmaFolioInvoiceWorkflow,
-  type EmmaFolioInvoiceCompanyInput,
-} from './emma-folio-invoice-workflow';
-import { emmaLaunchpadUrl, type EmmaLoginOpts } from './emma-scraper';
-import { EmmaBrowserSessionService } from './emma-session.service';
-
-export type EmmaLoginTestResult = {
-  ok: true;
-  url: string;
-  title: string;
-  durationMs: number;
-};
-
-export type EmmaOpenReservationFolioResult = {
-  ok: true;
-  url: string;
-  title: string;
-  durationMs: number;
-  /** Present when Folio invoice workflow requested a PDF and the UI cooperated. */
-  invoicePdfBase64?: string;
-  invoicePdfFileName?: string;
-};
-
-export type { EmmaOpenFolioProgressEvent } from './emma-reservation-folio-open';
+  applyEmmaSnapshotsToRooms,
+  fetchEmmaRoomStatusSnapshotsHttp,
+  type EmmaRoomStatusSyncResult,
+} from './emma-room-status-sync';
 
 /**
- * High-level entry point for EMMA work. Today this is just a `testLogin`
- * helper; future actions (room status, reservations, check-in/out, etc.)
- * should land in this service so callers don't need to know about Playwright
- * directly.
+ * EMMA integration: HTTP session + fast OData room-status sync.
+ * Folio / reservation flows will be reimplemented without a browser.
  */
 @Injectable()
 export class EmmaService {
@@ -46,185 +27,115 @@ export class EmmaService {
 
   constructor(
     private readonly settings: SettingsService,
-    private readonly session: EmmaBrowserSessionService,
-    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly rooms: RoomsService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
-  /** Read EMMA credential metadata for the admin UI (no plaintext secrets). */
   getLoginMeta() {
     return this.settings.getEmmaLoginMeta();
   }
 
-  /**
-   * Drive a real Chromium login through all four EMMA stages and return basic
-   * info about the page we landed on. Throws if any stage fails.
-   *
-   * Pass `{ headless: false }` only from a local/dev workstation — production
-   * (PM2 on a headless server) must always run headless.
-   */
-  async testLogin(runOpts: { headless?: boolean } = {}): Promise<EmmaLoginTestResult> {
-    const opts = await this.buildLoginOpts();
-    const startedAt = Date.now();
-
-    this.log.log('[EMMA] testLogin gestartet');
-    const result = await this.session.run(
-      opts,
-      async ({ page, gotoLoggedIn }) => {
-        await gotoLoggedIn(emmaLaunchpadUrl(opts));
-        await page
-          .waitForLoadState('networkidle', { timeout: 30_000 })
-          .catch(() => undefined);
-        return {
-          url: page.url(),
-          title: await page.title().catch(() => ''),
-        };
-      },
-      { headless: runOpts.headless ?? true },
-    );
-    const durationMs = Date.now() - startedAt;
-    this.log.log(`[EMMA] testLogin erfolgreich (${durationMs}ms): ${result.url}`);
-    return { ok: true, durationMs, ...result };
-  }
-
-  /**
-   * Force the next EMMA action to do a fresh end-to-end login (drops the
-   * persistent Chromium browser context and its cookies).
-   */
   async invalidateSession() {
-    await this.session.invalidateSession();
+    await this.settings.clearEmmaHttpSession();
     return { ok: true };
   }
 
-  /**
-   * Log in (reusing session when possible), run **Search Reservations** with the
-   * shell box + date filters, open the PMS row by double-clicking the reservation
-   * column cell, then open **Folio Management** for that stay.
-   *
-   * @param onStep optional live progress (e.g. NDJSON stream to the PrizeBern UI).
-   */
-  async openReservationFolio(
-    body: {
-      shellSearch: string;
-      gridReservationId: string;
-      checkInDate?: string | null;
-      checkOutDate?: string | null;
-      headless?: boolean;
-      /**
-       * Optional second phase on Folio Management: apply KI-extracted company data
-       * and/or try to download a PDF (semi-automatic pipeline — human still reviews in Puzzel).
-       */
-      invoiceWorkflow?: {
-        cancelExistingInvoices?: boolean;
-        companyBilling?: EmmaFolioInvoiceCompanyInput | null;
-        downloadPdf?: boolean;
-      };
-    },
-    onStep?: (event: EmmaOpenFolioProgressEvent) => void,
-  ): Promise<EmmaOpenReservationFolioResult> {
-    const shellSearch = body.shellSearch?.trim();
-    const gridReservationId = body.gridReservationId?.trim();
-    if (!shellSearch || !gridReservationId) {
-      throw new BadRequestException(
-        'shellSearch and gridReservationId are required.',
+  async refreshHttpSession(): Promise<{ ok: true; savedAt: string; cookieCount: number }> {
+    const opts = await this.buildLoginOpts((msg) => this.log.log(msg));
+    const startedAt = Date.now();
+    this.log.log('[EMMA] refreshHttpSession (HTTP) gestartet');
+    const jar = await emmaHttpLogin(opts);
+    const baseUrl = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+    const sapClient =
+      (await this.settings.getEmmaLoginSecrets())?.sapClient?.trim() ||
+      process.env.EMMA_SAP_CLIENT?.trim() ||
+      EMMA_DEFAULT_SAP_CLIENT;
+    const ok = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!ok) {
+      throw new Error(
+        'EMMA HTTP-Login abgeschlossen, aber OData-Probe fehlgeschlagen (evtl. Property-Modal / Stage 4).',
       );
     }
-
-    const emit = (event: EmmaOpenFolioProgressEvent) => {
-      onStep?.(event);
-    };
-
-    const opts = await this.buildLoginOpts((msg) =>
-      emit({ step: 'session_login', message: msg }),
-    );
-    const startedAt = Date.now();
-    this.log.log('[EMMA] openReservationFolio gestartet');
-
-    const result = await this.session.run(
-      opts,
-      async ({ page, gotoLoggedIn }) => {
-        emit({
-          step: 'session_launch',
-          message: 'Launchpad laden (Session / Login) …',
-        });
-        await gotoLoggedIn(emmaLaunchpadUrl(opts));
-        await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined);
-        emit({ step: 'session_ready', message: 'Launchpad bereit.' });
-        const folio = await runEmmaSearchReservationAndOpenFolio(
-          page,
-          {
-            shellSearch,
-            gridReservationId,
-            checkInDate: body.checkInDate,
-            checkOutDate: body.checkOutDate,
-          },
-          onStep,
-        );
-
-        const iw = body.invoiceWorkflow;
-        const hasCompany =
-          iw?.companyBilling &&
-          Object.values(iw.companyBilling).some(
-            (v) => typeof v === 'string' && v.trim().length > 0,
-          );
-        const wantsInvoiceWorkflow =
-          !!(iw && (iw.cancelExistingInvoices || iw.downloadPdf || hasCompany));
-        const invoiceWorkflowEnabled = this.config.get<boolean>(
-          'emma.invoiceWorkflowEnabled',
-          false,
-        );
-
-        if (wantsInvoiceWorkflow && !invoiceWorkflowEnabled) {
-          this.log.warn(
-            '[EMMA] Folio-Rechnungsworkflow übersprungen — EMMA_INVOICE_WORKFLOW_ENABLED ist nicht true.',
-          );
-          emit({
-            step: 'folio_invoice_wait',
-            message:
-              'Automatische Rechnungsbearbeitung in EMMA ist auf diesem Server deaktiviert (Umgebungsvariable EMMA_INVOICE_WORKFLOW_ENABLED). Folio wurde nur geöffnet.',
-          });
-          return folio;
-        }
-
-        if (wantsInvoiceWorkflow && invoiceWorkflowEnabled) {
-          const secrets = await this.settings.getEmmaLoginSecrets();
-          const inv = await runEmmaFolioInvoiceWorkflow(
-            page,
-            {
-              cancelExistingInvoices: iw.cancelExistingInvoices ?? false,
-              tillName: secrets?.tillName ?? undefined,
-              tillEmployeeCode: secrets?.operatorCode ?? undefined,
-              tillEmployeePassword: secrets?.operatorPassword ?? undefined,
-              companyBilling: iw.companyBilling ?? undefined,
-              downloadPdf: iw.downloadPdf ?? false,
-            },
-            onStep,
-          );
-          return {
-            ...folio,
-            invoicePdfBase64: inv.invoicePdfBase64,
-            invoicePdfFileName: inv.invoicePdfFileName,
-          };
-        }
-
-        return folio;
-      },
-      { headless: body.headless ?? true },
-    );
-
-    const durationMs = Date.now() - startedAt;
-    this.log.log(`[EMMA] openReservationFolio OK (${durationMs}ms): ${result.url}`);
-    return { ok: true, durationMs, ...result };
+    const savedAt = new Date().toISOString();
+    await this.settings.saveEmmaHttpSession({ cookies: jar.toJSON(), savedAt });
+    this.log.log(`[EMMA] refreshHttpSession OK (${Date.now() - startedAt}ms)`);
+    return { ok: true, savedAt, cookieCount: jar.toJSON().length };
   }
 
-  /**
-   * Build {@link EmmaLoginOpts} from `HotelSettings.settings.emmaLogin`
-   * (Admin UI: Stufe 1 ADFS, 2 TOTP, 3 SAP, 4 Property, optional Launchpad-URL).
-   * Used for every Playwright run; {@link emmaLogin} consumes this object as-is.
-   * Throws if stages 1–3 required fields are missing.
-   */
-  private async buildLoginOpts(
-    onSessionLog?: (message: string) => void,
-  ): Promise<EmmaLoginOpts> {
+  private async loadEmmaHttpJar(): Promise<EmmaCookieJar> {
+    const stored = await this.settings.getEmmaHttpSession();
+    if (!stored?.cookies?.length) {
+      throw new Error(
+        'Keine EMMA-HTTP-Session gespeichert. Admin: POST /api/v1/emma/session/refresh-http ausführen.',
+      );
+    }
+    return EmmaCookieJar.fromJSON(stored.cookies);
+  }
+
+  async syncRoomStatuses(runOpts: { hotelId?: string } = {}): Promise<EmmaRoomStatusSyncResult> {
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const hotelId =
+      runOpts.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = (creds.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+
+    const startedAt = Date.now();
+    this.log.log(`[EMMA] syncRoomStatuses (HTTP) gestartet (${hotelId})`);
+
+    let jar = await this.loadEmmaHttpJar();
+    if (!(await emmaHttpProbeOData(jar, baseUrl, sapClient))) {
+      this.log.warn('[EMMA] HTTP-Session abgelaufen — erneuter Login');
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    const updatedRoomIds: string[] = [];
+    const snapshots = await fetchEmmaRoomStatusSnapshotsHttp(jar, baseUrl, hotelId, sapClient);
+    this.log.log(`[EMMA] ${snapshots.length} Zimmer aus RoomDetail (${Date.now() - startedAt}ms)`);
+
+    const result = await applyEmmaSnapshotsToRooms(
+      {
+        findRooms: () =>
+          this.prisma.room.findMany({
+            select: { id: true, roomNumber: true, metadata: true, outOfOrder: true },
+          }),
+        updateRoom: async (id, data) => {
+          updatedRoomIds.push(id);
+          await this.prisma.room.update({
+            where: { id },
+            data: {
+              outOfOrder: data.outOfOrder,
+              metadata: data.metadata as Prisma.InputJsonValue,
+            },
+          });
+        },
+      },
+      snapshots,
+      hotelId,
+    );
+
+    for (const id of updatedRoomIds) {
+      try {
+        const dto = await this.rooms.findOne(id);
+        this.realtime.emitRoomStatus(dto);
+      } catch {
+        /* room removed mid-sync */
+      }
+    }
+
+    this.log.log(
+      `[EMMA] syncRoomStatuses OK in ${Date.now() - startedAt}ms: ${result.matched}/${result.emmaRooms} matched, ${result.updated} updated`,
+    );
+    return result;
+  }
+
+  private async buildLoginOpts(onSessionLog?: (message: string) => void): Promise<EmmaLoginOpts> {
     const creds = await this.settings.getEmmaLoginSecrets();
     this.assertCredentialsComplete(creds);
     return {
