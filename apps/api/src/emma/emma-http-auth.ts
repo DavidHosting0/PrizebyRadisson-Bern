@@ -32,18 +32,42 @@ function extractFormAction(html: string, baseUrl: string): string | null {
   }
 }
 
+/** ADFS page after password accepted — MFA or SAML relay, not another login. */
+function isAdfsPostAuthUrl(url: string): boolean {
+  return /ssoCookie=MSISTempAuth/i.test(url);
+}
+
 /** ADFS interactive forms login (email + password) — not SAML relay-only pages. */
 function isAdfsFormsLoginPage(html: string, url: string): boolean {
   if (!/signon\.radissonhotels\.com/i.test(url)) return false;
+  if (isAdfsPostAuthUrl(url)) return false;
   const samlRelayOnly =
     html.includes('SAMLRequest') &&
     !/name=["']Password["']|type=["']password["']/i.test(html);
   if (samlRelayOnly) return false;
-  return /name=["']UserName["']|id=["']userNameInput["']|userNameInput/i.test(html);
+  const hasUser =
+    /name=["']UserName["']/i.test(html) || /id=["']userNameInput["']/i.test(html);
+  const hasPassword =
+    /name=["']Password["']/i.test(html) ||
+    /id=["']passwordInput["']/i.test(html) ||
+    /type=["']password["']/i.test(html);
+  return hasUser && hasPassword;
+}
+
+/** SAMLResponse auto-post on signon after MFA (HAR: before EMMA ACS). */
+function isAdfsSamlResponsePage(html: string, url: string): boolean {
+  return /signon\.radissonhotels\.com/i.test(url) && html.includes('SAMLResponse');
 }
 
 /** Radisson RHGMFA (legacy) or privacyIDEA TOTP (current ADFS). */
-function isPrivacyIdeaMfaPage(html: string): boolean {
+function isPrivacyIdeaMfaPage(html: string, url = ''): boolean {
+  if (isAdfsPostAuthUrl(url) && !html.includes('SAMLResponse')) {
+    return true;
+  }
+  const hidden = extractHiddenFields(html);
+  if (hidden.Context && /privacyIDEA|otp/i.test(html + JSON.stringify(hidden))) {
+    return true;
+  }
   return (
     /privacyIDEAADFSProvider/i.test(html) ||
     /one-time-password/i.test(html) ||
@@ -55,8 +79,8 @@ function isLegacyRhMfaPage(html: string, title: string): boolean {
   return /RHGMFA/i.test(title) || /ChallengeQuestionAnswer/i.test(html);
 }
 
-function isMfaPage(html: string, title: string): boolean {
-  return isPrivacyIdeaMfaPage(html) || isLegacyRhMfaPage(html, title);
+function isMfaPage(html: string, title: string, url = ''): boolean {
+  return isPrivacyIdeaMfaPage(html, url) || isLegacyRhMfaPage(html, title);
 }
 
 function isSapLogonPage(html: string): boolean {
@@ -94,19 +118,33 @@ function isLaunchpadUrl(url: string): boolean {
 }
 
 function isLoginIncomplete(url: string, html: string, title: string): boolean {
-  if (isAdfsFormsLoginPage(html, url) || isMfaPage(html, title) || isSapLogonPage(html)) {
+  if (
+    isAdfsFormsLoginPage(html, url) ||
+    isMfaPage(html, title, url) ||
+    isAdfsSamlResponsePage(html, url) ||
+    isSapLogonPage(html)
+  ) {
     return true;
   }
   if (isF5PolicyPage(url, html)) return true;
   if (isSamlBootstrapPage(html, url)) return true;
   if (
     /signon\.radissonhotels\.com/i.test(url) &&
-    !isPrivacyIdeaMfaPage(html) &&
-    !isAdfsFormsLoginPage(html, url)
+    !isPrivacyIdeaMfaPage(html, url) &&
+    !isAdfsFormsLoginPage(html, url) &&
+    !isAdfsSamlResponsePage(html, url)
   ) {
     return true;
   }
   return false;
+}
+
+function extractAdfsLoginError(html: string): string | null {
+  const m =
+    /id=["']errorText["'][^>]*>([^<]+)/i.exec(html) ??
+    /loginMessage["']?\s*[^>]*>([^<]{4,200})/i.exec(html);
+  const msg = m?.[1]?.replace(/\s+/g, ' ').trim();
+  return msg && /invalid|incorrect|failed|fehlgeschlagen|error/i.test(msg) ? msg : null;
 }
 
 function extractSapLoginXsrf(html: string): string | null {
@@ -215,6 +253,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   const launchUrl = emmaLaunchpadUrl(opts);
   let page = await emmaHttpFetch(jar, launchUrl);
   let samlRelayCount = 0;
+  let adfsCredentialsPosted = false;
 
   for (let round = 0; round < MAX_LOGIN_ROUNDS; round++) {
     const stepHint = page.url.replace(/^https?:\/\//, '').slice(0, 72);
@@ -227,45 +266,19 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       continue;
     }
 
-    if (isAdfsFormsLoginPage(page.html, page.url)) {
-      if (!opts.adfsEmail?.trim() || !opts.adfsPassword) {
-        throw new Error('EMMA HTTP Stage 1: ADFS credentials missing.');
-      }
-      opts.progress?.('[EMMA HTTP] Stage 1/4 ADFS');
-      samlRelayCount = 0;
-      page = await postForm(
-        jar,
-        page.url,
-        {
-          ...extractHiddenFields(page.html),
-          UserName: opts.adfsEmail.trim(),
-          Password: opts.adfsPassword,
-          AuthMethod: 'FormsAuthentication',
-        },
-        page.url,
-      );
-      await sleep(1500);
-      continue;
-    }
-
-    if (isSamlBootstrapPage(page.html, page.url)) {
+    if (isAdfsSamlResponsePage(page.html, page.url)) {
       const action = extractFormAction(page.html, page.url);
       const hidden = extractHiddenFields(page.html);
-      if (action) {
-        samlRelayCount += 1;
-        if (samlRelayCount > 3) {
-          throw new Error(
-            'EMMA HTTP: SAML-Weiterleitung zu ADFS wiederholt sich (kein Login-Formular).',
-          );
-        }
-        opts.progress?.('[EMMA HTTP] SAML → ADFS');
+      if (action && hidden.SAMLResponse) {
+        opts.progress?.('[EMMA HTTP] SAML Response → EMMA');
+        samlRelayCount = 0;
         page = await postForm(jar, action, hidden, page.url);
-        await sleep(1000);
+        await sleep(1500);
         continue;
       }
     }
 
-    if (isMfaPage(page.html, page.title)) {
+    if (isMfaPage(page.html, page.title, page.url)) {
       if (!opts.totpSecret?.trim()) {
         throw new Error('EMMA HTTP Stage 2: MFA required but no TOTP seed.');
       }
@@ -273,7 +286,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         secret: opts.totpSecret.replace(/\s+/g, '').toUpperCase(),
       });
       opts.progress?.('[EMMA HTTP] Stage 2/4 MFA (TOTP)');
-      if (isPrivacyIdeaMfaPage(page.html)) {
+      if (isPrivacyIdeaMfaPage(page.html, page.url)) {
         page = await postForm(
           jar,
           page.url,
@@ -307,6 +320,57 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       }
       await sleep(2000);
       continue;
+    }
+
+    if (isAdfsFormsLoginPage(page.html, page.url)) {
+      if (!opts.adfsEmail?.trim() || !opts.adfsPassword) {
+        throw new Error('EMMA HTTP Stage 1: ADFS credentials missing.');
+      }
+      if (adfsCredentialsPosted) {
+        const err = extractAdfsLoginError(page.html);
+        throw new Error(
+          err
+            ? `EMMA HTTP Stage 1: ADFS abgelehnt — ${err}`
+            : 'EMMA HTTP Stage 1: ADFS-Login wiederholt sich (Passwort oder Konto prüfen).',
+        );
+      }
+      opts.progress?.('[EMMA HTTP] Stage 1/4 ADFS');
+      samlRelayCount = 0;
+      adfsCredentialsPosted = true;
+      page = await postForm(
+        jar,
+        page.url,
+        {
+          ...extractHiddenFields(page.html),
+          UserName: opts.adfsEmail.trim(),
+          Password: opts.adfsPassword,
+          AuthMethod: 'FormsAuthentication',
+        },
+        page.url,
+      );
+      const adfsErr = extractAdfsLoginError(page.html);
+      if (adfsErr) {
+        throw new Error(`EMMA HTTP Stage 1: ADFS abgelehnt — ${adfsErr}`);
+      }
+      await sleep(1500);
+      continue;
+    }
+
+    if (isSamlBootstrapPage(page.html, page.url)) {
+      const action = extractFormAction(page.html, page.url);
+      const hidden = extractHiddenFields(page.html);
+      if (action) {
+        samlRelayCount += 1;
+        if (samlRelayCount > 3) {
+          throw new Error(
+            'EMMA HTTP: SAML-Weiterleitung zu ADFS wiederholt sich (kein Login-Formular).',
+          );
+        }
+        opts.progress?.('[EMMA HTTP] SAML → ADFS');
+        page = await postForm(jar, action, hidden, page.url);
+        await sleep(1000);
+        continue;
+      }
     }
 
     if (isSapLogonPage(page.html)) {
@@ -373,8 +437,11 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   }
 
   if (isLoginIncomplete(page.url, page.html, page.title)) {
+    const hint = isAdfsPostAuthUrl(page.url)
+      ? ' (nach ADFS-Passwort: MFA/TOTP oder SAML — prüfe TOTP-Seed und Server-Uhrzeit)'
+      : '';
     throw new Error(
-      `EMMA HTTP-Login unvollständig nach ${MAX_LOGIN_ROUNDS} Schritten (letzte URL: ${page.url}).`,
+      `EMMA HTTP-Login unvollständig nach ${MAX_LOGIN_ROUNDS} Schritten (letzte URL: ${page.url})${hint}.`,
     );
   }
 
