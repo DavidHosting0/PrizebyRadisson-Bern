@@ -42,7 +42,7 @@ function extractHiddenFields(html: string): Record<string, string> {
     const tag = m[0];
     const name = /name=["']([^"']+)["']/i.exec(tag)?.[1];
     const value = /value=["']([^"']*)["']/i.exec(tag)?.[1] ?? '';
-    if (name) out[name] = value;
+    if (name) out[name] = decodeHtmlEntities(value);
   }
   return out;
 }
@@ -294,6 +294,50 @@ export type EmmaHttpLoginResult = {
 
 const MAX_LOGIN_ROUNDS = 18;
 
+type EmmaHttpProgress = EmmaLoginOpts['progress'];
+
+function emmaHttpDebug(
+  progress: EmmaHttpProgress,
+  label: string,
+  page: EmmaHttpFetchResult,
+  jar: EmmaCookieJar,
+  extra?: Record<string, string | number | boolean | null | undefined>,
+): void {
+  if (!progress) return;
+  let sapClientParam: string | null = null;
+  try {
+    sapClientParam = new URL(page.url).searchParams.get('sap-client');
+  } catch {
+    /* ignore */
+  }
+  const flags = {
+    adfsLogin: isAdfsFormsLoginPage(page.html, page.url),
+    mfa: isMfaPage(page.html, page.title, page.url),
+    samlResponse: isAdfsSamlResponsePage(page.html, page.url),
+    sapLogon: isSapLogonPage(page.html, page.url),
+    sapSession: isSapSessionEstablished(page.url),
+    fioriShell: isFioriLaunchpadShell(page.html),
+    f5: isF5PolicyPage(page.url, page.html),
+    launchpad: isLaunchpadUrl(page.url),
+  };
+  progress(
+    `[EMMA HTTP DEBUG] ${label} status=${page.status} cookies=${jar.toJSON().length} htmlBytes=${page.html.length} sap-client=${sapClientParam ?? '—'}`,
+  );
+  progress(`[EMMA HTTP DEBUG] ${label} url=${page.url}`);
+  if (page.title) {
+    progress(`[EMMA HTTP DEBUG] ${label} title=${page.title.slice(0, 120)}`);
+  }
+  progress(`[EMMA HTTP DEBUG] ${label} detect=${JSON.stringify(flags)}`);
+  if (extra) {
+    const parts = Object.entries(extra)
+      .filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => `${k}=${v}`);
+    if (parts.length > 0) {
+      progress(`[EMMA HTTP DEBUG] ${label} ${parts.join(' ')}`);
+    }
+  }
+}
+
 /**
  * Full EMMA login over HTTP (ADFS → MFA → SAP → Launchpad).
  * Loops until no further login pages appear or round limit is hit.
@@ -307,9 +351,15 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   let adfsCredentialsPosted = false;
   let sapCredentialsPosted = false;
 
+  const dbg = opts.progress;
+
   for (let round = 0; round < MAX_LOGIN_ROUNDS; round++) {
     const stepHint = page.url.replace(/^https?:\/\//, '').slice(0, 72);
     opts.progress?.(`[EMMA HTTP] Runde ${round + 1}: ${stepHint}`);
+    emmaHttpDebug(dbg, `runde-${round + 1}-eingang`, page, jar, {
+      adfsPosted: adfsCredentialsPosted,
+      sapPosted: sapCredentialsPosted,
+    });
 
     if (isSapSessionEstablished(page.url) && !isSapLogonPage(page.html, page.url)) {
       opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — Session aktiv');
@@ -322,9 +372,16 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       (sapCredentialsPosted && isFioriLaunchpadShell(page.html)) ||
       (metaRefresh?.includes('&#') ?? false);
     if (metaRefresh && metaRefresh !== page.url && !skipMetaRefresh) {
+      opts.progress?.(`[EMMA HTTP] Meta-Refresh → ${metaRefresh.replace(/^https?:\/\//, '').slice(0, 100)}`);
       page = await emmaHttpFetch(jar, metaRefresh);
+      emmaHttpDebug(dbg, 'nach-meta-refresh', page, jar);
       await sleep(400);
       continue;
+    }
+    if (metaRefresh && skipMetaRefresh) {
+      opts.progress?.(
+        `[EMMA HTTP] Meta-Refresh übersprungen (skip: sapSession=${isSapSessionEstablished(page.url)} fiori=${isFioriLaunchpadShell(page.html)} encoded=${metaRefresh.includes('&#')})`,
+      );
     }
 
     if (isAdfsSamlResponsePage(page.html, page.url)) {
@@ -439,11 +496,16 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         throw new Error('EMMA HTTP Stage 3: SAP credentials missing.');
       }
       if (sapCredentialsPosted) {
+        emmaHttpDebug(dbg, 'sap-wiederholung', page, jar, {
+          sapUser: opts.sapUser?.trim() ?? '',
+          xsrfOnPage: Boolean(extractSapLoginXsrf(page.html)),
+        });
         const err = extractSapLoginError(page.html);
+        const titleHint = page.title ? ` title="${page.title.slice(0, 80)}"` : '';
         throw new Error(
           err
-            ? `EMMA HTTP Stage 3: SAP abgelehnt — ${err}`
-            : 'EMMA HTTP Stage 3: SAP-Logon wiederholt sich (Benutzer/Passwort in Admin → EMMA prüfen).',
+            ? `EMMA HTTP Stage 3: SAP abgelehnt — ${err}${titleHint}`
+            : `EMMA HTTP Stage 3: SAP-Logon wiederholt sich (Benutzer/Passwort in Admin → EMMA prüfen).${titleHint} URL ohne sap-client=${!isSapSessionEstablished(page.url)} fioriShell=${isFioriLaunchpadShell(page.html)}`,
         );
       }
       opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon');
@@ -456,6 +518,9 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       const sapHidden = extractHiddenFields(page.html);
       sapCredentialsPosted = true;
       const hiddenMsg = sapHidden.hidden_message_to_show;
+      opts.progress?.(
+        `[EMMA HTTP] SAP POST user=${opts.sapUser?.trim()} client=${sapClient} action=${sapAction.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrf.length} hiddenMsgLen=${hiddenMsg?.length ?? 0}`,
+      );
       page = await postForm(
         jar,
         sapAction,
@@ -476,16 +541,20 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         },
         page.url,
       );
+      emmaHttpDebug(dbg, 'nach-sap-post', page, jar, {
+        sapUser: opts.sapUser?.trim() ?? '',
+        sapLogonStill: isSapLogonPage(page.html, page.url),
+      });
       if (isSapSessionEstablished(page.url)) {
         opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
         break;
       }
       if (isFioriLaunchpadShell(page.html) && !isSapLogonPage(page.html, page.url)) {
         const base = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
-        page = await emmaHttpFetch(
-          jar,
-          sapLaunchpadUrl(base, sapClient, hiddenMsg),
-        );
+        const canon = sapLaunchpadUrl(base, sapClient, hiddenMsg);
+        opts.progress?.(`[EMMA HTTP] SAP Fiori-Shell → kanonische URL ${canon.replace(/^https?:\/\//, '').slice(0, 100)}`);
+        page = await emmaHttpFetch(jar, canon);
+        emmaHttpDebug(dbg, 'nach-sap-kanonisch', page, jar);
         if (isSapSessionEstablished(page.url) || isFioriLaunchpadShell(page.html)) {
           opts.progress?.('[EMMA HTTP] Stage 3/4 SAP Logon OK');
           break;
@@ -495,6 +564,9 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       if (sapErr) {
         throw new Error(`EMMA HTTP Stage 3: SAP abgelehnt — ${sapErr}`);
       }
+      opts.progress?.(
+        '[EMMA HTTP] SAP POST ohne sap-client in URL — nächste Runde (Logon-Formular noch sichtbar oder Redirect fehlgeschlagen)',
+      );
       await sleep(2000);
       continue;
     }
@@ -528,6 +600,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   }
 
   if (isLoginIncomplete(page.url, page.html, page.title)) {
+    emmaHttpDebug(dbg, 'login-unvollständig', page, jar, {
+      adfsPosted: adfsCredentialsPosted,
+      sapPosted: sapCredentialsPosted,
+    });
     const hint = isAdfsPostAuthUrl(page.url)
       ? ' (nach ADFS-Passwort: MFA/TOTP oder SAML — prüfe TOTP-Seed und Server-Uhrzeit)'
       : '';

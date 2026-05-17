@@ -51,13 +51,18 @@ export class EmmaService {
       (await this.settings.getEmmaLoginSecrets())?.sapClient?.trim() ||
       process.env.EMMA_SAP_CLIENT?.trim() ||
       EMMA_DEFAULT_SAP_CLIENT;
+    this.log.log(
+      `[EMMA] refreshHttpSession nach Login: finalUrl=${finalUrl} cookies=${jar.toJSON().length}`,
+    );
     const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
     if (!probe.ok) {
+      this.log.warn(`[EMMA] OData-Probe fehlgeschlagen: ${probe.reason}`);
       throw new Error(
         `EMMA HTTP-Login endete auf ${finalUrl}, aber OData-Probe fehlgeschlagen: ${probe.reason}. ` +
           'Prüfe TOTP/SAP/Operator (Stage 2–4) in Admin → EMMA.',
       );
     }
+    this.log.log('[EMMA] OData-Probe OK (ZEYUI_RSRVS_SRV CSRF)');
     const savedAt = new Date().toISOString();
     await this.settings.saveEmmaHttpSession({ cookies: jar.toJSON(), savedAt });
     this.log.log(`[EMMA] refreshHttpSession OK (${Date.now() - startedAt}ms)`);
