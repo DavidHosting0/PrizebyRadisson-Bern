@@ -1,6 +1,10 @@
 import { generateSync } from 'otplib';
 import { EmmaCookieJar } from './emma-cookie-jar';
-import { emmaLaunchpadUrl, type EmmaLoginOpts } from './emma-login-types';
+import {
+  emmaLaunchpadUrl,
+  emmaServerRoot,
+  type EmmaLoginOpts,
+} from './emma-login-types';
 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
@@ -255,8 +259,9 @@ function extractMetaRefreshUrl(html: string, baseUrl: string): string | null {
   return resolveHttpUrl(m[1], baseUrl);
 }
 
-function sapLaunchpadUrl(baseUrl: string, sapClient: string, hiddenMessage?: string): string {
-  const root = baseUrl.replace(/\/+$/, '');
+/** Build /sap/bc/ui2/flp?sap-client=… on the server root, regardless of what baseUrl contains. */
+function sapLaunchpadUrl(serverRoot: string, sapClient: string, hiddenMessage?: string): string {
+  const root = new URL(serverRoot).origin;
   const u = new URL(`${root}/sap/bc/ui2/flp`);
   u.searchParams.set('sap-client', sapClient);
   u.searchParams.set('sap-language', 'EN');
@@ -601,8 +606,8 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       // pre-existing SAML session and 302s us in.
       if (isFipSession) {
         opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — FIP-Session erkannt, kein User/Pwd-POST');
-        const base = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
-        const canon = sapLaunchpadUrl(base, sapClient, hiddenMsg);
+        const root = emmaServerRoot(opts);
+        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsg);
         opts.progress?.(
           `[EMMA HTTP] SAP FIP → GET ${canon.replace(/^https?:\/\//, '').slice(0, 110)}`,
         );
@@ -706,8 +711,8 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         break;
       }
       if (isFioriLaunchpadShell(page.html) && !isSapLogonPage(page.html, page.url)) {
-        const base = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
-        const canon = sapLaunchpadUrl(base, sapClient, hiddenMsg);
+        const root = emmaServerRoot(opts);
+        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsg);
         opts.progress?.(`[EMMA HTTP] SAP Fiori-Shell → kanonische URL ${canon.replace(/^https?:\/\//, '').slice(0, 100)}`);
         page = await emmaHttpFetch(jar, canon);
         emmaHttpDebug(dbg, 'nach-sap-kanonisch', page, jar);
@@ -792,10 +797,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
   }
 
   if (opts.operatorCode?.trim() && opts.operatorPassword) {
-    const baseUrl = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+    const root = emmaServerRoot(opts);
     await emmaHttpPropertyLogin(
       jar,
-      baseUrl,
+      root,
       sapClientFromOpts(opts),
       opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR',
       opts.operatorCode.trim(),
@@ -810,6 +815,15 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
 
 const EMMA_ODATA_HOTEL_SRV = 'ZEYUI_HOTEL_SRV';
 
+/** Strip optional `/sap/...` suffix so callers can pass either origin or full launchpad URL. */
+function emmaOriginOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return baseUrl.replace(/\/+$/, '').replace(/\/sap\/.*/i, '');
+  }
+}
+
 /** Stage 4 — property/operator via OData (from HAR capture). */
 export async function emmaHttpPropertyLogin(
   jar: EmmaCookieJar,
@@ -821,9 +835,9 @@ export async function emmaHttpPropertyLogin(
   progress?: (msg: string) => void,
 ): Promise<void> {
   progress?.('[EMMA HTTP] Stage 4/4 Property (OData)');
-  const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_HOTEL_SRV);
+  const root = emmaOriginOf(baseUrl);
+  const csrf = await emmaHttpFetchCsrfToken(jar, root, sapClient, EMMA_ODATA_HOTEL_SRV);
   const q = (s: string) => encodeURIComponent(`'${s}'`);
-  const root = baseUrl.replace(/\/+$/, '');
   const steps = [
     `${root}/sap/opu/odata/sap/${EMMA_ODATA_HOTEL_SRV}/SetDefaultHotel?sap-client=${sapClient}&HotelId=${q(hotelId)}`,
     `${root}/sap/opu/odata/sap/${EMMA_ODATA_HOTEL_SRV}/CheckSharedUser?sap-client=${sapClient}&Employee=${q(operatorCode)}&Password=${q(operatorPassword)}&HotelId=${q(hotelId)}`,
@@ -873,7 +887,8 @@ export async function emmaHttpFetchCsrfToken(
   sapClient: string,
   service = 'ZEYUI_RSRVS_SRV',
 ): Promise<string> {
-  const url = `${baseUrl.replace(/\/+$/, '')}/sap/opu/odata/sap/${service}/?sap-client=${encodeURIComponent(sapClient)}`;
+  const root = emmaOriginOf(baseUrl);
+  const url = `${root}/sap/opu/odata/sap/${service}/?sap-client=${encodeURIComponent(sapClient)}`;
   const target = new URL(url);
   const headers = new Headers({
     'x-csrf-token': 'Fetch',

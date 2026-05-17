@@ -22,3 +22,17 @@ export const DEFAULT_EMMA_BASE_URL =
 export function emmaLaunchpadUrl(opts: Pick<EmmaLoginOpts, 'baseUrl'>): string {
   return opts.baseUrl?.trim() || DEFAULT_EMMA_BASE_URL;
 }
+
+/**
+ * Returns the EMMA server root (origin only, no `/sap/bc/ui2/flp`).
+ * Use for OData calls and absolute path construction so we never end up with
+ * doubled segments like `/sap/bc/ui2/flp/sap/bc/ui2/flp`.
+ */
+export function emmaServerRoot(opts: Pick<EmmaLoginOpts, 'baseUrl'>): string {
+  const raw = opts.baseUrl?.trim() || DEFAULT_EMMA_BASE_URL;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return 'https://emma.rhg.radissonhotels.com';
+  }
+}

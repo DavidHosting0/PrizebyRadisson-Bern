@@ -10,7 +10,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { EMMA_DEFAULT_HOTEL_ID, EMMA_DEFAULT_SAP_CLIENT } from './emma-odata-client';
 import { EmmaCookieJar } from './emma-cookie-jar';
 import { emmaHttpLogin, emmaHttpProbeOData } from './emma-http-auth';
-import type { EmmaLoginOpts } from './emma-login-types';
+import { emmaServerRoot, type EmmaLoginOpts } from './emma-login-types';
 import {
   applyEmmaSnapshotsToRooms,
   fetchEmmaRoomStatusSnapshotsHttp,
@@ -46,7 +46,7 @@ export class EmmaService {
     const startedAt = Date.now();
     this.log.log('[EMMA] refreshHttpSession (HTTP) gestartet');
     const { jar, finalUrl } = await emmaHttpLogin(opts);
-    const baseUrl = (opts.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+    const baseUrl = emmaServerRoot(opts);
     const sapClient =
       (await this.settings.getEmmaLoginSecrets())?.sapClient?.trim() ||
       process.env.EMMA_SAP_CLIENT?.trim() ||
@@ -89,7 +89,7 @@ export class EmmaService {
       EMMA_DEFAULT_HOTEL_ID;
     const sapClient =
       creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
-    const baseUrl = (creds.baseUrl || 'https://emma.rhg.radissonhotels.com').replace(/\/+$/, '');
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
 
     const startedAt = Date.now();
     this.log.log(`[EMMA] syncRoomStatuses (HTTP) gestartet (${hotelId})`);
