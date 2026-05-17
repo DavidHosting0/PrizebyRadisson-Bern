@@ -281,11 +281,96 @@ function normalizeSapUser(user: string): string {
   return user.trim().toLowerCase();
 }
 
-function extractSapLoginXsrf(html: string): string | null {
+function extractSapLoginXsrf(html: string, hidden?: Record<string, string>): string | null {
+  const fromHidden = hidden?.['sap-login-XSRF']?.trim();
+  if (fromHidden) return fromHidden;
   const m =
     /name=["']sap-login-XSRF["'][^>]*value=["']([^"']+)["']/i.exec(html) ??
     /value=["']([^"']+)["'][^>]*name=["']sap-login-XSRF["']/i.exec(html);
-  return m?.[1] ?? null;
+  return m?.[1]?.trim() ?? null;
+}
+
+function xsrfFromSapCookies(jar: EmmaCookieJar): string | null {
+  for (const c of jar.toJSON()) {
+    if (/^sap-login-XSRF/i.test(c.name) && c.value.trim()) {
+      return c.value.trim();
+    }
+  }
+  return null;
+}
+
+/** Field order for SAP UI2 logon POST (browser HAR). */
+const SAP_LOGON_POST_ORDER = [
+  'sap-system-login-oninputprocessing',
+  'sap-urlscheme',
+  'sap-system-login',
+  'sap-system-login-basic_auth',
+  'sap-client',
+  'sap-language',
+  'sap-accessibility',
+  'sap-login-XSRF',
+  'sap-system-login-cookie_disabled',
+  'sap-hash',
+  'hidden_message_to_show',
+  'sap-user',
+  'sap-password',
+  '__sap-sl__dummy',
+] as const;
+
+function buildSapCredentialPostPairs(
+  hidden: Record<string, string>,
+  args: {
+    sapClient: string;
+    shellHash: string;
+    xsrf: string;
+    hiddenMsg: string;
+    sapUser: string;
+    sapPassword: string;
+  },
+): Array<[string, string]> {
+  const merged: Record<string, string> = { ...hidden };
+  merged['sap-system-login-oninputprocessing'] =
+    merged['sap-system-login-oninputprocessing'] || 'onLogin';
+  merged['sap-urlscheme'] = merged['sap-urlscheme'] ?? '';
+  merged['sap-system-login'] = merged['sap-system-login'] || 'onLogin';
+  merged['sap-system-login-basic_auth'] = merged['sap-system-login-basic_auth'] ?? '';
+  merged['sap-client'] = args.sapClient;
+  merged['sap-language'] = merged['sap-language'] || 'EN';
+  merged['sap-accessibility'] = merged['sap-accessibility'] ?? '';
+  merged['sap-login-XSRF'] = args.xsrf;
+  merged['sap-system-login-cookie_disabled'] =
+    merged['sap-system-login-cookie_disabled'] ?? '';
+  merged['sap-hash'] = args.shellHash;
+  merged['hidden_message_to_show'] = args.hiddenMsg;
+  merged['sap-user'] = args.sapUser;
+  merged['sap-password'] = args.sapPassword;
+  merged['__sap-sl__dummy'] = '1';
+
+  const pairs: Array<[string, string]> = [];
+  const used = new Set<string>();
+  for (const key of SAP_LOGON_POST_ORDER) {
+    if (key in merged) {
+      pairs.push([key, merged[key]]);
+      used.add(key);
+    }
+  }
+  for (const [k, v] of Object.entries(merged)) {
+    if (!used.has(k) && k !== 'sap-user' && k !== 'sap-password') {
+      pairs.push([k, v]);
+    }
+  }
+  return pairs;
+}
+
+/** Remove interim ADFS cookies before SAP logon — browser keeps MSISAuthenticated/SamlSession only. */
+function pruneInterimSsoCookies(jar: EmmaCookieJar, progress?: EmmaHttpProgress): void {
+  const n =
+    jar.pruneCookieNames(/^MSISTempAuth_/) +
+    jar.pruneCookieNames(/^MSISSamlRequest/) +
+    jar.pruneCookieNames(/^MSISLoopDetectionCookie$/);
+  if (n > 0) {
+    progress?.(`[EMMA HTTP] SAP: ${n} Zwischen-SSO-Cookie(s) entfernt (MSISTempAuth/MSISSamlRequest)`);
+  }
 }
 
 /** Visible text (no markup) for diagnostic dumps. */
@@ -433,6 +518,7 @@ async function postFormOrdered(
   referer?: string,
   extraHeaders?: Record<string, string>,
 ): Promise<EmmaHttpFetchResult> {
+  const body = encodeFormBody(pairs);
   return emmaHttpFetch(jar, action, {
     method: 'POST',
     headers: {
@@ -443,7 +529,7 @@ async function postFormOrdered(
       ...(referer ? { Referer: referer, Origin: new URL(referer).origin } : {}),
       ...extraHeaders,
     },
-    body: encodeFormBody(pairs),
+    body,
   });
 }
 
@@ -668,12 +754,13 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
             : `EMMA HTTP Stage 3: SAP-Logon wiederholt sich (Benutzer/Passwort in Admin → EMMA prüfen).${titleHint} URL ohne sap-client=${!isSapSessionEstablished(page.url)} fioriShell=${isFioriLaunchpadShell(page.html)}`,
         );
       }
-      const xsrf = extractSapLoginXsrf(page.html);
+      const sapClient = sapClientFromOpts(opts);
+      const sapHidden = extractHiddenFields(page.html);
+      const xsrf =
+        extractSapLoginXsrf(page.html, sapHidden) ?? xsrfFromSapCookies(jar);
       if (!xsrf) {
         throw new Error('EMMA HTTP Stage 3: sap-login-XSRF missing on logon page.');
       }
-      const sapClient = sapClientFromOpts(opts);
-      const sapHidden = extractHiddenFields(page.html);
       const hiddenMsg = sapHidden.hidden_message_to_show ?? '';
       const cookieNames = jar.toJSON().map((c) => c.name);
       const isFipSession =
@@ -729,38 +816,33 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         });
         emmaHttpDebug(dbg, 'logon-refresh', page, jar);
       }
-      const xsrfNow = extractSapLoginXsrf(page.html) ?? xsrf;
       const hiddenNow = extractHiddenFields(page.html);
+      const xsrfNow =
+        extractSapLoginXsrf(page.html, hiddenNow) ?? xsrfFromSapCookies(jar) ?? xsrf;
       const hiddenMsgNow = hiddenNow.hidden_message_to_show ?? hiddenMsg;
       const sapUser = normalizeSapUser(opts.sapUser ?? '');
-      const sapPassword = opts.sapPassword;
+      const sapPassword = opts.sapPassword.trim();
       const beforePostHidden = Object.keys(hiddenNow);
       const beforePostInputs = extractInputNames(page.html);
       const beforePostBytes = page.html.length;
       const shellHashNow = extractSapShellHash(page.url, page.html, hiddenNow);
       const postTargetNow = buildSapLogonPostTarget(page.url, shellHashNow);
+      pruneInterimSsoCookies(jar, opts.progress);
+      const sapPairs = buildSapCredentialPostPairs(hiddenNow, {
+        sapClient,
+        shellHash: shellHashNow,
+        xsrf: xsrfNow,
+        hiddenMsg: hiddenMsgNow,
+        sapUser,
+        sapPassword,
+      });
+      const postBodyLen = encodeFormBody(sapPairs).length;
       opts.progress?.(
-        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} url=${postTargetNow.replace(/^https?:\/\//, '').slice(0, 100)} _sap-hash=${shellHashNow.slice(0, 24)}… xsrfLen=${xsrfNow.length} hiddenMsgLen=${hiddenMsgNow.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
+        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} url=${postTargetNow.replace(/^https?:\/\//, '').slice(0, 100)} xsrfLen=${xsrfNow.length} bodyLen=${postBodyLen} (HAR≈589) hiddenMsgLen=${hiddenMsgNow.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
       );
 
-      const sapPairs: Array<[string, string]> = [
-        ['sap-system-login-oninputprocessing', 'onLogin'],
-        ['sap-urlscheme', ''],
-        ['sap-system-login', 'onLogin'],
-        ['sap-system-login-basic_auth', ''],
-        ['sap-client', sapClient],
-        ['sap-language', 'EN'],
-        ['sap-accessibility', ''],
-        ['sap-login-XSRF', xsrfNow],
-        ['sap-system-login-cookie_disabled', ''],
-        ['sap-hash', shellHashNow],
-        ['hidden_message_to_show', hiddenMsgNow],
-        ['sap-user', sapUser],
-        ['sap-password', sapPassword],
-        ['__sap-sl__dummy', '1'],
-      ];
       page = await postFormOrdered(jar, postTargetNow, sapPairs, sapPlainFlpReferer(page.url), {
-        'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
+        'Accept-Language': 'de-DE,de;q=0.9',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'same-origin',
@@ -814,8 +896,9 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         }
         throw new Error(
           `EMMA HTTP Stage 3: SAP-Logon abgelehnt (HTTP 200, kein Redirect). ` +
-            `Wahrscheinlich falsches SAP-Passwort oder gesperrter Account. ` +
-            `Sichtbarer Text auf der Logon-Seite: ${visible.slice(0, 240) || '(leer)'}`,
+            `ADFS/MFA war OK — prüfe SAP-Benutzer/Passwort in Admin → EMMA (muss exakt wie im Browser sein; ` +
+            `nach Passwortänderung neu speichern). ` +
+            `Sichtbarer Text: ${visible.slice(0, 240) || '(leer)'}`,
         );
       }
       const sapErr = extractSapLoginError(page.html);

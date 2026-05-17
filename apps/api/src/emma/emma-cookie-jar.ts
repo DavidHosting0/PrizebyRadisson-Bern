@@ -43,12 +43,33 @@ export class EmmaCookieJar {
 
   headerFor(url: URL): string {
     const host = url.hostname;
+    const path = url.pathname;
     const parts: string[] = [];
     for (const c of this.store.values()) {
       if (c.domain && c.domain !== host && !host.endsWith(`.${c.domain}`)) continue;
+      const cookiePath = c.path ?? '/';
+      if (
+        cookiePath !== '/' &&
+        path !== cookiePath &&
+        !path.startsWith(cookiePath.endsWith('/') ? cookiePath : `${cookiePath}/`)
+      ) {
+        continue;
+      }
       parts.push(`${c.name}=${c.value}`);
     }
     return parts.join('; ');
+  }
+
+  /** Drop cookies whose names match (e.g. stale MSISTempAuth_* after MFA). */
+  pruneCookieNames(pattern: RegExp): number {
+    let n = 0;
+    for (const [k, c] of this.store) {
+      if (pattern.test(c.name)) {
+        this.store.delete(k);
+        n += 1;
+      }
+    }
+    return n;
   }
 
   toJSON(): StoredCookie[] {
