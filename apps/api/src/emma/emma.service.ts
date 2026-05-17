@@ -41,6 +41,35 @@ export class EmmaService {
     return { ok: true };
   }
 
+  /**
+   * Read-only: test whether the persisted cookie jar can obtain an OData CSRF
+   * token (ZEYUI_RSRVS_SRV). Does not run login.
+   */
+  async probeStoredHttpSession(): Promise<{
+    ok: boolean;
+    reason?: string;
+    cookieCount: number;
+    savedAt?: string;
+  }> {
+    const stored = await this.settings.getEmmaHttpSession();
+    if (!stored?.cookies?.length) {
+      return { ok: false, reason: 'Keine gespeicherte EMMA-HTTP-Session.', cookieCount: 0 };
+    }
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+    const jar = EmmaCookieJar.fromJSON(stored.cookies);
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    return {
+      ok: probe.ok,
+      ...(!probe.ok && { reason: probe.reason }),
+      cookieCount: stored.cookies.length,
+      savedAt: stored.savedAt,
+    };
+  }
+
   async refreshHttpSession(): Promise<{ ok: true; savedAt: string; cookieCount: number }> {
     const opts = await this.buildLoginOpts();
     const startedAt = Date.now();
@@ -79,7 +108,9 @@ export class EmmaService {
     return EmmaCookieJar.fromJSON(stored.cookies);
   }
 
-  async syncRoomStatuses(runOpts: { hotelId?: string } = {}): Promise<EmmaRoomStatusSyncResult> {
+  async syncRoomStatuses(
+    runOpts: { hotelId?: string; forceAttempt?: boolean } = {},
+  ): Promise<EmmaRoomStatusSyncResult> {
     const creds = await this.settings.getEmmaLoginSecrets();
     this.assertCredentialsComplete(creds);
     const hotelId =
@@ -95,11 +126,17 @@ export class EmmaService {
     this.log.log(`[EMMA] syncRoomStatuses (HTTP) gestartet (${hotelId})`);
 
     let jar = await this.loadEmmaHttpJar();
-    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
-    if (!probe.ok) {
-      this.log.warn(`[EMMA] HTTP-Session abgelaufen (${probe.reason}) — erneuter Login`);
-      await this.refreshHttpSession();
-      jar = await this.loadEmmaHttpJar();
+    if (!runOpts.forceAttempt) {
+      const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+      if (!probe.ok) {
+        this.log.warn(`[EMMA] HTTP-Session abgelaufen (${probe.reason}) — erneuter Login`);
+        await this.refreshHttpSession();
+        jar = await this.loadEmmaHttpJar();
+      }
+    } else {
+      this.log.warn(
+        '[EMMA] syncRoomStatuses forceAttempt=true — überspringe OData-Probe und Login; Sync schlägt fehl wenn Session ungültig.',
+      );
     }
 
     const updatedRoomIds: string[] = [];

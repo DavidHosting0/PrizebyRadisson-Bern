@@ -47,12 +47,29 @@ export class EmmaController {
     return this.emma.refreshHttpSession();
   }
 
-  /** Fast OData sync (few HTTP requests, typically a few seconds). */
+  /**
+   * Prüft nur die gespeicherten Cookies gegen ZEYUI_RSRVS_SRV (CSRF Fetch).
+   * Kein ADFS/SAP-Login; nützlich um zu sehen, ob Zimmer-Sync überhaupt möglich ist.
+   */
+  @Get('session/probe')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  probeStoredSession() {
+    return this.emma.probeStoredHttpSession();
+  }
+
+  /**
+   * Fast OData sync (few HTTP requests, typically a few seconds).
+   * `forceAttempt: true` — keine Probe und kein auto refresh-http; nur für Tests,
+   * wenn die Session noch gültig sein könnte, refresh-http aber fehlschlägt.
+   */
   @Post('room-status/sync')
   @HttpCode(HttpStatus.OK)
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.RECEPTION, UserRole.SUPERVISOR)
-  syncRoomStatuses(@Body() body: { hotelId?: string } | undefined) {
+  syncRoomStatuses(
+    @Body() body: { hotelId?: string; forceAttempt?: boolean } | undefined,
+  ) {
     return this.emma.syncRoomStatuses(body ?? {});
   }
 }

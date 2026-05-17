@@ -9,6 +9,62 @@ import {
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
+/** Default FLP shell route (Base64URL for `#Shell-home`) — matches browser HAR when the logon page omits `sap-hash`. */
+const DEFAULT_SAP_FLP_HASH = 'JTIzU2hlbGwtaG9tZQ';
+
+function extractSapShellHash(
+  pageUrl: string,
+  html: string,
+  hidden: Record<string, string>,
+): string {
+  try {
+    const q = new URL(pageUrl).searchParams.get('_sap-hash');
+    if (q?.trim()) return decodeHtmlEntities(q.trim());
+  } catch {
+    /* ignore */
+  }
+  const formAction = /<\s*form[^>]+action=["']([^"']+)["']/i.exec(html)?.[1];
+  if (formAction) {
+    const abs = resolveHttpUrl(formAction, pageUrl);
+    if (abs) {
+      try {
+        const h = new URL(abs).searchParams.get('_sap-hash');
+        if (h?.trim()) return decodeHtmlEntities(h.trim());
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const fromHidden = hidden['sap-hash']?.trim();
+  if (fromHidden) return fromHidden;
+  const inline = /name=["']sap-hash["'][^>]*value=["']([^"']*)["']/i.exec(html)?.[1]?.trim();
+  if (inline) return decodeHtmlEntities(inline);
+  const inHtml = /[?&]_sap-hash=([^&"'>\s]+)/i.exec(html);
+  if (inHtml?.[1]) return decodeHtmlEntities(inHtml[1]);
+  return DEFAULT_SAP_FLP_HASH;
+}
+
+/** SAP logon POST must target `.../flp?_sap-hash=<shellHash>` (see browser HAR). */
+function buildSapLogonPostTarget(formAction: string, pageUrl: string, shellHash: string): string {
+  let resolved = formAction.trim();
+  if (!/^https?:/i.test(resolved)) {
+    const r = resolveHttpUrl(resolved, pageUrl);
+    resolved = r ?? pageUrl;
+  }
+  const u = new URL(resolved);
+  u.searchParams.set('_sap-hash', shellHash);
+  return u.toString();
+}
+
+/** Browser sends Referer `…/sap/bc/ui2/flp` without query for the SAP logon POST. */
+function sapPlainFlpReferer(pageUrl: string): string {
+  try {
+    return new URL('/sap/bc/ui2/flp', new URL(pageUrl).origin).toString();
+  } catch {
+    return pageUrl;
+  }
+}
+
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
@@ -270,10 +326,17 @@ function extractMetaRefreshUrl(html: string, baseUrl: string): string | null {
   return resolveHttpUrl(m[1], baseUrl);
 }
 
-/** Build /sap/bc/ui2/flp?sap-client=… on the server root, regardless of what baseUrl contains. */
-function sapLaunchpadUrl(serverRoot: string, sapClient: string, hiddenMessage?: string): string {
+/** Build /sap/bc/ui2/flp?_sap-hash=…&sap-client=… on the server root (matches browser navigation). */
+function sapLaunchpadUrl(
+  serverRoot: string,
+  sapClient: string,
+  hiddenMessage?: string,
+  sapShellHash: string = DEFAULT_SAP_FLP_HASH,
+): string {
   const root = new URL(serverRoot).origin;
   const u = new URL(`${root}/sap/bc/ui2/flp`);
+  const sh = sapShellHash.trim() || DEFAULT_SAP_FLP_HASH;
+  u.searchParams.set('_sap-hash', sh);
   u.searchParams.set('sap-client', sapClient);
   u.searchParams.set('sap-language', 'EN');
   if (hiddenMessage?.trim()) {
@@ -618,7 +681,8 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       if (isFipSession) {
         opts.progress?.('[EMMA HTTP] Stage 3/4 SAP — FIP-Session erkannt, GET kanonische Launchpad-URL');
         const root = emmaServerRoot(opts);
-        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsg);
+        const shellForCanon = extractSapShellHash(page.url, page.html, sapHidden);
+        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsg, shellForCanon);
         opts.progress?.(
           `[EMMA HTTP] SAP FIP → GET ${canon.replace(/^https?:\/\//, '').slice(0, 110)}`,
         );
@@ -644,6 +708,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         if (isSapLogonPage(page.html, page.url)) {
           const xsrf2 = extractSapLoginXsrf(page.html) ?? xsrf;
           const action2 = extractFormAction(page.html, page.url) ?? page.url;
+          const hiddenFip = extractHiddenFields(page.html);
+          const hiddenMsgFip = hiddenFip.hidden_message_to_show ?? hiddenMsg;
+          const shellHashFip = extractSapShellHash(page.url, page.html, hiddenFip);
+          const postTargetFip = buildSapLogonPostTarget(action2, page.url, shellHashFip);
           const fipPairs: Array<[string, string]> = [
             ['sap-system-login-oninputprocessing', 'onLogin'],
             ['sap-urlscheme', ''],
@@ -654,13 +722,14 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
             ['sap-accessibility', ''],
             ['sap-login-XSRF', xsrf2],
             ['sap-system-login-cookie_disabled', ''],
-            ['sap-hash', ''],
-            ['hidden_message_to_show', hiddenMsg],
+            ['sap-hash', shellHashFip],
+            ['hidden_message_to_show', hiddenMsgFip],
+            ['__sap-sl__dummy', '1'],
           ];
           opts.progress?.(
-            `[EMMA HTTP] SAP FIP → POST ohne Credentials xsrfLen=${xsrf2.length} action=${action2.replace(/^https?:\/\//, '').slice(0, 90)}`,
+            `[EMMA HTTP] SAP FIP → POST ohne Credentials xsrfLen=${xsrf2.length} _sap-hash=${shellHashFip.slice(0, 24)}… url=${postTargetFip.replace(/^https?:\/\//, '').slice(0, 100)}`,
           );
-          page = await postFormOrdered(jar, action2, fipPairs, page.url, {
+          page = await postFormOrdered(jar, postTargetFip, fipPairs, sapPlainFlpReferer(page.url), {
             'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
@@ -689,7 +758,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       if (!isSapLogonPage(page.html, page.url)) {
         opts.progress?.('[EMMA HTTP] SAP-Logon-Seite verschwunden, hole sie erneut.');
         const root = emmaServerRoot(opts);
-        page = await emmaHttpFetch(jar, sapLaunchpadUrl(root, sapClient, hiddenMsg), {
+        const hf = extractHiddenFields(page.html);
+        const hm = hf.hidden_message_to_show ?? hiddenMsg;
+        const sh = extractSapShellHash(page.url, page.html, hf);
+        page = await emmaHttpFetch(jar, sapLaunchpadUrl(root, sapClient, hm, sh), {
           headers: { Referer: page.url },
         });
         emmaHttpDebug(dbg, 'logon-refresh', page, jar);
@@ -703,8 +775,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       const beforePostHidden = Object.keys(hiddenNow);
       const beforePostInputs = extractInputNames(page.html);
       const beforePostBytes = page.html.length;
+      const shellHashNow = extractSapShellHash(page.url, page.html, hiddenNow);
+      const postTargetNow = buildSapLogonPostTarget(actionNow, page.url, shellHashNow);
       opts.progress?.(
-        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} action=${actionNow.replace(/^https?:\/\//, '').slice(0, 90)} xsrfLen=${xsrfNow.length} hiddenMsgLen=${hiddenMsgNow.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
+        `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} url=${postTargetNow.replace(/^https?:\/\//, '').slice(0, 100)} _sap-hash=${shellHashNow.slice(0, 24)}… xsrfLen=${xsrfNow.length} hiddenMsgLen=${hiddenMsgNow.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
       );
 
       const sapPairs: Array<[string, string]> = [
@@ -717,12 +791,13 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         ['sap-accessibility', ''],
         ['sap-login-XSRF', xsrfNow],
         ['sap-system-login-cookie_disabled', ''],
-        ['sap-hash', ''],
+        ['sap-hash', shellHashNow],
         ['hidden_message_to_show', hiddenMsgNow],
         ['sap-user', sapUser],
         ['sap-password', sapPassword],
+        ['__sap-sl__dummy', '1'],
       ];
-      page = await postFormOrdered(jar, actionNow, sapPairs, page.url, {
+      page = await postFormOrdered(jar, postTargetNow, sapPairs, sapPlainFlpReferer(page.url), {
         'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
@@ -741,7 +816,13 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       }
       if (isFioriLaunchpadShell(page.html) && !isSapLogonPage(page.html, page.url)) {
         const root = emmaServerRoot(opts);
-        const canon = sapLaunchpadUrl(root, sapClient, hiddenMsgNow);
+        const hShell = extractHiddenFields(page.html);
+        const canon = sapLaunchpadUrl(
+          root,
+          sapClient,
+          hiddenMsgNow,
+          extractSapShellHash(page.url, page.html, hShell),
+        );
         opts.progress?.(`[EMMA HTTP] SAP Fiori-Shell → kanonische URL ${canon.replace(/^https?:\/\//, '').slice(0, 100)}`);
         page = await emmaHttpFetch(jar, canon);
         emmaHttpDebug(dbg, 'nach-sap-kanonisch', page, jar, {
