@@ -44,14 +44,12 @@ function extractSapShellHash(
   return DEFAULT_SAP_FLP_HASH;
 }
 
-/** SAP logon POST must target `.../flp?_sap-hash=<shellHash>` (see browser HAR). */
-function buildSapLogonPostTarget(formAction: string, pageUrl: string, shellHash: string): string {
-  let resolved = formAction.trim();
-  if (!/^https?:/i.test(resolved)) {
-    const r = resolveHttpUrl(resolved, pageUrl);
-    resolved = r ?? pageUrl;
-  }
-  const u = new URL(resolved);
+/**
+ * SAP logon POST URL must be exactly `.../sap/bc/ui2/flp?_sap-hash=<shellHash>` — no other query
+ * params (e.g. `hidden_message_to_show` belongs in the POST body only). Browser HAR confirms this.
+ */
+function buildSapLogonPostTarget(pageUrl: string, shellHash: string): string {
+  const u = new URL('/sap/bc/ui2/flp', new URL(pageUrl).origin);
   u.searchParams.set('_sap-hash', shellHash);
   return u.toString();
 }
@@ -664,7 +662,6 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         throw new Error('EMMA HTTP Stage 3: sap-login-XSRF missing on logon page.');
       }
       const sapClient = sapClientFromOpts(opts);
-      const sapAction = extractFormAction(page.html, page.url) ?? page.url;
       const sapHidden = extractHiddenFields(page.html);
       const hiddenMsg = sapHidden.hidden_message_to_show ?? '';
       const cookieNames = jar.toJSON().map((c) => c.name);
@@ -707,11 +704,10 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         // classic credentials POST using the fresh XSRF below.
         if (isSapLogonPage(page.html, page.url)) {
           const xsrf2 = extractSapLoginXsrf(page.html) ?? xsrf;
-          const action2 = extractFormAction(page.html, page.url) ?? page.url;
           const hiddenFip = extractHiddenFields(page.html);
           const hiddenMsgFip = hiddenFip.hidden_message_to_show ?? hiddenMsg;
           const shellHashFip = extractSapShellHash(page.url, page.html, hiddenFip);
-          const postTargetFip = buildSapLogonPostTarget(action2, page.url, shellHashFip);
+          const postTargetFip = buildSapLogonPostTarget(page.url, shellHashFip);
           const fipPairs: Array<[string, string]> = [
             ['sap-system-login-oninputprocessing', 'onLogin'],
             ['sap-urlscheme', ''],
@@ -767,7 +763,6 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
         emmaHttpDebug(dbg, 'logon-refresh', page, jar);
       }
       const xsrfNow = extractSapLoginXsrf(page.html) ?? xsrf;
-      const actionNow = extractFormAction(page.html, page.url) ?? sapAction;
       const hiddenNow = extractHiddenFields(page.html);
       const hiddenMsgNow = hiddenNow.hidden_message_to_show ?? hiddenMsg;
       const sapUser = normalizeSapUser(opts.sapUser ?? '');
@@ -776,7 +771,7 @@ export async function emmaHttpLogin(opts: EmmaLoginOpts): Promise<EmmaHttpLoginR
       const beforePostInputs = extractInputNames(page.html);
       const beforePostBytes = page.html.length;
       const shellHashNow = extractSapShellHash(page.url, page.html, hiddenNow);
-      const postTargetNow = buildSapLogonPostTarget(actionNow, page.url, shellHashNow);
+      const postTargetNow = buildSapLogonPostTarget(page.url, shellHashNow);
       opts.progress?.(
         `[EMMA HTTP] SAP POST user=${sapUser} client=${sapClient} url=${postTargetNow.replace(/^https?:\/\//, '').slice(0, 100)} _sap-hash=${shellHashNow.slice(0, 24)}… xsrfLen=${xsrfNow.length} hiddenMsgLen=${hiddenMsgNow.length} pwdLen=${sapPassword.length} cookies=[${jar.toJSON().map((c) => c.name).join(',')}]`,
       );
