@@ -17,7 +17,9 @@ export class ReservationsController {
     @Query('hotelId') hotelId?: string,
   ) {
     const normalized =
-      tab === 'queue' || tab === 'inhouse' || tab === 'arrivals' ? tab : 'arrivals';
+      tab === 'queue' || tab === 'inhouse' || tab === 'arrivals' || tab === 'all'
+        ? tab
+        : 'arrivals';
     return this.reservations.list({ tab: normalized, date, q, hotelId });
   }
 

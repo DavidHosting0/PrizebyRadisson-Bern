@@ -150,9 +150,12 @@ export class ReservationsService {
     q?: string;
     hotelId?: string;
   }): Promise<ReservationListItem[]> {
-    this.scheduleSyncOnView(`list:${opts.tab}`);
+    if (opts.tab !== 'all') {
+      this.scheduleSyncOnView(`list:${opts.tab}`);
+    }
     const hotelId = opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
     const today = dateOnlyFromIso(todayIsoDate());
+    const q = opts.q?.trim().toLowerCase();
 
     const where: Prisma.ReservationSnapshotWhereInput = { hotelId };
 
@@ -169,14 +172,19 @@ export class ReservationsService {
         where.checkIn = true;
         where.checkOut = false;
         break;
+      case 'all':
+        break;
     }
 
     const rows = await this.prisma.reservationSnapshot.findMany({
       where,
-      orderBy: [{ arrivalDate: 'asc' }, { reservationId: 'asc' }],
+      orderBy:
+        opts.tab === 'all'
+          ? [{ arrivalDate: 'desc' }, { reservationId: 'asc' }]
+          : [{ arrivalDate: 'asc' }, { reservationId: 'asc' }],
+      take: opts.tab === 'all' ? (q ? 2000 : 500) : undefined,
     });
 
-    const q = opts.q?.trim().toLowerCase();
     const mapped = rows.map((r) => this.toListItem(r));
 
     if (!q) return mapped;
@@ -184,7 +192,11 @@ export class ReservationsService {
       (r) =>
         r.mainGuestName?.toLowerCase().includes(q) ||
         r.reservationId.toLowerCase().includes(q) ||
-        r.roomId?.toLowerCase().includes(q),
+        r.roomId?.toLowerCase().includes(q) ||
+        r.groupName?.toLowerCase().includes(q) ||
+        r.roomType?.toLowerCase().includes(q) ||
+        r.vipDesc?.toLowerCase().includes(q) ||
+        r.tier?.toLowerCase().includes(q),
     );
   }
 

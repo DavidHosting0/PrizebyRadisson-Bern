@@ -1,4 +1,4 @@
-export type ReservationTab = 'arrivals' | 'queue' | 'inhouse';
+export type ReservationTab = 'arrivals' | 'queue' | 'inhouse' | 'all';
 
 export type ReservationListItem = {
   id: string;

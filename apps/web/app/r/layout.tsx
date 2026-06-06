@@ -23,6 +23,7 @@ const nav = [
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
   { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
   { href: '/r/arrivals', label: 'Arrivals', icon: IconCalendar },
+  { href: '/r/reservations', label: 'Reservations', icon: IconReservations },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
   { href: '/r/chat', label: 'Team chat', icon: IconChat },
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
@@ -100,6 +101,22 @@ function IconCalendar({ className }: { className?: string }) {
   );
 }
 
+function IconReservations({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IconPuzzle({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -153,7 +170,6 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       else if (path.startsWith('/r/m/requests')) router.replace('/r/requests');
       else if (path.startsWith('/r/m/rooms')) router.replace('/r/rooms');
       else if (path.startsWith('/r/m/lost')) router.replace('/r/lost');
-      else if (path.startsWith('/r/reservations')) router.replace('/r/arrivals');
       else router.replace('/r');
     }
   }, [hydrated, mobileUi, path, router, user]);
