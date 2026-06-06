@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   ReservationDetail,
@@ -36,6 +36,7 @@ export class ReservationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cipher: SecretCipherService,
+    @Inject(forwardRef(() => EmmaService))
     private readonly emma: EmmaService,
   ) {}
 
