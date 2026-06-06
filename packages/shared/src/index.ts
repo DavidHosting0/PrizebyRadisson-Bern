@@ -16,6 +16,7 @@ export enum DerivedRoomStatus {
 
 export * from './room-layout';
 export * from './reservations';
+export * from './occupancy';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',

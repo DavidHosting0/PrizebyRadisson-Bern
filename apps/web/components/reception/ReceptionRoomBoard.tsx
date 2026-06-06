@@ -8,6 +8,11 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/Card';
 import { useReceptionUi } from '@/app/r/reception-context';
+import {
+  RoomOccupancyBadges,
+  RoomOccupancyGuestLine,
+} from '@/components/rooms/RoomOccupancyDisplay';
+import type { RoomOccupancy } from '@housekeeping/shared';
 
 export type RoomBoardRow = {
   id: string;
@@ -15,6 +20,7 @@ export type RoomBoardRow = {
   floor: number | null;
   derivedStatus: string;
   checklist: { tasks: { status: string }[] } | null;
+  occupancy?: RoomOccupancy | null;
 };
 
 type AssignmentRow = {
@@ -134,6 +140,8 @@ export function ReceptionRoomBoard({ compact }: Props) {
           <span className={`font-semibold text-ink ${compact ? 'text-lg' : 'text-2xl'}`}>{r.roomNumber}</span>
           <StatusBadge status={r.derivedStatus} />
         </div>
+        <RoomOccupancyGuestLine occupancy={r.occupancy} />
+        <RoomOccupancyBadges occupancy={r.occupancy} />
         {r.floor != null && <p className="mt-1 text-xs text-ink-muted">Floor {r.floor}</p>}
         <div className="mt-3">
           <div className="flex justify-between text-[11px] text-ink-muted">
@@ -256,6 +264,7 @@ export function ReceptionRoomBoard({ compact }: Props) {
               <tr>
                 <th className="px-4 py-3 font-semibold">Room</th>
                 <th className="px-4 py-3 font-semibold">Floor</th>
+                <th className="px-4 py-3 font-semibold">Guest</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Progress</th>
                 <th className="px-4 py-3 font-semibold">Housekeeper</th>
@@ -276,6 +285,10 @@ export function ReceptionRoomBoard({ compact }: Props) {
                   >
                     <td className="px-4 py-3 font-semibold text-ink">{r.roomNumber}</td>
                     <td className="px-4 py-3 text-ink-muted">{r.floor ?? '—'}</td>
+                    <td className="max-w-[180px] px-4 py-3">
+                      <div className="truncate text-ink-muted">{r.occupancy?.mainGuestName ?? '—'}</div>
+                      <RoomOccupancyBadges occupancy={r.occupancy} />
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={r.derivedStatus} />
                     </td>

@@ -304,6 +304,33 @@ export function reservationListBatchPath(
   return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
 }
 
+/** EMMA Search Reservations → In House (openinhouse.com.har). */
+export const INHOUSE_STATUS_CODES = ['09', '06', '05', '03', '02', '01'] as const;
+
+export const INHOUSE_LIST_SELECT = [
+  ...new Set([
+    ...RESERVATION_LIST_SELECT.split(','),
+    'Status',
+    'StatusCI',
+    'OCOdone',
+    'OCIdone',
+    'TotalPax',
+  ]),
+].join(',');
+
+export function inHouseListBatchPath(
+  hotelId: string,
+  sapClient: string,
+  skip = 0,
+  top = 500,
+): string {
+  const statusFilter = INHOUSE_STATUS_CODES.map((s) => `Status eq '${s}'`).join(' or ');
+  const tabFilter = `(${statusFilter}) and HotelId eq '${hotelId}'`;
+  const filter = encodeODataFilter(tabFilter);
+  const select = encodeURIComponent(INHOUSE_LIST_SELECT);
+  return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
+}
+
 export function hotelOverviewBatchPath(hotelId: string, sapClient: string): string {
   return `HotelOverview('${hotelId}')?sap-client=${sapClient}`;
 }

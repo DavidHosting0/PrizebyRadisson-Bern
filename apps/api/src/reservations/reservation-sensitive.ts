@@ -34,6 +34,9 @@ export type ReservationSensitivePayload = {
   numPax3: number | null;
   numPax4: number | null;
   checkInQDate: string | null;
+  expectedDepartureTime: string | null;
+  emmaStatus: string | null;
+  ocoDone: boolean;
 };
 
 const PAN_LIKE = /^\d{13,19}$/;
@@ -108,7 +111,20 @@ export function buildSensitivePayload(
     numPax3: num('NumPax3'),
     numPax4: num('NumPax4'),
     checkInQDate: parseEmmaDateToIso(row.CheckInQDate),
+    expectedDepartureTime: formatEmmaTime(str('ExpectedDepartureTime')),
+    emmaStatus: str('Status'),
+    ocoDone: bool('OCOdone') || bool('OCIdone'),
   };
+}
+
+/** SAP time "120000" → "12:00"; "000000" → null. */
+export function formatEmmaTime(value: string | null): string | null {
+  if (!value?.trim()) return null;
+  const s = value.trim();
+  if (s === '000000') return null;
+  if (/^\d{6}$/.test(s)) return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+  if (/^\d{2}:\d{2}/.test(s)) return s.slice(0, 5);
+  return s;
 }
 
 export function encryptSensitivePayload(

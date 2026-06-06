@@ -8,9 +8,11 @@ import {
   floorPlanGridCols,
   formatFloorLabel,
 } from '@housekeeping/shared';
+import type { RoomOccupancy } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
+import { RoomOccupancyBadges, RoomOccupancyGuestLine } from '@/components/rooms/RoomOccupancyDisplay';
 import { roomPlanCompactClass, roomTileClass } from '@/components/rooms/roomTileStyles';
 
 export type FloorPlanRoom = {
@@ -18,6 +20,7 @@ export type FloorPlanRoom = {
   roomNumber: string;
   floor: number | null;
   derivedStatus: string;
+  occupancy?: RoomOccupancy | null;
 };
 
 type Props = {
@@ -56,6 +59,8 @@ function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) 
       onClick={() => onRoomClick(room.id)}
     >
       <span className="block text-sm font-semibold tabular-nums text-ink">{room.roomNumber}</span>
+      <RoomOccupancyGuestLine occupancy={room.occupancy} compact />
+      <RoomOccupancyBadges occupancy={room.occupancy} />
       <span className="mt-1 flex justify-center">
         <StatusBadge status={room.derivedStatus} variant="onColor" />
       </span>
@@ -64,15 +69,24 @@ function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) 
 }
 
 function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) {
+  const guest = room.occupancy?.mainGuestName?.trim();
+  const title = guest
+    ? `Room ${room.roomNumber} · ${guest} · ${room.derivedStatus.replace(/_/g, ' ')}`
+    : `Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`;
   return (
     <button
       key={room.id}
       type="button"
       onClick={() => onRoomClick(room.id)}
-      className={`flex h-full w-full items-center justify-center px-0.5 py-1 ${roomPlanCompactClass(room.derivedStatus)}`}
-      title={`Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-0.5 px-0.5 py-1 ${roomPlanCompactClass(room.derivedStatus)}`}
+      title={title}
     >
-      {room.roomNumber}
+      <span>{room.roomNumber}</span>
+      {guest && (
+        <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-90">
+          {guest.split(',')[0]?.trim() ?? guest}
+        </span>
+      )}
     </button>
   );
 }

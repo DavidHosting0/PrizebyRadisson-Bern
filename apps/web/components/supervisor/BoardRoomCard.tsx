@@ -2,6 +2,11 @@
 
 import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/Card';
+import {
+  RoomOccupancyBadges,
+  RoomOccupancyGuestLine,
+} from '@/components/rooms/RoomOccupancyDisplay';
+import type { RoomOccupancy } from '@housekeeping/shared';
 
 export type BoardRoom = {
   id: string;
@@ -9,6 +14,7 @@ export type BoardRoom = {
   floor: number | null;
   derivedStatus: string;
   checklist: { tasks: { status: string }[] } | null;
+  occupancy?: RoomOccupancy | null;
 };
 
 export function BoardRoomCard({
@@ -56,6 +62,8 @@ export function BoardRoomCard({
             <span className="text-lg font-semibold text-ink">{room.roomNumber}</span>
             <StatusBadge status={room.derivedStatus} />
           </div>
+          <RoomOccupancyGuestLine occupancy={room.occupancy} />
+          <RoomOccupancyBadges occupancy={room.occupancy} />
           <div className="mt-3">
             <div className="flex justify-between text-[11px] text-ink-muted">
               <span>Progress</span>

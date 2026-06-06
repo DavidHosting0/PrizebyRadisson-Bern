@@ -12,6 +12,7 @@ import {
   EMMA_ODATA_HOTEL_SRV,
   EMMA_ODATA_RSRVS_SRV,
   hotelOverviewBatchPath,
+  inHouseListBatchPath,
   parseODataBatchResponse,
   parseODataResultsJson,
   reservationListBatchPath,
@@ -41,6 +42,7 @@ export type EmmaReservationSyncResult = {
   hotelId: string;
   syncedAt: string;
   tabs: Record<ReservationListTab, number>;
+  inhouseList: number;
   totalRows: number;
   upserted: number;
   overview: EmmaHotelOverview | null;
@@ -114,6 +116,56 @@ export async function fetchEmmaReservationsForTab(
       } else if (part.status >= 400) {
         log.warn(
           `[Reservations] tab=${tab} skip=${skip} batch part HTTP ${part.status}: ${part.body.slice(0, 200)}`,
+        );
+      }
+    }
+    if (pageRows < pageSize) break;
+  }
+
+  return all;
+}
+
+/** EMMA Search Reservations In House list (status-based filter from HAR). */
+export async function fetchEmmaInHouseList(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  hotelId: string,
+  sapClient: string,
+  csrfToken: string,
+  debug?: EmmaSyncDebug,
+): Promise<Record<string, unknown>[]> {
+  const pageSize = 500;
+  const all: Record<string, unknown>[] = [];
+
+  for (let skip = 0; skip < 10_000; skip += pageSize) {
+    const path = inHouseListBatchPath(hotelId, sapClient, skip, pageSize);
+    const { body, contentType } = buildODataBatchBody([{ path }], csrfToken);
+    const raw = await emmaHttpPostBatch(
+      jar,
+      baseUrl,
+      EMMA_ODATA_RSRVS_SRV,
+      sapClient,
+      csrfToken,
+      body,
+      contentType,
+      {
+        label: 'reservations.inhouse-list',
+        debug,
+        parts: [{ path }],
+        tmsFioriApp: 'zey_tms_rs-display',
+        tmsFilterTab: 'InHouse',
+      },
+    );
+    const parts = parseODataBatchResponse(raw);
+    let pageRows = 0;
+    for (const part of parts) {
+      if (part.status >= 200 && part.status < 300) {
+        const batch = parseODataResultsJson(part.body);
+        all.push(...batch);
+        pageRows += batch.length;
+      } else if (part.status >= 400) {
+        log.warn(
+          `[Reservations] inhouse-list skip=${skip} batch part HTTP ${part.status}: ${part.body.slice(0, 200)}`,
         );
       }
     }
@@ -276,6 +328,21 @@ export async function syncEmmaReservationsFromJar(
     }
   }
 
+  const inHouseRows = await fetchEmmaInHouseList(
+    jar,
+    baseUrl,
+    hotelId,
+    sapClient,
+    csrfRsrvs,
+    opts.debug,
+  );
+  for (const row of inHouseRows) {
+    const id = String(row.ReservationId ?? '');
+    if (!id) continue;
+    const prev = merged.get(id);
+    merged.set(id, prev ? { ...prev, ...row } : row);
+  }
+
   const overview = await fetchEmmaHotelOverview(
     jar,
     baseUrl,
@@ -295,13 +362,14 @@ export async function syncEmmaReservationsFromJar(
     hotelId,
     syncedAt: syncedAt.toISOString(),
     tabs: tabCounts,
+    inhouseList: inHouseRows.length,
     totalRows: merged.size,
     upserted: rows.length,
     overview,
   };
 
   log.log(
-    `[Reservations] fetched arrivals=${tabCounts.arrivals} queue=${tabCounts.queue} inhouse=${tabCounts.inhouse} unique=${merged.size}`,
+    `[Reservations] fetched arrivals=${tabCounts.arrivals} queue=${tabCounts.queue} inhouse=${tabCounts.inhouse} inhouseList=${inHouseRows.length} unique=${merged.size}`,
   );
 
   return { rows, arrivalsReservationIds, result };

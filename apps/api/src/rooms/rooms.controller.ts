@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { PermissionCode, User } from '@prisma/client';
+import { PermissionCode } from '@prisma/client';
 import { RoomsService } from './rooms.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 @Controller('rooms')
@@ -12,7 +13,7 @@ export class RoomsController {
   @Get()
   @RequirePermissions(PermissionCode.ROOMS_READ)
   findAll(
-    @CurrentUser() user: User,
+    @CurrentUser() user: AuthenticatedUser,
     @Query('floor') floor?: string,
     @Query('status') status?: string,
     @Query('mine') mine?: string,
@@ -26,13 +27,13 @@ export class RoomsController {
 
   @Post(':roomId/mark-clean')
   @RequirePermissions(PermissionCode.CHECKLIST_TASK_UPDATE)
-  markClean(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+  markClean(@Param('roomId') roomId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.rooms.markHousekeepingClean(roomId, user);
   }
 
   @Get(':roomId')
   @RequirePermissions(PermissionCode.ROOMS_READ)
-  findOne(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+  findOne(@Param('roomId') roomId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.rooms.findOne(roomId, user);
   }
 

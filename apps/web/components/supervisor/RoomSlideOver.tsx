@@ -11,6 +11,8 @@ import {
   type LastCleaningDto,
   type LastCleaningPhotoDto,
 } from '@/components/rooms/RoomDetailInsights';
+import { RoomOccupancySection } from '@/components/rooms/RoomOccupancyDisplay';
+import type { RoomOccupancy } from '@housekeeping/shared';
 
 type Task = {
   id: string;
@@ -32,6 +34,7 @@ type RoomDetail = {
   checklist: { stateId: string; tasks: Task[] } | null;
   lastCleaningPhoto?: LastCleaningPhotoDto;
   lastCleaning?: LastCleaningDto;
+  occupancy?: RoomOccupancy | null;
 };
 
 const STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'] as const;
@@ -147,6 +150,8 @@ export function RoomSlideOver({
                 oooUntil={data.oooUntil}
                 maintenanceReadOnly={false}
               />
+
+              <RoomOccupancySection occupancy={data.occupancy} />
 
               <Card>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Room notes</h3>

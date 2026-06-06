@@ -9,6 +9,8 @@ import {
   type LastCleaningDto,
   type LastCleaningPhotoDto,
 } from '@/components/rooms/RoomDetailInsights';
+import { RoomOccupancySection } from '@/components/rooms/RoomOccupancyDisplay';
+import type { RoomOccupancy } from '@housekeeping/shared';
 
 type Task = { id: string; label: string; status: string };
 type RoomDetail = {
@@ -23,6 +25,7 @@ type RoomDetail = {
   checklist: { tasks: Task[] } | null;
   lastCleaningPhoto?: LastCleaningPhotoDto;
   lastCleaning?: LastCleaningDto;
+  occupancy?: RoomOccupancy | null;
 };
 
 type AssignmentRow = {
@@ -104,6 +107,7 @@ export function ReceptionRoomDetailPanel({
                 oooUntil={room.oooUntil}
                 maintenanceReadOnly
               />
+              <RoomOccupancySection occupancy={room.occupancy} />
               <section>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Cleaning progress</h3>
                 <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-surface-muted">

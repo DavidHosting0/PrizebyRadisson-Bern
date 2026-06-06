@@ -10,25 +10,31 @@ import {
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
+  PermissionCode,
   PhotoUploadStatus,
   Prisma,
   User,
   UserRole,
 } from '@prisma/client';
+import type { RoomOccupancy } from '@housekeeping/shared';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomStatusService } from './room-status.service';
+import { RoomOccupancyService } from './room-occupancy.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { S3Service } from '../storage/s3.service';
 import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
 import { EmmaService } from '../emma/emma.service';
 import { readEmmaMetadata } from '../emma/emma-room-status-sync';
 
+type RoomViewer = User & { effectivePermissions?: PermissionCode[] };
+
 @Injectable()
 export class RoomsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly roomStatus: RoomStatusService,
+    private readonly occupancy: RoomOccupancyService,
     private readonly realtime: RealtimeGateway,
     private readonly s3: S3Service,
     @Optional()
@@ -45,7 +51,7 @@ export class RoomsService {
   }
 
   async findAll(
-    user: User,
+    user: RoomViewer,
     query: { floor?: number; status?: string; mine?: boolean },
   ) {
     this.emmaOnRoomsViewed(
@@ -85,10 +91,11 @@ export class RoomsService {
       return compareRoomNumbers(a.roomNumber, b.roomNumber);
     });
 
-    return rooms.map((r) => this.toRoomDto(r));
+    const dtos = rooms.map((r) => this.toRoomDto(r));
+    return this.attachOccupancy(dtos, user);
   }
 
-  async findOne(id: string, viewer?: User) {
+  async findOne(id: string, viewer?: RoomViewer) {
     this.emmaOnRoomsViewed('rooms.detail');
     const room = await this.prisma.room.findUnique({
       where: { id },
@@ -188,10 +195,12 @@ export class RoomsService {
       hasMyReadyCleaningPhoto = n > 0;
     }
 
-    return { ...base, lastCleaningPhoto, lastCleaning, hasMyReadyCleaningPhoto };
+    return this.attachOccupancy([{ ...base, lastCleaningPhoto, lastCleaning, hasMyReadyCleaningPhoto }], viewer).then(
+      (rows) => rows[0]!,
+    );
   }
 
-  async markHousekeepingClean(roomId: string, user: User) {
+  async markHousekeepingClean(roomId: string, user: RoomViewer) {
     if (user.role !== UserRole.HOUSEKEEPER) {
       throw new ForbiddenException('Only housekeepers can mark a room clean');
     }
@@ -380,5 +389,21 @@ export class RoomsService {
       },
     });
     return state;
+  }
+
+  private canViewOccupancy(viewer?: RoomViewer): boolean {
+    return viewer?.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ) ?? false;
+  }
+
+  private async attachOccupancy<T extends { roomNumber: string }>(
+    dtos: T[],
+    viewer?: RoomViewer,
+  ): Promise<(T & { occupancy?: RoomOccupancy | null })[]> {
+    if (!this.canViewOccupancy(viewer) || dtos.length === 0) return dtos;
+    const map = await this.occupancy.mapForRoomNumbers(dtos.map((d) => d.roomNumber));
+    return dtos.map((d) => ({
+      ...d,
+      occupancy: map.get(d.roomNumber) ?? null,
+    }));
   }
 }
