@@ -22,6 +22,7 @@ const nav = [
   { href: '/r', label: 'Dashboard', icon: IconDash },
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
   { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
+  { href: '/r/arrivals', label: 'Arrivals', icon: IconCalendar },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
   { href: '/r/chat', label: 'Team chat', icon: IconChat },
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
@@ -152,6 +153,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       else if (path.startsWith('/r/m/requests')) router.replace('/r/requests');
       else if (path.startsWith('/r/m/rooms')) router.replace('/r/rooms');
       else if (path.startsWith('/r/m/lost')) router.replace('/r/lost');
+      else if (path.startsWith('/r/reservations')) router.replace('/r/arrivals');
       else router.replace('/r');
     }
   }, [hydrated, mobileUi, path, router, user]);

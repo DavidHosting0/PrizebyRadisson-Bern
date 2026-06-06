@@ -1084,6 +1084,9 @@ export type EmmaHttpPostBatchOpts = {
   label: string;
   debug?: EmmaSyncDebug;
   parts?: ODataBatchPartSpec[];
+  /** Check-In Fiori outer batch headers (from browser HAR). */
+  tmsFilterTab?: string;
+  tmsFioriApp?: string;
 };
 
 export async function emmaHttpPostBatch(
@@ -1121,6 +1124,11 @@ export async function emmaHttpPostBatch(
   });
   const cookie = jar.headerFor(target);
   if (cookie) headers.set('Cookie', cookie);
+  if (opts?.tmsFioriApp) {
+    headers.set('tms-fioriapp', opts.tmsFioriApp);
+    headers.delete('show-status');
+  }
+  if (opts?.tmsFilterTab) headers.set('tms-filtertab', opts.tmsFilterTab);
   const res = await fetch(url, { method: 'POST', headers, body, redirect: 'manual' });
   const text = await res.text();
   if (!res.ok && res.status !== 202) {

@@ -27,6 +27,8 @@ export type ODataBatchPartSpec = {
   accept?: 'json' | 'plain';
   /** EMMA RoomStatus uses `show-status: Y` in the browser capture. */
   showStatus?: 'Y' | 'N';
+  /** Check-In Fiori app sends `tms-fioriapp: CheckIn` on embedded GET parts. */
+  checkInApp?: boolean;
 };
 
 function buildBatchGetPart(
@@ -39,6 +41,27 @@ function buildBatchGetPart(
     part.accept === 'plain'
       ? 'Accept: text/plain, */*;q=0.5'
       : 'Accept: application/json';
+  if (part.checkInApp) {
+    return [
+      `--${boundary}`,
+      'Content-Type: application/http',
+      'Content-Transfer-Encoding: binary',
+      '',
+      `GET ${relativePath} HTTP/1.1`,
+      'sap-cancel-on-close: true',
+      'tms-fioriapp: CheckIn',
+      'sap-contextid-accept: header',
+      acceptHeader,
+      `x-csrf-token: ${csrfToken}`,
+      'Accept-Language: en',
+      'DataServiceVersion: 2.0',
+      'MaxDataServiceVersion: 2.0',
+      'X-Requested-With: XMLHttpRequest',
+      '',
+      '',
+      '',
+    ].join('\r\n');
+  }
   const showStatus = part.showStatus ?? 'N';
   return [
     `--${boundary}`,
@@ -202,4 +225,85 @@ export function floorRoomDetailsBatchPath(
 ): string {
   const key = `Floors(HotelId='${hotelId}',BuildingId='${buildingId}',FloorId='${floorId}')`;
   return `${key}/RoomDetails?sap-client=${sapClient}&$skip=${skip}&$top=${top}&search=`;
+}
+
+/** EMMA Check-In app reservation list $select (from browser HAR). */
+export const RESERVATION_LIST_SELECT = [
+  'ReservationId',
+  'RoomId',
+  'Tier',
+  'Stays',
+  'Guests',
+  'RoomType',
+  'MealPlan',
+  'ArrivalDate',
+  'NightsStay',
+  'DepartureDate',
+  'CIStatusSigned',
+  'MainClientName',
+  'GroupId',
+  'BookingFileId',
+  'Stayover',
+  'OriginalRoomType',
+  'RoomTypeUpg',
+  'GroupName',
+  'NoMove',
+  'CheckInQDate',
+  'VipDesc',
+  'PreAuthAmount',
+  'CreditCard',
+  'CardHolder',
+  'CardExpiry',
+  'HotelId',
+  'NumPax1',
+  'NumPax2',
+  'NumPax3',
+  'NumPax4',
+  'CheckIn',
+  'CheckOut',
+  'CheckInQueue',
+  'Draft/Status',
+  'Draft/LockedByUserFullName',
+  'MainGuestName',
+  'MainGuestId',
+  'RateCode',
+  'CompanyName',
+  'TravelAgent',
+  'SourceCode',
+  'MarketCode',
+  'Balance',
+  'Comments',
+].join(',');
+
+export type ReservationListTab = 'arrivals' | 'queue' | 'inhouse';
+
+export function reservationListBatchPath(
+  hotelId: string,
+  sapClient: string,
+  tab: ReservationListTab,
+  arrivalDateIso: string,
+  skip = 0,
+  top = 500,
+): string {
+  const dateFilter = `datetime'${arrivalDateIso}T00:00:00'`;
+  const base = `HotelId eq '${hotelId}' and Type eq '0' and CheckOut eq false`;
+  let tabFilter: string;
+  switch (tab) {
+    case 'arrivals':
+      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckInQueue eq false and CheckIn eq false`;
+      break;
+    case 'queue':
+      tabFilter = `${base} and CheckInQueue eq true and CheckIn eq false`;
+      break;
+    case 'inhouse':
+      tabFilter = `${base} and CheckIn eq true`;
+      break;
+  }
+  const filter = encodeODataFilter(tabFilter);
+  const select = encodeURIComponent(RESERVATION_LIST_SELECT);
+  return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
+}
+
+export function hotelOverviewBatchPath(hotelId: string, sapClient: string): string {
+  return `HotelOverview('${hotelId}')?sap-client=${sapClient}`;
 }

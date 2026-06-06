@@ -29,5 +29,8 @@ export default () => ({
     viewSyncMinIntervalMs: parseInt(process.env.EMMA_VIEW_SYNC_MIN_INTERVAL_MS ?? '90000', 10),
     /** `true` / `1` / `verbose` — ausführliche $batch- und Parsing-Logs. */
     debug: process.env.EMMA_DEBUG,
+    reservationAutoSync: process.env.EMMA_RESERVATION_AUTO_SYNC !== 'false',
+    reservationSyncCron: process.env.EMMA_RESERVATION_SYNC_CRON ?? '0 */3 * * * *',
+    reservationRetentionDays: parseInt(process.env.EMMA_RESERVATION_RETENTION_DAYS ?? '30', 10),
   },
 });

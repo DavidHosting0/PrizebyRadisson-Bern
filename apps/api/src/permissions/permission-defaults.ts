@@ -39,6 +39,8 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.DAMAGE_REPORT_UPDATE,
   PermissionCode.SHIFT_READ,
   PermissionCode.SHIFT_MANAGE,
+  PermissionCode.RESERVATIONS_READ,
+  PermissionCode.RESERVATIONS_SYNC,
 ];
 
 function addCleanerBase(s: Set<PermissionCode>) {
@@ -107,6 +109,8 @@ function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.TEAM_CHAT_POST);
   s.add(PermissionCode.SETTINGS_READ);
   s.add(PermissionCode.SHIFT_READ);
+  s.add(PermissionCode.RESERVATIONS_READ);
+  s.add(PermissionCode.RESERVATIONS_SYNC);
   return s;
 }
 
@@ -143,6 +147,7 @@ function buildSupervisorSet(): Set<PermissionCode> {
   s.add(PermissionCode.SETTINGS_READ);
   s.add(PermissionCode.USERS_READ_HOUSEKEEPERS);
   s.add(PermissionCode.SHIFT_READ);
+  s.add(PermissionCode.RESERVATIONS_READ);
   return s;
 }
 

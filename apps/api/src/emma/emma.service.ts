@@ -24,6 +24,13 @@ import {
   type EmmaRoomStatusSyncResult,
 } from './emma-room-status-sync';
 import { createEmmaSyncDebug } from './emma-sync-debug';
+import { SecretCipherService } from '../common/crypto/secret-cipher.service';
+import {
+  syncEmmaReservationsFromJar,
+  type EmmaReservationSyncResult,
+  type ReservationUpsertRow,
+} from './emma-reservation-sync';
+import { todayIsoDate } from '../reservations/reservation-sensitive';
 
 /**
  * EMMA integration: HTTP session + fast OData room-status sync.
@@ -43,6 +50,7 @@ export class EmmaService {
   constructor(
     private readonly settings: SettingsService,
     private readonly prisma: PrismaService,
+    private readonly cipher: SecretCipherService,
     @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
@@ -346,6 +354,43 @@ export class EmmaService {
       `[EMMA] syncRoomStatuses OK in ${Date.now() - startedAt}ms: ${result.matched}/${result.emmaRooms} matched, ${result.updated} updated`,
     );
     return result;
+  }
+
+  /** Fetch reservation rows from EMMA Check-In OData (no DB write). */
+  async fetchReservationRowsFromEmma(
+    runOpts: { hotelId?: string; arrivalDateIso?: string } = {},
+  ): Promise<{
+    rows: ReservationUpsertRow[];
+    arrivalsReservationIds: string[];
+    result: EmmaReservationSyncResult;
+  }> {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const hotelId =
+      runOpts.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+
+    let jar = await this.loadEmmaHttpJar();
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[Reservations] HTTP session expired (${probe.reason}) — refresh`);
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    return syncEmmaReservationsFromJar(jar, baseUrl, this.cipher, {
+      hotelId,
+      sapClient,
+      arrivalDateIso: runOpts.arrivalDateIso ?? todayIsoDate(),
+      debug: emmaDebug.verbose ? emmaDebug : undefined,
+    });
   }
 
   private hasCompleteCredentials(creds: EmmaLoginStored | null): boolean {

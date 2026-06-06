@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PermissionToggle } from '@/components/admin/PermissionToggle';
+import type { ReservationSyncStatus } from '@housekeeping/shared';
 
 type EmmaMeta = {
   integrationEnabled: boolean;
@@ -122,6 +123,23 @@ export default function AdminEmmaCredentialsPage() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    },
+  });
+
+  const reservationStatusQuery = useQuery({
+    queryKey: ['reservations', 'sync-status'],
+    queryFn: () => api<ReservationSyncStatus>('/reservations/sync-status'),
+    refetchInterval: 30_000,
+  });
+
+  const syncReservationsMut = useMutation({
+    mutationFn: () =>
+      api<{ upserted: number; syncedAt: string }>('/reservations/sync', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['reservations'] });
     },
   });
 
@@ -506,6 +524,57 @@ export default function AdminEmmaCredentialsPage() {
           <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
             <p className="font-semibold">Sync fehlgeschlagen.</p>
             <p className="mt-1 break-words">{(syncRoomsMut.error as Error).message}</p>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+        <h2 className="text-lg font-semibold text-ink">Reservierungen (Check-In)</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Synchronisiert Anreisen, Check-in-Queue und Im-Haus aus EMMA Check-In OData. Gästedaten
+          werden verschlüsselt in PostgreSQL gespeichert. Cron alle 3 Minuten (konfigurierbar).
+        </p>
+
+        {reservationStatusQuery.data?.lastRun && (
+          <div className="mt-4 rounded-lg border border-border bg-surface-muted/40 p-3 text-sm">
+            <p>
+              Letzter Lauf:{' '}
+              <span className="font-medium">{reservationStatusQuery.data.lastRun.status}</span>
+              {' · '}
+              {new Date(reservationStatusQuery.data.lastRun.startedAt).toLocaleString('de-CH')}
+              {reservationStatusQuery.data.lastRun.rowCount != null &&
+                ` · ${reservationStatusQuery.data.lastRun.rowCount} Zeilen`}
+            </p>
+            {reservationStatusQuery.data.lastRun.error && (
+              <p className="mt-2 text-rose-700">{reservationStatusQuery.data.lastRun.error}</p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => syncReservationsMut.mutate()}
+            disabled={syncReservationsMut.isPending || !emmaActive}
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {syncReservationsMut.isPending ? 'Synchronisiere …' : 'Reservierungen synchronisieren'}
+          </button>
+        </div>
+
+        {syncReservationsMut.isSuccess && syncReservationsMut.data && (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+            <p className="font-semibold">Reservierungs-Sync abgeschlossen.</p>
+            <p className="mt-1 text-xs text-emerald-900/80">
+              {syncReservationsMut.data.upserted} upserted ·{' '}
+              {new Date(syncReservationsMut.data.syncedAt).toLocaleString('de-CH')}
+            </p>
+          </div>
+        )}
+        {syncReservationsMut.isError && (
+          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+            <p className="font-semibold">Reservierungs-Sync fehlgeschlagen.</p>
+            <p className="mt-1 break-words">{(syncReservationsMut.error as Error).message}</p>
           </div>
         )}
       </section>
