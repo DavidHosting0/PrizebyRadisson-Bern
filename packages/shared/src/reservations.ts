@@ -33,6 +33,8 @@ export type ReservationListItem = {
   ocoDone?: boolean;
   /** Arrival date is today (first night in house). */
   isArrivalToday?: boolean;
+  /** Continuing stay (Anreise vor heute, Abreise nach heute). */
+  isRestant?: boolean;
 };
 
 export type ReservationDetail = ReservationListItem & {

@@ -77,7 +77,15 @@ export function buildSensitivePayload(
     const n = typeof v === 'number' ? v : parseInt(String(v), 10);
     return Number.isFinite(n) ? n : null;
   };
-  const bool = (k: string): boolean => row[k] === true || row[k] === 'true';
+  const bool = (k: string): boolean => {
+    const v = row[k];
+    if (v === true || v === 1) return true;
+    if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      return s === 'true' || s === 'x' || s === '1' || s === 'yes';
+    }
+    return false;
+  };
 
   return {
     mainGuestName: str('MainGuestName'),

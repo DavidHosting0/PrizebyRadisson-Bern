@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RoomOccupancy } from '@housekeeping/shared';
+import { deriveGuestStaySignals } from '@housekeeping/shared';
 import { normalizeEmmaRoomNumber } from '../emma/emma-room-status-sync';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -95,12 +96,21 @@ export class RoomOccupancyService {
     if (!sensitive) return null;
     const departureDate = row.departureDate.toISOString().slice(0, 10);
     const arrivalDate = row.arrivalDate.toISOString().slice(0, 10);
+    const stay = deriveGuestStaySignals({
+      arrivalDate,
+      departureDate,
+      today,
+      checkOut: row.checkOut,
+      stayover: sensitive.stayover,
+      ocoDone: sensitive.ocoDone,
+    });
     return {
       reservationId: row.reservationId,
       mainGuestName: sensitive.mainGuestName,
       departureDate,
-      isDepartureToday: departureDate === today,
-      isArrivalToday: arrivalDate === today,
+      isDepartureToday: stay.isDepartureToday ?? false,
+      isArrivalToday: stay.isArrivalToday ?? false,
+      isRestant: stay.isRestant ?? false,
       checkOut: row.checkOut,
       stayover: sensitive.stayover,
       expectedDepartureTime: sensitive.expectedDepartureTime,

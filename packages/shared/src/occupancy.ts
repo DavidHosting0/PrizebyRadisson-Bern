@@ -8,5 +8,6 @@ export type RoomOccupancy = {
   stayover: boolean;
   expectedDepartureTime: string | null;
   isArrivalToday: boolean;
+  isRestant: boolean;
   ocoDone: boolean;
 };

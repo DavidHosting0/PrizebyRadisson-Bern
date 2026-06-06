@@ -20,6 +20,7 @@ function Kpi({ label, value }: { label: string; value: number }) {
 function reservationStaySignals(r: ReservationListItem): GuestStaySignals {
   return {
     stayover: r.stayover,
+    isRestant: r.isRestant,
     isArrivalToday: r.isArrivalToday,
     isDepartureToday: r.isDepartureToday,
     checkOut: r.checkOut,
@@ -67,7 +68,7 @@ export default function ReceptionInHousePage() {
 
   const stats = useMemo(() => {
     const departuresToday = rows.filter((r) => r.isDepartureToday).length;
-    const stayovers = rows.filter((r) => r.stayover).length;
+    const stayovers = rows.filter((r) => r.isRestant).length;
     const arrivalsToday = rows.filter((r) => r.isArrivalToday).length;
     return { departuresToday, stayovers, arrivalsToday };
   }, [rows]);

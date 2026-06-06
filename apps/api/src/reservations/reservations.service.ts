@@ -7,7 +7,7 @@ import type {
   ReservationSyncStatus,
   ReservationTab,
 } from '@housekeeping/shared';
-import { compareRoomNumbers } from '@housekeeping/shared';
+import { compareRoomNumbers, deriveGuestStaySignals } from '@housekeeping/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { EmmaService } from '../emma/emma.service';
@@ -566,16 +566,25 @@ export class ReservationsService {
     syncedAt: Date;
   }): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
-    const departureDate = row.departureDate.toISOString().slice(0, 10);
     const arrivalDate = row.arrivalDate.toISOString().slice(0, 10);
+    const departureDate = row.departureDate.toISOString().slice(0, 10);
     const today = todayIsoDate();
+    const stay = deriveGuestStaySignals({
+      arrivalDate,
+      departureDate,
+      today,
+      checkIn: row.checkIn,
+      checkOut: row.checkOut,
+      stayover: s?.stayover,
+      ocoDone: s?.ocoDone,
+    });
     return {
       id: row.id,
       hotelId: row.hotelId,
       reservationId: row.reservationId,
       roomId: row.roomId,
       mainGuestName: s?.mainGuestName ?? null,
-      arrivalDate: row.arrivalDate.toISOString().slice(0, 10),
+      arrivalDate,
       departureDate,
       nightsStay: row.nightsStay,
       roomType: row.roomType,
@@ -595,11 +604,12 @@ export class ReservationsService {
       inTodayArrivals: row.inTodayArrivals,
       detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
       folioFetchedAt: row.folioFetchedAt?.toISOString() ?? null,
-      stayover: s?.stayover ?? false,
+      stayover: stay.stayover ?? false,
       expectedDepartureTime: s?.expectedDepartureTime ?? null,
-      isDepartureToday: departureDate === today,
-      isArrivalToday: arrivalDate === today,
-      ocoDone: s?.ocoDone ?? false,
+      isDepartureToday: stay.isDepartureToday,
+      isArrivalToday: stay.isArrivalToday,
+      isRestant: stay.isRestant,
+      ocoDone: stay.ocoDone ?? false,
     };
   }
 

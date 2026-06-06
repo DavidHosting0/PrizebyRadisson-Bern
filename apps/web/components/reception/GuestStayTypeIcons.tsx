@@ -156,10 +156,10 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
       label: 'Anreise',
     });
   }
-  if (stay.stayover) {
+  if (stay.isRestant) {
     items.push({
-      key: 'stayover',
-      title: 'Restant / Stayover',
+      key: 'restant',
+      title: stay.stayover ? 'Restant (EMMA Stayover)' : 'Restant',
       tone: 'sky',
       icon: <IconRestant />,
       label: 'Restant',

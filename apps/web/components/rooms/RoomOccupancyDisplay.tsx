@@ -4,6 +4,7 @@ import { GuestStayTypeIcons } from '@/components/reception/GuestStayTypeIcons';
 function toStaySignals(occupancy: RoomOccupancy): GuestStaySignals {
   return {
     stayover: occupancy.stayover,
+    isRestant: occupancy.isRestant,
     isArrivalToday: occupancy.isArrivalToday,
     isDepartureToday: occupancy.isDepartureToday,
     checkOut: occupancy.checkOut,
@@ -16,7 +17,7 @@ function occupancyHint(occupancy: RoomOccupancy): string | null {
   if (guest) return guest;
   if (occupancy.isArrivalToday) return 'Heute eingecheckt';
   if (occupancy.isDepartureToday) return 'Abreise heute';
-  if (occupancy.stayover) return 'Restant';
+  if (occupancy.isRestant) return 'Restant';
   return 'Belegt';
 }
 
@@ -82,7 +83,9 @@ export function RoomOccupancySection({ occupancy }: { occupancy: RoomOccupancy |
           <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</dt>
           <dd className="mt-1">
             <RoomOccupancyBadges occupancy={occupancy} />
-            {!occupancy.isDepartureToday && !occupancy.stayover && !occupancy.isArrivalToday && (
+            {!occupancy.isDepartureToday &&
+              !occupancy.isRestant &&
+              !occupancy.isArrivalToday && (
               <span className="text-ink-muted">Im Haus</span>
             )}
           </dd>
