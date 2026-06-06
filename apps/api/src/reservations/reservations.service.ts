@@ -567,6 +567,7 @@ export class ReservationsService {
   }): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
     const departureDate = row.departureDate.toISOString().slice(0, 10);
+    const arrivalDate = row.arrivalDate.toISOString().slice(0, 10);
     const today = todayIsoDate();
     return {
       id: row.id,
@@ -597,6 +598,7 @@ export class ReservationsService {
       stayover: s?.stayover ?? false,
       expectedDepartureTime: s?.expectedDepartureTime ?? null,
       isDepartureToday: departureDate === today,
+      isArrivalToday: arrivalDate === today,
       ocoDone: s?.ocoDone ?? false,
     };
   }

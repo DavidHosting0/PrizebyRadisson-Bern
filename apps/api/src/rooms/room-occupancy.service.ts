@@ -11,6 +11,7 @@ import {
 type SnapshotRow = {
   reservationId: string;
   roomId: string | null;
+  arrivalDate: Date;
   departureDate: Date;
   checkOut: boolean;
   sensitiveEnc: string;
@@ -44,6 +45,7 @@ export class RoomOccupancyService {
       select: {
         reservationId: true,
         roomId: true,
+        arrivalDate: true,
         departureDate: true,
         checkOut: true,
         sensitiveEnc: true,
@@ -92,14 +94,17 @@ export class RoomOccupancyService {
     const sensitive = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
     if (!sensitive) return null;
     const departureDate = row.departureDate.toISOString().slice(0, 10);
+    const arrivalDate = row.arrivalDate.toISOString().slice(0, 10);
     return {
       reservationId: row.reservationId,
       mainGuestName: sensitive.mainGuestName,
       departureDate,
       isDepartureToday: departureDate === today,
+      isArrivalToday: arrivalDate === today,
       checkOut: row.checkOut,
       stayover: sensitive.stayover,
       expectedDepartureTime: sensitive.expectedDepartureTime,
+      ocoDone: sensitive.ocoDone,
     };
   }
 }

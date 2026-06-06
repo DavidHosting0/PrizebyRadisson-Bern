@@ -31,6 +31,8 @@ export type ReservationListItem = {
   expectedDepartureTime?: string | null;
   isDepartureToday?: boolean;
   ocoDone?: boolean;
+  /** Arrival date is today (first night in house). */
+  isArrivalToday?: boolean;
 };
 
 export type ReservationDetail = ReservationListItem & {

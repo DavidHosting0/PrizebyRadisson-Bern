@@ -1,10 +1,22 @@
-import type { RoomOccupancy } from '@housekeeping/shared';
+import type { GuestStaySignals, RoomOccupancy } from '@housekeeping/shared';
+import { GuestStayTypeIcons } from '@/components/reception/GuestStayTypeIcons';
+
+function toStaySignals(occupancy: RoomOccupancy): GuestStaySignals {
+  return {
+    stayover: occupancy.stayover,
+    isArrivalToday: occupancy.isArrivalToday,
+    isDepartureToday: occupancy.isDepartureToday,
+    checkOut: occupancy.checkOut,
+    ocoDone: occupancy.ocoDone,
+  };
+}
 
 function occupancyHint(occupancy: RoomOccupancy): string | null {
   const guest = occupancy.mainGuestName?.trim();
   if (guest) return guest;
+  if (occupancy.isArrivalToday) return 'Heute eingecheckt';
   if (occupancy.isDepartureToday) return 'Abreise heute';
-  if (occupancy.stayover) return 'Stayover';
+  if (occupancy.stayover) return 'Restant';
   return 'Belegt';
 }
 
@@ -16,43 +28,7 @@ export function RoomOccupancyBadges({
   onColor?: boolean;
 }) {
   if (!occupancy) return null;
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-1">
-      {occupancy.stayover && (
-        <span
-          className={
-            onColor
-              ? 'rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white'
-              : 'rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900'
-          }
-        >
-          Stayover
-        </span>
-      )}
-      {occupancy.isDepartureToday && !occupancy.checkOut && (
-        <span
-          className={
-            onColor
-              ? 'rounded-full bg-amber-300/90 px-1.5 py-0.5 text-[9px] font-semibold text-amber-950'
-              : 'rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-950'
-          }
-        >
-          Abreise — nicht ausgecheckt
-        </span>
-      )}
-      {occupancy.isDepartureToday && occupancy.checkOut && (
-        <span
-          className={
-            onColor
-              ? 'rounded-full bg-emerald-300/90 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950'
-              : 'rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-900'
-          }
-        >
-          Ausgecheckt
-        </span>
-      )}
-    </div>
-  );
+  return <GuestStayTypeIcons stay={toStaySignals(occupancy)} size="sm" onColor={onColor} />;
 }
 
 export function RoomOccupancyGuestLine({
@@ -106,7 +82,7 @@ export function RoomOccupancySection({ occupancy }: { occupancy: RoomOccupancy |
           <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</dt>
           <dd className="mt-1">
             <RoomOccupancyBadges occupancy={occupancy} />
-            {!occupancy.isDepartureToday && !occupancy.stayover && (
+            {!occupancy.isDepartureToday && !occupancy.stayover && !occupancy.isArrivalToday && (
               <span className="text-ink-muted">Im Haus</span>
             )}
           </dd>
