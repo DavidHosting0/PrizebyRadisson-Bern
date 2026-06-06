@@ -127,6 +127,7 @@ export class ReservationsService {
 
       const upserted = created + updated;
       await this.reconcileTodayArrivalsFlags(hotelId, today);
+      await this.reconcileInHouseFlags(hotelId, rows, result);
 
       await this.prisma.reservationSyncRun.update({
         where: { id: run.id },
@@ -141,7 +142,7 @@ export class ReservationsService {
       });
 
       this.log.log(
-        `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, arrivals fetch=${arrivalsReservationIds.length}, tabs=${JSON.stringify(result.tabs)}`,
+        `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, arrivals fetch=${arrivalsReservationIds.length}, tabs=${JSON.stringify(result.tabs)}, inhouseList=${result.inhouseList}, inHouseActive=${rows.filter((r) => r.checkIn && !r.checkOut).length}`,
       );
       return { ...result, upserted };
     } catch (err) {
@@ -408,6 +409,44 @@ export class ReservationsService {
       this.log.log(`[Reservations] purged ${result.count} snapshots older than ${retentionDays}d`);
     }
     return result.count;
+  }
+
+  /** Clear stale in-house flags when EMMA no longer reports a guest as checked in. */
+  private async reconcileInHouseFlags(
+    hotelId: string,
+    syncedRows: ReservationUpsertRow[],
+    result: EmmaReservationSyncResult,
+  ): Promise<void> {
+    const fetchedFromEmma = result.inhouseList > 0 || result.tabs.inhouse > 0;
+    if (!fetchedFromEmma) return;
+
+    const activeIds = syncedRows
+      .filter((r) => r.checkIn && !r.checkOut)
+      .map((r) => r.reservationId);
+
+    if (activeIds.length === 0) {
+      const cleared = await this.prisma.reservationSnapshot.updateMany({
+        where: { hotelId, checkIn: true, checkOut: false },
+        data: { checkIn: false },
+      });
+      if (cleared.count > 0) {
+        this.log.log(`[Reservations] cleared ${cleared.count} stale in-house flags (EMMA empty)`);
+      }
+      return;
+    }
+
+    const cleared = await this.prisma.reservationSnapshot.updateMany({
+      where: {
+        hotelId,
+        checkIn: true,
+        checkOut: false,
+        reservationId: { notIn: activeIds },
+      },
+      data: { checkIn: false },
+    });
+    if (cleared.count > 0) {
+      this.log.log(`[Reservations] cleared ${cleared.count} stale in-house flags`);
+    }
   }
 
   /** EMMA Check-In → Arrivals tab: today, not in queue, not checked in/out. */

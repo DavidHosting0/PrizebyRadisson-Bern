@@ -29,6 +29,9 @@ export type ODataBatchPartSpec = {
   showStatus?: 'Y' | 'N';
   /** Check-In Fiori app sends `tms-fioriapp: CheckIn` on embedded GET parts. */
   checkInApp?: boolean;
+  /** Search Reservations app (`openinhouse.com.har` → In House tab). */
+  tmsFioriApp?: string;
+  tmsFilterTab?: string;
 };
 
 function buildBatchGetPart(
@@ -62,7 +65,12 @@ function buildBatchGetPart(
       '',
     ].join('\r\n');
   }
-  const showStatus = part.showStatus ?? 'N';
+  const tmsHeaders: string[] = [];
+  if (part.tmsFioriApp) {
+    tmsHeaders.push(`tms-fioriapp: ${part.tmsFioriApp}`);
+    if (part.tmsFilterTab) tmsHeaders.push(`tms-filtertab: ${part.tmsFilterTab}`);
+  }
+  const showStatus = part.tmsFioriApp ? null : (part.showStatus ?? 'N');
   return [
     `--${boundary}`,
     'Content-Type: application/http',
@@ -70,7 +78,8 @@ function buildBatchGetPart(
     '',
     `GET ${relativePath} HTTP/1.1`,
     'sap-cancel-on-close: true',
-    `show-status: ${showStatus}`,
+    ...(showStatus ? [`show-status: ${showStatus}`] : []),
+    ...tmsHeaders,
     'sap-contextid-accept: header',
     acceptHeader,
     `x-csrf-token: ${csrfToken}`,
@@ -296,7 +305,8 @@ export function reservationListBatchPath(
       tabFilter = `${base} and CheckInQueue eq true and CheckIn eq false`;
       break;
     case 'inhouse':
-      tabFilter = `${base} and CheckIn eq true`;
+      // Broader than arrivals/queue: in-house guests may not use Type eq '0'.
+      tabFilter = `HotelId eq '${hotelId}' and CheckOut eq false and CheckIn eq true`;
       break;
   }
   const filter = encodeODataFilter(tabFilter);
@@ -304,30 +314,101 @@ export function reservationListBatchPath(
   return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
 }
 
+/** Search Reservations Fiori app id (openinhouse.com.har). */
+export const EMMA_FIORI_APP_RESERVATIONS = 'Reservations';
+
 /** EMMA Search Reservations → In House (openinhouse.com.har). */
 export const INHOUSE_STATUS_CODES = ['09', '06', '05', '03', '02', '01'] as const;
 
-export const INHOUSE_LIST_SELECT = [
-  ...new Set([
-    ...RESERVATION_LIST_SELECT.split(','),
-    'Status',
-    'StatusCI',
-    'OCOdone',
-    'OCIdone',
-    'TotalPax',
-  ]),
+/** $select from openinhouse.com.har In House tab (GuestsListSet omitted — needs $expand). */
+export const INHOUSE_HAR_SELECT = [
+  'ReservationId',
+  'ArrivalDate',
+  'NightsStay',
+  'DepartureDate',
+  'Tier',
+  'Stays',
+  'MainGuestName',
+  'TotalPax',
+  'RoomType',
+  'RoomId',
+  'MealPlan',
+  'StatusCI',
+  'CIChannel',
+  'OCIdone',
+  'Rate',
+  'MainClientName',
+  'GroupId',
+  'BookingFileId',
+  'OriginalRoomType',
+  'Stayover',
+  'RoomTypeUpg',
+  'VipDesc',
+  'HotelId',
+  'Type',
+  'NumPax1',
+  'NumPax2',
+  'NumPax3',
+  'NumPax4',
+  'CheckIn',
+  'CheckOut',
+  'GroupName',
+  'Status',
+  'MainGuestId',
+  'Draft/Status',
+  'Draft/LockedByUserFullName',
+  'IsEditableInFiori',
+  'NoMove',
+  'AllowChangeStatus',
+  'OCOdone',
+  'ExpectedArrivalTime',
+  'ExpectedDepartureTime',
+  'RoomDetails/Status',
+  'Paid',
+  'MealPlanUpg',
 ].join(',');
 
+/** UI placeholder filters from HAR (empty RoomId / MainGuestName = no user filter). */
+function inHouseHarUiFilter(hotelId: string): string {
+  return `HotelId eq '${hotelId}' and RoomId eq '' and MainGuestName eq ''`;
+}
+
+/** Primary In House list — HAR InHouse tab (`tms-filtertab: InHouse`, no Status filter). */
 export function inHouseListBatchPath(
   hotelId: string,
   sapClient: string,
   skip = 0,
   top = 500,
 ): string {
+  const filter = encodeODataFilter(inHouseHarUiFilter(hotelId));
+  const select = encodeURIComponent(INHOUSE_HAR_SELECT);
+  return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
+}
+
+/** Fallback: status filter from HAR Overview tab (count / secondary fetch). */
+export function inHouseStatusListBatchPath(
+  hotelId: string,
+  sapClient: string,
+  skip = 0,
+  top = 500,
+): string {
   const statusFilter = INHOUSE_STATUS_CODES.map((s) => `Status eq '${s}'`).join(' or ');
-  const tabFilter = `(${statusFilter}) and HotelId eq '${hotelId}'`;
+  const tabFilter = `(${statusFilter}) and ${inHouseHarUiFilter(hotelId)}`;
   const filter = encodeODataFilter(tabFilter);
-  const select = encodeURIComponent(INHOUSE_LIST_SELECT);
+  const select = encodeURIComponent(INHOUSE_HAR_SELECT);
+  return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
+}
+
+/** Last-resort fallback when HAR In House tab returns 0 rows. */
+export function inHouseCheckInFallbackBatchPath(
+  hotelId: string,
+  sapClient: string,
+  skip = 0,
+  top = 500,
+): string {
+  const tabFilter = `HotelId eq '${hotelId}' and CheckOut eq false and CheckIn eq true`;
+  const filter = encodeODataFilter(tabFilter);
+  const select = encodeURIComponent(INHOUSE_HAR_SELECT);
   return `Reservations?sap-client=${sapClient}&$skip=${skip}&$top=${top}&$orderby=${encodeURIComponent('MainGuestName asc')}&$filter=${filter}&$select=${select}`;
 }
 

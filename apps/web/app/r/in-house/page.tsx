@@ -109,14 +109,15 @@ export default function ReceptionInHousePage() {
       {overview && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Kpi label="Im Haus (EMMA)" value={overview.inHouse} />
             <Kpi label="In Liste" value={rows.length} />
+            <Kpi label="Im Haus (EMMA KPI)" value={overview.inHouse} />
             <Kpi label="Abreise heute" value={stats.departuresToday} />
             <Kpi label="Stayover" value={stats.stayovers} />
           </div>
           <p className="text-xs text-ink-muted">
             Entspricht der EMMA Search-Reservations-Ansicht <strong>In House</strong> (Status-basiert,
-            synchronisiert mit Check-In-Daten).
+            synchronisiert mit Check-In-Daten). Nach dem Sync sollte „In Liste“ der EMMA In-House-Liste
+            entsprechen — bei Abweichung bitte „Jetzt synchronisieren“.
           </p>
         </>
       )}

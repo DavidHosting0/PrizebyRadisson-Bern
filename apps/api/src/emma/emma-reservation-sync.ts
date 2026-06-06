@@ -11,9 +11,12 @@ import {
   EMMA_DEFAULT_SAP_CLIENT,
   EMMA_ODATA_HOTEL_SRV,
   EMMA_ODATA_RSRVS_SRV,
+  EMMA_FIORI_APP_RESERVATIONS,
   hotelOverviewBatchPath,
   INHOUSE_STATUS_CODES,
+  inHouseCheckInFallbackBatchPath,
   inHouseListBatchPath,
+  inHouseStatusListBatchPath,
   parseODataBatchResponse,
   parseODataResultsJson,
   reservationListBatchPath,
@@ -57,6 +60,29 @@ const TAB_FILTER_LABEL: Record<ReservationListTab, string> = {
 };
 
 const log = new Logger('EmmaReservationSync');
+
+function isEmmaTruthyFlag(v: unknown): boolean {
+  if (v === true || v === 1) return true;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    return s === 'x' || s === 'true' || s === '1' || s === 'yes';
+  }
+  return false;
+}
+
+/** EMMA Status may arrive as 9, "9", or "09". */
+export function normalizeEmmaReservationStatus(status: unknown): string | null {
+  if (status == null || status === '') return null;
+  const raw = String(status).trim();
+  if (/^\d+$/.test(raw)) return String(parseInt(raw, 10)).padStart(2, '0');
+  return raw;
+}
+
+function isInHouseEmmaStatus(status: unknown): boolean {
+  const norm = normalizeEmmaReservationStatus(status);
+  if (!norm) return false;
+  return (INHOUSE_STATUS_CODES as readonly string[]).includes(norm);
+}
 
 export type ReservationUpsertRow = {
   hotelId: string;
@@ -127,21 +153,26 @@ export async function fetchEmmaReservationsForTab(
   return all;
 }
 
-/** EMMA Search Reservations In House list (status-based filter from HAR). */
-export async function fetchEmmaInHouseList(
+/** EMMA Search Reservations In House list (openinhouse.com.har). */
+async function fetchEmmaInHouseListPages(
   jar: EmmaCookieJar,
   baseUrl: string,
-  hotelId: string,
   sapClient: string,
   csrfToken: string,
+  pathForPage: (skip: number, top: number) => string,
+  label: string,
   debug?: EmmaSyncDebug,
 ): Promise<Record<string, unknown>[]> {
   const pageSize = 500;
   const all: Record<string, unknown>[] = [];
+  const partSpec = {
+    tmsFioriApp: EMMA_FIORI_APP_RESERVATIONS,
+    tmsFilterTab: 'InHouse',
+  };
 
   for (let skip = 0; skip < 10_000; skip += pageSize) {
-    const path = inHouseListBatchPath(hotelId, sapClient, skip, pageSize);
-    const { body, contentType } = buildODataBatchBody([{ path }], csrfToken);
+    const path = pathForPage(skip, pageSize);
+    const { body, contentType } = buildODataBatchBody([{ path, ...partSpec }], csrfToken);
     const raw = await emmaHttpPostBatch(
       jar,
       baseUrl,
@@ -151,10 +182,10 @@ export async function fetchEmmaInHouseList(
       body,
       contentType,
       {
-        label: 'reservations.inhouse-list',
+        label,
         debug,
-        parts: [{ path }],
-        tmsFioriApp: 'zey_tms_rs-display',
+        parts: [{ path, ...partSpec }],
+        tmsFioriApp: EMMA_FIORI_APP_RESERVATIONS,
         tmsFilterTab: 'InHouse',
       },
     );
@@ -167,7 +198,7 @@ export async function fetchEmmaInHouseList(
         pageRows += batch.length;
       } else if (part.status >= 400) {
         log.warn(
-          `[Reservations] inhouse-list skip=${skip} batch part HTTP ${part.status}: ${part.body.slice(0, 200)}`,
+          `[Reservations] ${label} skip=${skip} batch part HTTP ${part.status}: ${part.body.slice(0, 200)}`,
         );
       }
     }
@@ -175,6 +206,49 @@ export async function fetchEmmaInHouseList(
   }
 
   return all;
+}
+
+export async function fetchEmmaInHouseList(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  hotelId: string,
+  sapClient: string,
+  csrfToken: string,
+  debug?: EmmaSyncDebug,
+): Promise<Record<string, unknown>[]> {
+  const primary = await fetchEmmaInHouseListPages(
+    jar,
+    baseUrl,
+    sapClient,
+    csrfToken,
+    (skip, top) => inHouseListBatchPath(hotelId, sapClient, skip, top),
+    'reservations.inhouse-list',
+    debug,
+  );
+  if (primary.length > 0) return primary;
+
+  log.warn('[Reservations] inhouse-list HAR tab returned 0 rows — trying status filter');
+  const byStatus = await fetchEmmaInHouseListPages(
+    jar,
+    baseUrl,
+    sapClient,
+    csrfToken,
+    (skip, top) => inHouseStatusListBatchPath(hotelId, sapClient, skip, top),
+    'reservations.inhouse-list.status',
+    debug,
+  );
+  if (byStatus.length > 0) return byStatus;
+
+  log.warn('[Reservations] inhouse-list status filter returned 0 rows — trying CheckIn fallback');
+  return fetchEmmaInHouseListPages(
+    jar,
+    baseUrl,
+    sapClient,
+    csrfToken,
+    (skip, top) => inHouseCheckInFallbackBatchPath(hotelId, sapClient, skip, top),
+    'reservations.inhouse-list.fallback',
+    debug,
+  );
 }
 
 export async function fetchEmmaHotelOverview(
@@ -232,6 +306,7 @@ export function mapEmmaReservationRowToUpsert(
   row: Record<string, unknown>,
   cipher: SecretCipherService,
   syncedAt: Date,
+  inHouseSourceIds: ReadonlySet<string> = new Set(),
 ): ReservationUpsertRow | null {
   const hotelId = String(row.HotelId ?? '').trim();
   const reservationId = String(row.ReservationId ?? '').trim();
@@ -241,7 +316,7 @@ export function mapEmmaReservationRowToUpsert(
   const departureDate = parseEmmaDateOnly(row.DepartureDate);
   if (!arrivalDate || !departureDate) return null;
 
-  const numPax1 = row.NumPax1;
+  const numPax1 = row.NumPax1 ?? row.TotalPax;
   let numPax: number | null = null;
   if (typeof numPax1 === 'number') numPax = numPax1;
   else if (numPax1 != null) {
@@ -255,8 +330,7 @@ export function mapEmmaReservationRowToUpsert(
       ? normalizeEmmaRoomNumber(String(roomRaw).trim())
       : null;
 
-  const status = row.Status != null ? String(row.Status).trim() : '';
-  const inHouseByStatus = (INHOUSE_STATUS_CODES as readonly string[]).includes(status);
+  const fromInHouseSource = inHouseSourceIds.has(reservationId);
 
   const sensitive = buildSensitivePayload(row, log);
 
@@ -266,9 +340,9 @@ export function mapEmmaReservationRowToUpsert(
     arrivalDate,
     departureDate,
     roomId,
-    checkIn: row.CheckIn === true || inHouseByStatus,
-    checkOut: row.CheckOut === true,
-    checkInQueue: row.CheckInQueue === true,
+    checkIn: isEmmaTruthyFlag(row.CheckIn) || isInHouseEmmaStatus(row.Status) || fromInHouseSource,
+    checkOut: isEmmaTruthyFlag(row.CheckOut),
+    checkInQueue: isEmmaTruthyFlag(row.CheckInQueue),
     nightsStay:
       typeof row.NightsStay === 'number'
         ? row.NightsStay
@@ -313,6 +387,7 @@ export async function syncEmmaReservationsFromJar(
   };
   const merged = new Map<string, Record<string, unknown>>();
   const arrivalsReservationIds: string[] = [];
+  const inHouseSourceIds = new Set<string>();
 
   for (const tab of tabs) {
     const fetched = await fetchEmmaReservationsForTab(
@@ -327,9 +402,10 @@ export async function syncEmmaReservationsFromJar(
     );
     tabCounts[tab] = fetched.length;
     for (const row of fetched) {
-      const id = String(row.ReservationId ?? '');
+      const id = String(row.ReservationId ?? '').trim();
       if (!id) continue;
       if (tab === 'arrivals') arrivalsReservationIds.push(id);
+      if (tab === 'inhouse') inHouseSourceIds.add(id);
       const prev = merged.get(id);
       merged.set(id, prev ? { ...prev, ...row } : row);
     }
@@ -344,10 +420,12 @@ export async function syncEmmaReservationsFromJar(
     opts.debug,
   );
   for (const row of inHouseRows) {
-    const id = String(row.ReservationId ?? '');
+    const id = String(row.ReservationId ?? '').trim();
     if (!id) continue;
+    inHouseSourceIds.add(id);
     const prev = merged.get(id);
-    merged.set(id, prev ? { ...prev, ...row } : row);
+    // Rows from the Search-Reservations In House list are in-house by definition.
+    merged.set(id, prev ? { ...prev, ...row, CheckIn: true } : { ...row, CheckIn: true });
   }
 
   const overview = await fetchEmmaHotelOverview(
@@ -360,10 +438,22 @@ export async function syncEmmaReservationsFromJar(
   );
 
   const rows: ReservationUpsertRow[] = [];
+  let skipped = 0;
   for (const row of merged.values()) {
-    const mapped = mapEmmaReservationRowToUpsert(row, cipher, syncedAt);
+    const mapped = mapEmmaReservationRowToUpsert(row, cipher, syncedAt, inHouseSourceIds);
     if (mapped) rows.push(mapped);
+    else skipped++;
   }
+  if (skipped > 0) {
+    log.warn(
+      `[Reservations] skipped ${skipped}/${merged.size} merged rows (missing HotelId, ReservationId, or dates)`,
+    );
+  }
+
+  const inHouseUpserted = rows.filter((r) => r.checkIn && !r.checkOut).length;
+  log.log(
+    `[Reservations] in-house sources=${inHouseSourceIds.size} upserted in-house=${inHouseUpserted}`,
+  );
 
   const result: EmmaReservationSyncResult = {
     hotelId,
