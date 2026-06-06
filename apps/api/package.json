@@ -5,6 +5,7 @@
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.build.json && node -e \"require('fs').accessSync('dist/main.js'); console.log('build: dist/main.js ok')\"",
     "verify:dist": "node -e \"require('fs').accessSync('dist/main.js'); console.log('OK: dist/main.js exists')\"",
+    "postinstall": "prisma generate",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
