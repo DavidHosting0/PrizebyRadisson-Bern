@@ -7,7 +7,7 @@ import type {
   ReservationSyncStatus,
   ReservationTab,
 } from '@housekeeping/shared';
-import { compareRoomNumbers, deriveGuestStaySignals } from '@housekeeping/shared';
+import { compareRoomNumbers, deriveGuestStaySignals, formatHotelDateOnly } from '@housekeeping/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { EmmaService } from '../emma/emma.service';
@@ -196,7 +196,7 @@ export class ReservationsService {
       take: opts.tab === 'all' ? (q ? 2000 : 500) : undefined,
     });
 
-    const mapped = rows.map((r) => this.toListItem(r));
+    const mapped = rows.map((r) => this.toListItem(r, opts.tab === 'inhouse'));
 
     if (opts.tab === 'inhouse') {
       mapped.sort((a, b) => {
@@ -564,10 +564,10 @@ export class ReservationsService {
     folioEnc?: string | null;
     folioFetchedAt?: Date | null;
     syncedAt: Date;
-  }): ReservationListItem {
+  }, inHouseList = false): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
-    const arrivalDate = row.arrivalDate.toISOString().slice(0, 10);
-    const departureDate = row.departureDate.toISOString().slice(0, 10);
+    const arrivalDate = formatHotelDateOnly(row.arrivalDate);
+    const departureDate = formatHotelDateOnly(row.departureDate);
     const today = todayIsoDate();
     const stay = deriveGuestStaySignals({
       arrivalDate,
@@ -577,6 +577,7 @@ export class ReservationsService {
       checkOut: row.checkOut,
       stayover: s?.stayover,
       ocoDone: s?.ocoDone,
+      inHouse: inHouseList,
     });
     return {
       id: row.id,

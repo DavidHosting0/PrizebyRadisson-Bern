@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { GuestStaySignals, ReservationListItem, ReservationOverview } from '@housekeeping/shared';
+import { deriveGuestStaySignals, hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { GuestStayTypeIcons, GuestStayTypeLegend } from '@/components/reception/GuestStayTypeIcons';
@@ -18,14 +19,16 @@ function Kpi({ label, value }: { label: string; value: number }) {
 }
 
 function reservationStaySignals(r: ReservationListItem): GuestStaySignals {
-  return {
-    stayover: r.stayover,
-    isRestant: r.isRestant,
-    isArrivalToday: r.isArrivalToday,
-    isDepartureToday: r.isDepartureToday,
+  return deriveGuestStaySignals({
+    arrivalDate: r.arrivalDate,
+    departureDate: r.departureDate,
+    today: hotelTodayIso(),
+    checkIn: r.checkIn,
     checkOut: r.checkOut,
+    stayover: r.stayover,
     ocoDone: r.ocoDone,
-  };
+    inHouse: true,
+  });
 }
 
 export default function ReceptionInHousePage() {
@@ -67,9 +70,10 @@ export default function ReceptionInHousePage() {
   const overview = overviewQuery.data;
 
   const stats = useMemo(() => {
-    const departuresToday = rows.filter((r) => r.isDepartureToday).length;
-    const stayovers = rows.filter((r) => r.isRestant).length;
-    const arrivalsToday = rows.filter((r) => r.isArrivalToday).length;
+    const signals = rows.map(reservationStaySignals);
+    const departuresToday = signals.filter((s) => s.isDepartureToday).length;
+    const stayovers = signals.filter((s) => s.isRestant).length;
+    const arrivalsToday = signals.filter((s) => s.isArrivalToday).length;
     return { departuresToday, stayovers, arrivalsToday };
   }, [rows]);
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RoomOccupancy } from '@housekeeping/shared';
-import { deriveGuestStaySignals } from '@housekeeping/shared';
+import { deriveGuestStaySignals, formatHotelDateOnly } from '@housekeeping/shared';
 import { normalizeEmmaRoomNumber } from '../emma/emma-room-status-sync';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -81,7 +81,7 @@ export class RoomOccupancyService {
       const score = (r: SnapshotRow) => {
         let s = 0;
         if (!r.checkOut) s += 100;
-        if (r.departureDate.toISOString().slice(0, 10) === today) s += 50;
+        if (formatHotelDateOnly(r.departureDate) === today) s += 50;
         return s;
       };
       const diff = score(b) - score(a);
@@ -94,8 +94,8 @@ export class RoomOccupancyService {
   private toOccupancy(row: SnapshotRow, today: string): RoomOccupancy | null {
     const sensitive = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
     if (!sensitive) return null;
-    const departureDate = row.departureDate.toISOString().slice(0, 10);
-    const arrivalDate = row.arrivalDate.toISOString().slice(0, 10);
+    const departureDate = formatHotelDateOnly(row.departureDate);
+    const arrivalDate = formatHotelDateOnly(row.arrivalDate);
     const stay = deriveGuestStaySignals({
       arrivalDate,
       departureDate,
@@ -103,6 +103,7 @@ export class RoomOccupancyService {
       checkOut: row.checkOut,
       stayover: sensitive.stayover,
       ocoDone: sensitive.ocoDone,
+      inHouse: true,
     });
     return {
       reservationId: row.reservationId,
