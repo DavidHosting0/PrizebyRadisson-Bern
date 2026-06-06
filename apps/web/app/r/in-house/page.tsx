@@ -160,7 +160,11 @@ export default function ReceptionInHousePage() {
                   <tr key={r.id} className="border-b border-border/60 hover:bg-surface-muted/30">
                     <td className="px-4 py-3 font-semibold tabular-nums text-ink">{r.roomId ?? '—'}</td>
                     <td className="px-4 py-3">
-                      <GuestStayTypeIcons stay={reservationStaySignals(r)} size="md" />
+                      <GuestStayTypeIcons
+                        stay={reservationStaySignals(r)}
+                        size="md"
+                        showLabels
+                      />
                     </td>
                     <td className="px-4 py-3 font-medium text-ink">{r.mainGuestName ?? '—'}</td>
                     <td className="px-4 py-3 tabular-nums text-ink-muted">{r.reservationId}</td>

@@ -10,6 +10,8 @@ type Props = {
   showLabels?: boolean;
 };
 
+const STROKE = 2.25;
+
 function IconChip({
   title,
   tone,
@@ -24,7 +26,7 @@ function IconChip({
   children: ReactNode;
 }) {
   const dim = size === 'sm' ? 'h-5 w-5' : 'h-6 w-6';
-  const icon = size === 'sm' ? 12 : 14;
+  const icon = size === 'sm' ? 13 : 15;
   const tones: Record<typeof tone, string> = onColor
     ? {
         sky: 'bg-white/25 text-white ring-1 ring-inset ring-white/30',
@@ -44,7 +46,7 @@ function IconChip({
       title={title}
       aria-label={title}
       className={clsx(
-        'inline-flex shrink-0 items-center justify-center rounded-full',
+        'inline-flex shrink-0 items-center justify-center rounded-md',
         dim,
         tones[tone],
       )}
@@ -56,65 +58,68 @@ function IconChip({
   );
 }
 
+/** Arrow entering room — Anreise heute. */
+function IconArrivalToday() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
+      <rect
+        x="12"
+        y="5"
+        width="9"
+        height="15"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+      />
+      <path
+        d="M4 12.5h6M10 12.5l-2.5-2.5M10 12.5l-2.5 2.5"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Bed — Restant (bleibt im Haus). */
 function IconRestant() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
       <path
-        d="M7 7h10v4H7V7zm0 6h6v4H7v-4z"
+        d="M4 16h16v3H4z"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth={STROKE}
         strokeLinejoin="round"
       />
       <path
-        d="M17 13a4 4 0 110 8 4 4 0 010-8z"
+        d="M4 16V13a2.5 2.5 0 012.5-2.5H9a2.5 2.5 0 012.5 2.5v3"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth={STROKE}
+        strokeLinejoin="round"
       />
-      <path
-        d="M15.5 15.5l3 3M18.5 15.5l-3 3"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
+      <path d="M14 10.5h6v5.5" stroke="currentColor" strokeWidth={STROKE} strokeLinecap="round" />
     </svg>
   );
 }
 
-function IconArrivalToday() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
-      <path
-        d="M12 4v8m0 0l3-3m-3 3L9 9"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5 20h14a2 2 0 001.732-3"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      />
-      <circle cx="12" cy="18" r="1.5" fill="currentColor" />
-    </svg>
-  );
-}
-
+/** Arrow leaving room — Abreise heute. */
 function IconDeparture() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
-      <path
-        d="M8 7h8l-1 10H9L8 7z"
+      <rect
+        x="3"
+        y="5"
+        width="9"
+        height="15"
+        rx="1.5"
         stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
+        strokeWidth={STROKE}
       />
-      <path d="M10 7V5a2 2 0 012-2h0a2 2 0 012 2v2" stroke="currentColor" strokeWidth="1.75" />
       <path
-        d="M12 11v5m0 0l-2-2m2 2l2-2"
+        d="M14 12.5h6M18 12.5l2.5-2.5M18 12.5l2.5 2.5"
         stroke="currentColor"
-        strokeWidth="1.75"
+        strokeWidth={STROKE}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -122,19 +127,14 @@ function IconDeparture() {
   );
 }
 
+/** Checkmark — ausgecheckt. */
 function IconCheckedOut() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
       <path
-        d="M8 7h8l-1 10H9L8 7z"
+        d="M6 12.5l4 4 8-9"
         stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 14l2 2 4-4"
-        stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth={STROKE + 0.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -145,7 +145,13 @@ function IconCheckedOut() {
 export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: Props) {
   if (!stay) return null;
 
-  const items: Array<{ key: string; title: string; tone: 'sky' | 'indigo' | 'amber' | 'emerald'; icon: ReactNode; label: string }> = [];
+  const items: Array<{
+    key: string;
+    title: string;
+    tone: 'sky' | 'indigo' | 'amber' | 'emerald';
+    icon: ReactNode;
+    label: string;
+  }> = [];
 
   if (stay.isArrivalToday) {
     items.push({
@@ -159,7 +165,7 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
   if (stay.isRestant) {
     items.push({
       key: 'restant',
-      title: stay.stayover ? 'Restant (EMMA Stayover)' : 'Restant',
+      title: stay.stayover ? 'Restant (Stayover)' : 'Restant',
       tone: 'sky',
       icon: <IconRestant />,
       label: 'Restant',
@@ -169,7 +175,7 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
     const checkedOut = stay.checkOut || stay.ocoDone;
     items.push({
       key: 'departure',
-      title: checkedOut ? 'Ausgecheckt (Abreise heute)' : 'Abreise heute — noch im Zimmer',
+      title: checkedOut ? 'Ausgecheckt (Abreise heute)' : 'Abreise heute',
       tone: checkedOut ? 'emerald' : 'amber',
       icon: checkedOut ? <IconCheckedOut /> : <IconDeparture />,
       label: checkedOut ? 'CO' : 'Abreise',
@@ -196,8 +202,8 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
 
 export function GuestStayTypeLegend({ compact }: { compact?: boolean }) {
   const entries = [
-    { tone: 'indigo' as const, title: 'Heute eingecheckt', icon: <IconArrivalToday /> },
-    { tone: 'sky' as const, title: 'Restant / Stayover', icon: <IconRestant /> },
+    { tone: 'indigo' as const, title: 'Anreise heute', icon: <IconArrivalToday /> },
+    { tone: 'sky' as const, title: 'Restant', icon: <IconRestant /> },
     { tone: 'amber' as const, title: 'Abreise heute', icon: <IconDeparture /> },
     { tone: 'emerald' as const, title: 'Ausgecheckt', icon: <IconCheckedOut /> },
   ];
