@@ -82,37 +82,45 @@ export async function fetchEmmaReservationsForTab(
   csrfToken: string,
   debug?: EmmaSyncDebug,
 ): Promise<Record<string, unknown>[]> {
-  const path = reservationListBatchPath(hotelId, sapClient, tab, arrivalDateIso);
-  const { body, contentType, boundary } = buildODataBatchBody(
-    [{ path, checkInApp: true }],
-    csrfToken,
-  );
-  const raw = await emmaHttpPostBatch(
-    jar,
-    baseUrl,
-    EMMA_ODATA_RSRVS_SRV,
-    sapClient,
-    csrfToken,
-    body,
-    contentType,
-    {
-      label: `reservations.${tab}`,
-      debug,
-      parts: [{ path, checkInApp: true }],
-      tmsFioriApp: 'CheckIn',
-      tmsFilterTab: TAB_FILTER_LABEL[tab],
-    },
-  );
-  const parts = parseODataBatchResponse(raw);
-  const rows: Record<string, unknown>[] = [];
-  for (const part of parts) {
-    if (part.status >= 200 && part.status < 300) {
-      rows.push(...parseODataResultsJson(part.body));
-    } else if (part.status >= 400) {
-      log.warn(`[Reservations] tab=${tab} batch part HTTP ${part.status}: ${part.body.slice(0, 200)}`);
+  const pageSize = tab === 'pending' ? 999 : 500;
+  const all: Record<string, unknown>[] = [];
+
+  for (let skip = 0; skip < 10_000; skip += pageSize) {
+    const path = reservationListBatchPath(hotelId, sapClient, tab, arrivalDateIso, skip, pageSize);
+    const { body, contentType } = buildODataBatchBody([{ path, checkInApp: true }], csrfToken);
+    const raw = await emmaHttpPostBatch(
+      jar,
+      baseUrl,
+      EMMA_ODATA_RSRVS_SRV,
+      sapClient,
+      csrfToken,
+      body,
+      contentType,
+      {
+        label: `reservations.${tab}`,
+        debug,
+        parts: [{ path, checkInApp: true }],
+        tmsFioriApp: 'CheckIn',
+        tmsFilterTab: TAB_FILTER_LABEL[tab],
+      },
+    );
+    const parts = parseODataBatchResponse(raw);
+    let pageRows = 0;
+    for (const part of parts) {
+      if (part.status >= 200 && part.status < 300) {
+        const batch = parseODataResultsJson(part.body);
+        all.push(...batch);
+        pageRows += batch.length;
+      } else if (part.status >= 400) {
+        log.warn(
+          `[Reservations] tab=${tab} skip=${skip} batch part HTTP ${part.status}: ${part.body.slice(0, 200)}`,
+        );
+      }
     }
+    if (pageRows < pageSize) break;
   }
-  return rows;
+
+  return all;
 }
 
 export async function fetchEmmaHotelOverview(

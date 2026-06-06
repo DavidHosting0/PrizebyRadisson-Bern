@@ -143,12 +143,12 @@ export function parseEmmaDateToIso(v: unknown): string | null {
   return null;
 }
 
-/** Date-only for Prisma @db.Date columns. */
-export function parseEmmaDateOnly(v: unknown): Date | null {
+/** Date-only for Prisma @db.Date columns (hotel local calendar day). */
+export function parseEmmaDateOnly(v: unknown, timeZone = 'Europe/Zurich'): Date | null {
   const iso = parseEmmaDateToIso(v);
   if (!iso) return null;
-  const d = new Date(iso);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const local = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(iso));
+  return dateOnlyFromIso(local);
 }
 
 export function todayIsoDate(timeZone = 'Europe/Zurich'): string {

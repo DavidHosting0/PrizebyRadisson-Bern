@@ -78,7 +78,6 @@ export class ReservationsService {
         await this.emma.fetchReservationRowsFromEmma({ arrivalDateIso: dateIso });
       const hotelId = result.hotelId;
       const today = dateOnlyFromIso(dateIso);
-      const arrivalsSet = new Set(arrivalsReservationIds);
 
       const reservationIds = rows.map((r) => r.reservationId);
       const existingRows =
@@ -93,7 +92,7 @@ export class ReservationsService {
       let updated = 0;
       let unchanged = 0;
       for (const row of rows) {
-        const inTodayArrivals = arrivalsSet.has(row.reservationId);
+        const inTodayArrivals = this.isPendingToday(row, today);
         const existing = existingById.get(row.reservationId);
         if (!existing) {
           await this.prisma.reservationSnapshot.create({
@@ -117,26 +116,7 @@ export class ReservationsService {
       }
 
       const upserted = created + updated;
-
-      if (arrivalsReservationIds.length > 0) {
-        await this.prisma.reservationSnapshot.updateMany({
-          where: { hotelId, reservationId: { in: arrivalsReservationIds } },
-          data: { inTodayArrivals: true },
-        });
-        await this.prisma.reservationSnapshot.updateMany({
-          where: {
-            hotelId,
-            arrivalDate: today,
-            reservationId: { notIn: arrivalsReservationIds },
-          },
-          data: { inTodayArrivals: false },
-        });
-      } else {
-        await this.prisma.reservationSnapshot.updateMany({
-          where: { hotelId, arrivalDate: today },
-          data: { inTodayArrivals: false },
-        });
-      }
+      await this.reconcileTodayPendingFlags(hotelId, today);
 
       await this.prisma.reservationSyncRun.update({
         where: { id: run.id },
@@ -151,7 +131,7 @@ export class ReservationsService {
       });
 
       this.log.log(
-        `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, arrivals visible=${arrivalsReservationIds.length}, tabs=${JSON.stringify(result.tabs)}`,
+        `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, pending fetch=${arrivalsReservationIds.length}, tabs=${JSON.stringify(result.tabs)}`,
       );
       return { ...result, upserted };
     } catch (err) {
@@ -172,12 +152,13 @@ export class ReservationsService {
   }): Promise<ReservationListItem[]> {
     this.scheduleSyncOnView(`list:${opts.tab}`);
     const hotelId = opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const today = dateOnlyFromIso(todayIsoDate());
 
     const where: Prisma.ReservationSnapshotWhereInput = { hotelId };
 
     switch (opts.tab) {
       case 'arrivals':
-        where.inTodayArrivals = true;
+        Object.assign(where, this.pendingWhere(hotelId, today));
         break;
       case 'queue':
         where.checkInQueue = true;
@@ -220,8 +201,9 @@ export class ReservationsService {
 
   async overview(hotelId?: string): Promise<ReservationOverview> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const today = dateOnlyFromIso(todayIsoDate());
     const visibleArrivals = await this.prisma.reservationSnapshot.count({
-      where: { hotelId: hid, inTodayArrivals: true },
+      where: this.pendingWhere(hid, today),
     });
     const last = await this.prisma.reservationSyncRun.findFirst({
       where: { status: 'ok' },
@@ -289,6 +271,38 @@ export class ReservationsService {
       this.log.log(`[Reservations] purged ${result.count} snapshots older than ${retentionDays}d`);
     }
     return result.count;
+  }
+
+  /** EMMA CheckInPending equivalent: arrival today, not checked in/out yet. */
+  private pendingWhere(hotelId: string, today: Date): Prisma.ReservationSnapshotWhereInput {
+    return { hotelId, arrivalDate: today, checkIn: false, checkOut: false };
+  }
+
+  private isPendingToday(
+    row: Pick<ReservationUpsertRow, 'arrivalDate' | 'checkIn' | 'checkOut'>,
+    today: Date,
+  ): boolean {
+    return !row.checkIn && !row.checkOut && this.sameDate(row.arrivalDate, today);
+  }
+
+  /** Align inTodayArrivals with pending row state (never wipe all when OData fetch is empty). */
+  private async reconcileTodayPendingFlags(hotelId: string, today: Date): Promise<void> {
+    await this.prisma.reservationSnapshot.updateMany({
+      where: this.pendingWhere(hotelId, today),
+      data: { inTodayArrivals: true },
+    });
+    await this.prisma.reservationSnapshot.updateMany({
+      where: { hotelId, arrivalDate: today, checkIn: true },
+      data: { inTodayArrivals: false },
+    });
+    await this.prisma.reservationSnapshot.updateMany({
+      where: { hotelId, arrivalDate: today, checkOut: true },
+      data: { inTodayArrivals: false },
+    });
+    await this.prisma.reservationSnapshot.updateMany({
+      where: { hotelId, inTodayArrivals: true, NOT: { arrivalDate: today } },
+      data: { inTodayArrivals: false },
+    });
   }
 
   /** Compare EMMA row to stored snapshot; return update fields only when something changed. */
