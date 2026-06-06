@@ -227,7 +227,7 @@ export function floorRoomDetailsBatchPath(
   return `${key}/RoomDetails?sap-client=${sapClient}&$skip=${skip}&$top=${top}&search=`;
 }
 
-/** EMMA Check-In app reservation list $select (from browser HAR). */
+/** EMMA Check-In app reservation list $select (from browser HAR — no RateCode etc.). */
 export const RESERVATION_LIST_SELECT = [
   'ReservationId',
   'RoomId',
@@ -266,16 +266,15 @@ export const RESERVATION_LIST_SELECT = [
   'Draft/LockedByUserFullName',
   'MainGuestName',
   'MainGuestId',
-  'RateCode',
-  'CompanyName',
-  'TravelAgent',
-  'SourceCode',
-  'MarketCode',
-  'Balance',
-  'Comments',
+  'ResTypeId',
+  'Paid',
+  'Type',
+  'MealPlanUpg',
+  'ExpectedArrivalTime',
+  'ExpectedDepartureTime',
 ].join(',');
 
-export type ReservationListTab = 'pending' | 'queue' | 'inhouse';
+export type ReservationListTab = 'arrivals' | 'queue' | 'inhouse';
 
 export function reservationListBatchPath(
   hotelId: string,
@@ -289,9 +288,9 @@ export function reservationListBatchPath(
   const base = `HotelId eq '${hotelId}' and Type eq '0' and CheckOut eq false`;
   let tabFilter: string;
   switch (tab) {
-    case 'pending':
-      // EMMA HotelOverview CheckInPending: today's arrivals not checked in yet (incl. queue).
-      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckIn eq false`;
+    case 'arrivals':
+      // EMMA Check-In → Arrivals tab (today, not in queue, not checked in).
+      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckInQueue eq false and CheckIn eq false`;
       break;
     case 'queue':
       tabFilter = `${base} and CheckInQueue eq true and CheckIn eq false`;

@@ -60,7 +60,7 @@ export default function ReceptionArrivalsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Anreisen</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            EMMA Check-In — offene Check-ins für heute (Pending)
+            EMMA Check-In — Anreisen (wie EMMA Tab „Arrivals“)
             {overview?.lastSyncedAt && (
               <span className="ml-2">
                 · Sync {new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH')}
@@ -81,23 +81,22 @@ export default function ReceptionArrivalsPage() {
       {overview && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
-            <Kpi label="Pending (EMMA)" value={overview.checkInPending} />
+            <Kpi label="Anreisen (EMMA)" value={overview.arrivals || overview.checkInPending} />
             <Kpi label="In Liste" value={overview.visibleArrivals ?? rows.length} />
           </div>
           <p className="text-xs text-ink-muted">
-            Die Tabelle zeigt alle heutigen Anreisen mit offenem Check-in (EMMA Pending), inkl.
-            Queue. Queue ({overview.checkInQueue}) und Check-in done ({overview.checkInDone}) sind
-            separate EMMA-Kennzahlen.
+            Die Tabelle entspricht dem EMMA Check-In Tab <strong>Arrivals</strong> (heute,
+            noch nicht eingecheckt, nicht in Queue).
           </p>
           <details className="text-xs text-ink-muted">
             <summary className="cursor-pointer font-medium text-ink-muted hover:text-ink">
               Weitere EMMA-Kennzahlen
             </summary>
             <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Kpi label="Anreisen (schmal)" value={overview.arrivals} />
+              <Kpi label="Pending" value={overview.checkInPending} />
               <Kpi label="Queue" value={overview.checkInQueue} />
+              <Kpi label="Check-in done" value={overview.checkInDone} />
               <Kpi label="Im Haus" value={overview.inHouse} />
-              <Kpi label="Abreisen heute" value={overview.checkOutToday} />
             </div>
           </details>
         </>
@@ -118,9 +117,9 @@ export default function ReceptionArrivalsPage() {
           <p className="p-6 text-sm text-ink-muted">Lädt…</p>
         ) : rows.length === 0 ? (
           <p className="p-6 text-sm text-ink-muted">
-            {overview && overview.checkInPending === 0
-              ? 'EMMA meldet derzeit 0 offene Check-ins für heute.'
-              : 'Keine Reservierungen in der Liste. Bitte erneut synchronisieren (Admin → EMMA).'}
+            {overview && (overview.arrivals || overview.checkInPending) === 0
+              ? 'EMMA meldet derzeit 0 Anreisen für heute.'
+              : 'Keine Anreisen in der Liste. Bitte erneut synchronisieren (Admin → EMMA).'}
           </p>
         ) : (
           <div className="overflow-x-auto">
