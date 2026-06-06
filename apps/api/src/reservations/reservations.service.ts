@@ -16,6 +16,10 @@ import {
   todayIsoDate,
   dateOnlyFromIso,
 } from './reservation-sensitive';
+import {
+  decryptDetailBundle,
+  encryptDetailBundle,
+} from './reservation-detail-bundle';
 
 @Injectable()
 export class ReservationsService {
@@ -211,6 +215,58 @@ export class ReservationsService {
     return detail;
   }
 
+  /** Manually fetch full reservation detail from EMMA (read-only, no draft/lock). */
+  async fetchDetailFromEmma(reservationId: string, hotelId?: string): Promise<ReservationDetail> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const { upsert, bundle } = await this.emma.fetchReservationDetailFromEmma(reservationId, hid);
+    const detailEnc = encryptDetailBundle(this.cipher, bundle);
+    const detailFetchedAt = new Date();
+    const today = dateOnlyFromIso(todayIsoDate());
+
+    const existing = await this.prisma.reservationSnapshot.findUnique({
+      where: { hotelId_reservationId: { hotelId: hid, reservationId } },
+    });
+    const inTodayArrivals =
+      existing?.inTodayArrivals ?? this.isArrivalsToday(upsert, today);
+
+    const snapshotData = {
+      arrivalDate: upsert.arrivalDate,
+      departureDate: upsert.departureDate,
+      roomId: upsert.roomId,
+      checkIn: upsert.checkIn,
+      checkOut: upsert.checkOut,
+      checkInQueue: upsert.checkInQueue,
+      nightsStay: upsert.nightsStay,
+      roomType: upsert.roomType,
+      mealPlan: upsert.mealPlan,
+      tier: upsert.tier,
+      numPax: upsert.numPax,
+      sensitiveEnc: upsert.sensitiveEnc,
+      syncedAt: upsert.syncedAt,
+      detailEnc,
+      detailFetchedAt,
+      inTodayArrivals,
+    };
+
+    if (!existing) {
+      await this.prisma.reservationSnapshot.create({
+        data: {
+          hotelId: hid,
+          reservationId,
+          ...snapshotData,
+        },
+      });
+    } else {
+      await this.prisma.reservationSnapshot.update({
+        where: { id: existing.id },
+        data: snapshotData,
+      });
+    }
+
+    this.log.log(`[Reservations] EMMA detail stored for ${reservationId}`);
+    return this.findOne(reservationId, hid);
+  }
+
   async overview(hotelId?: string): Promise<ReservationOverview> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
     const today = dateOnlyFromIso(todayIsoDate());
@@ -395,6 +451,8 @@ export class ReservationsService {
     checkInQueue: boolean;
     inTodayArrivals: boolean;
     sensitiveEnc: string;
+    detailEnc?: string | null;
+    detailFetchedAt?: Date | null;
     syncedAt: Date;
   }): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
@@ -422,6 +480,7 @@ export class ReservationsService {
       groupName: s?.groupName ?? null,
       syncedAt: row.syncedAt.toISOString(),
       inTodayArrivals: row.inTodayArrivals,
+      detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
     };
   }
 
@@ -442,9 +501,12 @@ export class ReservationsService {
     checkInQueue: boolean;
     inTodayArrivals: boolean;
     sensitiveEnc: string;
+    detailEnc?: string | null;
+    detailFetchedAt?: Date | null;
     syncedAt: Date;
   }): ReservationDetail | null {
     const list = this.toListItem(row);
+    const emmaDetail = decryptDetailBundle(this.cipher, row.detailEnc);
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
     if (!s) {
       return {
@@ -473,6 +535,8 @@ export class ReservationsService {
         numPax3: null,
         numPax4: null,
         checkInQDate: null,
+        detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
+        emmaDetail,
       };
     }
     return {
@@ -501,6 +565,8 @@ export class ReservationsService {
       numPax3: s.numPax3,
       numPax4: s.numPax4,
       checkInQDate: s.checkInQDate,
+      detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
+      emmaDetail,
     };
   }
 }

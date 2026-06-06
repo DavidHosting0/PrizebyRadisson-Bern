@@ -717,6 +717,8 @@ model ReservationSnapshot {
   tier          String?
   numPax        Int?
   sensitiveEnc  String   @db.Text
+  detailEnc     String?  @db.Text
+  detailFetchedAt DateTime?
   syncedAt      DateTime
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

@@ -32,11 +32,118 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function ListSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-border bg-surface-muted/30 p-4">
+      <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
 function reservationStatus(data: ReservationDetail) {
   if (data.checkOut) return { label: 'Ausgecheckt', className: 'bg-surface-muted text-ink-muted' };
   if (data.checkIn) return { label: 'Im Haus', className: 'bg-emerald-100 text-emerald-900' };
   if (data.checkInQueue) return { label: 'Check-in Queue', className: 'bg-amber-100 text-amber-900' };
   return { label: 'Anreise offen', className: 'bg-sky-100 text-sky-900' };
+}
+
+function formatEmmaValue(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    const m = /\/Date\((-?\d+)\)\//.exec(value);
+    if (m) return new Date(parseInt(m[1], 10)).toLocaleString('de-CH');
+    return value.trim() || null;
+  }
+  return JSON.stringify(value);
+}
+
+function RecordGrid({ rows }: { rows: Record<string, unknown>[] }) {
+  if (rows.length === 0) return <p className="text-sm text-ink-muted">Keine Einträge</p>;
+  return (
+    <div className="space-y-3">
+      {rows.map((row, i) => (
+        <div key={i} className="rounded-lg border border-border/60 bg-surface p-3">
+          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {Object.entries(row).map(([key, value]) => {
+              const formatted = formatEmmaValue(value);
+              if (!formatted) return null;
+              return (
+                <div key={key}>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{key}</dt>
+                  <dd className="mt-0.5 text-sm text-ink">{formatted}</dd>
+                </div>
+              );
+            })}
+          </dl>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmmaDetailSections({ emmaDetail }: { emmaDetail: NonNullable<import('@housekeeping/shared').ReservationDetail['emmaDetail']> }) {
+  const r = emmaDetail.reservation;
+  return (
+    <>
+      <Section title="EMMA Reservierung (vollständig)">
+        <Field label="Status" value={formatEmmaValue(r.StatusDesc ?? r.Status)} />
+        <Field label="Rate" value={formatEmmaValue(r.RateDesc ?? r.Rate)} />
+        <Field label="Kontakt" value={formatEmmaValue(r.ContactPerson)} />
+        <Field label="Telefon" value={formatEmmaValue(r.ContactPhone)} />
+        <Field label="E-Mail" value={formatEmmaValue(r.Email)} />
+        <Field label="Land" value={formatEmmaValue(r.Country)} />
+        <Field label="Währung" value={formatEmmaValue(r.Currency)} />
+        <Field label="Garantie" value={formatEmmaValue(r.Guarantee)} />
+        <Field label="Channel" value={formatEmmaValue(r.ChannelId)} />
+        <Field label="Subchannel" value={formatEmmaValue(r.SubchannelId)} />
+        <Field label="Externe Referenz" value={formatEmmaValue(r.ExternalReference)} />
+        <Field label="Voucher" value={formatEmmaValue(r.Voucher)} />
+        <Field label="Storno-Policy" value={formatEmmaValue(r.CancelPolicyDesc ?? r.CancellationPolicy)} />
+        <Field label="TMS Remark" value={formatEmmaValue(r.TMS4CRemark)} />
+        <Field label="Zimmertyp Beschreibung" value={formatEmmaValue(r.RoomTypeDesc)} />
+        <Field label="Total Folio" value={formatEmmaValue(r.TotalAmountDueFolios ?? r.TotalAmountFolios)} />
+      </Section>
+
+      {emmaDetail.guests.length > 0 && (
+        <ListSection title={`Gäste (${emmaDetail.guests.length})`}>
+          <RecordGrid rows={emmaDetail.guests} />
+        </ListSection>
+      )}
+
+      {emmaDetail.creditCards.length > 0 && (
+        <ListSection title={`Kreditkarten (${emmaDetail.creditCards.length})`}>
+          <RecordGrid rows={emmaDetail.creditCards} />
+        </ListSection>
+      )}
+
+      {emmaDetail.preauthorizations.length > 0 && (
+        <ListSection title={`Pre-Authorizations (${emmaDetail.preauthorizations.length})`}>
+          <RecordGrid rows={emmaDetail.preauthorizations} />
+        </ListSection>
+      )}
+
+      {emmaDetail.roomList.length > 0 && (
+        <ListSection title={`Zimmerliste (${emmaDetail.roomList.length})`}>
+          <RecordGrid rows={emmaDetail.roomList} />
+        </ListSection>
+      )}
+
+      {emmaDetail.loyaltyBenefits.length > 0 && (
+        <ListSection title={`Loyalty Benefits (${emmaDetail.loyaltyBenefits.length})`}>
+          <RecordGrid rows={emmaDetail.loyaltyBenefits} />
+        </ListSection>
+      )}
+
+      {emmaDetail.policeRecords.length > 0 && (
+        <ListSection title={`Police Records (${emmaDetail.policeRecords.length})`}>
+          <RecordGrid rows={emmaDetail.policeRecords} />
+        </ListSection>
+      )}
+    </>
+  );
 }
 
 export function ReceptionReservationDetailPanel({
@@ -160,7 +267,15 @@ export function ReceptionReservationDetailPanel({
               <Section title="System">
                 <Field label="Hotel" value={data.hotelId} />
                 <Field label="Zuletzt synchronisiert" value={new Date(data.syncedAt).toLocaleString('de-CH')} />
+                {data.detailFetchedAt && (
+                  <Field
+                    label="EMMA Detail geladen"
+                    value={new Date(data.detailFetchedAt).toLocaleString('de-CH')}
+                  />
+                )}
               </Section>
+
+              {data.emmaDetail && <EmmaDetailSections emmaDetail={data.emmaDetail} />}
             </>
           )}
         </div>

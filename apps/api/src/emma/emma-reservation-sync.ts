@@ -174,7 +174,7 @@ export async function fetchEmmaHotelOverview(
   return null;
 }
 
-function mapRowToUpsert(
+export function mapEmmaReservationRowToUpsert(
   row: Record<string, unknown>,
   cipher: SecretCipherService,
   syncedAt: Date,
@@ -287,7 +287,7 @@ export async function syncEmmaReservationsFromJar(
 
   const rows: ReservationUpsertRow[] = [];
   for (const row of merged.values()) {
-    const mapped = mapRowToUpsert(row, cipher, syncedAt);
+    const mapped = mapEmmaReservationRowToUpsert(row, cipher, syncedAt);
     if (mapped) rows.push(mapped);
   }
 

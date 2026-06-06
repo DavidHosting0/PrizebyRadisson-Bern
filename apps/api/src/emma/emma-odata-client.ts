@@ -307,3 +307,99 @@ export function reservationListBatchPath(
 export function hotelOverviewBatchPath(hotelId: string, sapClient: string): string {
   return `HotelOverview('${hotelId}')?sap-client=${sapClient}`;
 }
+
+function reservationEntityKey(hotelId: string, reservationId: string): string {
+  return `Reservations(HotelId='${hotelId}',ReservationId='${reservationId}')`;
+}
+
+/** Guest $select from EMMA Check-In open-reservation HAR. */
+export const RESERVATION_GUEST_SELECT = [
+  'ClientId',
+  'Name',
+  'Program',
+  'CardNumber',
+  'Stays',
+  'ArrivalDate',
+  'DepartureDate',
+  'MealPlan',
+  'MealPlanUpg',
+  'PaxType',
+  'GuestId',
+  'Gender',
+  'VIPDesc',
+  'Mail',
+  'Telephone',
+  'Category',
+  'MainGuest',
+  'Title',
+  'FirstName',
+  'Surname',
+  'Mobile',
+  'City',
+  'Country',
+  'Region',
+  'TaxNumber',
+  'BirthDate',
+  'Destination',
+  'UnkownDestination',
+  'DestinationAddress',
+  'PostalCode',
+  'Street',
+  'HouseNumber',
+  'Nationality',
+  'BirthPlace',
+  'DocType',
+  'Expeditor',
+  'NumDoc',
+  'DocIssueDate',
+  'DocExpiryDate',
+  'IssueDate',
+  'ExpiryDate',
+  'Profession',
+  'Address',
+  'TaxNumber2',
+  'BirthProvince',
+  'FatherName',
+  'MotherName',
+].join(',');
+
+export function reservationDetailBatchPaths(
+  hotelId: string,
+  reservationId: string,
+  sapClient: string,
+): ODataBatchPartSpec[] {
+  const key = reservationEntityKey(hotelId, reservationId);
+  const guestSelect = encodeURIComponent(RESERVATION_GUEST_SELECT);
+  return [
+    { path: `${key}?sap-client=${sapClient}`, checkInApp: true },
+    {
+      path: `${key}/Guests?sap-client=${sapClient}&$skip=0&$top=999&$select=${guestSelect}`,
+      checkInApp: true,
+    },
+    { path: `${key}/CreditCards?sap-client=${sapClient}&$skip=0&$top=999`, checkInApp: true },
+    {
+      path: `${key}/Preauthorizations?sap-client=${sapClient}&$skip=0&$top=999`,
+      checkInApp: true,
+    },
+    {
+      path: `${key}/RoomList?sap-client=${sapClient}&$skip=0&$top=999&$orderby=${encodeURIComponent('Floor asc')}`,
+      checkInApp: true,
+    },
+    {
+      path: `${key}/ResLoyaltyBenefits?sap-client=${sapClient}&$skip=0&$top=999`,
+      checkInApp: true,
+    },
+    { path: `${key}/PoliceRecords?sap-client=${sapClient}&$skip=0&$top=999`, checkInApp: true },
+  ];
+}
+
+export function parseODataEntityJson(body: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(body) as { d?: Record<string, unknown> & { results?: unknown[] } };
+    const d = parsed.d;
+    if (!d || Array.isArray(d.results)) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}

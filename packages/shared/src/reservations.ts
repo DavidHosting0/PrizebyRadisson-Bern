@@ -24,6 +24,7 @@ export type ReservationListItem = {
   groupName: string | null;
   syncedAt: string;
   inTodayArrivals?: boolean;
+  detailFetchedAt?: string | null;
 };
 
 export type ReservationDetail = ReservationListItem & {
@@ -51,6 +52,20 @@ export type ReservationDetail = ReservationListItem & {
   numPax3: number | null;
   numPax4: number | null;
   checkInQDate: string | null;
+  detailFetchedAt: string | null;
+  emmaDetail: ReservationEmmaDetailBundle | null;
+};
+
+/** Full EMMA reservation payload fetched on manual open (encrypted at rest). */
+export type ReservationEmmaDetailBundle = {
+  fetchedAt: string;
+  reservation: Record<string, unknown>;
+  guests: Record<string, unknown>[];
+  creditCards: Record<string, unknown>[];
+  preauthorizations: Record<string, unknown>[];
+  roomList: Record<string, unknown>[];
+  loyaltyBenefits: Record<string, unknown>[];
+  policeRecords: Record<string, unknown>[];
 };
 
 export type ReservationOverview = {

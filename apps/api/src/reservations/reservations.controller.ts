@@ -42,6 +42,13 @@ export class ReservationsController {
     return this.reservations.syncFromEmma(date);
   }
 
+  @Post(':reservationId/fetch-detail')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_SYNC)
+  fetchDetail(@Param('reservationId') reservationId: string, @Query('hotelId') hotelId?: string) {
+    return this.reservations.fetchDetailFromEmma(reservationId, hotelId);
+  }
+
   @Get(':reservationId')
   @RequirePermissions(PermissionCode.RESERVATIONS_READ)
   detail(@Param('reservationId') reservationId: string, @Query('hotelId') hotelId?: string) {

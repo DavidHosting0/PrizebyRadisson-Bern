@@ -20,6 +20,8 @@ export default function ReceptionArrivalsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [fetchingId, setFetchingId] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['arrivals', search],
@@ -49,6 +51,25 @@ export default function ReceptionArrivalsPage() {
       void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
       void queryClient.invalidateQueries({ queryKey: ['reservations'] });
     },
+  });
+
+  const fetchDetailMut = useMutation({
+    mutationFn: (reservationId: string) =>
+      api(`/reservations/${reservationId}/fetch-detail`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onMutate: (reservationId) => {
+      setFetchingId(reservationId);
+      setFetchError(null);
+    },
+    onSuccess: (_data, reservationId) => {
+      void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
+      void queryClient.invalidateQueries({ queryKey: ['reservation', reservationId] });
+      setSelectedId(reservationId);
+    },
+    onError: (err) => setFetchError((err as Error).message),
+    onSettled: () => setFetchingId(null),
   });
 
   const rows = listQuery.data ?? [];
@@ -123,7 +144,7 @@ export default function ReceptionArrivalsPage() {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[880px] text-left text-sm">
               <thead className="border-b border-border bg-surface-muted/40 text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Gast</th>
@@ -134,6 +155,7 @@ export default function ReceptionArrivalsPage() {
                   <th className="px-4 py-3 font-semibold">Pax</th>
                   <th className="px-4 py-3 font-semibold">VIP</th>
                   <th className="px-4 py-3 font-semibold">Karte</th>
+                  <th className="px-4 py-3 font-semibold">EMMA</th>
                 </tr>
               </thead>
               <tbody>
@@ -153,6 +175,28 @@ export default function ReceptionArrivalsPage() {
                     <td className="px-4 py-3 tabular-nums">{r.numPax ?? '—'}</td>
                     <td className="px-4 py-3">{r.vipDesc ?? r.tier ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{r.creditCard ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fetchDetailMut.mutate(r.reservationId);
+                        }}
+                        disabled={fetchingId === r.reservationId}
+                        className="whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
+                        title={
+                          r.detailFetchedAt
+                            ? `Zuletzt geladen: ${new Date(r.detailFetchedAt).toLocaleString('de-CH')}`
+                            : 'Vollständige Reservierungsdaten von EMMA laden'
+                        }
+                      >
+                        {fetchingId === r.reservationId
+                          ? 'Lädt…'
+                          : r.detailFetchedAt
+                            ? 'EMMA ↻'
+                            : 'EMMA öffnen'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -164,6 +208,8 @@ export default function ReceptionArrivalsPage() {
       {syncMut.isError && (
         <p className="text-sm text-rose-700">{(syncMut.error as Error).message}</p>
       )}
+
+      {fetchError && <p className="text-sm text-rose-700">{fetchError}</p>}
 
       <ReceptionReservationDetailPanel
         reservationId={selectedId}

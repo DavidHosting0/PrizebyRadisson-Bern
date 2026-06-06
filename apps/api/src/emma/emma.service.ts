@@ -30,6 +30,7 @@ import {
   type EmmaReservationSyncResult,
   type ReservationUpsertRow,
 } from './emma-reservation-sync';
+import { fetchEmmaReservationDetailFromJar } from './emma-reservation-detail-fetch';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
 
 /**
@@ -389,6 +390,40 @@ export class EmmaService {
       hotelId,
       sapClient,
       arrivalDateIso: runOpts.arrivalDateIso ?? todayIsoDate(),
+      debug: emmaDebug.verbose ? emmaDebug : undefined,
+    });
+  }
+
+  /** Read-only EMMA reservation detail (main entity + nav properties). No draft/lock. */
+  async fetchReservationDetailFromEmma(
+    reservationId: string,
+    hotelId?: string,
+  ) {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const hid =
+      hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+
+    let jar = await this.loadEmmaHttpJar();
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[Reservations] HTTP session expired (${probe.reason}) — refresh`);
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    return fetchEmmaReservationDetailFromJar(jar, baseUrl, this.cipher, {
+      hotelId: hid,
+      reservationId,
+      sapClient,
       debug: emmaDebug.verbose ? emmaDebug : undefined,
     });
   }
