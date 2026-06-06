@@ -21,6 +21,7 @@ export default function ReceptionArrivalsPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fetchingId, setFetchingId] = useState<string | null>(null);
+  const [fetchingFolioId, setFetchingFolioId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const listQuery = useQuery({
@@ -70,6 +71,25 @@ export default function ReceptionArrivalsPage() {
     },
     onError: (err) => setFetchError((err as Error).message),
     onSettled: () => setFetchingId(null),
+  });
+
+  const fetchFolioMut = useMutation({
+    mutationFn: (reservationId: string) =>
+      api(`/reservations/${reservationId}/fetch-folio`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onMutate: (reservationId) => {
+      setFetchingFolioId(reservationId);
+      setFetchError(null);
+    },
+    onSuccess: (_data, reservationId) => {
+      void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
+      void queryClient.invalidateQueries({ queryKey: ['reservation', reservationId] });
+      setSelectedId(reservationId);
+    },
+    onError: (err) => setFetchError((err as Error).message),
+    onSettled: () => setFetchingFolioId(null),
   });
 
   const rows = listQuery.data ?? [];
@@ -144,7 +164,7 @@ export default function ReceptionArrivalsPage() {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="border-b border-border bg-surface-muted/40 text-xs uppercase tracking-wide text-ink-muted">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Gast</th>
@@ -176,26 +196,48 @@ export default function ReceptionArrivalsPage() {
                     <td className="px-4 py-3">{r.vipDesc ?? r.tier ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{r.creditCard ?? '—'}</td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fetchDetailMut.mutate(r.reservationId);
-                        }}
-                        disabled={fetchingId === r.reservationId}
-                        className="whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
-                        title={
-                          r.detailFetchedAt
-                            ? `Zuletzt geladen: ${new Date(r.detailFetchedAt).toLocaleString('de-CH')}`
-                            : 'Vollständige Reservierungsdaten von EMMA laden'
-                        }
-                      >
-                        {fetchingId === r.reservationId
-                          ? 'Lädt…'
-                          : r.detailFetchedAt
-                            ? 'EMMA ↻'
-                            : 'EMMA öffnen'}
-                      </button>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchDetailMut.mutate(r.reservationId);
+                          }}
+                          disabled={fetchingId === r.reservationId || fetchingFolioId === r.reservationId}
+                          className="whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
+                          title={
+                            r.detailFetchedAt
+                              ? `Detail zuletzt: ${new Date(r.detailFetchedAt).toLocaleString('de-CH')}`
+                              : 'Reservierungsdetails von EMMA laden'
+                          }
+                        >
+                          {fetchingId === r.reservationId
+                            ? 'Lädt…'
+                            : r.detailFetchedAt
+                              ? 'EMMA ↻'
+                              : 'EMMA öffnen'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchFolioMut.mutate(r.reservationId);
+                          }}
+                          disabled={fetchingFolioId === r.reservationId || fetchingId === r.reservationId}
+                          className="whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+                          title={
+                            r.folioFetchedAt
+                              ? `Folio zuletzt: ${new Date(r.folioFetchedAt).toLocaleString('de-CH')}`
+                              : 'Folio Management von EMMA laden (Charges)'
+                          }
+                        >
+                          {fetchingFolioId === r.reservationId
+                            ? 'Lädt…'
+                            : r.folioFetchedAt
+                              ? 'Folio ↻'
+                              : 'Folio'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

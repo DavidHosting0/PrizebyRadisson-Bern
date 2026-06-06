@@ -719,6 +719,8 @@ model ReservationSnapshot {
   sensitiveEnc  String   @db.Text
   detailEnc     String?  @db.Text
   detailFetchedAt DateTime?
+  folioEnc      String?  @db.Text
+  folioFetchedAt DateTime?
   syncedAt      DateTime
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

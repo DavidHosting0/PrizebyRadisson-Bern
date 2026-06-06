@@ -403,3 +403,33 @@ export function parseODataEntityJson(body: string): Record<string, unknown> | nu
     return null;
   }
 }
+
+/** Folio Management $expand from EMMA folio HAR (read-only GET). */
+export const RESERVATION_FOLIO_EXPAND = [
+  'MainCustomer',
+  'Folios',
+  'Folios/Details',
+  'FolioDetails',
+  'Messages',
+  'Amount',
+  'LoanedItems',
+  'Notices',
+  'MainGuest',
+  'RoomDetails',
+  'Guests',
+].join(',');
+
+export function reservationFolioBatchPaths(
+  hotelId: string,
+  reservationId: string,
+  sapClient: string,
+): ODataBatchPartSpec[] {
+  const key = reservationEntityKey(hotelId, reservationId);
+  const expand = encodeURIComponent(RESERVATION_FOLIO_EXPAND);
+  const hotelFilter = encodeODataFilter(`HotelId eq '${hotelId}'`);
+  return [
+    { path: `${key}?sap-client=${sapClient}&$expand=${expand}` },
+    { path: `Remarks(HotelId='${hotelId}',ReservationId='${reservationId}',Id='ALL')?sap-client=${sapClient}` },
+    { path: `DepositConcept?sap-client=${sapClient}&$filter=${hotelFilter}` },
+  ];
+}

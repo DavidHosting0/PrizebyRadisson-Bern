@@ -20,6 +20,10 @@ import {
   decryptDetailBundle,
   encryptDetailBundle,
 } from './reservation-detail-bundle';
+import {
+  decryptFolioBundle,
+  encryptFolioBundle,
+} from './reservation-folio-bundle';
 
 @Injectable()
 export class ReservationsService {
@@ -230,19 +234,7 @@ export class ReservationsService {
       existing?.inTodayArrivals ?? this.isArrivalsToday(upsert, today);
 
     const snapshotData = {
-      arrivalDate: upsert.arrivalDate,
-      departureDate: upsert.departureDate,
-      roomId: upsert.roomId,
-      checkIn: upsert.checkIn,
-      checkOut: upsert.checkOut,
-      checkInQueue: upsert.checkInQueue,
-      nightsStay: upsert.nightsStay,
-      roomType: upsert.roomType,
-      mealPlan: upsert.mealPlan,
-      tier: upsert.tier,
-      numPax: upsert.numPax,
-      sensitiveEnc: upsert.sensitiveEnc,
-      syncedAt: upsert.syncedAt,
+      ...this.snapshotFieldsFromUpsert(upsert),
       detailEnc,
       detailFetchedAt,
       inTodayArrivals,
@@ -265,6 +257,65 @@ export class ReservationsService {
 
     this.log.log(`[Reservations] EMMA detail stored for ${reservationId}`);
     return this.findOne(reservationId, hid);
+  }
+
+  /** Manually fetch Folio Management data from EMMA (read-only, no draft/lock). */
+  async fetchFolioFromEmma(reservationId: string, hotelId?: string): Promise<ReservationDetail> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const { upsert, bundle } = await this.emma.fetchReservationFolioFromEmma(reservationId, hid);
+    const folioEnc = encryptFolioBundle(this.cipher, bundle);
+    const folioFetchedAt = new Date();
+
+    const existing = await this.prisma.reservationSnapshot.findUnique({
+      where: { hotelId_reservationId: { hotelId: hid, reservationId } },
+    });
+
+    if (!existing) {
+      if (!upsert) {
+        throw new NotFoundException('Reservation not found locally and EMMA folio mapping failed');
+      }
+      const today = dateOnlyFromIso(todayIsoDate());
+      await this.prisma.reservationSnapshot.create({
+        data: {
+          hotelId: hid,
+          reservationId,
+          ...this.snapshotFieldsFromUpsert(upsert),
+          inTodayArrivals: this.isArrivalsToday(upsert, today),
+          folioEnc,
+          folioFetchedAt,
+        },
+      });
+    } else {
+      const data: Prisma.ReservationSnapshotUpdateInput = { folioEnc, folioFetchedAt };
+      if (upsert) Object.assign(data, this.snapshotFieldsFromUpsert(upsert));
+      await this.prisma.reservationSnapshot.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
+
+    this.log.log(
+      `[Reservations] EMMA folio stored for ${reservationId} (${bundle.charges.length} charges)`,
+    );
+    return this.findOne(reservationId, hid);
+  }
+
+  private snapshotFieldsFromUpsert(upsert: ReservationUpsertRow) {
+    return {
+      arrivalDate: upsert.arrivalDate,
+      departureDate: upsert.departureDate,
+      roomId: upsert.roomId,
+      checkIn: upsert.checkIn,
+      checkOut: upsert.checkOut,
+      checkInQueue: upsert.checkInQueue,
+      nightsStay: upsert.nightsStay,
+      roomType: upsert.roomType,
+      mealPlan: upsert.mealPlan,
+      tier: upsert.tier,
+      numPax: upsert.numPax,
+      sensitiveEnc: upsert.sensitiveEnc,
+      syncedAt: upsert.syncedAt,
+    };
   }
 
   async overview(hotelId?: string): Promise<ReservationOverview> {
@@ -453,6 +504,8 @@ export class ReservationsService {
     sensitiveEnc: string;
     detailEnc?: string | null;
     detailFetchedAt?: Date | null;
+    folioEnc?: string | null;
+    folioFetchedAt?: Date | null;
     syncedAt: Date;
   }): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
@@ -481,6 +534,7 @@ export class ReservationsService {
       syncedAt: row.syncedAt.toISOString(),
       inTodayArrivals: row.inTodayArrivals,
       detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
+      folioFetchedAt: row.folioFetchedAt?.toISOString() ?? null,
     };
   }
 
@@ -503,10 +557,13 @@ export class ReservationsService {
     sensitiveEnc: string;
     detailEnc?: string | null;
     detailFetchedAt?: Date | null;
+    folioEnc?: string | null;
+    folioFetchedAt?: Date | null;
     syncedAt: Date;
   }): ReservationDetail | null {
     const list = this.toListItem(row);
     const emmaDetail = decryptDetailBundle(this.cipher, row.detailEnc);
+    const emmaFolio = decryptFolioBundle(this.cipher, row.folioEnc);
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
     if (!s) {
       return {
@@ -537,6 +594,8 @@ export class ReservationsService {
         checkInQDate: null,
         detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
         emmaDetail,
+        folioFetchedAt: row.folioFetchedAt?.toISOString() ?? null,
+        emmaFolio,
       };
     }
     return {
@@ -567,6 +626,8 @@ export class ReservationsService {
       checkInQDate: s.checkInQDate,
       detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
       emmaDetail,
+      folioFetchedAt: row.folioFetchedAt?.toISOString() ?? null,
+      emmaFolio,
     };
   }
 }

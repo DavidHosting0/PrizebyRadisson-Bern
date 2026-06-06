@@ -25,6 +25,7 @@ export type ReservationListItem = {
   syncedAt: string;
   inTodayArrivals?: boolean;
   detailFetchedAt?: string | null;
+  folioFetchedAt?: string | null;
 };
 
 export type ReservationDetail = ReservationListItem & {
@@ -54,6 +55,43 @@ export type ReservationDetail = ReservationListItem & {
   checkInQDate: string | null;
   detailFetchedAt: string | null;
   emmaDetail: ReservationEmmaDetailBundle | null;
+  folioFetchedAt: string | null;
+  emmaFolio: ReservationEmmaFolioBundle | null;
+};
+
+/** Normalized folio charge row for UI. */
+export type ReservationFolioCharge = {
+  id: string;
+  folioId: string | null;
+  concept: string | null;
+  conceptNature: string | null;
+  description: string | null;
+  guestName: string | null;
+  productionDate: string | null;
+  chargeType: string | null;
+  status: string | null;
+  quantity: string | null;
+  price: string | null;
+  priceWithTax: string | null;
+  amount: string | null;
+  taxAmount: string | null;
+  currency: string | null;
+};
+
+/** EMMA Folio Management payload (encrypted at rest). */
+export type ReservationEmmaFolioBundle = {
+  fetchedAt: string;
+  reservation: Record<string, unknown>;
+  folios: Record<string, unknown>[];
+  charges: ReservationFolioCharge[];
+  amount: Record<string, unknown> | null;
+  mainCustomer: Record<string, unknown> | null;
+  mainGuest: Record<string, unknown> | null;
+  loanedItems: Record<string, unknown>[];
+  notices: Record<string, unknown>[];
+  messages: Record<string, unknown>[];
+  remarks: Record<string, unknown> | null;
+  depositConcepts?: Record<string, unknown>[];
 };
 
 /** Full EMMA reservation payload fetched on manual open (encrypted at rest). */

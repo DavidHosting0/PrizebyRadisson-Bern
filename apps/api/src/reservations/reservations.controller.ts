@@ -49,6 +49,13 @@ export class ReservationsController {
     return this.reservations.fetchDetailFromEmma(reservationId, hotelId);
   }
 
+  @Post(':reservationId/fetch-folio')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_SYNC)
+  fetchFolio(@Param('reservationId') reservationId: string, @Query('hotelId') hotelId?: string) {
+    return this.reservations.fetchFolioFromEmma(reservationId, hotelId);
+  }
+
   @Get(':reservationId')
   @RequirePermissions(PermissionCode.RESERVATIONS_READ)
   detail(@Param('reservationId') reservationId: string, @Query('hotelId') hotelId?: string) {
