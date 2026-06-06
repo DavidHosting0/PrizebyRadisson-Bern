@@ -1,11 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { ReservationListItem, ReservationOverview } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
-import { ReceptionReservationDetailPanel } from '@/components/reception/ReceptionReservationDetailPanel';
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
@@ -17,12 +17,9 @@ function Kpi({ label, value }: { label: string; value: number }) {
 }
 
 export default function ReceptionArrivalsPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [fetchingId, setFetchingId] = useState<string | null>(null);
-  const [fetchingFolioId, setFetchingFolioId] = useState<string | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['arrivals', search],
@@ -52,44 +49,6 @@ export default function ReceptionArrivalsPage() {
       void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
       void queryClient.invalidateQueries({ queryKey: ['reservations'] });
     },
-  });
-
-  const fetchDetailMut = useMutation({
-    mutationFn: (reservationId: string) =>
-      api(`/reservations/${reservationId}/fetch-detail`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      }),
-    onMutate: (reservationId) => {
-      setFetchingId(reservationId);
-      setFetchError(null);
-    },
-    onSuccess: (_data, reservationId) => {
-      void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
-      void queryClient.invalidateQueries({ queryKey: ['reservation', reservationId] });
-      setSelectedId(reservationId);
-    },
-    onError: (err) => setFetchError((err as Error).message),
-    onSettled: () => setFetchingId(null),
-  });
-
-  const fetchFolioMut = useMutation({
-    mutationFn: (reservationId: string) =>
-      api(`/reservations/${reservationId}/fetch-folio`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      }),
-    onMutate: (reservationId) => {
-      setFetchingFolioId(reservationId);
-      setFetchError(null);
-    },
-    onSuccess: (_data, reservationId) => {
-      void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
-      void queryClient.invalidateQueries({ queryKey: ['reservation', reservationId] });
-      setSelectedId(reservationId);
-    },
-    onError: (err) => setFetchError((err as Error).message),
-    onSettled: () => setFetchingFolioId(null),
   });
 
   const rows = listQuery.data ?? [];
@@ -175,16 +134,12 @@ export default function ReceptionArrivalsPage() {
                   <th className="px-4 py-3 font-semibold">Pax</th>
                   <th className="px-4 py-3 font-semibold">VIP</th>
                   <th className="px-4 py-3 font-semibold">Karte</th>
-                  <th className="px-4 py-3 font-semibold">EMMA</th>
+                  <th className="px-4 py-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="cursor-pointer border-b border-border/60 hover:bg-surface-muted/30"
-                    onClick={() => setSelectedId(r.reservationId)}
-                  >
+                  <tr key={r.id} className="border-b border-border/60 hover:bg-surface-muted/30">
                     <td className="px-4 py-3 font-medium text-ink">{r.mainGuestName ?? '—'}</td>
                     <td className="px-4 py-3 tabular-nums text-ink-muted">{r.reservationId}</td>
                     <td className="px-4 py-3 tabular-nums">{r.roomId ?? '—'}</td>
@@ -195,49 +150,16 @@ export default function ReceptionArrivalsPage() {
                     <td className="px-4 py-3 tabular-nums">{r.numPax ?? '—'}</td>
                     <td className="px-4 py-3">{r.vipDesc ?? r.tier ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{r.creditCard ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fetchDetailMut.mutate(r.reservationId);
-                          }}
-                          disabled={fetchingId === r.reservationId || fetchingFolioId === r.reservationId}
-                          className="whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
-                          title={
-                            r.detailFetchedAt
-                              ? `Detail zuletzt: ${new Date(r.detailFetchedAt).toLocaleString('de-CH')}`
-                              : 'Reservierungsdetails von EMMA laden'
-                          }
-                        >
-                          {fetchingId === r.reservationId
-                            ? 'Lädt…'
-                            : r.detailFetchedAt
-                              ? 'EMMA ↻'
-                              : 'EMMA öffnen'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fetchFolioMut.mutate(r.reservationId);
-                          }}
-                          disabled={fetchingFolioId === r.reservationId || fetchingId === r.reservationId}
-                          className="whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50"
-                          title={
-                            r.folioFetchedAt
-                              ? `Folio zuletzt: ${new Date(r.folioFetchedAt).toLocaleString('de-CH')}`
-                              : 'Folio Management von EMMA laden (Charges)'
-                          }
-                        >
-                          {fetchingFolioId === r.reservationId
-                            ? 'Lädt…'
-                            : r.folioFetchedAt
-                              ? 'Folio ↻'
-                              : 'Folio'}
-                        </button>
-                      </div>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/r/reservations/${r.reservationId}?from=arrivals`)
+                        }
+                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted"
+                      >
+                        Ansehen
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -250,14 +172,6 @@ export default function ReceptionArrivalsPage() {
       {syncMut.isError && (
         <p className="text-sm text-rose-700">{(syncMut.error as Error).message}</p>
       )}
-
-      {fetchError && <p className="text-sm text-rose-700">{fetchError}</p>}
-
-      <ReceptionReservationDetailPanel
-        reservationId={selectedId}
-        open={!!selectedId}
-        onClose={() => setSelectedId(null)}
-      />
     </div>
   );
 }

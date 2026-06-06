@@ -1,11 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { ReservationListItem } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
-import { ReceptionReservationDetailPanel } from '@/components/reception/ReceptionReservationDetailPanel';
 
 function statusLabel(r: ReservationListItem) {
   if (r.checkOut) return { text: 'Ausgecheckt', className: 'text-ink-muted' };
@@ -15,9 +15,9 @@ function statusLabel(r: ReservationListItem) {
 }
 
 export default function ReceptionReservationsPage() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const listQuery = useQuery({
     queryKey: ['reservations', 'all', debouncedSearch],
@@ -123,10 +123,12 @@ export default function ReceptionReservationsPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
-                          onClick={() => setSelectedId(r.reservationId)}
+                          onClick={() =>
+                            router.push(`/r/reservations/${r.reservationId}?from=all`)
+                          }
                           className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted"
                         >
-                          Details
+                          Ansehen
                         </button>
                       </td>
                     </tr>
@@ -141,12 +143,6 @@ export default function ReceptionReservationsPage() {
       {listQuery.isError && (
         <p className="text-sm text-rose-700">{(listQuery.error as Error).message}</p>
       )}
-
-      <ReceptionReservationDetailPanel
-        reservationId={selectedId}
-        open={!!selectedId}
-        onClose={() => setSelectedId(null)}
-      />
     </div>
   );
 }
