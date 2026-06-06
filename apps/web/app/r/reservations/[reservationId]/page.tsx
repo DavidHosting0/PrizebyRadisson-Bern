@@ -43,8 +43,10 @@ export default function ReservationDetailPage() {
   const searchParams = useSearchParams();
   const reservationId = params.reservationId as string;
   const from = searchParams.get('from');
-  const backHref = from === 'arrivals' ? '/r/arrivals' : '/r/reservations';
-  const backLabel = from === 'arrivals' ? 'Anreisen' : 'Reservierungen';
+  const backHref =
+    from === 'arrivals' ? '/r/arrivals' : from === 'in-house' ? '/r/in-house' : '/r/reservations';
+  const backLabel =
+    from === 'arrivals' ? 'Anreisen' : from === 'in-house' ? 'Im Haus' : 'Reservierungen';
 
   const canSync = usePermission('RESERVATIONS_SYNC');
   const [activeTab, setActiveTab] = useState<ReservationDetailTab>('overview');

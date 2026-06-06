@@ -23,6 +23,7 @@ const nav = [
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
   { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
   { href: '/r/arrivals', label: 'Arrivals', icon: IconCalendar },
+  { href: '/r/in-house', label: 'Im Haus', icon: IconInHouse },
   { href: '/r/reservations', label: 'Reservations', icon: IconReservations },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
   { href: '/r/chat', label: 'Team chat', icon: IconChat },
@@ -113,6 +114,16 @@ function IconReservations({ className }: { className?: string }) {
       />
       <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.75" />
       <path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconInHouse({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M3 21V9l9-6 9 6v12" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9 21v-6h6v6" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="11" r="1.5" fill="currentColor" />
     </svg>
   );
 }

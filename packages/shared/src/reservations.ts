@@ -26,6 +26,11 @@ export type ReservationListItem = {
   inTodayArrivals?: boolean;
   detailFetchedAt?: string | null;
   folioFetchedAt?: string | null;
+  /** Populated from EMMA In House sync (sensitive payload). */
+  stayover?: boolean;
+  expectedDepartureTime?: string | null;
+  isDepartureToday?: boolean;
+  ocoDone?: boolean;
 };
 
 export type ReservationDetail = ReservationListItem & {

@@ -7,6 +7,7 @@ import type {
   ReservationSyncStatus,
   ReservationTab,
 } from '@housekeeping/shared';
+import { compareRoomNumbers } from '@housekeeping/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { EmmaService } from '../emma/emma.service';
@@ -194,6 +195,22 @@ export class ReservationsService {
     });
 
     const mapped = rows.map((r) => this.toListItem(r));
+
+    if (opts.tab === 'inhouse') {
+      mapped.sort((a, b) => {
+        const ra = a.roomId?.trim() ?? '';
+        const rb = b.roomId?.trim() ?? '';
+        if (ra && rb) {
+          const cmp = compareRoomNumbers(ra, rb);
+          if (cmp !== 0) return cmp;
+        } else if (ra && !rb) return -1;
+        else if (!ra && rb) return 1;
+        return (a.mainGuestName ?? a.reservationId).localeCompare(
+          b.mainGuestName ?? b.reservationId,
+          'de',
+        );
+      });
+    }
 
     if (!q) return mapped;
     return mapped.filter(
@@ -509,6 +526,8 @@ export class ReservationsService {
     syncedAt: Date;
   }): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
+    const departureDate = row.departureDate.toISOString().slice(0, 10);
+    const today = todayIsoDate();
     return {
       id: row.id,
       hotelId: row.hotelId,
@@ -516,7 +535,7 @@ export class ReservationsService {
       roomId: row.roomId,
       mainGuestName: s?.mainGuestName ?? null,
       arrivalDate: row.arrivalDate.toISOString().slice(0, 10),
-      departureDate: row.departureDate.toISOString().slice(0, 10),
+      departureDate,
       nightsStay: row.nightsStay,
       roomType: row.roomType,
       mealPlan: row.mealPlan,
@@ -535,6 +554,10 @@ export class ReservationsService {
       inTodayArrivals: row.inTodayArrivals,
       detailFetchedAt: row.detailFetchedAt?.toISOString() ?? null,
       folioFetchedAt: row.folioFetchedAt?.toISOString() ?? null,
+      stayover: s?.stayover ?? false,
+      expectedDepartureTime: s?.expectedDepartureTime ?? null,
+      isDepartureToday: departureDate === today,
+      ocoDone: s?.ocoDone ?? false,
     };
   }
 
