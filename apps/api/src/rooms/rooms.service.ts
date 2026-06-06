@@ -26,6 +26,7 @@ import { S3Service } from '../storage/s3.service';
 import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
 import { EmmaService } from '../emma/emma.service';
 import { readEmmaMetadata } from '../emma/emma-room-status-sync';
+import { ReservationsService } from '../reservations/reservations.service';
 
 type RoomViewer = User & { effectivePermissions?: PermissionCode[] };
 
@@ -40,14 +41,20 @@ export class RoomsService {
     @Optional()
     @Inject(forwardRef(() => EmmaService))
     private readonly emma?: EmmaService,
+    @Optional()
+    @Inject(forwardRef(() => ReservationsService))
+    private readonly reservations?: ReservationsService,
   ) {}
 
   private emmaAfterRoomActivity(source: string) {
     this.emma?.scheduleRoomStatusSync(source);
   }
 
-  private emmaOnRoomsViewed(source: string) {
+  private emmaOnRoomsViewed(source: string, viewer?: RoomViewer) {
     this.emma?.scheduleRoomStatusSyncOnView(source);
+    if (this.canViewOccupancy(viewer)) {
+      this.reservations?.scheduleSyncOnView(source);
+    }
   }
 
   async findAll(
@@ -56,6 +63,7 @@ export class RoomsService {
   ) {
     this.emmaOnRoomsViewed(
       query.mine ? 'rooms.list.mine' : query.floor != null ? 'rooms.list.floor' : 'rooms.list',
+      user,
     );
     const where: Prisma.RoomWhereInput = {};
     if (query.floor != null) where.floor = query.floor;
@@ -96,7 +104,7 @@ export class RoomsService {
   }
 
   async findOne(id: string, viewer?: RoomViewer) {
-    this.emmaOnRoomsViewed('rooms.detail');
+    this.emmaOnRoomsViewed('rooms.detail', viewer);
     const room = await this.prisma.room.findUnique({
       where: { id },
       include: {
@@ -392,7 +400,13 @@ export class RoomsService {
   }
 
   private canViewOccupancy(viewer?: RoomViewer): boolean {
-    return viewer?.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ) ?? false;
+    if (!viewer) return false;
+    if (viewer.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ)) return true;
+    return (
+      viewer.role === UserRole.SUPERVISOR ||
+      viewer.role === UserRole.RECEPTION ||
+      viewer.role === UserRole.ADMIN
+    );
   }
 
   private async attachOccupancy<T extends { roomNumber: string }>(

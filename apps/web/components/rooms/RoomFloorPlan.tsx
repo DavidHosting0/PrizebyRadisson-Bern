@@ -58,9 +58,9 @@ function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) 
       className={roomTileClass(room.derivedStatus)}
       onClick={() => onRoomClick(room.id)}
     >
-      <span className="block text-sm font-semibold tabular-nums text-ink">{room.roomNumber}</span>
-      <RoomOccupancyGuestLine occupancy={room.occupancy} compact />
-      <RoomOccupancyBadges occupancy={room.occupancy} />
+      <span className="block text-sm font-semibold tabular-nums">{room.roomNumber}</span>
+      <RoomOccupancyGuestLine occupancy={room.occupancy} compact onColor />
+      <RoomOccupancyBadges occupancy={room.occupancy} onColor />
       <span className="mt-1 flex justify-center">
         <StatusBadge status={room.derivedStatus} variant="onColor" />
       </span>
@@ -72,7 +72,9 @@ function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => vo
   const guest = room.occupancy?.mainGuestName?.trim();
   const title = guest
     ? `Room ${room.roomNumber} · ${guest} · ${room.derivedStatus.replace(/_/g, ' ')}`
-    : `Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`;
+    : room.occupancy
+      ? `Room ${room.roomNumber} · belegt · ${room.derivedStatus.replace(/_/g, ' ')}`
+      : `Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`;
   return (
     <button
       key={room.id}
@@ -82,11 +84,12 @@ function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => vo
       title={title}
     >
       <span>{room.roomNumber}</span>
-      {guest && (
-        <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-90">
-          {guest.split(',')[0]?.trim() ?? guest}
+      {room.occupancy && (
+        <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
+          {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
         </span>
       )}
+      <RoomOccupancyBadges occupancy={room.occupancy} onColor />
     </button>
   );
 }
@@ -322,19 +325,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 gridTemplateColumns: `repeat(${floorPlanGridCols(unplaced.length)}, minmax(0, 1fr))`,
               }}
             >
-              {unplaced.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className={roomTileClass(r.derivedStatus)}
-                  onClick={() => onRoomClick(r.id)}
-                >
-                  <span className="block text-sm font-semibold tabular-nums text-ink">{r.roomNumber}</span>
-                  <span className="mt-1 flex justify-center">
-                    <StatusBadge status={r.derivedStatus} variant="onColor" />
-                  </span>
-                </button>
-              ))}
+              {unplaced.map((r) => roomButton(r, onRoomClick))}
             </div>
           </section>
         )}
@@ -511,19 +502,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 gridTemplateColumns: `repeat(${floorPlanGridCols(unplaced.length)}, minmax(0, 1fr))`,
               }}
             >
-              {unplaced.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className={roomTileClass(r.derivedStatus)}
-                  onClick={() => onRoomClick(r.id)}
-                >
-                  <span className="block text-sm font-semibold tabular-nums text-ink">{r.roomNumber}</span>
-                  <span className="mt-1 flex justify-center">
-                    <StatusBadge status={r.derivedStatus} variant="onColor" />
-                  </span>
-                </button>
-              ))}
+              {unplaced.map((r) => roomButton(r, onRoomClick))}
             </div>
           </section>
         )}

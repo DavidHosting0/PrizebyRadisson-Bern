@@ -12,12 +12,14 @@ import {
   EMMA_ODATA_HOTEL_SRV,
   EMMA_ODATA_RSRVS_SRV,
   hotelOverviewBatchPath,
+  INHOUSE_STATUS_CODES,
   inHouseListBatchPath,
   parseODataBatchResponse,
   parseODataResultsJson,
   reservationListBatchPath,
   type ReservationListTab,
 } from './emma-odata-client';
+import { normalizeEmmaRoomNumber } from './emma-room-status-sync';
 import type { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import {
   buildSensitivePayload,
@@ -249,7 +251,12 @@ export function mapEmmaReservationRowToUpsert(
 
   const roomRaw = row.RoomId;
   const roomId =
-    roomRaw != null && String(roomRaw).trim() !== '' ? String(roomRaw).trim() : null;
+    roomRaw != null && String(roomRaw).trim() !== ''
+      ? normalizeEmmaRoomNumber(String(roomRaw).trim())
+      : null;
+
+  const status = row.Status != null ? String(row.Status).trim() : '';
+  const inHouseByStatus = (INHOUSE_STATUS_CODES as readonly string[]).includes(status);
 
   const sensitive = buildSensitivePayload(row, log);
 
@@ -259,7 +266,7 @@ export function mapEmmaReservationRowToUpsert(
     arrivalDate,
     departureDate,
     roomId,
-    checkIn: row.CheckIn === true,
+    checkIn: row.CheckIn === true || inHouseByStatus,
     checkOut: row.CheckOut === true,
     checkInQueue: row.CheckInQueue === true,
     nightsStay:
