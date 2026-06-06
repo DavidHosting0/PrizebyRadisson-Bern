@@ -6,43 +6,131 @@ import {
   RecordGrid,
   Section,
 } from './ReservationDetailFields';
+import {
+  formatEmmaAmount,
+  folioCurrency,
+  folioTitle,
+  odataResults,
+} from './folioFormat';
+import { normalizeFolioChargeFromRow } from './folioCharges';
+
+function chargeAmount(c: ReservationFolioCharge): string {
+  const amount = c.amount ?? c.priceWithTax ?? c.price;
+  return formatEmmaAmount(amount, c.currency) ?? '—';
+}
+
+function chargeDate(c: ReservationFolioCharge): string {
+  if (!c.productionDate) return '—';
+  const d = c.productionDate.slice(0, 10);
+  const [y, m, day] = d.split('-');
+  if (y && m && day) return `${day}.${m}.${y}`;
+  return d;
+}
 
 export function FolioChargeTable({ charges }: { charges: ReservationFolioCharge[] }) {
   if (charges.length === 0) {
-    return <p className="text-sm text-ink-muted">Keine Charges gefunden.</p>;
+    return <p className="py-4 text-center text-sm text-ink-muted">Keine Posten vorhanden.</p>;
   }
   return (
-    <div className="max-h-[480px] overflow-auto rounded-lg border border-border/60">
-      <table className="w-full min-w-[720px] text-left text-xs">
+    <div className="max-h-[360px] overflow-auto">
+      <table className="w-full min-w-[640px] text-left text-xs">
         <thead className="sticky top-0 z-10 bg-surface-muted/95 text-ink-muted backdrop-blur">
           <tr>
-            <th className="px-2 py-2 font-semibold">Beschreibung</th>
-            <th className="px-2 py-2 font-semibold">Concept</th>
-            <th className="px-2 py-2 font-semibold">Typ</th>
             <th className="px-2 py-2 font-semibold">Datum</th>
+            <th className="px-2 py-2 font-semibold">Concept</th>
+            <th className="px-2 py-2 font-semibold">Beschreibung</th>
+            <th className="px-2 py-2 font-semibold">Gast</th>
             <th className="px-2 py-2 font-semibold">Menge</th>
             <th className="px-2 py-2 font-semibold">Betrag</th>
             <th className="px-2 py-2 font-semibold">Status</th>
-            <th className="px-2 py-2 font-semibold">Folio</th>
           </tr>
         </thead>
         <tbody>
           {charges.map((c) => (
             <tr key={c.id} className="border-t border-border/50">
-              <td className="px-2 py-2 text-ink">{c.description ?? '—'}</td>
+              <td className="px-2 py-2 text-ink-muted">{chargeDate(c)}</td>
               <td className="px-2 py-2 text-ink-muted">{c.concept ?? '—'}</td>
-              <td className="px-2 py-2 text-ink-muted">{c.chargeType ?? c.conceptNature ?? '—'}</td>
-              <td className="px-2 py-2 text-ink-muted">{c.productionDate?.slice(0, 10) ?? '—'}</td>
-              <td className="px-2 py-2 tabular-nums">{c.quantity ?? '—'}</td>
-              <td className="px-2 py-2 tabular-nums font-medium text-ink">
-                {c.amount ?? c.priceWithTax ?? '—'} {c.currency ?? ''}
-              </td>
+              <td className="px-2 py-2 text-ink">{c.description ?? '—'}</td>
+              <td className="px-2 py-2 text-ink-muted">{c.guestName ?? '—'}</td>
+              <td className="px-2 py-2 tabular-nums">{formatEmmaAmount(c.quantity) ?? '—'}</td>
+              <td className="px-2 py-2 tabular-nums font-medium text-ink">{chargeAmount(c)}</td>
               <td className="px-2 py-2">{c.status ?? '—'}</td>
-              <td className="px-2 py-2 tabular-nums">{c.folioId ?? '—'}</td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function FolioCard({
+  folio,
+  charges,
+}: {
+  folio: Record<string, unknown>;
+  charges: ReservationFolioCharge[];
+}) {
+  const currency = folioCurrency(folio);
+  return (
+    <article className="flex min-h-[280px] flex-col rounded-xl border border-border bg-surface">
+      <header className="border-b border-border bg-surface-muted/40 px-4 py-3">
+        <h4 className="text-sm font-semibold text-ink">{folioTitle(folio)}</h4>
+      </header>
+      <div className="flex-1 px-2 py-1">
+        <FolioChargeTable charges={charges} />
+      </div>
+      <footer className="space-y-1 border-t border-border bg-surface-muted/20 px-4 py-3 text-xs">
+        <div className="flex justify-between gap-4">
+          <span className="text-ink-muted">Total ohne Steuern</span>
+          <span className="tabular-nums font-medium text-ink">
+            {formatEmmaAmount(folio.AmountTotalWot, currency) ?? '—'}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-ink-muted">Total mit Steuern</span>
+          <span className="tabular-nums font-medium text-ink">
+            {formatEmmaAmount(folio.AmountTotal, currency) ?? '—'}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-ink-muted">Bezahlt</span>
+          <span className="tabular-nums text-ink">
+            {formatEmmaAmount(folio.AmountPaid, currency) ?? '—'}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4 border-t border-border/60 pt-2">
+          <span className="font-semibold text-ink">Offen</span>
+          <span className="tabular-nums font-semibold text-rose-700">
+            {formatEmmaAmount(folio.AmountDue, currency) ?? '—'}
+          </span>
+        </div>
+      </footer>
+    </article>
+  );
+}
+
+function FolioGrid({
+  folios,
+  allCharges,
+}: {
+  folios: Record<string, unknown>[];
+  allCharges: ReservationFolioCharge[];
+}) {
+  const sorted = [...folios].sort((a, b) =>
+    String(a.Id ?? '').localeCompare(String(b.Id ?? ''), undefined, { numeric: true }),
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      {sorted.map((folio) => {
+        const folioId = String(folio.Id ?? '');
+        const nested = odataResults(folio.Details).map(normalizeFolioChargeFromRow);
+        const charges =
+          nested.length > 0
+            ? nested
+            : allCharges.filter((c) => c.folioId === folioId);
+        return <FolioCard key={folioId} folio={folio} charges={charges} />;
+      })}
     </div>
   );
 }
@@ -53,29 +141,37 @@ export function EmmaFolioSections({
   emmaFolio: NonNullable<ReservationDetail['emmaFolio']>;
 }) {
   const r = emmaFolio.reservation;
+  const currency = String(r.Currency ?? 'CHF').trim();
+
   return (
     <div className="space-y-4">
       <Section title="Folio Management — Summen">
-        <Field label="Total Folios" value={formatEmmaValue(r.TotalAmountFolios ?? r.TotalAmountDueFolios)} />
-        <Field label="Offen" value={formatEmmaValue(r.TotalAmountDueFolios)} />
-        <Field label="Bezahlt" value={formatEmmaValue(r.AmountPaid)} />
+        <Field
+          label="Total Folios"
+          value={formatEmmaAmount(r.TotalAmountFolios ?? r.TotalAmountDueFolios, currency)}
+        />
+        <Field label="Offen" value={formatEmmaAmount(r.TotalAmountDueFolios, currency)} />
+        <Field label="Bezahlt" value={formatEmmaAmount(r.AmountPaid, currency)} />
         <Field label="Währung" value={formatEmmaValue(r.Currency)} />
         {emmaFolio.amount && (
           <>
-            <Field label="Total (Amount)" value={formatEmmaValue(emmaFolio.amount.Total)} />
-            <Field label="Steuern" value={formatEmmaValue(emmaFolio.amount.Taxes)} />
-            <Field label="Taxable Base" value={formatEmmaValue(emmaFolio.amount.TaxableBase)} />
+            <Field label="Total (Amount)" value={formatEmmaAmount(emmaFolio.amount.Total, currency)} />
+            <Field label="Steuern" value={formatEmmaAmount(emmaFolio.amount.Taxes, currency)} />
+            <Field
+              label="Taxable Base"
+              value={formatEmmaAmount(emmaFolio.amount.TaxableBase, currency)}
+            />
           </>
         )}
       </Section>
 
-      <ListSection title={`Charges (${emmaFolio.charges.length})`}>
-        <FolioChargeTable charges={emmaFolio.charges} />
-      </ListSection>
-
-      {emmaFolio.folios.length > 0 && (
+      {emmaFolio.folios.length > 0 ? (
         <ListSection title={`Folios (${emmaFolio.folios.length})`}>
-          <RecordGrid rows={emmaFolio.folios} />
+          <FolioGrid folios={emmaFolio.folios} allCharges={emmaFolio.charges} />
+        </ListSection>
+      ) : (
+        <ListSection title="Charges">
+          <FolioChargeTable charges={emmaFolio.charges} />
         </ListSection>
       )}
 

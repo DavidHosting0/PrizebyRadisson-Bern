@@ -11,6 +11,7 @@ import {
 } from './ReservationDetailFields';
 import { EmmaDetailSections } from './ReservationEmmaSections';
 import { EmmaFolioSections } from './ReservationFolioCharges';
+import { formatEmmaAmount } from './folioFormat';
 
 export type ReservationDetailTab = 'overview' | 'folio' | 'emma' | 'guests';
 
@@ -210,10 +211,13 @@ export function ReservationDetailView({
 }
 
 export function formatOpenTotal(data: ReservationDetail): string {
+  const currency = data.emmaFolio?.reservation?.Currency ?? null;
   if (data.emmaFolio?.reservation) {
     const r = data.emmaFolio.reservation;
     const due = r.TotalAmountDueFolios ?? r.TotalAmountFolios;
-    if (due != null) return String(due);
+    if (due != null) {
+      return formatEmmaAmount(due, String(currency ?? '')) ?? String(due);
+    }
   }
-  return data.balance ?? '—';
+  return formatEmmaAmount(data.balance, String(currency ?? '')) ?? data.balance ?? '—';
 }

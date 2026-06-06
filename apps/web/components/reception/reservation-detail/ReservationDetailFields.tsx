@@ -1,3 +1,5 @@
+import { formatEmmaAmount, parseEmmaNumber } from './folioFormat';
+
 export function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value?.trim()) return null;
   return (
@@ -38,11 +40,16 @@ export function ListSection({ title, children }: { title: string; children: Reac
 export function formatEmmaValue(value: unknown): string | null {
   if (value == null || value === '') return null;
   if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
-  if (typeof value === 'number') return String(value);
+  if (typeof value === 'number') return formatEmmaAmount(value);
   if (typeof value === 'string') {
     const m = /\/Date\((-?\d+)\)\//.exec(value);
     if (m) return new Date(parseInt(m[1], 10)).toLocaleString('de-CH');
-    return value.trim() || null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (parseEmmaNumber(trimmed) != null && /^-?\d+([.,]\d+)?$/.test(trimmed.replace(/\s/g, ''))) {
+      return formatEmmaAmount(trimmed);
+    }
+    return trimmed;
   }
   return JSON.stringify(value);
 }
