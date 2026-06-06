@@ -275,7 +275,7 @@ export const RESERVATION_LIST_SELECT = [
   'Comments',
 ].join(',');
 
-export type ReservationListTab = 'arrivals' | 'queue' | 'inhouse';
+export type ReservationListTab = 'pending' | 'queue' | 'inhouse';
 
 export function reservationListBatchPath(
   hotelId: string,
@@ -289,8 +289,9 @@ export function reservationListBatchPath(
   const base = `HotelId eq '${hotelId}' and Type eq '0' and CheckOut eq false`;
   let tabFilter: string;
   switch (tab) {
-    case 'arrivals':
-      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckInQueue eq false and CheckIn eq false`;
+    case 'pending':
+      // EMMA HotelOverview CheckInPending: today's arrivals not checked in yet (incl. queue).
+      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckIn eq false`;
       break;
     case 'queue':
       tabFilter = `${base} and CheckInQueue eq true and CheckIn eq false`;

@@ -151,7 +151,11 @@ export function parseEmmaDateOnly(v: unknown): Date | null {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
-export function todayIsoDate(): string {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+export function todayIsoDate(timeZone = 'Europe/Zurich'): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+}
+
+/** UTC midnight for a YYYY-MM-DD string (matches Prisma @db.Date storage). */
+export function dateOnlyFromIso(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
 }

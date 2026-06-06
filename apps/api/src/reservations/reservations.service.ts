@@ -14,6 +14,7 @@ import type { EmmaReservationSyncResult, ReservationUpsertRow } from '../emma/em
 import {
   decryptSensitivePayload,
   todayIsoDate,
+  dateOnlyFromIso,
 } from './reservation-sensitive';
 
 @Injectable()
@@ -76,7 +77,7 @@ export class ReservationsService {
       const { rows, arrivalsReservationIds, result } =
         await this.emma.fetchReservationRowsFromEmma({ arrivalDateIso: dateIso });
       const hotelId = result.hotelId;
-      const today = new Date(`${dateIso}T00:00:00.000Z`);
+      const today = dateOnlyFromIso(dateIso);
       const arrivalsSet = new Set(arrivalsReservationIds);
 
       const reservationIds = rows.map((r) => r.reservationId);
@@ -118,6 +119,10 @@ export class ReservationsService {
       const upserted = created + updated;
 
       if (arrivalsReservationIds.length > 0) {
+        await this.prisma.reservationSnapshot.updateMany({
+          where: { hotelId, reservationId: { in: arrivalsReservationIds } },
+          data: { inTodayArrivals: true },
+        });
         await this.prisma.reservationSnapshot.updateMany({
           where: {
             hotelId,
@@ -167,14 +172,11 @@ export class ReservationsService {
   }): Promise<ReservationListItem[]> {
     this.scheduleSyncOnView(`list:${opts.tab}`);
     const hotelId = opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
-    const todayIso = todayIsoDate();
-    const today = new Date(`${todayIso}T00:00:00.000Z`);
 
     const where: Prisma.ReservationSnapshotWhereInput = { hotelId };
 
     switch (opts.tab) {
       case 'arrivals':
-        where.arrivalDate = today;
         where.inTodayArrivals = true;
         break;
       case 'queue':
@@ -194,9 +196,7 @@ export class ReservationsService {
     });
 
     const q = opts.q?.trim().toLowerCase();
-    const mapped = rows
-      .map((r) => this.toListItem(r))
-      .filter((item): item is ReservationListItem => item != null);
+    const mapped = rows.map((r) => this.toListItem(r));
 
     if (!q) return mapped;
     return mapped.filter(
@@ -220,6 +220,9 @@ export class ReservationsService {
 
   async overview(hotelId?: string): Promise<ReservationOverview> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const visibleArrivals = await this.prisma.reservationSnapshot.count({
+      where: { hotelId: hid, inTodayArrivals: true },
+    });
     const last = await this.prisma.reservationSyncRun.findFirst({
       where: { status: 'ok' },
       orderBy: { finishedAt: 'desc' },
@@ -235,6 +238,7 @@ export class ReservationsService {
       inHouse: 0,
       departures: 0,
       lastSyncedAt: last?.finishedAt?.toISOString() ?? null,
+      visibleArrivals,
     };
     if (last?.overview && typeof last.overview === 'object' && !Array.isArray(last.overview)) {
       const o = last.overview as Record<string, unknown>;
@@ -248,6 +252,7 @@ export class ReservationsService {
         checkOutToday: Number(o.checkOutToday ?? 0),
         inHouse: Number(o.inHouse ?? 0),
         departures: Number(o.departures ?? 0),
+        visibleArrivals,
       };
     }
     return base;
@@ -351,15 +356,14 @@ export class ReservationsService {
     inTodayArrivals: boolean;
     sensitiveEnc: string;
     syncedAt: Date;
-  }): ReservationListItem | null {
+  }): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
-    if (!s) return null;
     return {
       id: row.id,
       hotelId: row.hotelId,
       reservationId: row.reservationId,
       roomId: row.roomId,
-      mainGuestName: s.mainGuestName,
+      mainGuestName: s?.mainGuestName ?? null,
       arrivalDate: row.arrivalDate.toISOString().slice(0, 10),
       departureDate: row.departureDate.toISOString().slice(0, 10),
       nightsStay: row.nightsStay,
@@ -367,15 +371,15 @@ export class ReservationsService {
       mealPlan: row.mealPlan,
       tier: row.tier,
       numPax: row.numPax,
-      vipDesc: s.vipDesc,
+      vipDesc: s?.vipDesc ?? null,
       checkIn: row.checkIn,
       checkOut: row.checkOut,
       checkInQueue: row.checkInQueue,
-      creditCard: s.creditCard,
-      cardHolder: s.cardHolder,
-      cardExpiry: s.cardExpiry,
-      preAuthAmount: s.preAuthAmount,
-      groupName: s.groupName,
+      creditCard: s?.creditCard ?? null,
+      cardHolder: s?.cardHolder ?? null,
+      cardExpiry: s?.cardExpiry ?? null,
+      preAuthAmount: s?.preAuthAmount ?? null,
+      groupName: s?.groupName ?? null,
       syncedAt: row.syncedAt.toISOString(),
       inTodayArrivals: row.inTodayArrivals,
     };
@@ -402,7 +406,35 @@ export class ReservationsService {
   }): ReservationDetail | null {
     const list = this.toListItem(row);
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
-    if (!list || !s) return null;
+    if (!s) {
+      return {
+        ...list,
+        mainGuestId: null,
+        mainClientName: null,
+        bookingFileId: null,
+        groupId: null,
+        companyName: null,
+        travelAgent: null,
+        rateCode: null,
+        sourceCode: null,
+        marketCode: null,
+        balance: null,
+        comments: null,
+        draftStatus: null,
+        draftLockedBy: null,
+        stays: null,
+        guests: null,
+        ciStatusSigned: false,
+        stayover: false,
+        noMove: false,
+        originalRoomType: null,
+        roomTypeUpg: null,
+        numPax2: null,
+        numPax3: null,
+        numPax4: null,
+        checkInQDate: null,
+      };
+    }
     return {
       ...list,
       mainGuestId: s.mainGuestId,

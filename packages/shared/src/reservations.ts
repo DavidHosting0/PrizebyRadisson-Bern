@@ -64,6 +64,8 @@ export type ReservationOverview = {
   inHouse: number;
   departures: number;
   lastSyncedAt: string | null;
+  /** Rows currently marked visible on the arrivals board (DB). */
+  visibleArrivals: number;
 };
 
 export type ReservationSyncStatus = {

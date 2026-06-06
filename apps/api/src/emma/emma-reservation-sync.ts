@@ -47,7 +47,7 @@ export type EmmaReservationSyncResult = {
 };
 
 const TAB_FILTER_LABEL: Record<ReservationListTab, string> = {
-  arrivals: 'Arrivals',
+  pending: 'Pending',
   queue: 'CheckInQueue',
   inhouse: 'InHouse',
 };
@@ -238,9 +238,9 @@ export async function syncEmmaReservationsFromJar(
   const csrfRsrvs = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
   const csrfHotel = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_HOTEL_SRV);
 
-  const tabs: ReservationListTab[] = ['arrivals', 'queue', 'inhouse'];
+  const tabs: ReservationListTab[] = ['pending', 'queue', 'inhouse'];
   const tabCounts: Record<ReservationListTab, number> = {
-    arrivals: 0,
+    pending: 0,
     queue: 0,
     inhouse: 0,
   };
@@ -262,7 +262,7 @@ export async function syncEmmaReservationsFromJar(
     for (const row of fetched) {
       const id = String(row.ReservationId ?? '');
       if (!id) continue;
-      if (tab === 'arrivals') arrivalsReservationIds.push(id);
+      if (tab === 'pending') arrivalsReservationIds.push(id);
       const prev = merged.get(id);
       merged.set(id, prev ? { ...prev, ...row } : row);
     }
@@ -293,7 +293,7 @@ export async function syncEmmaReservationsFromJar(
   };
 
   log.log(
-    `[Reservations] fetched arrivals=${tabCounts.arrivals} queue=${tabCounts.queue} inhouse=${tabCounts.inhouse} unique=${merged.size}`,
+    `[Reservations] fetched pending=${tabCounts.pending} queue=${tabCounts.queue} inhouse=${tabCounts.inhouse} unique=${merged.size}`,
   );
 
   return { rows, arrivalsReservationIds, result };
