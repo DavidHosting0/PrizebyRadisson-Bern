@@ -94,6 +94,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               >
                 AI
               </Link>
+              <Link
+                href="/a/monitor-map"
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  pathname.startsWith('/a/monitor-map')
+                    ? 'bg-ink text-white'
+                    : 'text-ink-muted hover:bg-surface-muted'
+                }`}
+              >
+                Monitor Map
+              </Link>
             </nav>
           </div>
           <span className="truncate text-sm text-ink-muted">{user.email}</span>

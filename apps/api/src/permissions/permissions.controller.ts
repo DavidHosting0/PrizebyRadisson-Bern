@@ -101,6 +101,17 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       { code: PermissionCode.SHIFT_MANAGE, title: 'Manage shift integration', description: 'Configure Favur sync, map users, trigger manual sync.' },
     ],
   },
+  {
+    id: 'monitor-map',
+    label: 'Monitor Map',
+    entries: [
+      {
+        code: PermissionCode.MONITOR_MAP_READ,
+        title: 'View Monitor Map',
+        description: 'Open the Bern live map (news, police, aviation).',
+      },
+    ],
+  },
 ];
 
 const LABELS: Record<PermissionCode, string> = Object.fromEntries(

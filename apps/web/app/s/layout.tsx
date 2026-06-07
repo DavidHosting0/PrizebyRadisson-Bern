@@ -4,13 +4,13 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth, usePermission } from '@/lib/auth-context';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { SupervisorMobileModeProvider, useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { SupervisorMobileShell } from '@/components/supervisor/SupervisorMobileShell';
 
-const nav = [
+const baseNav = [
   { href: '/s', label: 'Dashboard' },
   { href: '/s/floor-plan', label: 'Floor plan' },
   { href: '/s/board', label: 'Assignment board' },
@@ -21,6 +21,7 @@ const nav = [
   { href: '/s/damages', label: 'Damage reports' },
   { href: '/s/schichtplan', label: 'Schichtplan' },
   { href: '/s/performance', label: 'Performance' },
+  { href: '/s/monitor-map', label: 'Monitor Map', permission: 'MONITOR_MAP_READ' as const },
 ];
 
 export default function SupervisorLayout({ children }: { children: React.ReactNode }) {
@@ -35,6 +36,10 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
+  const canMonitorMap = usePermission('MONITOR_MAP_READ');
+  const nav = baseNav.filter(
+    (item) => !('permission' in item) || (item.permission === 'MONITOR_MAP_READ' && canMonitorMap),
+  );
   const { mobileUi, hydrated, enterMobile } = useSupervisorMobileMode();
 
   useEffect(() => {

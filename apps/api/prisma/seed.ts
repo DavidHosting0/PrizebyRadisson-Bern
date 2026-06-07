@@ -302,6 +302,46 @@ async function main() {
     })),
   });
 
+  const MonitorMapFeedKind = { NEWS: 'NEWS', POLICE: 'POLICE' } as const;
+  const PermissionCode = { MONITOR_MAP_READ: 'MONITOR_MAP_READ' } as const;
+
+  const defaultFeeds: Array<{ kind: 'NEWS' | 'POLICE'; name: string; feedUrl: string }> = [
+    {
+      kind: MonitorMapFeedKind.NEWS,
+      name: 'SRF Kanton Bern',
+      feedUrl: 'https://www.srf.ch/news/brief/kanton-bern/rss.xml',
+    },
+    {
+      kind: MonitorMapFeedKind.NEWS,
+      name: 'BZ Bern',
+      feedUrl: 'https://www.bernerzeitung.ch/bern/rss.xml',
+    },
+    {
+      kind: MonitorMapFeedKind.POLICE,
+      name: 'Kantonspolizei Bern',
+      feedUrl: 'https://www.police.be.ch/content/police/be/de/home/medien/pressemitteilungen/medien/_jcr_content.feed.xml',
+    },
+  ];
+
+  for (const feed of defaultFeeds) {
+    const existing = await prisma.monitorMapFeedSource.findFirst({
+      where: { kind: feed.kind, feedUrl: feed.feedUrl },
+    });
+    if (!existing) {
+      await prisma.monitorMapFeedSource.create({ data: feed });
+    }
+  }
+
+  for (const userId of [rec.id, sup.id]) {
+    await prisma.userPermissionGrant.upsert({
+      where: {
+        userId_permission: { userId, permission: PermissionCode.MONITOR_MAP_READ },
+      },
+      update: {},
+      create: { userId, permission: PermissionCode.MONITOR_MAP_READ },
+    });
+  }
+
   console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
 }
 

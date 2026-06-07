@@ -31,6 +31,7 @@ const nav = [
   { href: '/r/damages', label: 'Damage reports', icon: IconDamage },
   { href: '/r/schichtplan', label: 'Schichtplan', icon: IconCalendar },
   { href: '/r/puzzle', label: 'Puzzle', icon: IconPuzzle },
+  { href: '/r/monitor-map', label: 'Monitor Map', icon: IconMonitor, permission: 'MONITOR_MAP_READ' as const },
 ];
 
 function IconDash({ className }: { className?: string }) {
@@ -141,10 +142,20 @@ function IconPuzzle({ className }: { className?: string }) {
   );
 }
 
+function IconMonitor({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.75" />
+      <path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ReceptionShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { user, loading, logout } = useAuth();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
+  const canMonitorMap = usePermission('MONITOR_MAP_READ');
   const router = useRouter();
   const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
   const { mobileUi, hydrated, enterMobile } = useReceptionMobileMode();
@@ -281,7 +292,9 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-4 shadow-card md:flex">
           <nav className="flex flex-col gap-0.5 px-2">
-            {nav.map((item) => {
+            {nav
+              .filter((item) => !('permission' in item) || (item.permission === 'MONITOR_MAP_READ' && canMonitorMap))
+              .map((item) => {
               const active =
                 item.href === '/r'
                   ? path === '/r'

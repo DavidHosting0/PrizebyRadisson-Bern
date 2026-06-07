@@ -67,6 +67,12 @@ enum PermissionCode {
   SHIFT_MANAGE
   RESERVATIONS_READ
   RESERVATIONS_SYNC
+  MONITOR_MAP_READ
+}
+
+enum MonitorMapFeedKind {
+  NEWS
+  POLICE
 }
 
 enum ChecklistTaskStatus {
@@ -743,4 +749,51 @@ model ReservationSyncRun {
   overview   Json?
 
   @@index([startedAt])
+}
+
+model MonitorMapFeedSource {
+  id        String             @id @default(cuid())
+  kind      MonitorMapFeedKind
+  name      String
+  feedUrl   String
+  enabled   Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model MonitorMapNewsItem {
+  id            String   @id @default(cuid())
+  sourceId      String
+  externalId    String
+  title         String
+  summary       String?
+  url           String
+  publishedAt   DateTime
+  latitude      Float?
+  longitude     Float?
+  locationLabel String?
+  aiAnalysis    Json?
+  geocodeStatus String?
+  createdAt     DateTime @default(now())
+
+  @@unique([sourceId, externalId])
+  @@index([publishedAt])
+}
+
+model MonitorMapPoliceItem {
+  id            String   @id @default(cuid())
+  sourceId      String
+  externalId    String
+  title         String
+  summary       String?
+  url           String
+  publishedAt   DateTime
+  latitude      Float?
+  longitude     Float?
+  locationLabel String?
+  geocodeStatus String?
+  createdAt     DateTime @default(now())
+
+  @@unique([sourceId, externalId])
+  @@index([publishedAt])
 }

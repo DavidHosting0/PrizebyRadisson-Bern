@@ -18,6 +18,7 @@ export * from './guest-stay-type';
 export * from './room-layout';
 export * from './reservations';
 export * from './occupancy';
+export * from './monitor-map';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',
