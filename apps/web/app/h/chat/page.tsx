@@ -8,10 +8,10 @@ import { useAuth } from '@/lib/auth-context';
 export default function HousekeeperChatPage() {
   const { user } = useAuth();
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2.5">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-ink">Team chat</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-ink">Chat</h1>
           <p className="text-xs text-ink-muted">Cleaners, supervisors & reception</p>
         </div>
         <Link

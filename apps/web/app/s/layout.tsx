@@ -16,7 +16,7 @@ const nav = [
   { href: '/s/board', label: 'Assignment board' },
   { href: '/s/room-tasks', label: 'Room task lists' },
   { href: '/s/requests', label: 'Requests' },
-  { href: '/s/chat', label: 'Team chat' },
+  { href: '/s/chat', label: 'Chat' },
   { href: '/s/lost', label: 'Lost & found' },
   { href: '/s/damages', label: 'Damage reports' },
   { href: '/s/schichtplan', label: 'Schichtplan' },

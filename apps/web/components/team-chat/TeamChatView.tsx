@@ -257,17 +257,20 @@ export function TeamChatView({
     };
   }, [embedOperationsSocket, qc]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
     const el = scrollContainerRef.current;
-    if (!el) return;
-    const top = el.scrollHeight - el.clientHeight;
+    if (!el || el.clientHeight === 0) return false;
+    const top = Math.max(0, el.scrollHeight - el.clientHeight);
     if (behavior === 'smooth') {
       el.scrollTo({ top, behavior: 'smooth' });
     } else {
       el.scrollTop = top;
     }
-    isNearBottomRef.current = true;
-    setShowJumpToBottom(false);
+    if (force || isNearBottomRef.current) {
+      isNearBottomRef.current = true;
+      setShowJumpToBottom(false);
+    }
+    return true;
   }, []);
 
   const updateNearBottom = useCallback(() => {
@@ -292,10 +295,10 @@ export function TeamChatView({
     const tailChanged = timelineTailKey !== prevTimelineTailRef.current;
 
     if (isInitial) {
-      hasInitialScrolledRef.current = true;
-      prevTimelineTailRef.current = timelineTailKey;
-      scrollToBottom('auto');
-      requestAnimationFrame(() => scrollToBottom('auto'));
+      if (scrollToBottom('auto', true)) {
+        hasInitialScrolledRef.current = true;
+        prevTimelineTailRef.current = timelineTailKey;
+      }
       return;
     }
 
@@ -303,18 +306,43 @@ export function TeamChatView({
     prevTimelineTailRef.current = timelineTailKey;
 
     if (isNearBottomRef.current) {
-      scrollToBottom('smooth');
+      scrollToBottom('smooth', true);
     } else {
       setShowJumpToBottom(true);
     }
   }, [loadingMsg, loadingReq, timeline, timelineTailKey, scrollToBottom]);
 
   useEffect(() => {
+    if (loadingMsg || loadingReq || timeline.length === 0 || hasInitialScrolledRef.current) return;
+
+    let frame = 0;
+    let rafId = 0;
+    const retry = () => {
+      if (hasInitialScrolledRef.current || frame++ > 40) return;
+      if (scrollToBottom('auto', true)) {
+        hasInitialScrolledRef.current = true;
+        prevTimelineTailRef.current = timelineTailKey;
+        return;
+      }
+      rafId = requestAnimationFrame(retry);
+    };
+    rafId = requestAnimationFrame(retry);
+    return () => cancelAnimationFrame(rafId);
+  }, [loadingMsg, loadingReq, timeline.length, timelineTailKey, scrollToBottom]);
+
+  useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
     const onResize = () => {
-      if (isNearBottomRef.current) scrollToBottom('auto');
+      if (!hasInitialScrolledRef.current) {
+        if (scrollToBottom('auto', true)) {
+          hasInitialScrolledRef.current = true;
+          prevTimelineTailRef.current = timelineTailKey;
+        }
+        return;
+      }
+      if (isNearBottomRef.current) scrollToBottom('auto', true);
     };
 
     const observer = new ResizeObserver(onResize);
@@ -323,7 +351,7 @@ export function TeamChatView({
     if (inner) observer.observe(inner);
 
     return () => observer.disconnect();
-  }, [scrollToBottom, loadingMsg, loadingReq, timeline.length]);
+  }, [scrollToBottom, loadingMsg, loadingReq, timeline.length, timelineTailKey]);
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -696,7 +724,7 @@ export function TeamChatView({
         <div className="pointer-events-none relative z-10 -mt-10 flex justify-center">
           <button
             type="button"
-            onClick={() => scrollToBottom('smooth')}
+            onClick={() => scrollToBottom('smooth', true)}
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-card transition hover:bg-surface-muted"
             aria-label="Jump to latest messages"
           >

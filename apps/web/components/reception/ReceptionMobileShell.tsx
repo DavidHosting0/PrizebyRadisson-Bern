@@ -27,9 +27,15 @@ export function ReceptionMobileShell({
 }) {
   const path = usePathname();
   const { exitMobile } = useReceptionMobileMode();
+  const isChat = path === '/r/m/chat' || path.startsWith('/r/m/chat/');
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface-muted pb-[calc(5rem+var(--safe-bottom))]">
+    <div
+      className={clsx(
+        'flex flex-col bg-surface-muted pb-[calc(5rem+var(--safe-bottom))]',
+        isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
+      )}
+    >
       <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-surface/95 px-3 py-2.5 shadow-card backdrop-blur-sm">
         <div className="min-w-0">
           <BrandLogo compact />
@@ -46,7 +52,14 @@ export function ReceptionMobileShell({
           </Button>
         </div>
       </header>
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
+      <main
+        className={clsx(
+          'flex min-h-0 min-w-0 flex-1 flex-col',
+          isChat && 'overflow-hidden',
+        )}
+      >
+        {children}
+      </main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
         {tabs.map((t) => {
           const active = path === t.href || path.startsWith(`${t.href}/`);

@@ -26,7 +26,7 @@ const nav = [
   { href: '/r/in-house', label: 'Im Haus', icon: IconInHouse },
   { href: '/r/reservations', label: 'Reservations', icon: IconReservations },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
-  { href: '/r/chat', label: 'Team chat', icon: IconChat },
+  { href: '/r/chat', label: 'Chat', icon: IconChat },
   { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
   { href: '/r/damages', label: 'Damage reports', icon: IconDamage },
   { href: '/r/schichtplan', label: 'Schichtplan', icon: IconCalendar },
@@ -236,8 +236,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-w-0 items-center gap-4">
           <BrandLogo compact className="shrink-0" />
           <div className="hidden min-w-0 sm:block">
-            <p className="truncate text-sm font-semibold text-ink">{hotelTitle}</p>
-            <p className="truncate text-xs text-ink-muted">Housekeeping operations</p>
+            <p className="truncate text-lg font-semibold tracking-tight text-ink md:text-xl">{hotelTitle}</p>
           </div>
         </div>
         <div className="flex flex-1 items-center justify-end gap-3">
