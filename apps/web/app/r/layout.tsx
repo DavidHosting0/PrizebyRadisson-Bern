@@ -18,6 +18,11 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { IconChat } from '@/components/icons';
 import { ReceptionMobileModeProvider, useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
+/** Mobile reception routes live under `/r/m/` — not `/r/monitor-map` etc. */
+function isReceptionMobilePath(path: string) {
+  return path === '/r/m' || path.startsWith('/r/m/');
+}
+
 const nav = [
   { href: '/r', label: 'Dashboard', icon: IconDash },
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
@@ -180,14 +185,14 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated || !user) return;
-    if (mobileUi && path.startsWith('/r') && !path.startsWith('/r/m')) {
+    if (mobileUi && path.startsWith('/r') && !isReceptionMobilePath(path)) {
       router.replace('/r/m/requests');
     }
   }, [hydrated, mobileUi, path, router, user]);
 
   useEffect(() => {
     if (!hydrated || !user) return;
-    if (!mobileUi && path.startsWith('/r/m')) {
+    if (!mobileUi && isReceptionMobilePath(path)) {
       if (path.startsWith('/r/m/chat')) router.replace('/r/chat');
       else if (path.startsWith('/r/m/requests')) router.replace('/r/requests');
       else if (path.startsWith('/r/m/rooms')) router.replace('/r/rooms');
@@ -212,8 +217,8 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const redirectingMobile = mobileUi && path.startsWith('/r') && !path.startsWith('/r/m');
-  const redirectingDesktop = !mobileUi && path.startsWith('/r/m');
+  const redirectingMobile = mobileUi && path.startsWith('/r') && !isReceptionMobilePath(path);
+  const redirectingDesktop = !mobileUi && isReceptionMobilePath(path);
   if (redirectingMobile || redirectingDesktop) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">

@@ -10,6 +10,11 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { SupervisorMobileModeProvider, useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { SupervisorMobileShell } from '@/components/supervisor/SupervisorMobileShell';
 
+/** Mobile supervisor routes live under `/s/m/` — not `/s/monitor-map` etc. */
+function isSupervisorMobilePath(path: string) {
+  return path === '/s/m' || path.startsWith('/s/m/');
+}
+
 const baseNav = [
   { href: '/s', label: 'Dashboard' },
   { href: '/s/floor-plan', label: 'Floor plan' },
@@ -44,14 +49,14 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated || !user) return;
-    if (mobileUi && path.startsWith('/s') && !path.startsWith('/s/m')) {
+    if (mobileUi && path.startsWith('/s') && !isSupervisorMobilePath(path)) {
       router.replace('/s/m/inspections');
     }
   }, [hydrated, mobileUi, path, router, user]);
 
   useEffect(() => {
     if (!hydrated || !user) return;
-    if (!mobileUi && path.startsWith('/s/m')) {
+    if (!mobileUi && isSupervisorMobilePath(path)) {
       if (path.startsWith('/s/m/chat')) router.replace('/s/chat');
       else if (path.startsWith('/s/m/requests')) router.replace('/s/requests');
       else router.replace('/s');
@@ -80,8 +85,8 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const redirectingMobile = mobileUi && path.startsWith('/s') && !path.startsWith('/s/m');
-  const redirectingDesktop = !mobileUi && path.startsWith('/s/m');
+  const redirectingMobile = mobileUi && path.startsWith('/s') && !isSupervisorMobilePath(path);
+  const redirectingDesktop = !mobileUi && isSupervisorMobilePath(path);
   if (redirectingMobile || redirectingDesktop) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
