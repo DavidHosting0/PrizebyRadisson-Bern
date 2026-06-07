@@ -234,7 +234,8 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
     >
       <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface px-4 shadow-card md:px-6">
         <div className="flex min-w-0 items-center gap-4">
-          <BrandLogo compact className="shrink-0" />
+          <BrandLogo compact className="shrink-0 md:hidden" />
+          <BrandLogo className="hidden shrink-0 md:block" />
           <div className="hidden min-w-0 sm:block">
             <p className="truncate text-lg font-semibold tracking-tight text-ink md:text-xl">{hotelTitle}</p>
           </div>
