@@ -260,7 +260,12 @@ export function TeamChatView({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
+    const top = el.scrollHeight - el.clientHeight;
+    if (behavior === 'smooth') {
+      el.scrollTo({ top, behavior: 'smooth' });
+    } else {
+      el.scrollTop = top;
+    }
     isNearBottomRef.current = true;
     setShowJumpToBottom(false);
   }, []);
@@ -283,14 +288,18 @@ export function TeamChatView({
     if (loadingMsg || loadingReq) return;
     if (timeline.length === 0) return;
 
-    if (!hasInitialScrolledRef.current) {
-      scrollToBottom('auto');
+    const isInitial = !hasInitialScrolledRef.current;
+    const tailChanged = timelineTailKey !== prevTimelineTailRef.current;
+
+    if (isInitial) {
       hasInitialScrolledRef.current = true;
       prevTimelineTailRef.current = timelineTailKey;
+      scrollToBottom('auto');
+      requestAnimationFrame(() => scrollToBottom('auto'));
       return;
     }
 
-    if (timelineTailKey === prevTimelineTailRef.current) return;
+    if (!tailChanged) return;
     prevTimelineTailRef.current = timelineTailKey;
 
     if (isNearBottomRef.current) {
@@ -299,6 +308,22 @@ export function TeamChatView({
       setShowJumpToBottom(true);
     }
   }, [loadingMsg, loadingReq, timeline, timelineTailKey, scrollToBottom]);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    const onResize = () => {
+      if (isNearBottomRef.current) scrollToBottom('auto');
+    };
+
+    const observer = new ResizeObserver(onResize);
+    observer.observe(el);
+    const inner = el.firstElementChild;
+    if (inner) observer.observe(inner);
+
+    return () => observer.disconnect();
+  }, [scrollToBottom, loadingMsg, loadingReq, timeline.length]);
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -393,15 +418,16 @@ export function TeamChatView({
     <div
       className={clsx(
         // Subtle tinted chat backdrop — kept within existing tokens so the color scheme matches.
-        'flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,rgba(244,241,234,0.6),rgba(244,241,234,0.35))]',
+        'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(244,241,234,0.6),rgba(244,241,234,0.35))]',
         className,
       )}
     >
       <div
-        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
+        className="relative h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
         ref={scrollContainerRef}
         onScroll={handleScroll}
       >
+        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end">
         {(loadingMsg || loadingReq) && <p className="text-sm text-ink-muted">Loading…</p>}
         {!loadingMsg && !loadingReq && timeline.filter((i) => i.kind !== 'day').length === 0 && (
           <p className="mt-12 text-center text-sm text-ink-muted">
@@ -409,7 +435,7 @@ export function TeamChatView({
           </p>
         )}
 
-        <ul className="mx-auto flex w-full max-w-3xl flex-col">
+        <ul className="flex w-full flex-col">
           {timeline.map((item) => {
             if (item.kind === 'day') {
               return (
@@ -663,6 +689,7 @@ export function TeamChatView({
             );
           })}
         </ul>
+        </div>
       </div>
 
       {showJumpToBottom && (

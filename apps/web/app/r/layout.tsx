@@ -226,7 +226,12 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const hotelTitle = settings?.name ?? 'Prize by Radisson Bern';
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface-muted">
+    <div
+      className={clsx(
+        'flex flex-col bg-surface-muted',
+        path === '/r/chat' ? 'h-dvh overflow-hidden' : 'min-h-screen',
+      )}
+    >
       <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface px-4 shadow-card md:px-6">
         <div className="flex min-w-0 items-center gap-4">
           <BrandLogo compact className="shrink-0" />
@@ -313,7 +318,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
           className={clsx(
             'min-w-0 flex-1',
             path === '/r/chat'
-              ? 'flex min-h-0 flex-col overflow-hidden'
+              ? 'flex h-full min-h-0 flex-col overflow-hidden'
               : 'overflow-auto pb-20 md:pb-8',
           )}
         >

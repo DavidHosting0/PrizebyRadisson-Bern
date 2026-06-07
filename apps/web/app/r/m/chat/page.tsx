@@ -9,7 +9,7 @@ export default function ReceptionMobileChatPage() {
         <h1 className="text-lg font-semibold tracking-tight text-ink">Chat</h1>
         <p className="text-xs text-ink-muted">Team messages & live requests</p>
       </div>
-      <TeamChatView className="min-h-0 flex-1" />
+      <TeamChatView className="h-0 min-h-0 flex-1" />
     </div>
   );
 }

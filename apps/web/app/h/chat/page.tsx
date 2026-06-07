@@ -22,7 +22,7 @@ export default function HousekeeperChatPage() {
           <Avatar name={user?.name ?? '?'} url={user?.avatarUrl} size={36} ring />
         </Link>
       </div>
-      <TeamChatView className="min-h-0 flex-1" />
+      <TeamChatView className="h-0 min-h-0 flex-1" />
     </div>
   );
 }
