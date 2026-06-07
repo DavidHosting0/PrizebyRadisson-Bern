@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import clsx from 'clsx';
 import { api, API_BASE } from '@/lib/api';
@@ -21,6 +21,8 @@ const REACTION_TYPES = [
   { type: 'EYES', emoji: '👀', label: 'Eyes' },
   { type: 'EXCLAMATION_QUESTION', emoji: '⁉️', label: 'Exclamation question mark' },
 ] as const;
+
+const NEAR_BOTTOM_THRESHOLD_PX = 80;
 
 type ReactionSummary = { type: string; count: number; me: boolean };
 
@@ -164,7 +166,11 @@ export function TeamChatView({
   const canPost = usePermission('TEAM_CHAT_POST');
   const qc = useQueryClient();
   const toast = useToast();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const hasInitialScrolledRef = useRef(false);
+  const prevTimelineTailRef = useRef<string | null>(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -251,9 +257,48 @@ export function TeamChatView({
     };
   }, [embedOperationsSocket, qc]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [timeline.length]);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    isNearBottomRef.current = true;
+    setShowJumpToBottom(false);
+  }, []);
+
+  const updateNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_THRESHOLD_PX;
+    isNearBottomRef.current = nearBottom;
+    if (nearBottom) setShowJumpToBottom(false);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    updateNearBottom();
+  }, [updateNearBottom]);
+
+  const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
+
+  useLayoutEffect(() => {
+    if (loadingMsg || loadingReq) return;
+    if (timeline.length === 0) return;
+
+    if (!hasInitialScrolledRef.current) {
+      scrollToBottom('auto');
+      hasInitialScrolledRef.current = true;
+      prevTimelineTailRef.current = timelineTailKey;
+      return;
+    }
+
+    if (timelineTailKey === prevTimelineTailRef.current) return;
+    prevTimelineTailRef.current = timelineTailKey;
+
+    if (isNearBottomRef.current) {
+      scrollToBottom('smooth');
+    } else {
+      setShowJumpToBottom(true);
+    }
+  }, [loadingMsg, loadingReq, timeline, timelineTailKey, scrollToBottom]);
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -352,7 +397,11 @@ export function TeamChatView({
         className,
       )}
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">
+      <div
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+      >
         {(loadingMsg || loadingReq) && <p className="text-sm text-ink-muted">Loading…</p>}
         {!loadingMsg && !loadingReq && timeline.filter((i) => i.kind !== 'day').length === 0 && (
           <p className="mt-12 text-center text-sm text-ink-muted">
@@ -614,11 +663,24 @@ export function TeamChatView({
             );
           })}
         </ul>
-        <div ref={bottomRef} />
       </div>
 
+      {showJumpToBottom && (
+        <div className="pointer-events-none relative z-10 -mt-10 flex justify-center">
+          <button
+            type="button"
+            onClick={() => scrollToBottom('smooth')}
+            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-card transition hover:bg-surface-muted"
+            aria-label="Jump to latest messages"
+          >
+            <span aria-hidden>↓</span>
+            New messages
+          </button>
+        </div>
+      )}
+
       {canPost && (
-        <form onSubmit={onSend} className="border-t border-border bg-surface/95 backdrop-blur">
+        <form onSubmit={onSend} className="shrink-0 border-t border-border bg-surface/95 backdrop-blur">
           {replyTo && (
             <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-2 border-b border-border/60 bg-action-muted/30 px-3 py-2 text-xs">
               <div className="min-w-0 border-l-[3px] border-action/60 pl-2">

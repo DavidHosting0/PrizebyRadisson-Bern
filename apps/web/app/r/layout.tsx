@@ -309,7 +309,12 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
           )}
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-auto pb-20 md:pb-8">
+        <main
+          className={clsx(
+            'min-w-0 flex-1 pb-20 md:pb-8',
+            path === '/r/chat' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-auto',
+          )}
+        >
           {children}
           {canCreateRequest && (
             <div className="fixed bottom-4 right-4 z-20 sm:hidden">
