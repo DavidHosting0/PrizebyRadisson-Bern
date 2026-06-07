@@ -273,7 +273,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <div className="flex flex-1">
+      <div className="flex min-h-0 flex-1">
         <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-4 shadow-card md:flex">
           <nav className="flex flex-col gap-0.5 px-2">
             {nav.map((item) => {
@@ -311,8 +311,10 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
         <main
           className={clsx(
-            'min-w-0 flex-1 pb-20 md:pb-8',
-            path === '/r/chat' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-auto',
+            'min-w-0 flex-1',
+            path === '/r/chat'
+              ? 'flex min-h-0 flex-col overflow-hidden'
+              : 'overflow-auto pb-20 md:pb-8',
           )}
         >
           {children}

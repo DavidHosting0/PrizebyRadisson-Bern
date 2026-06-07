@@ -94,7 +94,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-surface-muted md:flex">
+    <div className="flex min-h-screen flex-col bg-surface-muted md:flex-row">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-6 shadow-card md:flex">
         <div className="px-4">
           <BrandLogo />
@@ -144,7 +144,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:min-h-screen">
         <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 shadow-card md:hidden">
           <BrandLogo compact />
           <button
@@ -175,7 +175,14 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <main className="flex-1">{children}</main>
+        <main
+          className={clsx(
+            'flex-1',
+            path === '/s/chat' ? 'flex min-h-0 flex-col overflow-hidden' : 'overflow-auto',
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );
