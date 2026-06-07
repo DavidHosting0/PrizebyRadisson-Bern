@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { IconChat, IconMaintenance, IconRooms } from '@/components/icons';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 const tabs = [
   { href: '/t/maintenance', label: 'Maintenance', Icon: IconMaintenance },
@@ -84,6 +85,7 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
           );
         })}
       </nav>
+      <InstallAppBanner />
     </div>
   );
 }

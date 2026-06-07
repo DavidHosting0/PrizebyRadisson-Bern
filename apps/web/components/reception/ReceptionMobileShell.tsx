@@ -8,6 +8,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { IconChat, IconRequests, IconRooms, IconLost } from '@/components/icons';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 const tabs = [
   { href: '/r/m/requests', label: 'Requests', Icon: IconRequests },
@@ -79,6 +80,7 @@ export function ReceptionMobileShell({
           );
         })}
       </nav>
+      <InstallAppBanner />
     </div>
   );
 }

@@ -145,6 +145,11 @@ export default function LoginPage() {
               {pending ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
+          <p className="mt-6 text-center text-xs text-ink-muted">
+            <a href="/install-help" className="font-medium text-ink-muted underline underline-offset-2 hover:text-ink">
+              App auf dem Handy installieren
+            </a>
+          </p>
         </div>
       </section>
     </div>

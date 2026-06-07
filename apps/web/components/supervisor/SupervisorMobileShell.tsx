@@ -8,6 +8,7 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { IconChat, IconRequests } from '@/components/icons';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 function IconInspections({ className }: { className?: string }) {
   return (
@@ -92,6 +93,7 @@ export function SupervisorMobileShell({
           );
         })}
       </nav>
+      <InstallAppBanner />
     </div>
   );
 }

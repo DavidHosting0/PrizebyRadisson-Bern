@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { IconChat, IconRequests, IconRooms } from '@/components/icons';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 const tabs = [
   { href: '/h', label: 'Rooms', Icon: IconRooms },
@@ -81,6 +82,7 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
           );
         })}
       </nav>
+      <InstallAppBanner />
     </div>
   );
 }
