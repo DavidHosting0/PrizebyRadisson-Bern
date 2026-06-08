@@ -6,6 +6,8 @@ export type MonitorMapNewsAnalysis = {
   categories: string[];
   isBernRelevant: boolean;
   locationHint: string | null;
+  isSafetyRelevant: boolean;
+  dangerTypes: string[];
 };
 
 export type MonitorMapNewsMarker = {
@@ -82,4 +84,30 @@ export type MonitorMapFeedSourceDto = {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+const SAFETY_KEYWORD_RE =
+  /\b(demo|demonstration|kundgebung|sperr|gesperrt|unfall|brand|polizei|gewalt|angriff|konflikt|evakuiert|festnahme|verletzt|kollision|raub|diebstahl|vandalismus|durchsuchung|einsatz)\b/i;
+
+export function matchesMonitorMapSafetyKeywords(title: string, summary: string | null): boolean {
+  return SAFETY_KEYWORD_RE.test(`${title} ${summary ?? ''}`);
+}
+
+export function isNewsSafetyRelevant(item: MonitorMapNewsMarker): boolean {
+  if (item.aiAnalysis != null) return item.aiAnalysis.isSafetyRelevant;
+  return matchesMonitorMapSafetyKeywords(item.title, item.summary);
+}
+
+export function isPoliceSafetyRelevant(item: MonitorMapPoliceMarker): boolean {
+  return matchesMonitorMapSafetyKeywords(item.title, item.summary);
+}
+
+export const MONITOR_MAP_DANGER_TYPE_LABELS: Record<string, string> = {
+  demo: 'Demo',
+  sperrung: 'Sperrung',
+  unfall: 'Unfall',
+  brand: 'Brand',
+  gewalt: 'Gewalt',
+  polizei: 'Polizei',
+  konflikt: 'Konflikt',
 };

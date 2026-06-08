@@ -308,18 +308,18 @@ async function main() {
   const defaultFeeds: Array<{ kind: 'NEWS' | 'POLICE'; name: string; feedUrl: string }> = [
     {
       kind: MonitorMapFeedKind.NEWS,
-      name: 'SRF Kanton Bern',
-      feedUrl: 'https://www.srf.ch/news/brief/kanton-bern/rss.xml',
+      name: 'BZ Bern Mittelland',
+      feedUrl: 'https://partner-feeds.publishing.tamedia.ch/rss/bernerzeitung/bern',
     },
     {
       kind: MonitorMapFeedKind.NEWS,
-      name: 'BZ Bern',
-      feedUrl: 'https://www.bernerzeitung.ch/bern/rss.xml',
+      name: 'Stadt Bern',
+      feedUrl: 'https://www.bern.ch/news_listing_rss',
     },
     {
       kind: MonitorMapFeedKind.POLICE,
-      name: 'Kantonspolizei Bern',
-      feedUrl: 'https://www.police.be.ch/content/police/be/de/home/medien/pressemitteilungen/medien/_jcr_content.feed.xml',
+      name: 'Blog Kantonspolizei Bern',
+      feedUrl: 'https://www.blog.police.be.ch/feed/',
     },
   ];
 

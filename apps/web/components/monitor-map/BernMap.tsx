@@ -6,6 +6,7 @@ import type {
   MonitorMapPoliceMarker,
   MonitorMapSnapshot,
 } from '@housekeeping/shared';
+import { MONITOR_MAP_DANGER_TYPE_LABELS } from '@housekeeping/shared';
 import { MapContainer, TileLayer, CircleMarker, Popup, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -28,6 +29,8 @@ type LayerVisibility = {
 type Props = {
   snapshot: MonitorMapSnapshot;
   layers: LayerVisibility;
+  filteredNews: MonitorMapNewsMarker[];
+  filteredPolice: MonitorMapPoliceMarker[];
   onSelectItem?: (item: { type: 'news' | 'police' | 'aviation'; id: string }) => void;
 };
 
@@ -48,12 +51,12 @@ function urgencyColor(urgency: string | undefined) {
   }
 }
 
-export function BernMap({ snapshot, layers, onSelectItem }: Props) {
+export function BernMap({ snapshot, layers, filteredNews, filteredPolice, onSelectItem }: Props) {
   const newsOnMap = layers.news
-    ? snapshot.news.filter((n) => n.latitude != null && n.longitude != null)
+    ? filteredNews.filter((n) => n.latitude != null && n.longitude != null)
     : [];
   const policeOnMap = layers.police
-    ? snapshot.police.filter((p) => p.latitude != null && p.longitude != null)
+    ? filteredPolice.filter((p) => p.latitude != null && p.longitude != null)
     : [];
   const aviation = layers.aviation ? snapshot.aviation : [];
 
@@ -99,6 +102,13 @@ function NewsMarker({
       <Popup>
         <div className="max-w-xs space-y-1 text-sm">
           <p className="font-semibold">{item.title}</p>
+          {item.aiAnalysis?.dangerTypes && item.aiAnalysis.dangerTypes.length > 0 && (
+            <p className="text-xs font-medium text-red-700">
+              {item.aiAnalysis.dangerTypes
+                .map((t) => MONITOR_MAP_DANGER_TYPE_LABELS[t] ?? t)
+                .join(' · ')}
+            </p>
+          )}
           {item.aiAnalysis?.summaryDe && <p className="text-ink-muted">{item.aiAnalysis.summaryDe}</p>}
           {item.locationLabel && <p className="text-xs text-ink-muted">{item.locationLabel}</p>}
           <p className="text-xs text-ink-muted">{formatTime(item.publishedAt)}</p>

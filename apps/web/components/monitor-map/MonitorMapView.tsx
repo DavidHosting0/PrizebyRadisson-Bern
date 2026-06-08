@@ -2,7 +2,13 @@
 
 import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
-import type { MonitorMapNewsMarker, MonitorMapPoliceMarker } from '@housekeeping/shared';
+import {
+  isNewsSafetyRelevant,
+  isPoliceSafetyRelevant,
+  MONITOR_MAP_DANGER_TYPE_LABELS,
+  type MonitorMapNewsMarker,
+  type MonitorMapPoliceMarker,
+} from '@housekeeping/shared';
 import { useMonitorMapSnapshot } from '@/lib/hooks/useMonitorMapSnapshot';
 import { LayerControls } from './LayerControls';
 
@@ -20,10 +26,39 @@ function formatTime(iso: string | null) {
   return new Date(iso).toLocaleString('de-CH', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function DangerBadges({ dangerTypes }: { dangerTypes: string[] }) {
+  if (dangerTypes.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {dangerTypes.map((type) => (
+        <span
+          key={type}
+          className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-800"
+        >
+          {MONITOR_MAP_DANGER_TYPE_LABELS[type] ?? type}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function MonitorMapView() {
   const { data, isLoading, error, dataUpdatedAt } = useMonitorMapSnapshot();
   const [layers, setLayers] = useState({ news: true, police: true, aviation: true });
+  const [dangerOnly, setDangerOnly] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const filteredNews = useMemo(() => {
+    if (!data) return [];
+    const items = layers.news ? data.news : [];
+    return dangerOnly ? items.filter(isNewsSafetyRelevant) : items;
+  }, [data, layers.news, dangerOnly]);
+
+  const filteredPolice = useMemo(() => {
+    if (!data) return [];
+    const items = layers.police ? data.police : [];
+    return dangerOnly ? items.filter(isPoliceSafetyRelevant) : items;
+  }, [data, layers.police, dangerOnly]);
 
   const sidebarItems = useMemo(() => {
     if (!data) return [];
@@ -32,18 +67,16 @@ export function MonitorMapView() {
       | { type: 'police'; item: MonitorMapPoliceMarker }
       | { type: 'aviation'; item: (typeof data.aviation)[0] }
     > = [];
-    if (layers.news) data.news.forEach((item) => items.push({ type: 'news', item }));
-    if (layers.police) data.police.forEach((item) => items.push({ type: 'police', item }));
+    filteredNews.forEach((item) => items.push({ type: 'news', item }));
+    filteredPolice.forEach((item) => items.push({ type: 'police', item }));
     if (layers.aviation) data.aviation.forEach((item) => items.push({ type: 'aviation', item }));
     items.sort((a, b) => {
-      const ta =
-        a.type === 'aviation' ? 0 : new Date(a.item.publishedAt).getTime();
-      const tb =
-        b.type === 'aviation' ? 0 : new Date(b.item.publishedAt).getTime();
+      const ta = a.type === 'aviation' ? 0 : new Date(a.item.publishedAt).getTime();
+      const tb = b.type === 'aviation' ? 0 : new Date(b.item.publishedAt).getTime();
       return tb - ta;
     });
     return items.slice(0, 40);
-  }, [data, layers]);
+  }, [data, filteredNews, filteredPolice, layers.aviation]);
 
   const toggleLayer = (key: keyof typeof layers) => {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -68,8 +101,8 @@ export function MonitorMapView() {
   }
 
   const counts = {
-    news: data.news.filter((n) => n.latitude != null).length,
-    police: data.police.filter((p) => p.latitude != null).length,
+    news: filteredNews.filter((n) => n.latitude != null).length,
+    police: filteredPolice.filter((p) => p.latitude != null).length,
     aviation: data.aviation.length,
   };
 
@@ -84,7 +117,18 @@ export function MonitorMapView() {
               {dataUpdatedAt ? formatTime(new Date(dataUpdatedAt).toISOString()) : '–'}
             </p>
           </div>
-          <LayerControls layers={layers} onToggle={toggleLayer} counts={counts} />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={dangerOnly}
+                onChange={(e) => setDangerOnly(e.target.checked)}
+                className="rounded border-border"
+              />
+              <span>Nur Gefahren</span>
+            </label>
+            <LayerControls layers={layers} onToggle={toggleLayer} counts={counts} />
+          </div>
         </div>
       </div>
 
@@ -93,6 +137,8 @@ export function MonitorMapView() {
           <BernMap
             snapshot={data}
             layers={layers}
+            filteredNews={filteredNews}
+            filteredPolice={filteredPolice}
             onSelectItem={(sel) => setSelectedId(sel.id)}
           />
         </div>
@@ -102,7 +148,11 @@ export function MonitorMapView() {
           </div>
           <ul className="flex-1 overflow-y-auto">
             {sidebarItems.length === 0 && (
-              <li className="px-3 py-4 text-sm text-ink-muted">Keine Einträge für die gewählten Layer.</li>
+              <li className="px-3 py-4 text-sm text-ink-muted">
+                {dangerOnly
+                  ? 'Keine Gefahrenmeldungen für die gewählten Layer.'
+                  : 'Keine Einträge für die gewählten Layer.'}
+              </li>
             )}
             {sidebarItems.map((entry) => {
               if (entry.type === 'aviation') {
@@ -123,6 +173,8 @@ export function MonitorMapView() {
               const item = entry.item;
               const id = item.id;
               const hasGeo = item.latitude != null;
+              const dangerTypes =
+                entry.type === 'news' ? (entry.item.aiAnalysis?.dangerTypes ?? []) : [];
               return (
                 <li
                   key={id}
@@ -133,6 +185,7 @@ export function MonitorMapView() {
                     {entry.type === 'news' ? 'Nachricht' : 'Polizei'} · {formatTime(item.publishedAt)}
                     {!hasGeo && ' · ohne Kartenposition'}
                   </p>
+                  {entry.type === 'news' && <DangerBadges dangerTypes={dangerTypes} />}
                   {'aiAnalysis' in item && item.aiAnalysis?.summaryDe && (
                     <p className="mt-1 line-clamp-2 text-xs text-ink-muted">{item.aiAnalysis.summaryDe}</p>
                   )}

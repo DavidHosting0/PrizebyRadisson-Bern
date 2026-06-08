@@ -126,6 +126,35 @@ export default function MonitorMapAdminPage() {
           </section>
 
           <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
+            <h2 className="text-lg font-semibold text-ink">Empfohlene Quellen</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Diese RSS-Feeds liefern zuverlässige Bern-Gefahrenmeldungen (Demos, Sperrungen, Unfälle, Polizei).
+              Alte defekte Feeds (SRF 404, Kapo-Presse-RSS 404, falsche BZ-URL) bitte deaktivieren oder löschen.
+            </p>
+            <ul className="mt-4 space-y-3 text-sm">
+              <li className="rounded-lg border border-border bg-surface-muted px-3 py-2">
+                <p className="font-medium text-ink">BZ Bern Mittelland</p>
+                <p className="mt-0.5 text-xs text-ink-muted">Nachrichten · Unfälle, Polizei, lokale Ereignisse</p>
+                <code className="mt-1 block break-all text-xs">
+                  https://partner-feeds.publishing.tamedia.ch/rss/bernerzeitung/bern
+                </code>
+              </li>
+              <li className="rounded-lg border border-border bg-surface-muted px-3 py-2">
+                <p className="font-medium text-ink">Stadt Bern</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  Nachrichten · Kundgebungen, Sperrungen, Baustellen
+                </p>
+                <code className="mt-1 block break-all text-xs">https://www.bern.ch/news_listing_rss</code>
+              </li>
+              <li className="rounded-lg border border-border bg-surface-muted px-3 py-2">
+                <p className="font-medium text-ink">Blog Kantonspolizei Bern</p>
+                <p className="mt-0.5 text-xs text-ink-muted">Polizei · offizieller Kapo-Blog</p>
+                <code className="mt-1 block break-all text-xs">https://www.blog.police.be.ch/feed/</code>
+              </li>
+            </ul>
+          </section>
+
+          <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
             <h2 className="text-lg font-semibold text-ink">Feed-Quellen</h2>
             <p className="mt-1 text-sm text-ink-muted">
               Benutzer mit Berechtigung <code className="text-xs">MONITOR_MAP_READ</code> sehen die Karte unter Reception

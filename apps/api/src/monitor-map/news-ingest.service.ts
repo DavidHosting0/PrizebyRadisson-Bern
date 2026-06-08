@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { matchesMonitorMapSafetyKeywords } from '@housekeeping/shared';
 import { MonitorMapFeedKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeocodingService } from './geocoding.service';
@@ -87,6 +88,8 @@ export class NewsIngestService {
           categories: ['Nachricht'],
           isBernRelevant: true,
           locationHint,
+          isSafetyRelevant: matchesMonitorMapSafetyKeywords(item.title, item.summary),
+          dangerTypes: [],
         };
       }
 
