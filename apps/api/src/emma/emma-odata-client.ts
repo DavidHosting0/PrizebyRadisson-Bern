@@ -16,6 +16,161 @@ function createBatchBoundary(): string {
   return `batch_${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
 }
 
+function createChangesetBoundary(): string {
+  const hex = randomBytes(6).toString('hex');
+  return `changeset_${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+}
+
+/** OData string literal for EMMA action URLs: `'CHBRNPR'`. */
+export function emmaODataStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Request-Object-Key header used by EMMA Folio Management (browser HAR). */
+export function buildEmmaRequestObjectKey(
+  hotelId: string,
+  reservationId: string,
+  at = new Date(),
+): string {
+  const pad = (n: number, len: number) => String(n).padStart(len, '0');
+  const stamp = [
+    pad(at.getFullYear(), 4),
+    pad(at.getMonth() + 1, 2),
+    pad(at.getDate(), 2),
+    pad(at.getHours(), 2),
+    pad(at.getMinutes(), 2),
+    pad(at.getSeconds(), 2),
+  ].join('');
+  return `${hotelId}   ${reservationId}${stamp}000`;
+}
+
+export function normalizeEmmaChargeRowId(value: string): string {
+  const s = value.trim();
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? String(n).padStart(6, '0') : s;
+}
+
+export function emmaMoveDestinationFolioParam(folioId: string): string {
+  const n = parseInt(folioId, 10);
+  return Number.isFinite(n) ? String(n) : folioId.replace(/^0+/, '') || folioId;
+}
+
+export type ODataBatchPostPartSpec = {
+  /** Relative action path including query string, e.g. MoveCharge?sap-client=100&... */
+  actionPath: string;
+  body?: string;
+};
+
+export type ODataChangesetBatchOpts = {
+  requestObjectKey?: string;
+  requestObjectType?: string;
+  tmsFioriApp?: string;
+};
+
+/** Build OData $batch body with a single changeset POST (EMMA move charge HAR). */
+export function buildODataChangesetBatchBody(
+  posts: ODataBatchPostPartSpec[],
+  csrfToken: string,
+  opts?: ODataChangesetBatchOpts,
+): { boundary: string; body: string; contentType: string } {
+  const batchBoundary = createBatchBoundary();
+  const changesetBoundary = createChangesetBoundary();
+  const requestObjectKey = opts?.requestObjectKey;
+  const requestObjectType = opts?.requestObjectType ?? 'RSRV';
+
+  let body = '\r\n';
+  body += `--${batchBoundary}\r\n`;
+  body += `Content-Type: multipart/mixed; boundary=${changesetBoundary}\r\n\r\n`;
+
+  for (let i = 0; i < posts.length; i++) {
+    const post = posts[i];
+    const contentId = `id-${Date.now()}-${1000 + i}`;
+    body += `--${changesetBoundary}\r\n`;
+    body += 'Content-Type: application/http\r\n';
+    body += 'Content-Transfer-Encoding: binary\r\n\r\n';
+    body += `POST ${post.actionPath} HTTP/1.1\r\n`;
+    if (requestObjectKey) {
+      body += `Request-Object-Key: ${requestObjectKey}\r\n`;
+      body += `Request-Object-Type: ${requestObjectType}\r\n`;
+    }
+    body += 'X-Requested-With: XMLHttpRequest\r\n';
+    body += 'sap-contextid-accept: header\r\n';
+    body += 'Accept: application/json\r\n';
+    body += `x-csrf-token: ${csrfToken}\r\n`;
+    body += 'Accept-Language: en\r\n';
+    body += 'DataServiceVersion: 2.0\r\n';
+    body += 'MaxDataServiceVersion: 2.0\r\n';
+    body += 'Content-Type: application/json\r\n';
+    body += `Content-ID: ${contentId}\r\n\r\n`;
+    body += post.body ?? '';
+    body += '\r\n';
+  }
+
+  body += `--${changesetBoundary}--\r\n\r\n`;
+  body += `--${batchBoundary}--\r\n`;
+  return {
+    boundary: batchBoundary,
+    body,
+    contentType: `multipart/mixed;boundary=${batchBoundary}`,
+  };
+}
+
+export function validateMoveChargePath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  sourceFolioId: string;
+  chargeRowId: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  return (
+    `ValidateMoveCharge?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&ReservationId=${q(input.reservationId)}` +
+    `&NumFolio=${q(input.sourceFolioId.padStart(2, '0'))}` +
+    `&NumRow=${q(normalizeEmmaChargeRowId(input.chargeRowId))}`
+  );
+}
+
+export function moveChargePath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  sourceFolioId: string;
+  chargeRowId: string;
+  destinationFolioId: string;
+  destinationReservationId: string;
+  employee: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  const employee = input.employee.replace(/^0+/, '') || input.employee;
+  return (
+    `MoveCharge?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&ReservationId=${q(input.reservationId)}` +
+    `&NumFolio=${q(input.sourceFolioId.padStart(2, '0'))}` +
+    `&NumRow=${q(normalizeEmmaChargeRowId(input.chargeRowId))}` +
+    `&NumFolioD=${q(emmaMoveDestinationFolioParam(input.destinationFolioId))}` +
+    `&ReserIdD=${q(input.destinationReservationId)}` +
+    `&Employee=${q(employee)}`
+  );
+}
+
+export function checkEmployeeAuthPath(
+  sapClient: string,
+  hotelId: string,
+  employee: string,
+  action = '0004',
+): string {
+  const q = emmaODataStringLiteral;
+  return (
+    `CheckEmployeeAuth?sap-client=${sapClient}` +
+    `&HotelId=${q(hotelId)}` +
+    `&Employee=${q(employee.padStart(10, '0'))}` +
+    `&Action=${q(action)}`
+  );
+}
+
 export type EmmaODataBatchPartResult = {
   status: number;
   body: string;

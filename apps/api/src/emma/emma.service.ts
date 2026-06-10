@@ -32,6 +32,8 @@ import {
 } from './emma-reservation-sync';
 import { fetchEmmaReservationDetailFromJar } from './emma-reservation-detail-fetch';
 import { fetchEmmaReservationFolioFromJar } from './emma-reservation-folio-fetch';
+import { moveEmmaFolioChargeFromJar } from './emma-folio-move-charge';
+import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
 
 /**
@@ -455,6 +457,46 @@ export class EmmaService {
     return fetchEmmaReservationFolioFromJar(jar, baseUrl, this.cipher, {
       hotelId: hid,
       reservationId,
+      sapClient,
+      debug: emmaDebug.verbose ? emmaDebug : undefined,
+    });
+  }
+
+  /** Move one folio charge (Folio Management → MoveCharge). Requires operator login in EMMA settings. */
+  async moveFolioCharge(
+    params: EmmaMoveFolioChargeParams & { hotelId?: string },
+  ): Promise<EmmaMoveFolioChargeResult> {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const operatorCode = creds.operatorCode?.trim();
+    if (!operatorCode) {
+      throw new ForbiddenException(
+        'EMMA Operator-Code fehlt (Admin → EMMA Login). Für MoveCharge erforderlich.',
+      );
+    }
+    const hid =
+      params.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+
+    let jar = await this.loadEmmaHttpJar();
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[EMMA] HTTP session expired (${probe.reason}) — refresh`);
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    return moveEmmaFolioChargeFromJar(jar, baseUrl, {
+      ...params,
+      hotelId: hid,
+      employee: params.employee ?? operatorCode,
       sapClient,
       debug: emmaDebug.verbose ? emmaDebug : undefined,
     });

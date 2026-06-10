@@ -15,6 +15,7 @@ export enum DerivedRoomStatus {
 }
 
 export * from './folio-charges';
+export * from './emma-folio-move';
 export * from './guest-stay-type';
 export * from './room-layout';
 export * from './reservations';

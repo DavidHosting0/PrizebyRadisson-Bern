@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   ArrivalCheckItemStatus,
   ArrivalCheckRunDetail,
   ArrivalCheckRunStatus,
+  ArrivalCheckStep,
 } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
@@ -45,6 +46,19 @@ function itemStatusLabel(status: ArrivalCheckItemStatus): string {
   }
 }
 
+function stepLabel(step: ArrivalCheckStep | null): string {
+  switch (step) {
+    case 'FOLIO_LOAD':
+      return 'Folio laden';
+    case 'CHARGE_ASSIGN':
+      return 'Charges zuordnen';
+    case 'PREPAID_SETTLE':
+      return 'Prepaid abrechnen';
+    default:
+      return '—';
+  }
+}
+
 function statusBadgeClass(status: ArrivalCheckItemStatus | ArrivalCheckRunStatus): string {
   switch (status) {
     case 'COMPLETED':
@@ -68,6 +82,9 @@ export default function ArrivalCheckRunPage() {
   const { user, loading } = useAuth();
   const canArrivalCheck = usePermission('ARRIVAL_CHECK');
   const runId = String(params.runId ?? '');
+  const queryClient = useQueryClient();
+  const [executing, setExecuting] = useState(false);
+  const [executeError, setExecuteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -83,6 +100,25 @@ export default function ArrivalCheckRunPage() {
   });
 
   const run = runQuery.data;
+  const canExecute =
+    run &&
+    run.status !== 'CANCELLED' &&
+    run.pendingCount + run.failedCount > 0 &&
+    !executing;
+
+  async function handleExecute() {
+    if (!runId) return;
+    setExecuting(true);
+    setExecuteError(null);
+    try {
+      await api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}/execute`, { method: 'POST' });
+      await queryClient.invalidateQueries({ queryKey: ['arrival-check', 'run', runId] });
+    } catch (err) {
+      setExecuteError(err instanceof Error ? err.message : 'Ausführung fehlgeschlagen.');
+    } finally {
+      setExecuting(false);
+    }
+  }
 
   if (loading || !user || !canArrivalCheck) {
     return (
@@ -137,6 +173,16 @@ export default function ArrivalCheckRunPage() {
           >
             {runStatusLabel(run.status)}
           </span>
+          {canExecute && (
+            <button
+              type="button"
+              onClick={() => void handleExecute()}
+              disabled={executing}
+              className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-surface hover:bg-ink/90 disabled:opacity-50"
+            >
+              {executing ? 'Läuft…' : 'Ausführen'}
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-3 text-sm text-ink-muted">
@@ -153,9 +199,15 @@ export default function ArrivalCheckRunPage() {
           )}
         </div>
 
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Die automatischen Schritte (Folio laden, Charges zuordnen, Prepaid abrechnen) werden in
-          einer späteren Version ausgeführt. Alle Einträge bleiben vorerst auf «Ausstehend».
+        {executeError && (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+            {executeError}
+          </p>
+        )}
+
+        <p className="rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-sm text-ink-muted">
+          Phase 1: Folio aus EMMA laden und Zimmer-/Hotelsteuer-Posten (BB, CTAX2) von Folio 1 auf
+          das Firmen-Folio verschieben. City Tax (CTAX) bleibt auf Folio 1.
         </p>
       </header>
 
@@ -209,7 +261,7 @@ export default function ArrivalCheckRunPage() {
                       <p className="mt-1 max-w-xs text-xs text-rose-700">{item.error}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 text-ink-muted">—</td>
+                  <td className="px-4 py-3.5 text-ink-muted">{stepLabel(item.currentStep)}</td>
                   <td className="px-4 py-3.5 text-right">
                     <Link
                       href={`/r/reservations/${item.reservationId}?from=arrivals`}

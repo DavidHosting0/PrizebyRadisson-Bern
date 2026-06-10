@@ -63,8 +63,10 @@ export default function ReservationDetailPage() {
     fetchError,
     fetchDetail,
     fetchFolio,
+    moveFolioCharge,
     isFetchingDetail,
     isFetchingFolio,
+    isMovingFolioCharge,
   } = useReservationEmmaFetch(reservationId);
 
   const status = data ? reservationStatus(data) : null;
@@ -135,7 +137,7 @@ export default function ReservationDetailPage() {
               <button
                 type="button"
                 onClick={() => fetchDetail()}
-                disabled={isFetchingDetail || isFetchingFolio}
+                disabled={isFetchingDetail || isFetchingFolio || isMovingFolioCharge}
                 className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
               >
                 {isFetchingDetail ? 'Lädt EMMA Detail…' : 'EMMA Detail laden'}
@@ -143,7 +145,7 @@ export default function ReservationDetailPage() {
               <button
                 type="button"
                 onClick={() => fetchFolio()}
-                disabled={isFetchingFolio || isFetchingDetail}
+                disabled={isFetchingFolio || isFetchingDetail || isMovingFolioCharge}
                 className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50"
               >
                 {isFetchingFolio ? 'Lädt Folio…' : 'Folio laden'}
@@ -162,6 +164,19 @@ export default function ReservationDetailPage() {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             canSync={canSync}
+            movingCharge={isMovingFolioCharge}
+            onMoveCharge={
+              canSync
+                ? async (sourceFolioId, chargeRowId, destinationFolioId) => {
+                    await moveFolioCharge({
+                      sourceFolioId,
+                      chargeRowId,
+                      destinationFolioId,
+                      hotelId: data.hotelId,
+                    });
+                  }
+                : undefined
+            }
           />
         </>
       )}

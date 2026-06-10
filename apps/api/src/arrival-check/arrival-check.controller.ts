@@ -39,4 +39,11 @@ export class ArrivalCheckController {
   getRun(@Param('id') id: string) {
     return this.arrivalCheck.getRun(id);
   }
+
+  @Post('runs/:id/execute')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.ARRIVAL_CHECK)
+  executeRun(@Param('id') id: string) {
+    return this.arrivalCheck.executeRun(id);
+  }
 }

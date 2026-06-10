@@ -1,7 +1,8 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { PermissionCode } from '@prisma/client';
 import type { ReservationTab } from '@housekeeping/shared';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { MoveFolioChargeDto } from './dto/move-folio-charge.dto';
 import { ReservationsService } from './reservations.service';
 
 @Controller('reservations')
@@ -54,6 +55,16 @@ export class ReservationsController {
   @RequirePermissions(PermissionCode.RESERVATIONS_SYNC)
   fetchFolio(@Param('reservationId') reservationId: string, @Query('hotelId') hotelId?: string) {
     return this.reservations.fetchFolioFromEmma(reservationId, hotelId);
+  }
+
+  @Post(':reservationId/move-folio-charge')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_SYNC)
+  moveFolioCharge(
+    @Param('reservationId') reservationId: string,
+    @Body() dto: MoveFolioChargeDto,
+  ) {
+    return this.reservations.moveFolioChargeFromEmma(reservationId, dto);
   }
 
   @Get(':reservationId')

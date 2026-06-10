@@ -99,7 +99,23 @@ function OverviewTab({ data }: { data: ReservationDetail }) {
   );
 }
 
-function FolioTab({ data, canSync }: { data: ReservationDetail; canSync: boolean }) {
+function FolioTab({
+  data,
+  canSync,
+  canMove,
+  movingCharge,
+  onMoveCharge,
+}: {
+  data: ReservationDetail;
+  canSync: boolean;
+  canMove?: boolean;
+  movingCharge?: boolean;
+  onMoveCharge?: (
+    sourceFolioId: string,
+    chargeRowId: string,
+    destinationFolioId: string,
+  ) => Promise<void>;
+}) {
   if (!data.emmaFolio) {
     return (
       <EmptyState
@@ -112,7 +128,14 @@ function FolioTab({ data, canSync }: { data: ReservationDetail; canSync: boolean
       />
     );
   }
-  return <EmmaFolioSections emmaFolio={data.emmaFolio} />;
+  return (
+    <EmmaFolioSections
+      emmaFolio={data.emmaFolio}
+      canMove={canMove}
+      moving={movingCharge}
+      onMoveCharge={onMoveCharge}
+    />
+  );
 }
 
 function EmmaTab({ data, canSync }: { data: ReservationDetail; canSync: boolean }) {
@@ -175,11 +198,19 @@ export function ReservationDetailView({
   activeTab,
   onTabChange,
   canSync,
+  onMoveCharge,
+  movingCharge,
 }: {
   data: ReservationDetail;
   activeTab: ReservationDetailTab;
   onTabChange: (tab: ReservationDetailTab) => void;
   canSync: boolean;
+  onMoveCharge?: (
+    sourceFolioId: string,
+    chargeRowId: string,
+    destinationFolioId: string,
+  ) => Promise<void>;
+  movingCharge?: boolean;
 }) {
   return (
     <div>
@@ -202,7 +233,15 @@ export function ReservationDetailView({
 
       <div className="mt-6">
         {activeTab === 'overview' && <OverviewTab data={data} />}
-        {activeTab === 'folio' && <FolioTab data={data} canSync={canSync} />}
+        {activeTab === 'folio' && (
+          <FolioTab
+            data={data}
+            canSync={canSync}
+            canMove={canSync}
+            movingCharge={movingCharge}
+            onMoveCharge={onMoveCharge}
+          />
+        )}
         {activeTab === 'emma' && <EmmaTab data={data} canSync={canSync} />}
         {activeTab === 'guests' && <GuestsTab data={data} />}
       </div>

@@ -319,6 +319,31 @@ export class ReservationsService {
     return this.findOne(reservationId, hid);
   }
 
+  /** Move one folio charge in EMMA, then refresh stored folio snapshot. */
+  async moveFolioChargeFromEmma(
+    reservationId: string,
+    input: {
+      sourceFolioId: string;
+      chargeRowId: string;
+      destinationFolioId: string;
+      hotelId?: string;
+    },
+  ): Promise<ReservationDetail> {
+    const hid = input.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    await this.emma.moveFolioCharge({
+      hotelId: hid,
+      reservationId,
+      sourceFolioId: input.sourceFolioId,
+      chargeRowId: input.chargeRowId,
+      destinationFolioId: input.destinationFolioId,
+    });
+    this.log.log(
+      `[Reservations] moved folio charge ${input.chargeRowId} ` +
+        `${input.sourceFolioId} → ${input.destinationFolioId} on ${reservationId}`,
+    );
+    return this.fetchFolioFromEmma(reservationId, hid);
+  }
+
   private snapshotFieldsFromUpsert(upsert: ReservationUpsertRow) {
     return {
       arrivalDate: upsert.arrivalDate,

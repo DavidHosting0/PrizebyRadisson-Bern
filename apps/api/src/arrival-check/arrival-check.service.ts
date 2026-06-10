@@ -9,6 +9,7 @@ import type {
   ArrivalCheckRunDetail,
   ArrivalCheckRunItem,
   ArrivalCheckRunSummary,
+  EmmaMoveFolioChargeResult,
   ReservationListItem,
 } from '@housekeeping/shared';
 import { ReservationsService } from '../reservations/reservations.service';
@@ -21,12 +22,16 @@ import {
   decryptSensitivePayload,
   todayIsoDate,
 } from '../reservations/reservation-sensitive';
+import { EmmaService } from '../emma/emma.service';
+import { planGuestToCompanyChargeMoves } from './arrival-check-charge-assign';
+import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
 
 @Injectable()
 export class ArrivalCheckService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cipher: SecretCipherService,
+    private readonly emma: EmmaService,
     @Inject(forwardRef(() => ReservationsService))
     private readonly reservations: ReservationsService,
   ) {}
@@ -132,6 +137,136 @@ export class ArrivalCheckService {
         : [];
 
     return this.toDetail(run, snapshots);
+  }
+
+  /** Process pending run items: load folio, move misassigned charges, refresh folio. */
+  async executeRun(runId: string): Promise<ArrivalCheckRunDetail> {
+    const run = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id: runId },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        items: { orderBy: { reservationId: 'asc' } },
+      },
+    });
+    if (!run) throw new NotFoundException('Anreise-Check-Lauf nicht gefunden.');
+    if (run.status === 'CANCELLED') {
+      throw new BadRequestException('Abgebrochener Lauf kann nicht ausgeführt werden.');
+    }
+
+    for (const item of run.items) {
+      if (item.status !== 'PENDING' && item.status !== 'FAILED') continue;
+      await this.processRunItem(run.hotelId, item.id);
+    }
+
+    await this.refreshRunStatus(runId);
+    return this.getRun(runId);
+  }
+
+  /** Move one folio charge via EMMA (used by arrival check and future scripts). */
+  async moveFolioCharge(
+    hotelId: string,
+    reservationId: string,
+    sourceFolioId: string,
+    chargeRowId: string,
+    destinationFolioId: string,
+  ): Promise<EmmaMoveFolioChargeResult> {
+    return this.emma.moveFolioCharge({
+      hotelId,
+      reservationId,
+      sourceFolioId,
+      chargeRowId,
+      destinationFolioId,
+    });
+  }
+
+  private async processRunItem(hotelId: string, itemId: string): Promise<void> {
+    const item = await this.prisma.arrivalCheckRunItem.findUnique({ where: { id: itemId } });
+    if (!item) return;
+
+    await this.prisma.arrivalCheckRunItem.update({
+      where: { id: itemId },
+      data: {
+        status: 'IN_PROGRESS',
+        currentStep: 'FOLIO_LOAD',
+        error: null,
+        startedAt: item.startedAt ?? new Date(),
+        finishedAt: null,
+      },
+    });
+
+    try {
+      await this.reservations.fetchFolioFromEmma(item.reservationId, hotelId);
+
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: itemId },
+        data: { currentStep: 'CHARGE_ASSIGN' },
+      });
+
+      const snap = await this.prisma.reservationSnapshot.findUnique({
+        where: {
+          hotelId_reservationId: { hotelId, reservationId: item.reservationId },
+        },
+      });
+      const bundle = snap ? decryptFolioBundle(this.cipher, snap.folioEnc) : null;
+      if (!bundle) {
+        throw new Error('Folio nach EMMA-Abruf nicht verfügbar.');
+      }
+
+      const moves = planGuestToCompanyChargeMoves(bundle);
+      for (const move of moves) {
+        await this.moveFolioCharge(
+          hotelId,
+          item.reservationId,
+          move.sourceFolioId,
+          move.chargeRowId,
+          move.destinationFolioId,
+        );
+      }
+
+      if (moves.length > 0) {
+        await this.reservations.fetchFolioFromEmma(item.reservationId, hotelId);
+      }
+
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: itemId },
+        data: {
+          status: 'COMPLETED',
+          currentStep: null,
+          finishedAt: new Date(),
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: itemId },
+        data: {
+          status: 'FAILED',
+          error: message,
+          finishedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  private async refreshRunStatus(runId: string): Promise<void> {
+    const items = await this.prisma.arrivalCheckRunItem.findMany({
+      where: { runId },
+      select: { status: true },
+    });
+    const pending = items.some((i) => i.status === 'PENDING' || i.status === 'IN_PROGRESS');
+    const failed = items.some((i) => i.status === 'FAILED');
+    const allDone = items.every(
+      (i) => i.status === 'COMPLETED' || i.status === 'FAILED' || i.status === 'SKIPPED',
+    );
+    if (!allDone) return;
+
+    await this.prisma.arrivalCheckRun.update({
+      where: { id: runId },
+      data: {
+        status: failed ? 'FAILED' : 'COMPLETED',
+        finishedAt: new Date(),
+      },
+    });
   }
 
   private toSummary(run: {
