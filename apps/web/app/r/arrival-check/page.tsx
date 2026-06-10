@@ -3,9 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import type { ArrivalCheckRunDetail, ReservationListItem } from '@housekeeping/shared';
+import type { ArrivalCheckRunDetail, CheckInListTab, ReservationListItem } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
+import { getFirstAllowedPath, RECEPTION_NAV } from '@/lib/permission-routes';
 import {
   ArrivalsTable,
   arrivalsSortLabel,
@@ -14,11 +15,30 @@ import {
   type ArrivalsSortKey,
 } from '@/components/reception/ArrivalsTable';
 
+const CHECKIN_TABS: { id: CheckInListTab; label: string; empty: string }[] = [
+  {
+    id: 'arrivals',
+    label: 'Anreisen',
+    empty: 'Keine Anreisen in der EMMA Check-In-Liste. Bitte Reservierungen synchronisieren.',
+  },
+  {
+    id: 'queue',
+    label: 'Queue',
+    empty: 'Keine Reservierungen in der Check-In-Queue.',
+  },
+  {
+    id: 'checkInsDone',
+    label: 'Check-Ins erledigt',
+    empty: 'Noch keine erledigten Check-Ins für das Hotel-Datum.',
+  },
+];
+
 export default function ArrivalCheckPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, loading } = useAuth();
   const canArrivalCheck = usePermission('ARRIVAL_CHECK');
+  const [activeTab, setActiveTab] = useState<CheckInListTab>('arrivals');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
   const [sortDir, setSortDir] = useState<ArrivalsSortDir>('asc');
@@ -28,16 +48,17 @@ export default function ArrivalCheckPage() {
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace('/login');
-    else if (!canArrivalCheck) router.replace('/r');
+    else if (!canArrivalCheck) router.replace(getFirstAllowedPath(user, RECEPTION_NAV) ?? '/login');
   }, [user, loading, canArrivalCheck, router]);
 
+  const tabMeta = CHECKIN_TABS.find((t) => t.id === activeTab)!;
+
   const listQuery = useQuery({
-    queryKey: ['arrival-check', 'arrivals', search],
+    queryKey: ['arrival-check', 'lists', activeTab, search],
     queryFn: () => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ tab: activeTab });
       if (search.trim()) params.set('q', search.trim());
-      const qs = params.toString();
-      return api<ReservationListItem[]>(`/arrival-check/arrivals${qs ? `?${qs}` : ''}`);
+      return api<ReservationListItem[]>(`/arrival-check/arrivals?${params}`);
     },
     enabled: canArrivalCheck,
     staleTime: 0,
@@ -52,7 +73,7 @@ export default function ArrivalCheckPage() {
         body: JSON.stringify({}),
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['arrival-check', 'arrivals'] });
+      void queryClient.invalidateQueries({ queryKey: ['arrival-check', 'lists'] });
     },
   });
 
@@ -86,6 +107,7 @@ export default function ArrivalCheckPage() {
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+  const showSelection = activeTab === 'arrivals';
 
   function onSort(column: ArrivalsSortKey) {
     if (sortKey === column) {
@@ -132,6 +154,9 @@ export default function ArrivalCheckPage() {
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Arrival Check</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            Listen entsprechen EMMA Check-In (Hotel-Datum, nicht Kalendertag nach Mitternacht).
+          </p>
         </div>
         <button
           type="button"
@@ -144,6 +169,23 @@ export default function ArrivalCheckPage() {
       </header>
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+        <div className="flex flex-wrap gap-1 border-b border-border bg-surface-muted/30 p-2">
+          {CHECKIN_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                activeTab === tab.id
+                  ? 'bg-surface text-ink shadow-sm ring-1 ring-border'
+                  : 'text-ink-muted hover:bg-surface/80 hover:text-ink'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <input
             type="search"
@@ -152,54 +194,58 @@ export default function ArrivalCheckPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface-muted/50 px-4 py-2.5 text-sm text-ink placeholder:text-ink-muted/60 focus:border-ink/20 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ink/8"
           />
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleAllVisible}
-              disabled={sortedRows.length === 0}
-              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-50"
-            >
-              {allVisibleSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
-            </button>
-            <span className="text-sm text-ink-muted">
-              {selectedCount} von {sortedRows.length} ausgewählt
-            </span>
-            <button
-              type="button"
-              onClick={() => startMut.mutate([...selectedIds])}
-              disabled={selectedCount === 0 || startMut.isPending}
-              className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:opacity-50"
-            >
-              {startMut.isPending ? 'Startet…' : 'Anreise-Check starten'}
-            </button>
-          </div>
+          {showSelection && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleAllVisible}
+                disabled={sortedRows.length === 0}
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-50"
+              >
+                {allVisibleSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+              </button>
+              <span className="text-sm text-ink-muted">
+                {selectedCount} von {sortedRows.length} ausgewählt
+              </span>
+              <button
+                type="button"
+                onClick={() => startMut.mutate([...selectedIds])}
+                disabled={selectedCount === 0 || startMut.isPending}
+                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:opacity-50"
+              >
+                {startMut.isPending ? 'Startet…' : 'Anreise-Check starten'}
+              </button>
+            </div>
+          )}
         </div>
 
         {listQuery.isLoading ? (
           <p className="px-6 py-10 text-sm text-ink-muted">Lädt…</p>
         ) : sortedRows.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-ink-muted">
-            Keine Anreisen für heute. Bitte Reservierungen synchronisieren.
-          </p>
+          <p className="px-6 py-10 text-sm text-ink-muted">{tabMeta.empty}</p>
         ) : (
           <ArrivalsTable
             rows={sortedRows}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={onSort}
-            selection={{
-              selectedIds,
-              onToggle: toggleSelection,
-              allVisibleSelected,
-              someVisibleSelected,
-            }}
+            selection={
+              showSelection
+                ? {
+                    selectedIds,
+                    onToggle: toggleSelection,
+                    allVisibleSelected,
+                    someVisibleSelected,
+                  }
+                : undefined
+            }
           />
         )}
 
         {!listQuery.isLoading && sortedRows.length > 0 && (
           <div className="border-t border-border px-4 py-2.5 text-xs text-ink-muted">
-            {sortedRows.length} Einträge · Sortiert nach {arrivalsSortLabel(sortKey)} (
-            {sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
+            {sortedRows.length} Einträge · {tabMeta.label} · Sortiert nach{' '}
+            {arrivalsSortLabel(sortKey)} ({sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
           </div>
         )}
       </div>

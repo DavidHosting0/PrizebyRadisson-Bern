@@ -1,4 +1,7 @@
-export type ReservationTab = 'arrivals' | 'queue' | 'inhouse' | 'all';
+export type ReservationTab = 'arrivals' | 'queue' | 'checkInsDone' | 'inhouse' | 'all';
+
+/** EMMA Check-In app tabs (hotel business date, not wall-clock midnight). */
+export type CheckInListTab = 'arrivals' | 'queue' | 'checkInsDone';
 
 export type ReservationListItem = {
   id: string;

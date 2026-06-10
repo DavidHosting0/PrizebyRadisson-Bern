@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, usePermission } from '@/lib/auth-context';
+import { getHomePath } from '@/lib/permission-routes';
 import { MonitorMapView } from '@/components/monitor-map/MonitorMapView';
 
 export function MonitorMapPage() {
@@ -13,7 +14,7 @@ export function MonitorMapPage() {
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace('/login');
-    else if (!canView) router.replace('/');
+    else if (!canView) router.replace(getHomePath(user));
   }, [user, loading, canView, router]);
 
   if (loading || !user || !canView) {

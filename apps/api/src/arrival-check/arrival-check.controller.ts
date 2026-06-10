@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from 
 import { PermissionCode, User } from '@prisma/client';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { CheckInListTab } from '@housekeeping/shared';
 import { ArrivalCheckService } from './arrival-check.service';
 import { CreateArrivalCheckRunDto } from './dto/create-arrival-check-run.dto';
 
@@ -11,8 +12,14 @@ export class ArrivalCheckController {
 
   @Get('arrivals')
   @RequirePermissions(PermissionCode.ARRIVAL_CHECK)
-  listArrivals(@Query('q') q?: string, @Query('hotelId') hotelId?: string) {
-    return this.arrivalCheck.listArrivals(q, hotelId);
+  listArrivals(
+    @Query('tab') tab: CheckInListTab = 'arrivals',
+    @Query('q') q?: string,
+    @Query('hotelId') hotelId?: string,
+  ) {
+    const normalized =
+      tab === 'queue' || tab === 'checkInsDone' || tab === 'arrivals' ? tab : 'arrivals';
+    return this.arrivalCheck.listCheckInTab(normalized, q, hotelId);
   }
 
   @Post('sync')

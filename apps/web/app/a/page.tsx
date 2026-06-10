@@ -6,6 +6,8 @@ import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { RoleBadge } from '@/components/admin/RoleBadge';
+import { Avatar } from '@/components/ui/Avatar';
 import { useToast } from '@/components/toast/ToastProvider';
 import {
   USER_TITLE_PREFIX_OPTIONS,
@@ -152,9 +154,9 @@ export default function AdminUserManagementPage() {
     <div className="space-y-6 p-4 md:p-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">User management</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Members</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Create accounts, reset passwords, disable access, or remove users when the database allows it.
+            Assign roles to grant permissions. Title prefix picks the app area (Reception, Housekeeping, etc.).
           </p>
         </div>
         <Button type="button" variant="action" className="min-h-[44px]" onClick={() => setCreateOpen(true)}>
@@ -168,7 +170,9 @@ export default function AdminUserManagementPage() {
         {users.map((u) => (
           <li key={u.id}>
             <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-              <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 gap-3">
+                <Avatar name={u.name} size={44} className="hidden shrink-0 sm:flex" />
+                <div className="min-w-0 flex-1">
                 <p className="font-semibold text-ink">{u.name}</p>
                 <p className="text-sm text-ink-muted">{u.email}</p>
                 {u.phone && <p className="text-sm text-ink-muted">{u.phone}</p>}
@@ -186,22 +190,19 @@ export default function AdminUserManagementPage() {
                 {u.roles && u.roles.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {u.roles.map((r) => (
-                      <span
-                        key={r.id}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-muted/60 px-2 py-0.5 text-[11px] font-medium text-ink"
-                      >
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: r.color }} />
-                        {r.name}
-                      </span>
+                      <RoleBadge key={r.id} name={r.name} color={r.color} compact />
                     ))}
                   </div>
                 )}
+                {(!u.roles || u.roles.length === 0) && u.role !== 'ADMIN' && (
+                  <p className="mt-2 text-[11px] font-medium text-danger">No roles assigned</p>
+                )}
                 {u.permissionGrants && u.permissionGrants.length > 0 && (
                   <p className="mt-1 text-[11px] text-ink-muted">
-                    <span className="font-medium text-ink/80">Extra permissions:</span>{' '}
-                    {u.permissionGrants.map((g) => g.permission).join(', ')}
+                    <span className="font-medium text-ink/80">+{u.permissionGrants.length} override{u.permissionGrants.length === 1 ? '' : 's'}</span>
                   </p>
                 )}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="secondary" className="min-h-[40px] px-3 text-sm" onClick={() => setEditUser(u)}>
@@ -393,11 +394,18 @@ function UserUpsertModal({
         className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-ink">{mode === 'create' ? 'New user' : 'Edit user'}</h2>
+        <h2 className="text-lg font-semibold text-ink">{mode === 'create' ? 'Add member' : 'Edit member'}</h2>
         <p className="mt-1 text-sm text-ink-muted">
           {mode === 'create'
-            ? 'Set an initial password (min. 8 characters). They sign in with email and password.'
-            : 'Leave password blank to keep the current one. Disabled users cannot sign in.'}
+            ? 'Pick roles for permissions and a title prefix for the app area. Password min. 8 characters.'
+            : 'Leave password blank to keep the current one. Disabled members cannot sign in.'}
+        </p>
+        <p className="mt-2 rounded-lg bg-surface-muted/60 px-3 py-2 text-xs text-ink-muted">
+          Effective access: <span className="font-medium text-ink">{roleIds.length} role{roleIds.length === 1 ? '' : 's'}</span>
+          {extraGrantCodes.length > 0 && (
+            <> · <span className="font-medium text-ink">{extraGrantCodes.length} override{extraGrantCodes.length === 1 ? '' : 's'}</span></>
+          )}
+          {role === 'ADMIN' && <> · admin has all permissions</>}
         </p>
         <form onSubmit={onSubmit} className="mt-4 space-y-4">
           {mode === 'create' && (
@@ -438,10 +446,9 @@ function UserUpsertModal({
             />
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-ink">Title prefix</span>
+            <span className="font-medium text-ink">App area (title prefix)</span>
             <p className="mt-0.5 text-xs text-ink-muted">
-              Drives where the user lands after login (Cleaner → housekeeper app, Reception → reception app, etc.) and is shown in chat, headers, and lists.
-              Permissions on top of this are handled with Roles.
+              Controls which section opens after login — not what they can do. Grant access via roles below.
             </p>
             <select
               className="mt-1 w-full min-h-[44px] cursor-pointer rounded-btn border border-border bg-surface px-3 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15"
@@ -481,21 +488,21 @@ function UserUpsertModal({
             {mode === 'create' && <p className="mt-1 text-xs text-ink-muted">At least 8 characters.</p>}
             {mode === 'edit' && <p className="mt-1 text-xs text-ink-muted">Only filled if you want to reset their password.</p>}
           </label>
-          <div className="rounded-lg border border-border bg-surface-muted/40 px-3 py-3">
+          <div className="rounded-lg border border-border bg-ink/[0.03] px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-ink">Roles</p>
+                <p className="text-sm font-semibold text-ink">Roles</p>
                 <p className="mt-0.5 text-xs text-ink-muted">
-                  Group permissions into reusable bundles. Manage them on the{' '}
-                  <a href="/a/roles" className="underline">Roles page</a>.
+                  Primary way to grant permissions.{' '}
+                  <a href="/a/roles" className="font-medium underline">Manage roles</a>
                 </p>
               </div>
-              <span className="text-xs text-ink-muted">
-                {roleIds.length} of {rolesCatalog?.length ?? 0}
+              <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-muted">
+                {roleIds.length}/{rolesCatalog?.length ?? 0}
               </span>
             </div>
             {!rolesCatalog?.length && (
-              <p className="mt-3 text-xs text-ink-muted">No roles created yet.</p>
+              <p className="mt-3 text-xs text-ink-muted">No roles yet — create roles first.</p>
             )}
             {!!rolesCatalog?.length && (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -509,21 +516,19 @@ function UserUpsertModal({
                         type="button"
                         onClick={() => toggleRole(r.id)}
                         className={
-                          'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
-                          (active
-                            ? 'border-ink bg-ink text-white shadow-card'
-                            : 'border-border bg-surface text-ink hover:bg-surface-muted')
+                          'transition-opacity ' + (active ? 'opacity-100 ring-2 ring-ink/20 rounded-md' : 'opacity-70 hover:opacity-100')
                         }
                       >
-                        <span
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: r.color }}
-                        />
-                        {r.name}
+                        <RoleBadge name={r.name} color={r.color} />
                       </button>
                     );
                   })}
               </div>
+            )}
+            {role !== 'ADMIN' && roleIds.length === 0 && (
+              <p className="mt-2 text-xs text-ink-muted">
+                If none selected, a default system role is assigned from the app area.
+              </p>
             )}
           </div>
 
@@ -533,10 +538,10 @@ function UserUpsertModal({
             onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}
           >
             <summary className="cursor-pointer select-none text-sm font-medium text-ink">
-              Advanced — individual permission overrides
+              Advanced — permission overrides
             </summary>
             <p className="mt-2 text-xs text-ink-muted">
-              Added on top of account-type defaults and the user&apos;s assigned roles. Prefer roles when you can.
+              Extra permissions added on top of assigned roles. Prefer roles for most access changes.
             </p>
             {!catalog?.codes?.length && (
               <p className="mt-2 text-xs text-ink-muted">Loading permission list…</p>

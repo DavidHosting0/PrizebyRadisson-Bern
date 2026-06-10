@@ -438,7 +438,14 @@ export const RESERVATION_LIST_SELECT = [
   'ExpectedDepartureTime',
 ].join(',');
 
-export type ReservationListTab = 'arrivals' | 'queue' | 'inhouse';
+export type CheckInDateTab = 'arrivals' | 'queue' | 'checkInsDone';
+export type ReservationListTab = CheckInDateTab | 'inhouse';
+
+export const CHECKIN_TAB_FILTER_LABEL: Record<CheckInDateTab, string> = {
+  arrivals: 'Arrivals',
+  queue: 'Waiting',
+  checkInsDone: 'CheckInsDone',
+};
 
 export function reservationListBatchPath(
   hotelId: string,
@@ -453,11 +460,14 @@ export function reservationListBatchPath(
   let tabFilter: string;
   switch (tab) {
     case 'arrivals':
-      // EMMA Check-In → Arrivals tab (today, not in queue, not checked in).
+      // EMMA Check-In → Arrivals tab (business date, not in queue, not checked in).
       tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckInQueue eq false and CheckIn eq false`;
       break;
     case 'queue':
-      tabFilter = `${base} and CheckInQueue eq true and CheckIn eq false`;
+      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckInQueue eq true and CheckIn eq false`;
+      break;
+    case 'checkInsDone':
+      tabFilter = `${base} and ArrivalDate eq ${dateFilter} and CheckIn eq true and CheckInDate eq ${dateFilter}`;
       break;
     case 'inhouse':
       // Broader than arrivals/queue: in-house guests may not use Type eq '0'.

@@ -123,6 +123,22 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       },
     ],
   },
+  {
+    id: 'reservations',
+    label: 'Reservations',
+    entries: [
+      {
+        code: PermissionCode.RESERVATIONS_READ,
+        title: 'View reservations',
+        description: 'Open arrivals, in-house guests, and reservation lists.',
+      },
+      {
+        code: PermissionCode.RESERVATIONS_SYNC,
+        title: 'Sync reservations',
+        description: 'Trigger EMMA reservation and room-status sync.',
+      },
+    ],
+  },
 ];
 
 const LABELS: Record<PermissionCode, string> = Object.fromEntries(

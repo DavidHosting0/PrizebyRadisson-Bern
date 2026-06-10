@@ -4,7 +4,15 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
-import { useAuth, usePermission } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context';
+import {
+  filterNavByPermission,
+  getFirstAllowedPath,
+  getSupervisorRoutePermission,
+  hasAnySupervisorPermission,
+  hasPermission,
+  SUPERVISOR_NAV,
+} from '@/lib/permission-routes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { SupervisorMobileModeProvider, useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
@@ -15,19 +23,7 @@ function isSupervisorMobilePath(path: string) {
   return path === '/s/m' || path.startsWith('/s/m/');
 }
 
-const baseNav = [
-  { href: '/s', label: 'Dashboard' },
-  { href: '/s/floor-plan', label: 'Floor plan' },
-  { href: '/s/board', label: 'Assignment board' },
-  { href: '/s/room-tasks', label: 'Room task lists' },
-  { href: '/s/requests', label: 'Requests' },
-  { href: '/s/chat', label: 'Chat' },
-  { href: '/s/lost', label: 'Lost & found' },
-  { href: '/s/damages', label: 'Damage reports' },
-  { href: '/s/schichtplan', label: 'Schichtplan' },
-  { href: '/s/performance', label: 'Performance' },
-  { href: '/s/monitor-map', label: 'Monitor Map', permission: 'MONITOR_MAP_READ' as const },
-];
+const baseNav = SUPERVISOR_NAV;
 
 export default function SupervisorLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -41,10 +37,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
-  const canMonitorMap = usePermission('MONITOR_MAP_READ');
-  const nav = baseNav.filter(
-    (item) => !('permission' in item) || (item.permission === 'MONITOR_MAP_READ' && canMonitorMap),
-  );
+  const nav = filterNavByPermission(user, baseNav);
   const { mobileUi, hydrated, enterMobile } = useSupervisorMobileMode();
 
   useEffect(() => {
@@ -67,7 +60,17 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
     if (loading) return;
     if (!user) router.replace('/login');
     else if (user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') router.replace('/');
+    else if (user.role === 'SUPERVISOR' && !hasAnySupervisorPermission(user)) router.replace('/login');
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (loading || !user || user.role === 'ADMIN') return;
+    const required = getSupervisorRoutePermission(path);
+    if (required && !hasPermission(user, required)) {
+      const fallback = getFirstAllowedPath(user, baseNav) ?? '/login';
+      if (fallback !== path) router.replace(fallback);
+    }
+  }, [loading, user, path, router]);
 
   if (loading || !user) {
     return (

@@ -280,10 +280,9 @@ model User {
 }
 
 /**
- * Admin-defined custom roles (Discord-style). A user can have any number of
- * these in addition to their built-in `UserRole` (account type). Effective
- * permissions are the union of: account-type defaults, individual grants,
- * and every assigned custom role's permission set.
+ * Admin-defined custom roles (Discord-style). Account type (`User.role`) controls
+ * which UI shell the user sees; feature permissions come from assigned roles
+ * plus optional per-user grants. ADMIN accounts receive every permission.
  */
 model Role {
   id          String               @id @default(cuid())
@@ -740,6 +739,8 @@ model ReservationSnapshot {
   checkOut      Boolean  @default(false)
   checkInQueue  Boolean  @default(false)
   inTodayArrivals Boolean @default(false)
+  inCheckInDone Boolean  @default(false)
+  checkInBusinessDate DateTime? @db.Date
   nightsStay    Int?
   roomType      String?
   mealPlan      String?
@@ -757,6 +758,9 @@ model ReservationSnapshot {
   @@unique([hotelId, reservationId])
   @@index([hotelId, arrivalDate, checkIn, checkInQueue])
   @@index([hotelId, arrivalDate, inTodayArrivals])
+  @@index([hotelId, inTodayArrivals])
+  @@index([hotelId, checkInQueue, checkIn])
+  @@index([hotelId, inCheckInDone])
   @@index([hotelId, checkIn, checkOut])
   @@index([hotelId, reservationId])
 }

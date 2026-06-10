@@ -7,9 +7,10 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PermissionCode, UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { EmmaService } from './emma.service';
 
 /**
@@ -64,8 +65,7 @@ export class EmmaController {
    */
   @Post('room-status/sync')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.RECEPTION, UserRole.SUPERVISOR)
+  @RequirePermissions(PermissionCode.RESERVATIONS_SYNC)
   syncRoomStatuses(
     @Body() body: { hotelId?: string; forceAttempt?: boolean } | undefined,
   ) {

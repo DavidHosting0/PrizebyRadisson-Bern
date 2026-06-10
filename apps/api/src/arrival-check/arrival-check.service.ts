@@ -9,6 +9,7 @@ import type {
   ArrivalCheckRunDetail,
   ArrivalCheckRunItem,
   ArrivalCheckRunSummary,
+  CheckInListTab,
   EmmaMoveFolioChargeResult,
   ReservationListItem,
 } from '@housekeeping/shared';
@@ -18,9 +19,7 @@ import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import {
-  dateOnlyFromIso,
   decryptSensitivePayload,
-  todayIsoDate,
 } from '../reservations/reservation-sensitive';
 import { EmmaService } from '../emma/emma.service';
 import { planGuestToCompanyChargeMoves } from './arrival-check-charge-assign';
@@ -36,8 +35,16 @@ export class ArrivalCheckService {
     private readonly reservations: ReservationsService,
   ) {}
 
+  listCheckInTab(
+    tab: CheckInListTab,
+    q?: string,
+    hotelId?: string,
+  ): Promise<ReservationListItem[]> {
+    return this.reservations.list({ tab, q, hotelId });
+  }
+
   listArrivals(q?: string, hotelId?: string): Promise<ReservationListItem[]> {
-    return this.reservations.list({ tab: 'arrivals', q, hotelId });
+    return this.listCheckInTab('arrivals', q, hotelId);
   }
 
   syncArrivals(date?: string) {
@@ -48,15 +55,10 @@ export class ArrivalCheckService {
     return hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
   }
 
-  private todayArrivalsWhere(hotelId: string) {
-    const today = dateOnlyFromIso(todayIsoDate());
+  private checkInArrivalsWhere(hotelId: string) {
     return {
       hotelId,
       inTodayArrivals: true,
-      arrivalDate: today,
-      checkIn: false,
-      checkOut: false,
-      checkInQueue: false,
     };
   }
 
@@ -73,7 +75,7 @@ export class ArrivalCheckService {
 
     const validSnapshots = await this.prisma.reservationSnapshot.findMany({
       where: {
-        ...this.todayArrivalsWhere(hid),
+        ...this.checkInArrivalsWhere(hid),
         reservationId: { in: uniqueIds },
       },
     });
@@ -81,7 +83,7 @@ export class ArrivalCheckService {
     const invalidIds = uniqueIds.filter((id) => !validIdSet.has(id));
     if (invalidIds.length > 0) {
       throw new BadRequestException({
-        message: 'Einige Reservierungen sind keine gültigen heutigen Anreisen.',
+        message: 'Einige Reservierungen sind keine gültigen Anreisen in der EMMA Check-In-Liste.',
         invalidReservationIds: invalidIds,
       });
     }

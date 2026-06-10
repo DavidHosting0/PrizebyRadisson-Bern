@@ -5,16 +5,24 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
+import {
+  filterNavByPermission,
+  getFirstAllowedPath,
+  getTechnicianRoutePermission,
+  hasAnyTechnicianPermission,
+  hasPermission,
+  TECHNICIAN_NAV,
+} from '@/lib/permission-routes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { IconChat, IconMaintenance, IconRooms } from '@/components/icons';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
 
-const tabs = [
-  { href: '/t/maintenance', label: 'Maintenance', Icon: IconMaintenance },
-  { href: '/t/rooms', label: 'Rooms', Icon: IconRooms },
-  { href: '/t/chat', label: 'Chat', Icon: IconChat },
-];
+const TAB_ICONS: Record<string, typeof IconMaintenance> = {
+  '/t/maintenance': IconMaintenance,
+  '/t/rooms': IconRooms,
+  '/t/chat': IconChat,
+};
 
 export default function TechnicianLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -29,8 +37,21 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
     }
     if (user.role !== 'TECHNICIAN' && user.role !== 'ADMIN') {
       router.replace('/');
+      return;
+    }
+    if (user.role === 'TECHNICIAN' && !hasAnyTechnicianPermission(user)) {
+      router.replace('/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (loading || !user || user.role === 'ADMIN') return;
+    const required = getTechnicianRoutePermission(path);
+    if (required && !hasPermission(user, required)) {
+      const fallback = getFirstAllowedPath(user, TECHNICIAN_NAV) ?? '/login';
+      if (fallback !== path) router.replace(fallback);
+    }
+  }, [loading, user, path, router]);
 
   if (loading || !user) {
     return (
@@ -41,6 +62,10 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
   }
 
   const isChat = path === '/t/chat' || path.startsWith('/t/chat/');
+  const tabs = filterNavByPermission(user, TECHNICIAN_NAV).map((t) => ({
+    ...t,
+    Icon: TAB_ICONS[t.href] ?? IconMaintenance,
+  }));
 
   return (
     <div

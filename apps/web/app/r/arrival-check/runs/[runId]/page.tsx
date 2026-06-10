@@ -12,6 +12,7 @@ import type {
 } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
+import { getFirstAllowedPath, RECEPTION_NAV } from '@/lib/permission-routes';
 import clsx from 'clsx';
 
 function runStatusLabel(status: ArrivalCheckRunStatus): string {
@@ -89,7 +90,7 @@ export default function ArrivalCheckRunPage() {
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace('/login');
-    else if (!canArrivalCheck) router.replace('/r');
+    else if (!canArrivalCheck) router.replace(getFirstAllowedPath(user, RECEPTION_NAV) ?? '/login');
   }, [user, loading, canArrivalCheck, router]);
 
   const runQuery = useQuery({

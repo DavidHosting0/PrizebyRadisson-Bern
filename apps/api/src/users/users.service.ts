@@ -7,6 +7,7 @@ import {
 import { Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { defaultSystemRoleId } from '../permissions/ensure-system-roles';
 import { S3Service } from '../storage/s3.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -114,6 +115,15 @@ export class UsersService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    let roleIds = dto.roleIds ?? [];
+    if (dto.role !== UserRole.ADMIN && roleIds.length === 0) {
+      const defaultId = await defaultSystemRoleId(this.prisma, dto.role, dto.titlePrefix);
+      if (defaultId) roleIds = [defaultId];
+    }
+    if (dto.role !== UserRole.ADMIN && roleIds.length === 0) {
+      throw new BadRequestException('Non-admin users must have at least one role assigned');
+    }
+
     const created = await this.prisma.user.create({
       data: {
         email: dto.email.toLowerCase(),
@@ -125,8 +135,8 @@ export class UsersService {
         permissionGrants: dto.permissionGrants?.length
           ? { create: dto.permissionGrants.map((permission) => ({ permission })) }
           : undefined,
-        roleAssignments: dto.roleIds?.length
-          ? { create: dto.roleIds.map((roleId) => ({ roleId })) }
+        roleAssignments: roleIds.length
+          ? { create: roleIds.map((roleId) => ({ roleId })) }
           : undefined,
       },
       include: userRolesInclude,

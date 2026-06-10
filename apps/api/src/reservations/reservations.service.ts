@@ -83,11 +83,14 @@ export class ReservationsService {
       data: { status: 'running', tab: triggerLabel },
     });
     try {
-      const dateIso = arrivalDateIso?.trim() || todayIsoDate();
-      const { rows, arrivalsReservationIds, result } =
-        await this.emma.fetchReservationRowsFromEmma({ arrivalDateIso: dateIso });
+      const { rows, membership, result } = await this.emma.fetchReservationRowsFromEmma({
+        arrivalDateIso: arrivalDateIso?.trim() || undefined,
+      });
       const hotelId = result.hotelId;
-      const today = dateOnlyFromIso(dateIso);
+      const businessDate = dateOnlyFromIso(membership.checkInBusinessDateIso);
+      const arrivalsSet = new Set(membership.arrivalsReservationIds);
+      const queueSet = new Set(membership.queueReservationIds);
+      const checkInsDoneSet = new Set(membership.checkInsDoneReservationIds);
 
       const reservationIds = rows.map((r) => r.reservationId);
       const existingRows =
@@ -102,17 +105,27 @@ export class ReservationsService {
       let updated = 0;
       let unchanged = 0;
       for (const row of rows) {
-        const inTodayArrivals = this.isArrivalsToday(row, today);
+        const listFlags = this.checkInListFlagsForRow(
+          row.reservationId,
+          businessDate,
+          arrivalsSet,
+          queueSet,
+          checkInsDoneSet,
+        );
         const existing = existingById.get(row.reservationId);
         if (!existing) {
           await this.prisma.reservationSnapshot.create({
-            data: { ...row, inTodayArrivals },
+            data: {
+              ...row,
+              ...listFlags,
+              checkInQueue: listFlags.checkInQueue,
+            },
           });
           created++;
           continue;
         }
 
-        const patch = this.buildReservationPatch(existing, row, inTodayArrivals);
+        const patch = this.buildReservationPatch(existing, row, listFlags);
         if (!patch) {
           unchanged++;
           continue;
@@ -126,7 +139,13 @@ export class ReservationsService {
       }
 
       const upserted = created + updated;
-      await this.reconcileTodayArrivalsFlags(hotelId, today);
+      await this.reconcileCheckInListFlags(
+        hotelId,
+        businessDate,
+        arrivalsSet,
+        queueSet,
+        checkInsDoneSet,
+      );
       await this.reconcileInHouseFlags(hotelId, rows, result);
 
       await this.prisma.reservationSyncRun.update({
@@ -135,14 +154,16 @@ export class ReservationsService {
           status: 'ok',
           finishedAt: new Date(),
           rowCount: upserted,
-          overview: result.overview
-            ? (result.overview as unknown as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
+          overview: {
+            ...(result.overview ?? {}),
+            checkInBusinessDateIso: membership.checkInBusinessDateIso,
+            tabs: result.tabs,
+          } as unknown as Prisma.InputJsonValue,
         },
       });
 
       this.log.log(
-        `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, arrivals fetch=${arrivalsReservationIds.length}, tabs=${JSON.stringify(result.tabs)}, inhouseList=${result.inhouseList}, inHouseActive=${rows.filter((r) => r.checkIn && !r.checkOut).length}`,
+        `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, businessDate=${membership.checkInBusinessDateIso}, arrivals=${arrivalsSet.size}, queue=${queueSet.size}, checkInsDone=${checkInsDoneSet.size}, tabs=${JSON.stringify(result.tabs)}, inhouseList=${result.inhouseList}, inHouseActive=${rows.filter((r) => r.checkIn && !r.checkOut).length}`,
       );
       return { ...result, upserted };
     } catch (err) {
@@ -165,19 +186,20 @@ export class ReservationsService {
       this.scheduleSyncOnView(`list:${opts.tab}`);
     }
     const hotelId = opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
-    const today = dateOnlyFromIso(todayIsoDate());
     const q = opts.q?.trim().toLowerCase();
 
     const where: Prisma.ReservationSnapshotWhereInput = { hotelId };
 
     switch (opts.tab) {
       case 'arrivals':
-        Object.assign(where, this.arrivalsWhere(hotelId, today));
+        where.inTodayArrivals = true;
         break;
       case 'queue':
         where.checkInQueue = true;
-        where.checkIn = false;
-        where.checkOut = false;
+        where.inCheckInDone = false;
+        break;
+      case 'checkInsDone':
+        where.inCheckInDone = true;
         break;
       case 'inhouse':
         where.checkIn = true;
@@ -244,19 +266,17 @@ export class ReservationsService {
     const { upsert, bundle } = await this.emma.fetchReservationDetailFromEmma(reservationId, hid);
     const detailEnc = encryptDetailBundle(this.cipher, bundle);
     const detailFetchedAt = new Date();
-    const today = dateOnlyFromIso(todayIsoDate());
-
     const existing = await this.prisma.reservationSnapshot.findUnique({
       where: { hotelId_reservationId: { hotelId: hid, reservationId } },
     });
-    const inTodayArrivals =
-      existing?.inTodayArrivals ?? this.isArrivalsToday(upsert, today);
 
     const snapshotData = {
       ...this.snapshotFieldsFromUpsert(upsert),
       detailEnc,
       detailFetchedAt,
-      inTodayArrivals,
+      inTodayArrivals: existing?.inTodayArrivals ?? false,
+      inCheckInDone: existing?.inCheckInDone ?? false,
+      checkInBusinessDate: existing?.checkInBusinessDate ?? null,
     };
 
     if (!existing) {
@@ -293,13 +313,13 @@ export class ReservationsService {
       if (!upsert) {
         throw new NotFoundException('Reservation not found locally and EMMA folio mapping failed');
       }
-      const today = dateOnlyFromIso(todayIsoDate());
       await this.prisma.reservationSnapshot.create({
         data: {
           hotelId: hid,
           reservationId,
           ...this.snapshotFieldsFromUpsert(upsert),
-          inTodayArrivals: this.isArrivalsToday(upsert, today),
+          inTodayArrivals: false,
+          inCheckInDone: false,
           folioEnc,
           folioFetchedAt,
         },
@@ -364,9 +384,8 @@ export class ReservationsService {
 
   async overview(hotelId?: string): Promise<ReservationOverview> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
-    const today = dateOnlyFromIso(todayIsoDate());
     const visibleArrivals = await this.prisma.reservationSnapshot.count({
-      where: this.arrivalsWhere(hid, today),
+      where: { hotelId: hid, inTodayArrivals: true },
     });
     const last = await this.prisma.reservationSyncRun.findFirst({
       where: { status: 'ok' },
@@ -474,49 +493,79 @@ export class ReservationsService {
     }
   }
 
-  /** EMMA Check-In → Arrivals tab: today, not in queue, not checked in/out. */
-  private arrivalsWhere(hotelId: string, today: Date): Prisma.ReservationSnapshotWhereInput {
+  /** EMMA Check-In → Arrivals tab membership (synced from EMMA, not wall-clock date). */
+  private checkInListFlagsForRow(
+    reservationId: string,
+    businessDate: Date,
+    arrivals: Set<string>,
+    queue: Set<string>,
+    checkInsDone: Set<string>,
+  ) {
     return {
-      hotelId,
-      arrivalDate: today,
-      checkIn: false,
-      checkOut: false,
-      checkInQueue: false,
+      inTodayArrivals: arrivals.has(reservationId),
+      checkInQueue: queue.has(reservationId),
+      inCheckInDone: checkInsDone.has(reservationId),
+      checkInBusinessDate: businessDate,
     };
   }
 
-  private isArrivalsToday(
-    row: Pick<ReservationUpsertRow, 'arrivalDate' | 'checkIn' | 'checkOut' | 'checkInQueue'>,
-    today: Date,
-  ): boolean {
-    return (
-      !row.checkIn &&
-      !row.checkOut &&
-      !row.checkInQueue &&
-      this.sameDate(row.arrivalDate, today)
-    );
-  }
+  private async reconcileCheckInListFlags(
+    hotelId: string,
+    businessDate: Date,
+    arrivalsIds: Set<string>,
+    queueIds: Set<string>,
+    checkInsDoneIds: Set<string>,
+  ): Promise<void> {
+    await this.prisma.reservationSnapshot.updateMany({
+      where: {
+        hotelId,
+        checkInBusinessDate: { not: businessDate },
+        OR: [{ inTodayArrivals: true }, { checkInQueue: true }, { inCheckInDone: true }],
+      },
+      data: {
+        inTodayArrivals: false,
+        checkInQueue: false,
+        inCheckInDone: false,
+      },
+    });
 
-  private async reconcileTodayArrivalsFlags(hotelId: string, today: Date): Promise<void> {
+    const clearNotIn = async (
+      flag: 'inTodayArrivals' | 'checkInQueue' | 'inCheckInDone',
+      ids: Set<string>,
+    ) => {
+      if (ids.size === 0) {
+        await this.prisma.reservationSnapshot.updateMany({
+          where: { hotelId, checkInBusinessDate: businessDate, [flag]: true },
+          data: { [flag]: false },
+        });
+        return;
+      }
+      await this.prisma.reservationSnapshot.updateMany({
+        where: {
+          hotelId,
+          checkInBusinessDate: businessDate,
+          [flag]: true,
+          reservationId: { notIn: [...ids] },
+        },
+        data: { [flag]: false },
+      });
+    };
+
+    await clearNotIn('inTodayArrivals', arrivalsIds);
+    await clearNotIn('checkInQueue', queueIds);
+    await clearNotIn('inCheckInDone', checkInsDoneIds);
+
     await this.prisma.reservationSnapshot.updateMany({
-      where: this.arrivalsWhere(hotelId, today),
-      data: { inTodayArrivals: true },
-    });
-    await this.prisma.reservationSnapshot.updateMany({
-      where: { hotelId, arrivalDate: today, checkIn: true },
-      data: { inTodayArrivals: false },
-    });
-    await this.prisma.reservationSnapshot.updateMany({
-      where: { hotelId, arrivalDate: today, checkOut: true },
-      data: { inTodayArrivals: false },
-    });
-    await this.prisma.reservationSnapshot.updateMany({
-      where: { hotelId, arrivalDate: today, checkInQueue: true },
-      data: { inTodayArrivals: false },
-    });
-    await this.prisma.reservationSnapshot.updateMany({
-      where: { hotelId, inTodayArrivals: true, NOT: { arrivalDate: today } },
-      data: { inTodayArrivals: false },
+      where: {
+        hotelId,
+        checkInBusinessDate: null,
+        OR: [{ inTodayArrivals: true }, { checkInQueue: true }, { inCheckInDone: true }],
+      },
+      data: {
+        inTodayArrivals: false,
+        checkInQueue: false,
+        inCheckInDone: false,
+      },
     });
   }
 
@@ -530,6 +579,8 @@ export class ReservationsService {
       checkOut: boolean;
       checkInQueue: boolean;
       inTodayArrivals: boolean;
+      inCheckInDone: boolean;
+      checkInBusinessDate: Date | null;
       nightsStay: number | null;
       roomType: string | null;
       mealPlan: string | null;
@@ -538,7 +589,12 @@ export class ReservationsService {
       sensitiveEnc: string;
     },
     row: ReservationUpsertRow,
-    inTodayArrivals: boolean,
+    listFlags: {
+      inTodayArrivals: boolean;
+      checkInQueue: boolean;
+      inCheckInDone: boolean;
+      checkInBusinessDate: Date;
+    },
   ): Prisma.ReservationSnapshotUpdateInput | null {
     const patch: Prisma.ReservationSnapshotUpdateInput = {};
 
@@ -549,8 +605,19 @@ export class ReservationsService {
     if (existing.roomId !== row.roomId) patch.roomId = row.roomId;
     if (existing.checkIn !== row.checkIn) patch.checkIn = row.checkIn;
     if (existing.checkOut !== row.checkOut) patch.checkOut = row.checkOut;
-    if (existing.checkInQueue !== row.checkInQueue) patch.checkInQueue = row.checkInQueue;
-    if (existing.inTodayArrivals !== inTodayArrivals) patch.inTodayArrivals = inTodayArrivals;
+    if (existing.checkInQueue !== listFlags.checkInQueue) patch.checkInQueue = listFlags.checkInQueue;
+    if (existing.inTodayArrivals !== listFlags.inTodayArrivals) {
+      patch.inTodayArrivals = listFlags.inTodayArrivals;
+    }
+    if (existing.inCheckInDone !== listFlags.inCheckInDone) {
+      patch.inCheckInDone = listFlags.inCheckInDone;
+    }
+    if (
+      !existing.checkInBusinessDate ||
+      !this.sameDate(existing.checkInBusinessDate, listFlags.checkInBusinessDate)
+    ) {
+      patch.checkInBusinessDate = listFlags.checkInBusinessDate;
+    }
     if (existing.nightsStay !== row.nightsStay) patch.nightsStay = row.nightsStay;
     if (existing.roomType !== row.roomType) patch.roomType = row.roomType;
     if (existing.mealPlan !== row.mealPlan) patch.mealPlan = row.mealPlan;

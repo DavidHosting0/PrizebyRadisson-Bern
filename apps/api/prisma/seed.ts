@@ -5,6 +5,7 @@ import {
   floorFromRoomNumber,
   RETIRED_HOTEL_ROOM_NUMBERS,
 } from '../src/rooms/room-layout';
+import { ensureSystemRoles } from '../src/permissions/ensure-system-roles';
 
 const prisma = new PrismaClient();
 
@@ -341,6 +342,8 @@ async function main() {
       create: { userId, permission: PermissionCode.MONITOR_MAP_READ },
     });
   }
+
+  await ensureSystemRoles(prisma);
 
   console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
 }

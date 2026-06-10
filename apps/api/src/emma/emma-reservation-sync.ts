@@ -20,7 +20,8 @@ import {
   parseODataBatchResponse,
   parseODataResultsJson,
   reservationListBatchPath,
-  type ReservationListTab,
+  CHECKIN_TAB_FILTER_LABEL,
+  type CheckInDateTab,
 } from './emma-odata-client';
 import { normalizeEmmaRoomNumber } from './emma-room-status-sync';
 import type { SecretCipherService } from '../common/crypto/secret-cipher.service';
@@ -46,20 +47,69 @@ export type EmmaHotelOverview = {
 export type EmmaReservationSyncResult = {
   hotelId: string;
   syncedAt: string;
-  tabs: Record<ReservationListTab, number>;
+  checkInBusinessDateIso: string;
+  tabs: Record<CheckInDateTab, number> & { inhouse: number };
   inhouseList: number;
   totalRows: number;
   upserted: number;
   overview: EmmaHotelOverview | null;
 };
 
-const TAB_FILTER_LABEL: Record<ReservationListTab, string> = {
-  arrivals: 'Arrivals',
-  queue: 'CheckInQueue',
-  inhouse: 'InHouse',
+export type EmmaCheckInTabMembership = {
+  checkInBusinessDateIso: string;
+  arrivalsReservationIds: string[];
+  queueReservationIds: string[];
+  checkInsDoneReservationIds: string[];
 };
 
 const log = new Logger('EmmaReservationSync');
+
+function addDaysIso(iso: string, deltaDays: number): string {
+  const d = new Date(`${iso}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Hotel business date for Check-In lists (may lag calendar day until night audit). */
+export async function resolveEmmaCheckInDateIso(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  hotelId: string,
+  sapClient: string,
+  csrfToken: string,
+  overview: EmmaHotelOverview | null,
+  debug?: EmmaSyncDebug,
+): Promise<string> {
+  const calendarToday = todayIsoDate();
+  const candidates = [calendarToday, addDaysIso(calendarToday, -1)];
+
+  for (const dateIso of candidates) {
+    const [arrivals, queue, done] = await Promise.all(
+      (['arrivals', 'queue', 'checkInsDone'] as const).map((tab) =>
+        fetchEmmaReservationsForTab(
+          jar,
+          baseUrl,
+          hotelId,
+          sapClient,
+          tab,
+          dateIso,
+          csrfToken,
+          debug,
+        ),
+      ),
+    );
+    const total = arrivals.length + queue.length + done.length;
+    if (overview) {
+      const expected =
+        overview.checkInPending + overview.checkInQueue + overview.checkInDone;
+      if (expected > 0 && total === expected) return dateIso;
+      if (expected > 0 && total > 0) return dateIso;
+    }
+    if (total > 0) return dateIso;
+  }
+
+  return calendarToday;
+}
 
 function isEmmaTruthyFlag(v: unknown): boolean {
   if (v === true || v === 1) return true;
@@ -107,16 +157,18 @@ export async function fetchEmmaReservationsForTab(
   baseUrl: string,
   hotelId: string,
   sapClient: string,
-  tab: ReservationListTab,
+  tab: CheckInDateTab | 'inhouse',
   arrivalDateIso: string,
   csrfToken: string,
   debug?: EmmaSyncDebug,
 ): Promise<Record<string, unknown>[]> {
-  const pageSize = tab === 'arrivals' ? 999 : 500;
+  const pageSize = tab === 'arrivals' || tab === 'checkInsDone' ? 999 : 500;
   const all: Record<string, unknown>[] = [];
 
   for (let skip = 0; skip < 10_000; skip += pageSize) {
     const path = reservationListBatchPath(hotelId, sapClient, tab, arrivalDateIso, skip, pageSize);
+    const filterTab =
+      tab === 'inhouse' ? 'InHouse' : CHECKIN_TAB_FILTER_LABEL[tab as CheckInDateTab];
     const { body, contentType } = buildODataBatchBody([{ path, checkInApp: true }], csrfToken);
     const raw = await emmaHttpPostBatch(
       jar,
@@ -131,7 +183,7 @@ export async function fetchEmmaReservationsForTab(
         debug,
         parts: [{ path, checkInApp: true }],
         tmsFioriApp: 'CheckIn',
-        tmsFilterTab: TAB_FILTER_LABEL[tab],
+        tmsFilterTab: filterTab,
       },
     );
     const parts = parseODataBatchResponse(raw);
@@ -368,35 +420,57 @@ export async function syncEmmaReservationsFromJar(
   } = {},
 ): Promise<{
   rows: ReservationUpsertRow[];
-  arrivalsReservationIds: string[];
+  membership: EmmaCheckInTabMembership;
   result: EmmaReservationSyncResult;
 }> {
   const hotelId = opts.hotelId?.trim() || EMMA_DEFAULT_HOTEL_ID;
   const sapClient = opts.sapClient?.trim() || EMMA_DEFAULT_SAP_CLIENT;
-  const arrivalDateIso = opts.arrivalDateIso ?? todayIsoDate();
   const syncedAt = new Date();
 
   const csrfRsrvs = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
   const csrfHotel = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_HOTEL_SRV);
 
-  const tabs: ReservationListTab[] = ['arrivals', 'queue', 'inhouse'];
-  const tabCounts: Record<ReservationListTab, number> = {
+  const overview = await fetchEmmaHotelOverview(
+    jar,
+    baseUrl,
+    hotelId,
+    sapClient,
+    csrfHotel,
+    opts.debug,
+  );
+
+  const checkInBusinessDateIso =
+    opts.arrivalDateIso?.trim() ||
+    (await resolveEmmaCheckInDateIso(
+      jar,
+      baseUrl,
+      hotelId,
+      sapClient,
+      csrfRsrvs,
+      overview,
+      opts.debug,
+    ));
+
+  const checkInTabs: CheckInDateTab[] = ['arrivals', 'queue', 'checkInsDone'];
+  const tabCounts: Record<CheckInDateTab, number> = {
     arrivals: 0,
     queue: 0,
-    inhouse: 0,
+    checkInsDone: 0,
   };
   const merged = new Map<string, Record<string, unknown>>();
   const arrivalsReservationIds: string[] = [];
+  const queueReservationIds: string[] = [];
+  const checkInsDoneReservationIds: string[] = [];
   const inHouseSourceIds = new Set<string>();
 
-  for (const tab of tabs) {
+  for (const tab of checkInTabs) {
     const fetched = await fetchEmmaReservationsForTab(
       jar,
       baseUrl,
       hotelId,
       sapClient,
       tab,
-      arrivalDateIso,
+      checkInBusinessDateIso,
       csrfRsrvs,
       opts.debug,
     );
@@ -405,10 +479,30 @@ export async function syncEmmaReservationsFromJar(
       const id = String(row.ReservationId ?? '').trim();
       if (!id) continue;
       if (tab === 'arrivals') arrivalsReservationIds.push(id);
-      if (tab === 'inhouse') inHouseSourceIds.add(id);
+      if (tab === 'queue') queueReservationIds.push(id);
+      if (tab === 'checkInsDone') checkInsDoneReservationIds.push(id);
       const prev = merged.get(id);
       merged.set(id, prev ? { ...prev, ...row } : row);
     }
+  }
+
+  const inhouseFetched = await fetchEmmaReservationsForTab(
+    jar,
+    baseUrl,
+    hotelId,
+    sapClient,
+    'inhouse',
+    checkInBusinessDateIso,
+    csrfRsrvs,
+    opts.debug,
+  );
+  const inhouseTabCount = inhouseFetched.length;
+  for (const row of inhouseFetched) {
+    const id = String(row.ReservationId ?? '').trim();
+    if (!id) continue;
+    inHouseSourceIds.add(id);
+    const prev = merged.get(id);
+    merged.set(id, prev ? { ...prev, ...row } : row);
   }
 
   const inHouseRows = await fetchEmmaInHouseList(
@@ -428,14 +522,7 @@ export async function syncEmmaReservationsFromJar(
     merged.set(id, prev ? { ...prev, ...row, CheckIn: true } : { ...row, CheckIn: true });
   }
 
-  const overview = await fetchEmmaHotelOverview(
-    jar,
-    baseUrl,
-    hotelId,
-    sapClient,
-    csrfHotel,
-    opts.debug,
-  );
+  const overviewAfterSync = overview;
 
   const rows: ReservationUpsertRow[] = [];
   let skipped = 0;
@@ -458,18 +545,28 @@ export async function syncEmmaReservationsFromJar(
   const result: EmmaReservationSyncResult = {
     hotelId,
     syncedAt: syncedAt.toISOString(),
-    tabs: tabCounts,
+    checkInBusinessDateIso,
+    tabs: { ...tabCounts, inhouse: inhouseTabCount },
     inhouseList: inHouseRows.length,
     totalRows: merged.size,
     upserted: rows.length,
-    overview,
+    overview: overviewAfterSync,
   };
 
   log.log(
-    `[Reservations] fetched arrivals=${tabCounts.arrivals} queue=${tabCounts.queue} inhouse=${tabCounts.inhouse} inhouseList=${inHouseRows.length} unique=${merged.size}`,
+    `[Reservations] check-in business date=${checkInBusinessDateIso} arrivals=${tabCounts.arrivals} queue=${tabCounts.queue} checkInsDone=${tabCounts.checkInsDone} inhouse=${inhouseTabCount} inhouseList=${inHouseRows.length} unique=${merged.size}`,
   );
 
-  return { rows, arrivalsReservationIds, result };
+  return {
+    rows,
+    membership: {
+      checkInBusinessDateIso,
+      arrivalsReservationIds,
+      queueReservationIds,
+      checkInsDoneReservationIds,
+    },
+    result,
+  };
 }
 
 export async function applyReservationUpserts(

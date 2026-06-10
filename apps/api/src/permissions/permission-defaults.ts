@@ -45,7 +45,7 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.ARRIVAL_CHECK,
 ];
 
-function addCleanerBase(s: Set<PermissionCode>) {
+export function addCleanerBase(s: Set<PermissionCode>) {
   s.add(PermissionCode.ROOMS_READ);
   s.add(PermissionCode.CHECKLIST_TASK_UPDATE);
   s.add(PermissionCode.PHOTO_UPLOAD);
@@ -61,7 +61,7 @@ function addCleanerBase(s: Set<PermissionCode>) {
 }
 
 /** Deputy captain (HTC in Training) on HK role: broad ops, no auto-assign / room-type template edits. */
-function addDeputyCaptainExtras(s: Set<PermissionCode>) {
+export function addDeputyCaptainExtras(s: Set<PermissionCode>) {
   s.add(PermissionCode.ROOMS_UPDATE);
   s.add(PermissionCode.CHECKLIST_REOPEN);
   s.add(PermissionCode.ASSIGNMENT_READ);
@@ -81,7 +81,7 @@ function addDeputyCaptainExtras(s: Set<PermissionCode>) {
 }
 
 /** Property maintenance mobile app: damage reports, room occupancy-style view, team chat. */
-function buildTechnicianSet(): Set<PermissionCode> {
+export function buildTechnicianSet(): Set<PermissionCode> {
   const s = new Set<PermissionCode>();
   s.add(PermissionCode.ROOMS_READ);
   s.add(PermissionCode.DAMAGE_REPORT_READ);
@@ -92,7 +92,7 @@ function buildTechnicianSet(): Set<PermissionCode> {
   return s;
 }
 
-function buildReceptionSet(): Set<PermissionCode> {
+export function buildReceptionSet(): Set<PermissionCode> {
   const s = new Set<PermissionCode>();
   s.add(PermissionCode.ROOMS_READ);
   s.add(PermissionCode.SERVICE_REQUEST_READ);
@@ -117,7 +117,7 @@ function buildReceptionSet(): Set<PermissionCode> {
   return s;
 }
 
-function buildSupervisorSet(): Set<PermissionCode> {
+export function buildSupervisorSet(): Set<PermissionCode> {
   const s = new Set<PermissionCode>();
   s.add(PermissionCode.ROOMS_READ);
   s.add(PermissionCode.ROOMS_UPDATE);
@@ -210,14 +210,47 @@ export function defaultPermissionsForUser(role: UserRole, titlePrefix: UserTitle
   }
 }
 
+/** Permissions for the "Housekeeper — HTC" system role. */
+export function buildHousekeeperHtcSet(): Set<PermissionCode> {
+  const s = new Set<PermissionCode>();
+  addCleanerBase(s);
+  addDeputyCaptainExtras(s);
+  s.add(PermissionCode.ASSIGNMENT_RUN_AUTO);
+  s.add(PermissionCode.ROOM_TYPE_WRITE);
+  s.add(PermissionCode.SETTINGS_READ);
+  return s;
+}
+
+/** Permissions for the "Housekeeper — Deputy" system role. */
+export function buildHousekeeperDeputySet(): Set<PermissionCode> {
+  const s = new Set<PermissionCode>();
+  addCleanerBase(s);
+  addDeputyCaptainExtras(s);
+  return s;
+}
+
+/** Permissions for the "Housekeeper" system role. */
+export function buildHousekeeperSet(): Set<PermissionCode> {
+  const s = new Set<PermissionCode>();
+  addCleanerBase(s);
+  return s;
+}
+
+/** Permissions for the "Arrival Check" system role. */
+export function buildArrivalCheckSet(): Set<PermissionCode> {
+  return new Set([PermissionCode.ARRIVAL_CHECK]);
+}
+
 export function mergeEffective(
   role: UserRole,
-  titlePrefix: UserTitlePrefix,
+  _titlePrefix: UserTitlePrefix,
   extraGrants: PermissionCode[],
   rolePermissions: PermissionCode[] = [],
 ): PermissionCode[] {
-  const base = defaultPermissionsForUser(role, titlePrefix);
-  for (const g of extraGrants) base.add(g);
-  for (const p of rolePermissions) base.add(p);
-  return Array.from(base).sort();
+  if (role === UserRole.ADMIN) {
+    return [...ALL_PERMISSION_CODES].sort();
+  }
+  const effective = new Set<PermissionCode>(rolePermissions);
+  for (const g of extraGrants) effective.add(g);
+  return Array.from(effective).sort();
 }

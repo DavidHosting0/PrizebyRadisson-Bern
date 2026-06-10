@@ -5,16 +5,24 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
+import {
+  filterNavByPermission,
+  getFirstAllowedPath,
+  getHousekeeperRoutePermission,
+  hasAnyHousekeeperPermission,
+  hasPermission,
+  HOUSEKEEPER_NAV,
+} from '@/lib/permission-routes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { IconChat, IconRequests, IconRooms } from '@/components/icons';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
 
-const tabs = [
-  { href: '/h', label: 'Rooms', Icon: IconRooms },
-  { href: '/h/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/h/chat', label: 'Chat', Icon: IconChat },
-];
+const TAB_ICONS: Record<string, typeof IconRooms> = {
+  '/h': IconRooms,
+  '/h/requests': IconRequests,
+  '/h/chat': IconChat,
+};
 
 export default function HousekeeperLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -29,8 +37,21 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
     }
     if (user.role !== 'HOUSEKEEPER' && user.role !== 'ADMIN') {
       router.replace('/');
+      return;
+    }
+    if (user.role === 'HOUSEKEEPER' && !hasAnyHousekeeperPermission(user)) {
+      router.replace('/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (loading || !user || user.role === 'ADMIN') return;
+    const required = getHousekeeperRoutePermission(path);
+    if (required && !hasPermission(user, required)) {
+      const fallback = getFirstAllowedPath(user, HOUSEKEEPER_NAV) ?? '/login';
+      if (fallback !== path) router.replace(fallback);
+    }
+  }, [loading, user, path, router]);
 
   if (loading || !user) {
     return (
@@ -41,6 +62,10 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
   }
 
   const isChat = path === '/h/chat' || path.startsWith('/h/chat/');
+  const tabs = filterNavByPermission(user, HOUSEKEEPER_NAV).map((t) => ({
+    ...t,
+    Icon: TAB_ICONS[t.href] ?? IconRooms,
+  }));
 
   return (
     <div

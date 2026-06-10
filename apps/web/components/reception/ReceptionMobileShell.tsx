@@ -9,13 +9,15 @@ import { Button } from '@/components/ui/Button';
 import { IconChat, IconRequests, IconRooms, IconLost } from '@/components/icons';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
+import { useAuth } from '@/lib/auth-context';
+import { filterNavByPermission, RECEPTION_MOBILE_NAV } from '@/lib/permission-routes';
 
-const tabs = [
-  { href: '/r/m/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/r/m/rooms', label: 'Rooms', Icon: IconRooms },
-  { href: '/r/m/chat', label: 'Chat', Icon: IconChat },
-  { href: '/r/m/lost', label: 'Lost & found', Icon: IconLost },
-];
+const MOBILE_ICONS: Record<string, typeof IconRequests> = {
+  '/r/m/requests': IconRequests,
+  '/r/m/rooms': IconRooms,
+  '/r/m/chat': IconChat,
+  '/r/m/lost': IconLost,
+};
 
 export function ReceptionMobileShell({
   children,
@@ -27,8 +29,13 @@ export function ReceptionMobileShell({
   titlePrefix?: string | null;
 }) {
   const path = usePathname();
+  const { user } = useAuth();
   const { exitMobile } = useReceptionMobileMode();
   const isChat = path === '/r/m/chat' || path.startsWith('/r/m/chat/');
+  const tabs = filterNavByPermission(user, RECEPTION_MOBILE_NAV).map((item) => ({
+    ...item,
+    Icon: MOBILE_ICONS[item.href] ?? IconRequests,
+  }));
 
   return (
     <div

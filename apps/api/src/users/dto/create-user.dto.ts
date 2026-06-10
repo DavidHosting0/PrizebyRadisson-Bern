@@ -22,7 +22,7 @@ export class CreateUserDto {
   @IsEnum(UserTitlePrefix)
   titlePrefix!: UserTitlePrefix;
 
-  /** Extra permissions beyond role + title-prefix defaults (additive). */
+  /** Extra permissions beyond assigned roles (additive). */
   @IsOptional()
   @IsArray()
   @IsEnum(PermissionCode, { each: true })

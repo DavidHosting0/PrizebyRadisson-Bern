@@ -364,9 +364,9 @@ export class EmmaService {
   async fetchReservationRowsFromEmma(
     runOpts: { hotelId?: string; arrivalDateIso?: string } = {},
   ): Promise<{
-    rows: ReservationUpsertRow[];
-    arrivalsReservationIds: string[];
-    result: EmmaReservationSyncResult;
+    rows: import('./emma-reservation-sync').ReservationUpsertRow[];
+    membership: import('./emma-reservation-sync').EmmaCheckInTabMembership;
+    result: import('./emma-reservation-sync').EmmaReservationSyncResult;
   }> {
     await this.assertIntegrationActive();
     const creds = await this.settings.getEmmaLoginSecrets();
@@ -392,7 +392,7 @@ export class EmmaService {
     return syncEmmaReservationsFromJar(jar, baseUrl, this.cipher, {
       hotelId,
       sapClient,
-      arrivalDateIso: runOpts.arrivalDateIso ?? todayIsoDate(),
+      arrivalDateIso: runOpts.arrivalDateIso,
       debug: emmaDebug.verbose ? emmaDebug : undefined,
     });
   }

@@ -1,0 +1,3 @@
+-- Roles-only permission model: feature access is granted via Role + UserPermissionGrant.
+-- System roles and user assignments are seeded idempotently on API startup
+-- (SystemRolesInitializer) and via prisma seed.

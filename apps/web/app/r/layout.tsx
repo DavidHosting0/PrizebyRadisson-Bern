@@ -2,9 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, type ComponentType } from 'react';
 import clsx from 'clsx';
 import { useAuth, usePermission } from '@/lib/auth-context';
+import {
+  filterNavByPermission,
+  getFirstAllowedPath,
+  getReceptionRoutePermission,
+  hasAnyReceptionPermission,
+  hasPermission,
+  RECEPTION_MOBILE_NAV,
+  RECEPTION_NAV,
+} from '@/lib/permission-routes';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { ReceptionUiProvider, useReceptionUi } from '@/app/r/reception-context';
@@ -23,22 +32,27 @@ function isReceptionMobilePath(path: string) {
   return path === '/r/m' || path.startsWith('/r/m/');
 }
 
-const nav = [
-  { href: '/r', label: 'Dashboard', icon: IconDash },
-  { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
-  { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
-  { href: '/r/arrivals', label: 'Arrivals', icon: IconCalendar },
-  { href: '/r/arrival-check', label: 'Arrival Check', icon: IconArrivalCheck, permission: 'ARRIVAL_CHECK' as const },
-  { href: '/r/in-house', label: 'Im Haus', icon: IconInHouse },
-  { href: '/r/reservations', label: 'Reservations', icon: IconReservations },
-  { href: '/r/requests', label: 'Service requests', icon: IconInbox },
-  { href: '/r/chat', label: 'Chat', icon: IconChat },
-  { href: '/r/lost', label: 'Lost & found', icon: IconPackage },
-  { href: '/r/damages', label: 'Damage reports', icon: IconDamage },
-  { href: '/r/schichtplan', label: 'Schichtplan', icon: IconCalendar },
-  { href: '/r/puzzle', label: 'Puzzle', icon: IconPuzzle },
-  { href: '/r/monitor-map', label: 'Monitor Map', icon: IconMonitor, permission: 'MONITOR_MAP_READ' as const },
-];
+const NAV_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  '/r': IconDash,
+  '/r/floor-plan': IconMap,
+  '/r/rooms': IconBuilding,
+  '/r/arrivals': IconCalendar,
+  '/r/arrival-check': IconArrivalCheck,
+  '/r/in-house': IconInHouse,
+  '/r/reservations': IconReservations,
+  '/r/requests': IconInbox,
+  '/r/chat': IconChat,
+  '/r/lost': IconPackage,
+  '/r/damages': IconDamage,
+  '/r/schichtplan': IconCalendar,
+  '/r/puzzle': IconPuzzle,
+  '/r/monitor-map': IconMonitor,
+};
+
+const nav = RECEPTION_NAV.map((item) => ({
+  ...item,
+  icon: NAV_ICONS[item.href] ?? IconDash,
+}));
 
 function IconDash({ className }: { className?: string }) {
   return (
@@ -175,8 +189,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { user, loading, logout } = useAuth();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
-  const canMonitorMap = usePermission('MONITOR_MAP_READ');
-  const canArrivalCheck = usePermission('ARRIVAL_CHECK');
+  const allowedNav = filterNavByPermission(user, nav);
   const router = useRouter();
   const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
   const { mobileUi, hydrated, enterMobile } = useReceptionMobileMode();
@@ -196,13 +209,27 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
     }
     if (user.role !== 'RECEPTION' && user.role !== 'ADMIN') {
       router.replace('/');
+      return;
+    }
+    if (user.role === 'RECEPTION' && !hasAnyReceptionPermission(user)) {
+      router.replace('/login');
     }
   }, [user, loading, router]);
 
   useEffect(() => {
+    if (loading || !user || user.role === 'ADMIN') return;
+    const required = getReceptionRoutePermission(path);
+    if (required && !hasPermission(user, required)) {
+      const fallback =
+        getFirstAllowedPath(user, nav) ?? getFirstAllowedPath(user, RECEPTION_MOBILE_NAV) ?? '/login';
+      if (fallback !== path) router.replace(fallback);
+    }
+  }, [loading, user, path, router]);
+
+  useEffect(() => {
     if (!hydrated || !user) return;
     if (mobileUi && path.startsWith('/r') && !isReceptionMobilePath(path)) {
-      router.replace('/r/m/requests');
+      router.replace(getFirstAllowedPath(user, RECEPTION_MOBILE_NAV) ?? '/r');
     }
   }, [hydrated, mobileUi, path, router, user]);
 
@@ -314,14 +341,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-4 shadow-card md:flex">
           <nav className="flex flex-col gap-0.5 px-2">
-            {nav
-              .filter((item) => {
-                if (!('permission' in item)) return true;
-                if (item.permission === 'MONITOR_MAP_READ') return canMonitorMap;
-                if (item.permission === 'ARRIVAL_CHECK') return canArrivalCheck;
-                return false;
-              })
-              .map((item) => {
+            {allowedNav.map((item) => {
               const active =
                 item.href === '/r'
                   ? path === '/r'

@@ -16,7 +16,7 @@ export type Me = {
   titlePrefix?: string | null;
   /** Short-lived presigned GET URL for the user's profile picture, or null. */
   avatarUrl?: string | null;
-  /** Effective permission codes (defaults ∪ grants ∪ assigned roles). */
+  /** Effective permission codes (assigned roles ∪ individual grants; ADMIN has all). */
   permissions?: string[];
   /** Discord-style custom roles assigned to this user, sorted top to bottom. */
   roles?: MeRole[];

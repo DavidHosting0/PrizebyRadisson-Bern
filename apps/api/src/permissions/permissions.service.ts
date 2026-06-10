@@ -7,10 +7,11 @@ export class PermissionsService {
   /**
    * Compute the full effective permission set.
    *
-   * Sources (all unioned, additive):
-   *  - account-type defaults (UserRole + UserTitlePrefix)
+   * ADMIN receives every permission. Everyone else gets the union of:
+   *  - assigned custom Role permissions (RolePermission)
    *  - per-user grants (UserPermissionGrant)
-   *  - every assigned custom Role's permissions (RolePermission)
+   *
+   * Account type (UserRole) controls UI shell only — not feature permissions.
    */
   effectiveFor(
     role: UserRole,

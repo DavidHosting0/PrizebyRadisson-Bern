@@ -3,14 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-
-const ROLE_HOME: Record<string, string> = {
-  HOUSEKEEPER: '/h',
-  SUPERVISOR: '/s',
-  RECEPTION: '/r',
-  ADMIN: '/a',
-  TECHNICIAN: '/t',
-};
+import { getHomePath } from '@/lib/permission-routes';
 
 export default function HomePage() {
   const { user, loading } = useAuth();
@@ -22,7 +15,7 @@ export default function HomePage() {
       router.replace('/login');
       return;
     }
-    router.replace(ROLE_HOME[user.role] ?? '/login');
+    router.replace(getHomePath(user));
   }, [user, loading, router]);
 
   return (

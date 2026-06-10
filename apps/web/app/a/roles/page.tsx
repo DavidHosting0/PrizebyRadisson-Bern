@@ -9,7 +9,7 @@ import { useToast } from '@/components/toast/ToastProvider';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { RoleColorPicker } from '@/components/admin/RoleColorPicker';
-import { PermissionToggle } from '@/components/admin/PermissionToggle';
+import { PermissionCategoryList } from '@/components/admin/roles/PermissionCategoryList';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 
 type RoleSummary = {
@@ -117,7 +117,7 @@ export default function AdminRolesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Roles</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Bundle permissions into reusable roles and assign them to users alongside their account type.
+            Account type controls which app area a member sees. Roles grant the actual permissions.
           </p>
         </div>
         <Button
@@ -205,10 +205,10 @@ function RolesList({
   }
 
   return (
-    <aside className="overflow-hidden rounded-card border border-border bg-surface shadow-card">
-      <header className="flex items-center justify-between border-b border-border bg-surface-muted/50 px-3 py-2">
+    <aside className="overflow-hidden rounded-card border border-border bg-ink/[0.04] shadow-card">
+      <header className="flex items-center justify-between border-b border-border/80 bg-ink/[0.06] px-3 py-2.5">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-          Roles · {roles.length}
+          Roles — {roles.length}
         </p>
       </header>
       <ul className="max-h-[640px] overflow-y-auto py-1">
@@ -221,18 +221,19 @@ function RolesList({
                 onClick={() => onSelect(r.id)}
                 className={clsx(
                   'group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
-                  active ? 'bg-surface-muted text-ink' : 'text-ink-muted hover:bg-surface-muted/70',
+                  active ? 'bg-surface text-ink shadow-card' : 'text-ink-muted hover:bg-surface/80',
                 )}
               >
                 <span
-                  className="h-3 w-3 shrink-0 rounded-full"
+                  className="h-3.5 w-3.5 shrink-0 rounded-full ring-2 ring-surface"
                   style={{ backgroundColor: r.color }}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-ink">{r.name}</span>
-                  <span className="block truncate text-[11px] text-ink-muted">
-                    {r.memberCount} {r.memberCount === 1 ? 'member' : 'members'} ·{' '}
-                    {r.permissions.length} {r.permissions.length === 1 ? 'permission' : 'permissions'}
+                  <span className="block truncate text-sm font-semibold text-ink">@{r.name}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-muted">
+                    <span className="rounded bg-surface-muted px-1.5 py-0.5">{r.memberCount}</span>
+                    <span>{r.permissions.length} perms</span>
+                    {r.isSystem && <span className="text-ink-muted/70">system</span>}
                   </span>
                 </span>
                 <span className="hidden shrink-0 flex-col gap-0.5 group-hover:flex">
@@ -291,7 +292,7 @@ function RoleEditor({
         <div className="flex min-w-0 items-center gap-3">
           <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: detail.color }} />
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-ink">{detail.name}</h2>
+            <h2 className="truncate text-base font-semibold text-ink">@{detail.name}</h2>
             <p className="truncate text-xs text-ink-muted">
               {detail.memberCount} {detail.memberCount === 1 ? 'member' : 'members'} ·{' '}
               {detail.permissions.length} {detail.permissions.length === 1 ? 'permission' : 'permissions'}
@@ -456,8 +457,8 @@ function DisplayTab({
             <h3 className="text-lg font-semibold text-ink">Delete this role?</h3>
             <p className="mt-2 text-sm text-ink-muted">
               <span className="font-medium text-ink">{detail.name}</span> will be removed from all{' '}
-              {detail.memberCount} member{detail.memberCount === 1 ? '' : 's'}. Their account-type
-              permissions stay intact.
+              {detail.memberCount} member{detail.memberCount === 1 ? '' : 's'}. They will lose
+              permissions granted only through this role.
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button
@@ -575,23 +576,15 @@ function PermissionsTab({
         </Button>
       </div>
       <div className="max-h-[560px] overflow-y-auto px-5 py-4">
-        {filteredGroups.map((g) => (
-          <section key={g.id} className="mb-6">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{g.label}</h3>
-            <div className="mt-1 divide-y divide-border/40">
-              {g.codes.map((code) => (
-                <PermissionToggle
-                  key={code}
-                  title={catalog.labels[code] ?? code}
-                  description={catalog.descriptions[code]}
-                  checked={selected.has(code)}
-                  onChange={() => toggle(code)}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
-        {filteredGroups.length === 0 && (
+        {filteredGroups.length > 0 ? (
+          <PermissionCategoryList
+            groups={filteredGroups}
+            labels={catalog.labels}
+            descriptions={catalog.descriptions}
+            selected={selected}
+            onToggle={toggle}
+          />
+        ) : (
           <p className="py-12 text-center text-sm text-ink-muted">No matching permissions.</p>
         )}
       </div>

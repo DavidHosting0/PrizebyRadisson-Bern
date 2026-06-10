@@ -401,12 +401,7 @@ export class RoomsService {
 
   private canViewOccupancy(viewer?: RoomViewer): boolean {
     if (!viewer) return false;
-    if (viewer.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ)) return true;
-    return (
-      viewer.role === UserRole.SUPERVISOR ||
-      viewer.role === UserRole.RECEPTION ||
-      viewer.role === UserRole.ADMIN
-    );
+    return viewer.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ) ?? false;
   }
 
   private async attachOccupancy<T extends { roomNumber: string }>(
