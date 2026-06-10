@@ -116,10 +116,6 @@ export default function ArrivalCheckPage() {
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Arrival Check</h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-muted">
-            Semi-automatischer täglicher Anreise-Check: heutige Anreisen auswählen und den Lauf
-            starten. Folio-Zuordnung und Prepaid-Abrechnung folgen in einer späteren Version.
-          </p>
         </div>
         <button
           type="button"
