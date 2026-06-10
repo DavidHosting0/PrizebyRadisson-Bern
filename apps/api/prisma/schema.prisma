@@ -68,6 +68,7 @@ enum PermissionCode {
   RESERVATIONS_READ
   RESERVATIONS_SYNC
   MONITOR_MAP_READ
+  ARRIVAL_CHECK
 }
 
 enum MonitorMapFeedKind {

@@ -112,6 +112,17 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       },
     ],
   },
+  {
+    id: 'arrival-check',
+    label: 'Arrival Check',
+    entries: [
+      {
+        code: PermissionCode.ARRIVAL_CHECK,
+        title: 'Run Arrival Check',
+        description: 'Open the Arrival Check workflow and start daily arrival runs.',
+      },
+    ],
+  },
 ];
 
 const LABELS: Record<PermissionCode, string> = Object.fromEntries(

@@ -28,7 +28,7 @@ const nav = [
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
   { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
   { href: '/r/arrivals', label: 'Arrivals', icon: IconCalendar },
-  { href: '/r/arrival-check', label: 'Arrival Check', icon: IconArrivalCheck },
+  { href: '/r/arrival-check', label: 'Arrival Check', icon: IconArrivalCheck, permission: 'ARRIVAL_CHECK' as const },
   { href: '/r/in-house', label: 'Im Haus', icon: IconInHouse },
   { href: '/r/reservations', label: 'Reservations', icon: IconReservations },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
@@ -176,6 +176,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const canMonitorMap = usePermission('MONITOR_MAP_READ');
+  const canArrivalCheck = usePermission('ARRIVAL_CHECK');
   const router = useRouter();
   const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
   const { mobileUi, hydrated, enterMobile } = useReceptionMobileMode();
@@ -314,7 +315,12 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
         <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-4 shadow-card md:flex">
           <nav className="flex flex-col gap-0.5 px-2">
             {nav
-              .filter((item) => !('permission' in item) || (item.permission === 'MONITOR_MAP_READ' && canMonitorMap))
+              .filter((item) => {
+                if (!('permission' in item)) return true;
+                if (item.permission === 'MONITOR_MAP_READ') return canMonitorMap;
+                if (item.permission === 'ARRIVAL_CHECK') return canArrivalCheck;
+                return false;
+              })
               .map((item) => {
               const active =
                 item.href === '/r'

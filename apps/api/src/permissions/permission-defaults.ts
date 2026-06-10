@@ -42,6 +42,7 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.RESERVATIONS_READ,
   PermissionCode.RESERVATIONS_SYNC,
   PermissionCode.MONITOR_MAP_READ,
+  PermissionCode.ARRIVAL_CHECK,
 ];
 
 function addCleanerBase(s: Set<PermissionCode>) {
@@ -112,6 +113,7 @@ function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.SHIFT_READ);
   s.add(PermissionCode.RESERVATIONS_READ);
   s.add(PermissionCode.RESERVATIONS_SYNC);
+  s.add(PermissionCode.ARRIVAL_CHECK);
   return s;
 }
 

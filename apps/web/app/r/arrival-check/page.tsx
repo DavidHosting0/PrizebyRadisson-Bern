@@ -2,10 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ArrivalCheckRunDetail, ReservationListItem } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import { usePermission } from '@/lib/auth-context';
+import { useAuth, usePermission } from '@/lib/auth-context';
 import {
   ArrivalsTable,
   arrivalsSortLabel,
@@ -17,20 +17,29 @@ import {
 export default function ArrivalCheckPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const canStart = usePermission('RESERVATIONS_SYNC');
+  const { user, loading } = useAuth();
+  const canArrivalCheck = usePermission('ARRIVAL_CHECK');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
   const [sortDir, setSortDir] = useState<ArrivalsSortDir>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [startError, setStartError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.replace('/login');
+    else if (!canArrivalCheck) router.replace('/r');
+  }, [user, loading, canArrivalCheck, router]);
+
   const listQuery = useQuery({
-    queryKey: ['arrivals', search],
+    queryKey: ['arrival-check', 'arrivals', search],
     queryFn: () => {
-      const params = new URLSearchParams({ tab: 'arrivals' });
+      const params = new URLSearchParams();
       if (search.trim()) params.set('q', search.trim());
-      return api<ReservationListItem[]>(`/reservations?${params}`);
+      const qs = params.toString();
+      return api<ReservationListItem[]>(`/arrival-check/arrivals${qs ? `?${qs}` : ''}`);
     },
+    enabled: canArrivalCheck,
     staleTime: 0,
     refetchOnMount: 'always',
     refetchInterval: 60_000,
@@ -38,13 +47,12 @@ export default function ArrivalCheckPage() {
 
   const syncMut = useMutation({
     mutationFn: () =>
-      api<{ upserted: number; syncedAt: string }>('/reservations/sync', {
+      api<{ upserted: number; syncedAt: string }>('/arrival-check/sync', {
         method: 'POST',
         body: JSON.stringify({}),
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
-      void queryClient.invalidateQueries({ queryKey: ['reservations'] });
+      void queryClient.invalidateQueries({ queryKey: ['arrival-check', 'arrivals'] });
     },
   });
 
@@ -111,6 +119,14 @@ export default function ArrivalCheckPage() {
 
   const selectedCount = selectedIds.size;
 
+  if (loading || !user || !canArrivalCheck) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-sm text-ink-muted">Lädt…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
@@ -151,8 +167,7 @@ export default function ArrivalCheckPage() {
             <button
               type="button"
               onClick={() => startMut.mutate([...selectedIds])}
-              disabled={!canStart || selectedCount === 0 || startMut.isPending}
-              title={!canStart ? 'Keine Berechtigung (RESERVATIONS_SYNC)' : undefined}
+              disabled={selectedCount === 0 || startMut.isPending}
               className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:opacity-50"
             >
               {startMut.isPending ? 'Startet…' : 'Anreise-Check starten'}

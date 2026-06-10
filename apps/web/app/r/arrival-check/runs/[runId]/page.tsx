@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type {
   ArrivalCheckItemStatus,
@@ -9,6 +10,7 @@ import type {
   ArrivalCheckRunStatus,
 } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { useAuth, usePermission } from '@/lib/auth-context';
 import clsx from 'clsx';
 
 function runStatusLabel(status: ArrivalCheckRunStatus): string {
@@ -63,16 +65,32 @@ function statusBadgeClass(status: ArrivalCheckItemStatus | ArrivalCheckRunStatus
 export default function ArrivalCheckRunPage() {
   const params = useParams();
   const router = useRouter();
+  const { user, loading } = useAuth();
+  const canArrivalCheck = usePermission('ARRIVAL_CHECK');
   const runId = String(params.runId ?? '');
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.replace('/login');
+    else if (!canArrivalCheck) router.replace('/r');
+  }, [user, loading, canArrivalCheck, router]);
 
   const runQuery = useQuery({
     queryKey: ['arrival-check', 'run', runId],
     queryFn: () => api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}`),
-    enabled: !!runId,
+    enabled: !!runId && canArrivalCheck,
     refetchInterval: 4000,
   });
 
   const run = runQuery.data;
+
+  if (loading || !user || !canArrivalCheck) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-sm text-ink-muted">Lädt…</p>
+      </div>
+    );
+  }
 
   if (runQuery.isLoading) {
     return (

@@ -1,13 +1,17 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import type {
   ArrivalCheckRunDetail,
   ArrivalCheckRunItem,
   ArrivalCheckRunSummary,
+  ReservationListItem,
 } from '@housekeeping/shared';
+import { ReservationsService } from '../reservations/reservations.service';
 import { formatHotelDateOnly } from '@housekeeping/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,7 +27,17 @@ export class ArrivalCheckService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cipher: SecretCipherService,
+    @Inject(forwardRef(() => ReservationsService))
+    private readonly reservations: ReservationsService,
   ) {}
+
+  listArrivals(q?: string, hotelId?: string): Promise<ReservationListItem[]> {
+    return this.reservations.list({ tab: 'arrivals', q, hotelId });
+  }
+
+  syncArrivals(date?: string) {
+    return this.reservations.syncFromEmma(date);
+  }
 
   private defaultHotelId(hotelId?: string): string {
     return hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
