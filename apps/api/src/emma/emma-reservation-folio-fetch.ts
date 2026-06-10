@@ -95,7 +95,11 @@ export async function fetchEmmaReservationFolioFromJar(
   const upsert = mapEmmaReservationRowToUpsert(reservation, cipher, fetchedAt);
 
   log.log(
-    `[Reservations] fetched folio ${reservationId}: folios=${bundle.folios.length} charges=${bundle.charges.length}`,
+    `[Reservations] fetched folio ${reservationId}: folios=${bundle.folios.length} charges=${bundle.charges.length} byFolio=${JSON.stringify(
+      Object.fromEntries(
+        Object.entries(bundle.chargesByFolio ?? {}).map(([k, v]) => [k, v.length]),
+      ),
+    )}`,
   );
 
   return { hotelId, reservationId, upsert, bundle };

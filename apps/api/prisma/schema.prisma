@@ -139,6 +139,27 @@ enum TeamChatReactionType {
   EXCLAMATION_QUESTION
 }
 
+enum ArrivalCheckRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ArrivalCheckItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum ArrivalCheckStep {
+  FOLIO_LOAD
+  CHARGE_ASSIGN
+  PREPAID_SETTLE
+}
+
 /// PrizeBern / Rezeption: Kategorisierung der Puzzel-Tickets (KI).
 enum PuzzelTicketPrizeCategory {
   SPAM
@@ -254,6 +275,7 @@ model User {
   permissionGrants         UserPermissionGrant[]
   roleAssignments          UserRoleAssignment[]
   favurMap                 FavurUserMap[]
+  arrivalCheckRuns         ArrivalCheckRun[]
 }
 
 /**
@@ -749,6 +771,36 @@ model ReservationSyncRun {
   overview   Json?
 
   @@index([startedAt])
+}
+
+model ArrivalCheckRun {
+  id              String                @id @default(cuid())
+  hotelId         String
+  createdByUserId String
+  createdBy       User                  @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  status          ArrivalCheckRunStatus @default(RUNNING)
+  startedAt       DateTime              @default(now())
+  finishedAt      DateTime?
+  items           ArrivalCheckRunItem[]
+
+  @@index([startedAt])
+  @@index([createdByUserId])
+}
+
+model ArrivalCheckRunItem {
+  id            String                 @id @default(cuid())
+  runId         String
+  run           ArrivalCheckRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  reservationId String
+  hotelId       String
+  status        ArrivalCheckItemStatus @default(PENDING)
+  currentStep   ArrivalCheckStep?
+  error         String?                @db.Text
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@unique([runId, reservationId])
+  @@index([runId])
 }
 
 model MonitorMapFeedSource {

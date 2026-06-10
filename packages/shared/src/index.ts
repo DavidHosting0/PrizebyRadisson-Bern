@@ -14,9 +14,11 @@ export enum DerivedRoomStatus {
   INSPECTED = 'INSPECTED',
 }
 
+export * from './folio-charges';
 export * from './guest-stay-type';
 export * from './room-layout';
 export * from './reservations';
+export * from './arrival-check';
 export * from './occupancy';
 export * from './monitor-map';
 

@@ -71,6 +71,8 @@ export type ReservationDetail = ReservationListItem & {
 /** Normalized folio charge row for UI. */
 export type ReservationFolioCharge = {
   id: string;
+  /** EMMA line id (e.g. 000001) — display order. */
+  position: string | null;
   folioId: string | null;
   concept: string | null;
   conceptNature: string | null;
@@ -93,6 +95,8 @@ export type ReservationEmmaFolioBundle = {
   reservation: Record<string, unknown>;
   folios: Record<string, unknown>[];
   charges: ReservationFolioCharge[];
+  /** Pre-grouped by folio id for display (charge.Folio, not Folios/Details). */
+  chargesByFolio?: Record<string, ReservationFolioCharge[]>;
   amount: Record<string, unknown> | null;
   mainCustomer: Record<string, unknown> | null;
   mainGuest: Record<string, unknown> | null;

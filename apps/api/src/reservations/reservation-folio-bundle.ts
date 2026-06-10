@@ -2,10 +2,15 @@ import type {
   ReservationEmmaFolioBundle,
   ReservationFolioCharge,
 } from '@housekeeping/shared';
+import {
+  groupChargesByFolio,
+  normalizeFolioCharge,
+  sortFolioCharges,
+} from '@housekeeping/shared';
 import type { SecretCipherService } from '../common/crypto/secret-cipher.service';
-import { parseEmmaDateToIso } from './reservation-sensitive';
 
 export type { ReservationEmmaFolioBundle, ReservationFolioCharge };
+export { normalizeFolioCharge };
 
 function stripODataRow(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -26,50 +31,35 @@ function odataResults(value: unknown): Record<string, unknown>[] {
   );
 }
 
-function str(v: unknown): string | null {
-  if (v == null || v === '') return null;
-  return String(v).trim() || null;
-}
-
-export function normalizeFolioCharge(row: Record<string, unknown>): ReservationFolioCharge {
-  return {
-    id: String(row.Id ?? ''),
-    folioId: str(row.Folio),
-    concept: str(row.Concept),
-    conceptNature: str(row.ConceptNature),
-    description: str(row.Description),
-    guestName: str(row.GuestName),
-    productionDate: parseEmmaDateToIso(row.ProductionDate),
-    chargeType: str(row.ChargeType),
-    status: str(row.Status),
-    quantity: str(row.Quantity),
-    price: str(row.Price),
-    priceWithTax: str(row.PriceWithTax),
-    amount: str(row.Amount),
-    taxAmount: str(row.TaxAmount),
-    currency: str(row.Currency),
-  };
-}
-
+/**
+ * EMMA exposes charges on reservation.FolioDetails (complete) and per Folios/Details (partial).
+ * Always prefer FolioDetails; nested Details may list charges under the wrong folio card.
+ */
 export function extractFolioCharges(
   reservation: Record<string, unknown>,
   folios: Record<string, unknown>[],
 ): ReservationFolioCharge[] {
   const byId = new Map<string, ReservationFolioCharge>();
 
-  for (const row of odataResults(reservation.FolioDetails)) {
-    const charge = normalizeFolioCharge(row);
-    if (charge.id) byId.set(charge.id, charge);
-  }
+  const add = (row: Record<string, unknown>, parentFolioId?: string) => {
+    const charge = normalizeFolioCharge(row, parentFolioId);
+    if (!charge.id) return;
+    byId.set(charge.id, charge);
+  };
 
-  for (const folio of folios) {
-    for (const row of odataResults(folio.Details)) {
-      const charge = normalizeFolioCharge(row);
-      if (charge.id) byId.set(charge.id, charge);
+  const topLevel = odataResults(reservation.FolioDetails);
+  if (topLevel.length > 0) {
+    for (const row of topLevel) add(row);
+  } else {
+    for (const folio of folios) {
+      const parentId = String(folio.Id ?? '');
+      for (const row of odataResults(folio.Details)) {
+        add(row, parentId);
+      }
     }
   }
 
-  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return sortFolioCharges([...byId.values()]);
 }
 
 export function buildReservationFolioBundle(input: {
@@ -80,6 +70,10 @@ export function buildReservationFolioBundle(input: {
 }): ReservationEmmaFolioBundle {
   const reservation = stripODataRow(input.reservation);
   const folios = odataResults(reservation.Folios).map(stripODataRow);
+  const charges = extractFolioCharges(reservation, folios);
+  const folioIds = folios.map((f) => String(f.Id ?? ''));
+  const chargesByFolio = groupChargesByFolio(charges, folioIds);
+
   const amountRaw = reservation.Amount;
   const amount =
     amountRaw && typeof amountRaw === 'object' && !('__deferred' in (amountRaw as object))
@@ -92,7 +86,8 @@ export function buildReservationFolioBundle(input: {
     fetchedAt: input.fetchedAt.toISOString(),
     reservation,
     folios,
-    charges: extractFolioCharges(reservation, folios),
+    charges,
+    chargesByFolio,
     amount,
     mainCustomer:
       mainCustomerRaw &&
@@ -129,7 +124,14 @@ export function decryptFolioBundle(
   const plain = cipher.decryptSafe(folioEnc);
   if (!plain) return null;
   try {
-    return JSON.parse(plain) as ReservationEmmaFolioBundle;
+    const bundle = JSON.parse(plain) as ReservationEmmaFolioBundle;
+    if (!bundle.chargesByFolio && bundle.charges?.length && bundle.folios?.length) {
+      bundle.chargesByFolio = groupChargesByFolio(
+        bundle.charges,
+        bundle.folios.map((f) => String(f.Id ?? '')),
+      );
+    }
+    return bundle;
   } catch {
     return null;
   }
