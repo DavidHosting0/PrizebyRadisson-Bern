@@ -2,37 +2,38 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import type { ReservationDetail } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 
 export function useReservationEmmaFetch(reservationId: string) {
   const queryClient = useQueryClient();
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['reservation', reservationId] });
+  const applyDetail = (detail: ReservationDetail) => {
+    queryClient.setQueryData<ReservationDetail>(['reservation', reservationId], detail);
     void queryClient.invalidateQueries({ queryKey: ['arrivals'] });
     void queryClient.invalidateQueries({ queryKey: ['reservations'] });
   };
 
   const fetchDetailMut = useMutation({
     mutationFn: () =>
-      api(`/reservations/${reservationId}/fetch-detail`, {
+      api<ReservationDetail>(`/reservations/${reservationId}/fetch-detail`, {
         method: 'POST',
         body: JSON.stringify({}),
       }),
     onMutate: () => setFetchError(null),
-    onSuccess: invalidate,
+    onSuccess: applyDetail,
     onError: (err) => setFetchError((err as Error).message),
   });
 
   const fetchFolioMut = useMutation({
     mutationFn: () =>
-      api(`/reservations/${reservationId}/fetch-folio`, {
+      api<ReservationDetail>(`/reservations/${reservationId}/fetch-folio`, {
         method: 'POST',
         body: JSON.stringify({}),
       }),
     onMutate: () => setFetchError(null),
-    onSuccess: invalidate,
+    onSuccess: applyDetail,
     onError: (err) => setFetchError((err as Error).message),
   });
 

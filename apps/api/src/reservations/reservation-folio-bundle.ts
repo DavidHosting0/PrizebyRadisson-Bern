@@ -3,14 +3,14 @@ import type {
   ReservationFolioCharge,
 } from '@housekeeping/shared';
 import {
+  extractFolioChargesFromEmma,
   groupChargesByFolio,
-  normalizeFolioCharge,
-  sortFolioCharges,
+  rehydrateFolioBundle,
 } from '@housekeeping/shared';
 import type { SecretCipherService } from '../common/crypto/secret-cipher.service';
 
 export type { ReservationEmmaFolioBundle, ReservationFolioCharge };
-export { normalizeFolioCharge };
+export { extractFolioChargesFromEmma as extractFolioCharges, rehydrateFolioBundle };
 
 function stripODataRow(row: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -31,37 +31,6 @@ function odataResults(value: unknown): Record<string, unknown>[] {
   );
 }
 
-/**
- * EMMA exposes charges on reservation.FolioDetails (complete) and per Folios/Details (partial).
- * Always prefer FolioDetails; nested Details may list charges under the wrong folio card.
- */
-export function extractFolioCharges(
-  reservation: Record<string, unknown>,
-  folios: Record<string, unknown>[],
-): ReservationFolioCharge[] {
-  const byId = new Map<string, ReservationFolioCharge>();
-
-  const add = (row: Record<string, unknown>, parentFolioId?: string) => {
-    const charge = normalizeFolioCharge(row, parentFolioId);
-    if (!charge.id) return;
-    byId.set(charge.id, charge);
-  };
-
-  const topLevel = odataResults(reservation.FolioDetails);
-  if (topLevel.length > 0) {
-    for (const row of topLevel) add(row);
-  } else {
-    for (const folio of folios) {
-      const parentId = String(folio.Id ?? '');
-      for (const row of odataResults(folio.Details)) {
-        add(row, parentId);
-      }
-    }
-  }
-
-  return sortFolioCharges([...byId.values()]);
-}
-
 export function buildReservationFolioBundle(input: {
   reservation: Record<string, unknown>;
   remarks: Record<string, unknown> | null;
@@ -70,10 +39,6 @@ export function buildReservationFolioBundle(input: {
 }): ReservationEmmaFolioBundle {
   const reservation = stripODataRow(input.reservation);
   const folios = odataResults(reservation.Folios).map(stripODataRow);
-  const charges = extractFolioCharges(reservation, folios);
-  const folioIds = folios.map((f) => String(f.Id ?? ''));
-  const chargesByFolio = groupChargesByFolio(charges, folioIds);
-
   const amountRaw = reservation.Amount;
   const amount =
     amountRaw && typeof amountRaw === 'object' && !('__deferred' in (amountRaw as object))
@@ -82,12 +47,11 @@ export function buildReservationFolioBundle(input: {
   const mainCustomerRaw = reservation.MainCustomer;
   const mainGuestRaw = reservation.MainGuest;
 
-  return {
+  const draft: ReservationEmmaFolioBundle = {
     fetchedAt: input.fetchedAt.toISOString(),
     reservation,
     folios,
-    charges,
-    chargesByFolio,
+    charges: [],
     amount,
     mainCustomer:
       mainCustomerRaw &&
@@ -107,13 +71,16 @@ export function buildReservationFolioBundle(input: {
     remarks: input.remarks ? stripODataRow(input.remarks) : null,
     depositConcepts: input.depositConcepts.map(stripODataRow),
   };
+
+  return rehydrateFolioBundle(draft);
 }
 
 export function encryptFolioBundle(
   cipher: SecretCipherService,
   bundle: ReservationEmmaFolioBundle,
 ): string {
-  return cipher.encrypt(JSON.stringify(bundle));
+  const normalized = rehydrateFolioBundle(bundle);
+  return cipher.encrypt(JSON.stringify(normalized));
 }
 
 export function decryptFolioBundle(
@@ -125,13 +92,7 @@ export function decryptFolioBundle(
   if (!plain) return null;
   try {
     const bundle = JSON.parse(plain) as ReservationEmmaFolioBundle;
-    if (!bundle.chargesByFolio && bundle.charges?.length && bundle.folios?.length) {
-      bundle.chargesByFolio = groupChargesByFolio(
-        bundle.charges,
-        bundle.folios.map((f) => String(f.Id ?? '')),
-      );
-    }
-    return bundle;
+    return rehydrateFolioBundle(bundle);
   } catch {
     return null;
   }

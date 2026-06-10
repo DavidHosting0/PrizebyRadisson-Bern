@@ -5,119 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import type { ReservationListItem, ReservationOverview } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import clsx from 'clsx';
-
-type SortKey =
-  | 'guest'
-  | 'reservationId'
-  | 'roomId'
-  | 'arrivalDate'
-  | 'roomType'
-  | 'numPax'
-  | 'vip'
-  | 'creditCard';
-
-type SortDir = 'asc' | 'desc';
-
-function compareRows(a: ReservationListItem, b: ReservationListItem, key: SortKey): number {
-  const str = (v: string | null | undefined) => (v ?? '').trim().toLocaleLowerCase('de-CH');
-  const num = (v: number | null | undefined) => (v == null ? null : v);
-
-  switch (key) {
-    case 'guest':
-      return str(a.mainGuestName).localeCompare(str(b.mainGuestName), 'de-CH');
-    case 'reservationId':
-      return str(a.reservationId).localeCompare(str(b.reservationId), 'de-CH', { numeric: true });
-    case 'roomId': {
-      const ra = str(a.roomId);
-      const rb = str(b.roomId);
-      if (!ra && !rb) return 0;
-      if (!ra) return 1;
-      if (!rb) return -1;
-      return ra.localeCompare(rb, 'de-CH', { numeric: true });
-    }
-    case 'arrivalDate': {
-      const da = a.arrivalDate || '';
-      const db = b.arrivalDate || '';
-      if (da !== db) return da.localeCompare(db);
-      return (a.departureDate || '').localeCompare(b.departureDate || '');
-    }
-    case 'roomType':
-      return str(a.roomType).localeCompare(str(b.roomType), 'de-CH');
-    case 'numPax': {
-      const pa = num(a.numPax);
-      const pb = num(b.numPax);
-      if (pa == null && pb == null) return 0;
-      if (pa == null) return 1;
-      if (pb == null) return -1;
-      return pa - pb;
-    }
-    case 'vip':
-      return str(a.vipDesc || a.tier).localeCompare(str(b.vipDesc || b.tier), 'de-CH');
-    case 'creditCard':
-      return str(a.creditCard).localeCompare(str(b.creditCard), 'de-CH');
-    default:
-      return 0;
-  }
-}
-
-function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
-  return (
-    <span className={clsx('inline-flex flex-col gap-px', active ? 'text-ink' : 'text-ink-muted/35')}>
-      <svg
-        width="8"
-        height="5"
-        viewBox="0 0 8 5"
-        aria-hidden
-        className={clsx(active && dir === 'asc' && 'text-ink')}
-      >
-        <path d="M4 0L8 5H0z" fill="currentColor" />
-      </svg>
-      <svg
-        width="8"
-        height="5"
-        viewBox="0 0 8 5"
-        aria-hidden
-        className={clsx(active && dir === 'desc' && 'text-ink')}
-      >
-        <path d="M4 5L0 0h8z" fill="currentColor" />
-      </svg>
-    </span>
-  );
-}
-
-function SortableTh({
-  label,
-  column,
-  sortKey,
-  sortDir,
-  onSort,
-  className,
-}: {
-  label: string;
-  column: SortKey;
-  sortKey: SortKey;
-  sortDir: SortDir;
-  onSort: (key: SortKey) => void;
-  className?: string;
-}) {
-  const active = sortKey === column;
-  return (
-    <th className={clsx('px-4 py-3 font-medium', className)}>
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={clsx(
-          'inline-flex items-center gap-1.5 text-left text-[11px] uppercase tracking-wide transition-colors',
-          active ? 'text-ink' : 'text-ink-muted hover:text-ink',
-        )}
-      >
-        {label}
-        <SortIcon active={active} dir={sortDir} />
-      </button>
-    </th>
-  );
-}
+import {
+  ArrivalsTable,
+  arrivalsSortLabel,
+  compareArrivalRows,
+  type ArrivalsSortDir,
+  type ArrivalsSortKey,
+} from '@/components/reception/ArrivalsTable';
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
@@ -132,8 +26,8 @@ export default function ReceptionArrivalsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('guest');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
+  const [sortDir, setSortDir] = useState<ArrivalsSortDir>('asc');
 
   const listQuery = useQuery({
     queryKey: ['arrivals', search],
@@ -170,11 +64,11 @@ export default function ReceptionArrivalsPage() {
 
   const sortedRows = useMemo(() => {
     const copy = [...rows];
-    copy.sort((a, b) => compareRows(a, b, sortKey) * (sortDir === 'asc' ? 1 : -1));
+    copy.sort((a, b) => compareArrivalRows(a, b, sortKey) * (sortDir === 'asc' ? 1 : -1));
     return copy;
   }, [rows, sortKey, sortDir]);
 
-  function onSort(column: SortKey) {
+  function onSort(column: ArrivalsSortKey) {
     if (sortKey === column) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -242,123 +136,21 @@ export default function ReceptionArrivalsPage() {
               : 'Keine Anreisen in der Liste. Bitte erneut synchronisieren.'}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="border-b border-border bg-surface-muted/50">
-                <tr>
-                  <SortableTh
-                    label="Gast"
-                    column="guest"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="Res."
-                    column="reservationId"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="Zimmer"
-                    column="roomId"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="An / Ab"
-                    column="arrivalDate"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="Typ"
-                    column="roomType"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="Pax"
-                    column="numPax"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="VIP"
-                    column="vip"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <SortableTh
-                    label="Karte"
-                    column="creditCard"
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={onSort}
-                  />
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {sortedRows.map((r) => (
-                  <tr key={r.id} className="transition-colors hover:bg-surface-muted/40">
-                    <td className="px-4 py-3.5 font-medium text-ink">{r.mainGuestName ?? '—'}</td>
-                    <td className="px-4 py-3.5 tabular-nums text-ink-muted">{r.reservationId}</td>
-                    <td className="px-4 py-3.5 tabular-nums text-ink">{r.roomId ?? '—'}</td>
-                    <td className="whitespace-nowrap px-4 py-3.5 text-ink-muted">
-                      <span className="tabular-nums">{r.arrivalDate}</span>
-                      <span className="mx-1.5 text-ink-muted/50">→</span>
-                      <span className="tabular-nums">{r.departureDate}</span>
-                    </td>
-                    <td className="max-w-[10rem] truncate px-4 py-3.5 text-ink-muted" title={r.roomType ?? undefined}>
-                      {r.roomType ?? '—'}
-                    </td>
-                    <td className="px-4 py-3.5 tabular-nums text-ink">{r.numPax ?? '—'}</td>
-                    <td className="px-4 py-3.5 text-ink-muted">{r.vipDesc ?? r.tier ?? '—'}</td>
-                    <td className="px-4 py-3.5 font-mono text-xs text-ink-muted">{r.creditCard ?? '—'}</td>
-                    <td className="px-4 py-3.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          router.push(`/r/reservations/${r.reservationId}?from=arrivals`)
-                        }
-                        className="rounded-md px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-surface-muted hover:text-ink"
-                      >
-                        Ansehen
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ArrivalsTable
+            rows={sortedRows}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
+            onView={(reservationId) =>
+              router.push(`/r/reservations/${reservationId}?from=arrivals`)
+            }
+          />
         )}
 
         {!listQuery.isLoading && sortedRows.length > 0 && (
           <div className="border-t border-border px-4 py-2.5 text-xs text-ink-muted">
-            {sortedRows.length} Einträge · Sortiert nach{' '}
-            {sortKey === 'guest'
-              ? 'Gast'
-              : sortKey === 'reservationId'
-                ? 'Res.'
-                : sortKey === 'roomId'
-                  ? 'Zimmer'
-                  : sortKey === 'arrivalDate'
-                    ? 'An / Ab'
-                    : sortKey === 'roomType'
-                      ? 'Typ'
-                      : sortKey === 'numPax'
-                        ? 'Pax'
-                        : sortKey === 'vip'
-                          ? 'VIP'
-                          : 'Karte'}{' '}
-            ({sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
+            {sortedRows.length} Einträge · Sortiert nach {arrivalsSortLabel(sortKey)} (
+            {sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
           </div>
         )}
       </div>

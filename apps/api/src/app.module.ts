@@ -27,6 +27,7 @@ import { FavurModule } from './favur/favur.module';
 import { PuzzleModule } from './puzzle/puzzle.module';
 import { EmmaModule } from './emma/emma.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { ArrivalCheckModule } from './arrival-check/arrival-check.module';
 import { MonitorMapModule } from './monitor-map/monitor-map.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -63,6 +64,7 @@ import configuration from './config/configuration';
     PuzzleModule,
     EmmaModule,
     ReservationsModule,
+    ArrivalCheckModule,
     MonitorMapModule,
   ],
   providers: [

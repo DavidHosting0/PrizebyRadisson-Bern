@@ -55,6 +55,8 @@ export default function ReservationDetailPage() {
     queryKey: ['reservation', reservationId],
     queryFn: () => api<ReservationDetail>(`/reservations/${reservationId}`),
     enabled: !!reservationId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const {

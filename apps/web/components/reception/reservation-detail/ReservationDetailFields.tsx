@@ -28,10 +28,21 @@ export function Section({ title, children }: { title: string; children: React.Re
   );
 }
 
-export function ListSection({ title, children }: { title: string; children: React.ReactNode }) {
+export function ListSection({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-xl border border-border bg-surface-muted/30 p-4">
-      <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">{title}</h3>
+      <div className="mb-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">{title}</h3>
+        {subtitle && <p className="mt-1 text-xs text-ink-muted">{subtitle}</p>}
+      </div>
       {children}
     </section>
   );

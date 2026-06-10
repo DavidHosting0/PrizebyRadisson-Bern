@@ -1,5 +1,6 @@
 import type { ReservationDetail, ReservationFolioCharge } from '@housekeeping/shared';
-import { chargesForFolio } from '@housekeeping/shared';
+import { chargesForFolio, rehydrateFolioBundle } from '@housekeeping/shared';
+import { useMemo } from 'react';
 import {
   Field,
   formatEmmaValue,
@@ -141,10 +142,11 @@ function FolioGrid({
 }
 
 export function EmmaFolioSections({
-  emmaFolio,
+  emmaFolio: rawFolio,
 }: {
   emmaFolio: NonNullable<ReservationDetail['emmaFolio']>;
 }) {
+  const emmaFolio = useMemo(() => rehydrateFolioBundle(rawFolio), [rawFolio]);
   const r = emmaFolio.reservation;
   const currency = String(r.Currency ?? 'CHF').trim();
 
@@ -171,7 +173,14 @@ export function EmmaFolioSections({
       </Section>
 
       {emmaFolio.folios.length > 0 ? (
-        <ListSection title={`Folios (${emmaFolio.folios.length})`}>
+        <ListSection
+          title={`Folios (${emmaFolio.folios.length})`}
+          subtitle={
+            emmaFolio.fetchedAt
+              ? `Stand: ${new Date(emmaFolio.fetchedAt).toLocaleString('de-CH')}`
+              : undefined
+          }
+        >
           <FolioGrid
             folios={emmaFolio.folios}
             allCharges={emmaFolio.charges}

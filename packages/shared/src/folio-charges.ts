@@ -1,4 +1,4 @@
-import type { ReservationFolioCharge } from './reservations';
+import type { ReservationEmmaFolioBundle, ReservationFolioCharge } from './reservations';
 
 /** EMMA folio ids are zero-padded (e.g. "01", "02"). */
 export function normalizeFolioId(value: unknown): string {
@@ -29,9 +29,37 @@ function parseEmmaDateToIso(value: unknown): string | null {
   return null;
 }
 
+function chargeNumericId(c: ReservationFolioCharge): number {
+  const n = parseInt(c.id, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Same business line posted again in EMMA — keep highest Id (newest). */
+export function dedupeNewestFolioCharges(
+  charges: ReservationFolioCharge[],
+): ReservationFolioCharge[] {
+  const byKey = new Map<string, ReservationFolioCharge>();
+  for (const c of charges) {
+    const key = [
+      normalizeFolioId(c.folioId),
+      c.concept ?? '',
+      c.productionDate ?? '',
+      c.description ?? '',
+      c.amount ?? '',
+      c.quantity ?? '',
+    ].join('|');
+    const existing = byKey.get(key);
+    if (!existing || chargeNumericId(c) > chargeNumericId(existing)) {
+      byKey.set(key, c);
+    }
+  }
+  return sortFolioCharges([...byKey.values()]);
+}
+
 /** Map raw EMMA FolioDetails row to normalized charge. */
 export function normalizeFolioCharge(
   row: Record<string, unknown>,
+  /** Only used when Folio field is missing (nested Details fallback). */
   parentFolioId?: string,
 ): ReservationFolioCharge {
   const id = String(row.Id ?? '').trim();
@@ -71,7 +99,7 @@ export function sortFolioCharges(charges: ReservationFolioCharge[]): Reservation
   });
 }
 
-/** Assign charges to folio cards by charge.Folio (not Folios/Details nesting). */
+/** Assign charges to folio cards strictly by charge.Folio. */
 export function groupChargesByFolio(
   charges: ReservationFolioCharge[],
   folioIds: string[],
@@ -100,6 +128,68 @@ export function chargesForFolio(
 ): ReservationFolioCharge[] {
   const fid = normalizeFolioId(folioId);
   if (!fid) return [];
-  if (chargesByFolio?.[fid]) return chargesByFolio[fid];
+  if (chargesByFolio && Object.prototype.hasOwnProperty.call(chargesByFolio, fid)) {
+    return chargesByFolio[fid];
+  }
   return sortFolioCharges(charges.filter((c) => folioIdsMatch(c.folioId, fid)));
+}
+
+function odataResults(value: unknown): Record<string, unknown>[] {
+  if (!value || typeof value !== 'object') return [];
+  const results = (value as { results?: unknown[] }).results;
+  if (!Array.isArray(results)) return [];
+  return results.filter(
+    (r): r is Record<string, unknown> => r != null && typeof r === 'object',
+  );
+}
+
+/**
+ * Build charge list from stored EMMA payload.
+ * Prefer reservation.FolioDetails (complete); never merge nested Details on top
+ * (old bug: nested overwrote correct Folio field with parent folio id).
+ */
+export function extractFolioChargesFromEmma(
+  reservation: Record<string, unknown>,
+  folios: Record<string, unknown>[],
+): ReservationFolioCharge[] {
+  const byId = new Map<string, ReservationFolioCharge>();
+
+  const add = (row: Record<string, unknown>, parentFolioId?: string) => {
+    const charge = normalizeFolioCharge(row, parentFolioId);
+    if (!charge.id) return;
+    byId.set(charge.id, charge);
+  };
+
+  const topLevel = odataResults(reservation.FolioDetails);
+  if (topLevel.length > 0) {
+    for (const row of topLevel) add(row);
+  } else {
+    for (const folio of folios) {
+      const parentId = String(folio.Id ?? '');
+      for (const row of odataResults(folio.Details)) {
+        add(row, parentId);
+      }
+    }
+  }
+
+  return dedupeNewestFolioCharges([...byId.values()]);
+}
+
+/** Recompute charges from raw EMMA JSON (fixes stale bundles in DB). */
+export function rehydrateFolioBundle(
+  bundle: ReservationEmmaFolioBundle,
+): ReservationEmmaFolioBundle {
+  const folios = (bundle.folios ?? []).map((f) => {
+    const { Details: _details, ...rest } = f;
+    return rest;
+  });
+  const reservation = { ...bundle.reservation };
+  const charges = extractFolioChargesFromEmma(reservation, folios);
+  const folioIds = folios.map((f) => String(f.Id ?? ''));
+  return {
+    ...bundle,
+    folios,
+    charges,
+    chargesByFolio: groupChargesByFolio(charges, folioIds),
+  };
 }

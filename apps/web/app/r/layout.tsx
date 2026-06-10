@@ -28,6 +28,7 @@ const nav = [
   { href: '/r/floor-plan', label: 'Floor plan', icon: IconMap },
   { href: '/r/rooms', label: 'Rooms', icon: IconBuilding },
   { href: '/r/arrivals', label: 'Arrivals', icon: IconCalendar },
+  { href: '/r/arrival-check', label: 'Arrival Check', icon: IconArrivalCheck },
   { href: '/r/in-house', label: 'Im Haus', icon: IconInHouse },
   { href: '/r/reservations', label: 'Reservations', icon: IconReservations },
   { href: '/r/requests', label: 'Service requests', icon: IconInbox },
@@ -120,6 +121,20 @@ function IconReservations({ className }: { className?: string }) {
       />
       <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" strokeWidth="1.75" />
       <path d="M9 12h6M9 16h4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconArrivalCheck({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 11l2 2 4-4M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -252,8 +267,9 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-w-0 items-center gap-4">
           <BrandLogo compact className="shrink-0 md:hidden" />
           <BrandLogo className="hidden shrink-0 md:block" />
-          <div className="hidden min-w-0 sm:block">
+          <div className="hidden min-w-0 items-baseline gap-3 sm:flex">
             <p className="truncate text-lg font-semibold tracking-tight text-ink md:text-xl">{hotelTitle}</p>
+            <span className="shrink-0 text-lg font-bold tracking-tight text-ink md:text-xl">Beta Testversion</span>
           </div>
         </div>
         <div className="flex flex-1 items-center justify-end gap-3">

@@ -85,6 +85,10 @@ export default function LoginPage() {
             <BrandLogo />
           </div>
 
+          <p className="mb-6 text-center text-3xl font-bold tracking-tight text-ink sm:text-4xl lg:mb-8 lg:text-left">
+            Beta Testversion
+          </p>
+
           <div className="mb-8 lg:mb-10">
             <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">Sign in</h1>
             <p className="mt-2 text-sm text-ink-muted">Use your staff username and password.</p>
