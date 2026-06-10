@@ -56,24 +56,27 @@ export function dedupeNewestFolioCharges(
   return sortFolioCharges([...byKey.values()]);
 }
 
-/** Map raw EMMA FolioDetails row to normalized charge. */
+/** EMMA folio UI hides superseded/reposted charges (StatusCharge 02/03). */
+export function isEmmaVisibleFolioCharge(row: Record<string, unknown>): boolean {
+  const statusCharge = str(row.StatusCharge);
+  return statusCharge !== '02' && statusCharge !== '03';
+}
+
+/** Map raw EMMA charge row to normalized charge. */
 export function normalizeFolioCharge(
   row: Record<string, unknown>,
-  /** Only used when Folio field is missing (nested Details fallback). */
-  parentFolioId?: string,
+  /** Folio id from FolioDetailsHeader.Folio (authoritative). */
+  assignedFolioId?: string,
 ): ReservationFolioCharge {
   const id = String(row.Id ?? '').trim();
-  const folioFromRow = str(row.Folio);
-  const folioId = folioFromRow
-    ? normalizeFolioId(folioFromRow)
-    : parentFolioId
-      ? normalizeFolioId(parentFolioId)
-      : null;
+  const folioId = assignedFolioId
+    ? normalizeFolioId(assignedFolioId)
+    : normalizeFolioId(row.Folio);
 
   return {
     id,
     position: id || null,
-    folioId,
+    folioId: folioId || null,
     concept: str(row.Concept),
     conceptNature: str(row.ConceptNature),
     description: str(row.Description),
@@ -99,7 +102,7 @@ export function sortFolioCharges(charges: ReservationFolioCharge[]): Reservation
   });
 }
 
-/** Assign charges to folio cards strictly by charge.Folio. */
+/** Assign charges to folio cards by charge.folioId. */
 export function groupChargesByFolio(
   charges: ReservationFolioCharge[],
   folioIds: string[],
@@ -143,35 +146,57 @@ function odataResults(value: unknown): Record<string, unknown>[] {
   );
 }
 
+function addChargeRow(
+  byId: Map<string, ReservationFolioCharge>,
+  row: Record<string, unknown>,
+  assignedFolioId: string,
+) {
+  if (!isEmmaVisibleFolioCharge(row)) return;
+  const charge = normalizeFolioCharge(row, assignedFolioId);
+  if (!charge.id) return;
+  byId.set(charge.id, charge);
+}
+
+/** Extract from FolioDetailsHeader (+ nested FolioDetailsLine), matching EMMA folio UI. */
+export function extractFolioChargesFromDetailsHeader(
+  headers: Record<string, unknown>[],
+): ReservationFolioCharge[] {
+  const byId = new Map<string, ReservationFolioCharge>();
+  for (const header of headers) {
+    const folioId = String(header.Folio ?? '').trim();
+    if (!folioId) continue;
+    addChargeRow(byId, header, folioId);
+    for (const line of odataResults(header.FolioDetailsLine)) {
+      addChargeRow(byId, line, folioId);
+    }
+  }
+  return dedupeNewestFolioCharges([...byId.values()]);
+}
+
 /**
  * Build charge list from stored EMMA payload.
- * Prefer reservation.FolioDetails (complete); never merge nested Details on top
- * (old bug: nested overwrote correct Folio field with parent folio id).
+ * Prefer FolioDetailsHeader (FolioReservationSet) — same source as EMMA folio cards.
+ * Fall back to flat FolioDetails when headers are absent (legacy bundles).
  */
 export function extractFolioChargesFromEmma(
   reservation: Record<string, unknown>,
-  folios: Record<string, unknown>[],
+  folioDetailsHeader?: Record<string, unknown>[],
 ): ReservationFolioCharge[] {
-  const byId = new Map<string, ReservationFolioCharge>();
+  const headers =
+    folioDetailsHeader ??
+    odataResults(reservation.FolioDetailsHeader);
 
-  const add = (row: Record<string, unknown>, parentFolioId?: string) => {
-    const charge = normalizeFolioCharge(row, parentFolioId);
-    if (!charge.id) return;
-    byId.set(charge.id, charge);
-  };
-
-  const topLevel = odataResults(reservation.FolioDetails);
-  if (topLevel.length > 0) {
-    for (const row of topLevel) add(row);
-  } else {
-    for (const folio of folios) {
-      const parentId = String(folio.Id ?? '');
-      for (const row of odataResults(folio.Details)) {
-        add(row, parentId);
-      }
-    }
+  if (headers.length > 0) {
+    return extractFolioChargesFromDetailsHeader(headers);
   }
 
+  const byId = new Map<string, ReservationFolioCharge>();
+  for (const row of odataResults(reservation.FolioDetails)) {
+    if (!isEmmaVisibleFolioCharge(row)) continue;
+    const charge = normalizeFolioCharge(row);
+    if (!charge.id) continue;
+    byId.set(charge.id, charge);
+  }
   return dedupeNewestFolioCharges([...byId.values()]);
 }
 
@@ -179,16 +204,19 @@ export function extractFolioChargesFromEmma(
 export function rehydrateFolioBundle(
   bundle: ReservationEmmaFolioBundle,
 ): ReservationEmmaFolioBundle {
-  const folios = (bundle.folios ?? []).map((f) => {
+  const reservation = { ...bundle.reservation };
+  const folioDetailsHeader =
+    bundle.folioDetailsHeader ?? odataResults(reservation.FolioDetailsHeader);
+  const charges = extractFolioChargesFromEmma(reservation, folioDetailsHeader);
+  const folios = (bundle.folios ?? odataResults(reservation.Folios)).map((f) => {
     const { Details: _details, ...rest } = f;
     return rest;
   });
-  const reservation = { ...bundle.reservation };
-  const charges = extractFolioChargesFromEmma(reservation, folios);
   const folioIds = folios.map((f) => String(f.Id ?? ''));
   return {
     ...bundle,
     folios,
+    folioDetailsHeader,
     charges,
     chargesByFolio: groupChargesByFolio(charges, folioIds),
   };

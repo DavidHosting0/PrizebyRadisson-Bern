@@ -35,10 +35,12 @@ export function buildReservationFolioBundle(input: {
   reservation: Record<string, unknown>;
   remarks: Record<string, unknown> | null;
   depositConcepts: Record<string, unknown>[];
+  folioDetailsHeader?: Record<string, unknown>[];
   fetchedAt: Date;
 }): ReservationEmmaFolioBundle {
   const reservation = stripODataRow(input.reservation);
   const folios = odataResults(reservation.Folios).map(stripODataRow);
+  const folioDetailsHeader = (input.folioDetailsHeader ?? []).map(stripODataRow);
   const amountRaw = reservation.Amount;
   const amount =
     amountRaw && typeof amountRaw === 'object' && !('__deferred' in (amountRaw as object))
@@ -51,6 +53,7 @@ export function buildReservationFolioBundle(input: {
     fetchedAt: input.fetchedAt.toISOString(),
     reservation,
     folios,
+    folioDetailsHeader,
     charges: [],
     amount,
     mainCustomer:

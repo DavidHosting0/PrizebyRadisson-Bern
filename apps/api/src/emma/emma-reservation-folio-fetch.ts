@@ -81,14 +81,23 @@ export async function fetchEmmaReservationFolioFromJar(
       throw new Error(`EMMA folio reservation empty for ${reservationId}`);
     })();
 
-  const remarks = parseODataEntityJson(readPart(1, 'remarks'));
-  const depositConcepts = parseODataResultsJson(readPart(2, 'depositConcepts'));
+  const remarks = parseODataEntityJson(readPart(2, 'remarks'));
+  const depositConcepts = parseODataResultsJson(readPart(3, 'depositConcepts'));
+
+  const folioReservation =
+    parseODataEntityJson(readPart(1, 'folioReservationSet')) ?? null;
+  const folioDetailsHeader = folioReservation
+    ? ((folioReservation.FolioDetailsHeader as { results?: unknown[] } | undefined)?.results ??
+      [])
+        .filter((r): r is Record<string, unknown> => r != null && typeof r === 'object')
+    : [];
 
   const fetchedAt = new Date();
   const bundle = buildReservationFolioBundle({
     reservation,
     remarks,
     depositConcepts,
+    folioDetailsHeader,
     fetchedAt,
   });
 

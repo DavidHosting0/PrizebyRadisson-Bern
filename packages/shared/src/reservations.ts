@@ -95,8 +95,10 @@ export type ReservationEmmaFolioBundle = {
   reservation: Record<string, unknown>;
   folios: Record<string, unknown>[];
   charges: ReservationFolioCharge[];
-  /** Pre-grouped by folio id for display (charge.Folio, not Folios/Details). */
+  /** Pre-grouped by folio id for display (from FolioDetailsHeader). */
   chargesByFolio?: Record<string, ReservationFolioCharge[]>;
+  /** EMMA FolioReservationSet expand — authoritative charge-to-folio mapping. */
+  folioDetailsHeader?: Record<string, unknown>[];
   amount: Record<string, unknown> | null;
   mainCustomer: Record<string, unknown> | null;
   mainGuest: Record<string, unknown> | null;

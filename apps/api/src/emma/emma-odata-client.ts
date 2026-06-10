@@ -512,11 +512,25 @@ export function parseODataEntityJson(body: string): Record<string, unknown> | nu
   }
 }
 
+/** FolioReservationSet expand — same charge list EMMA folio UI uses. */
+export const FOLIO_RESERVATION_EXPAND = [
+  'FolioDetailsHeader',
+  'FolioDetailsHeader/FolioDetailsLine',
+].join(',');
+
+export function folioReservationSetPath(
+  hotelId: string,
+  reservationId: string,
+  sapClient: string,
+): string {
+  const expand = encodeURIComponent(FOLIO_RESERVATION_EXPAND);
+  return `FolioReservationSet(HotelId='${hotelId}',ReservationId='${reservationId}')?sap-client=${sapClient}&$expand=${expand}`;
+}
+
 /** Folio Management $expand from EMMA folio HAR (read-only GET). */
 export const RESERVATION_FOLIO_EXPAND = [
   'MainCustomer',
   'Folios',
-  'Folios/Details',
   'FolioDetails',
   'Messages',
   'Amount',
@@ -537,6 +551,7 @@ export function reservationFolioBatchPaths(
   const hotelFilter = encodeODataFilter(`HotelId eq '${hotelId}'`);
   return [
     { path: `${key}?sap-client=${sapClient}&$expand=${expand}` },
+    { path: folioReservationSetPath(hotelId, reservationId, sapClient) },
     { path: `Remarks(HotelId='${hotelId}',ReservationId='${reservationId}',Id='ALL')?sap-client=${sapClient}` },
     { path: `DepositConcept?sap-client=${sapClient}&$filter=${hotelFilter}` },
   ];
