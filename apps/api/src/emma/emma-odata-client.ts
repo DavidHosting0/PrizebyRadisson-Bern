@@ -163,12 +163,54 @@ export function checkEmployeeAuthPath(
   action = '0004',
 ): string {
   const q = emmaODataStringLiteral;
+  const employeePadded = employee.replace(/^0+/, '').padStart(10, '0');
   return (
     `CheckEmployeeAuth?sap-client=${sapClient}` +
     `&HotelId=${q(hotelId)}` +
-    `&Employee=${q(employee.padStart(10, '0'))}` +
+    `&Employee=${q(employeePadded)}` +
     `&Action=${q(action)}`
   );
+}
+
+/** ManageLocks ObjectKey query param (spaces → %20), matches Folio Management HAR. */
+export function emmaManageLocksObjectKeyParam(requestObjectKey: string): string {
+  return requestObjectKey.replace(/ /g, '%20');
+}
+
+export function manageLocksPath(input: {
+  sapClient: string;
+  hotelId: string;
+  employee: string;
+  requestObjectKey: string;
+  lock: boolean;
+  unlock?: boolean;
+  forceLock?: boolean;
+}): string {
+  const q = emmaODataStringLiteral;
+  const employeePadded = input.employee.replace(/^0+/, '').padStart(10, '0');
+  const objectKey = emmaManageLocksObjectKeyParam(input.requestObjectKey);
+  return (
+    `ManageLocks?sap-client=${input.sapClient}` +
+    `&ObjectType=${q('RSRV')}` +
+    `&ObjectKey=${q(objectKey)}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&Employee=${q(employeePadded)}` +
+    `&Lock=${q(input.lock ? 'true' : 'false')}` +
+    `&ForceLock=${q(input.forceLock ? 'true' : 'false')}` +
+    `&Unlock=${q(input.unlock ? 'true' : 'false')}`
+  );
+}
+
+export function createDraftPath(sapClient: string): string {
+  return `Draft?sap-client=${sapClient}`;
+}
+
+export function draftCreateBody(hotelId: string, reservationId: string): string {
+  return JSON.stringify({
+    HotelId: hotelId,
+    ReservationId: reservationId,
+    __metadata: { type: 'ZEYUI_RSRVS_SRV.Draft' },
+  });
 }
 
 export type EmmaODataBatchPartResult = {

@@ -1,8 +1,14 @@
 import { Logger } from '@nestjs/common';
 import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
+import { normalizeFolioId } from '@housekeeping/shared';
 import type { EmmaCookieJar } from './emma-cookie-jar';
 import { emmaHttpFetchCsrfToken, emmaHttpPostBatch } from './emma-http-auth';
 import type { EmmaSyncDebug } from './emma-sync-debug';
+import {
+  acquireEmmaFolioEditSession,
+  releaseEmmaFolioEditSession,
+  saveEmmaFolioDraft,
+} from './emma-folio-edit-session';
 import {
   buildODataBatchBody,
   buildODataChangesetBatchBody,
@@ -14,7 +20,6 @@ import {
   parseODataBatchResponse,
   parseODataEntityJson,
   validateMoveChargePath,
-  buildEmmaRequestObjectKey,
 } from './emma-odata-client';
 
 const log = new Logger('EmmaFolioMoveCharge');
@@ -24,12 +29,15 @@ function str(v: unknown): string | null {
   return String(v).trim() || null;
 }
 
-function parseMoveChargeResult(body: string): EmmaMoveFolioChargeResult {
+function parseMoveChargeResult(
+  body: string,
+  destinationFolioId: string,
+): EmmaMoveFolioChargeResult {
   const entity = parseODataEntityJson(body);
   if (!entity) {
     throw new Error('EMMA MoveCharge returned empty response');
   }
-  return {
+  const result: EmmaMoveFolioChargeResult = {
     chargeId: String(entity.Id ?? ''),
     concept: str(entity.Concept),
     folioId: str(entity.Folio),
@@ -37,6 +45,14 @@ function parseMoveChargeResult(body: string): EmmaMoveFolioChargeResult {
     description: str(entity.Description),
     statusCharge: str(entity.StatusCharge),
   };
+  const dest = normalizeFolioId(destinationFolioId);
+  const actual = normalizeFolioId(result.folioId);
+  if (dest && actual && dest !== actual) {
+    log.warn(
+      `[EMMA] MoveCharge response Folio=${actual} (expected ${dest} after save) — draft may still apply on POST Draft`,
+    );
+  }
+  return result;
 }
 
 async function postChangesetAction(
@@ -72,7 +88,7 @@ async function postChangesetAction(
     throw new Error(`EMMA ${label} failed (HTTP ${status}): ${snippet}`);
   }
   if (label === 'ValidateMoveCharge') return null;
-  return parseMoveChargeResult(part.body);
+  return parseMoveChargeResult(part.body, '');
 }
 
 async function assertEmployeeCanMoveCharge(
@@ -111,8 +127,9 @@ async function assertEmployeeCanMoveCharge(
 }
 
 /**
- * Move a single folio charge in EMMA (ValidateMoveCharge → CheckEmployeeAuth → MoveCharge).
- * Captured from movingcharges.com.har.
+ * Move a single folio charge in EMMA:
+ * ManageLocks → Draft → ValidateMoveCharge → CheckEmployeeAuth → MoveCharge → Draft save → Unlock.
+ * Captured from movingcharges.com.har + foliomanagement.com.har (lock/draft session).
  */
 export async function moveEmmaFolioChargeFromJar(
   jar: EmmaCookieJar,
@@ -140,36 +157,42 @@ export async function moveEmmaFolioChargeFromJar(
     throw new Error('EMMA operator employee number required for MoveCharge');
   }
 
-  const requestObjectKey = buildEmmaRequestObjectKey(hotelId, reservationId);
-  const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
-
-  if (validate) {
-    await postChangesetAction(
-      jar,
-      baseUrl,
-      sapClient,
-      csrf,
-      validateMoveChargePath({
-        sapClient,
-        hotelId,
-        reservationId,
-        sourceFolioId,
-        chargeRowId,
-      }),
-      'ValidateMoveCharge',
-      requestObjectKey,
-      opts.debug,
-    );
-  }
-
-  await assertEmployeeCanMoveCharge(jar, baseUrl, sapClient, hotelId, employee, opts.debug);
-
-  const result = await postChangesetAction(
+  const session = await acquireEmmaFolioEditSession(
     jar,
     baseUrl,
+    hotelId,
+    reservationId,
+    employee,
     sapClient,
-    csrf,
-    moveChargePath({
+    opts.debug,
+  );
+
+  try {
+    const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+    const requestObjectKey = session.requestObjectKey;
+
+    if (validate) {
+      await postChangesetAction(
+        jar,
+        baseUrl,
+        sapClient,
+        csrf,
+        validateMoveChargePath({
+          sapClient,
+          hotelId,
+          reservationId,
+          sourceFolioId,
+          chargeRowId,
+        }),
+        'ValidateMoveCharge',
+        requestObjectKey,
+        opts.debug,
+      );
+    }
+
+    await assertEmployeeCanMoveCharge(jar, baseUrl, sapClient, hotelId, employee, opts.debug);
+
+    const movePath = moveChargePath({
       sapClient,
       hotelId,
       reservationId,
@@ -178,19 +201,41 @@ export async function moveEmmaFolioChargeFromJar(
       destinationFolioId,
       destinationReservationId,
       employee,
-    }),
-    'MoveCharge',
-    requestObjectKey,
-    opts.debug,
-  );
+    });
 
-  if (!result) {
-    throw new Error('EMMA MoveCharge returned no charge payload');
+    const { body, contentType } = buildODataChangesetBatchBody(
+      [{ actionPath: movePath }],
+      csrf,
+      { requestObjectKey },
+    );
+    const raw = await emmaHttpPostBatch(
+      jar,
+      baseUrl,
+      EMMA_ODATA_RSRVS_SRV,
+      sapClient,
+      csrf,
+      body,
+      contentType,
+      { label: 'MoveCharge', debug: opts.debug },
+    );
+    const parts = parseODataBatchResponse(raw);
+    const part = parts[parts.length - 1];
+    if (!part || part.status < 200 || part.status >= 300) {
+      const status = part?.status ?? 'missing';
+      const snippet = part?.body?.slice(0, 300) ?? '';
+      throw new Error(`EMMA MoveCharge failed (HTTP ${status}): ${snippet}`);
+    }
+
+    const result = parseMoveChargeResult(part.body, destinationFolioId);
+
+    await saveEmmaFolioDraft(jar, baseUrl, session, opts.debug);
+
+    log.log(
+      `[EMMA] moved charge ${chargeRowId} ${result.concept ?? '?'} ` +
+        `${sourceFolioId} → ${destinationFolioId} on ${reservationId}`,
+    );
+    return result;
+  } finally {
+    await releaseEmmaFolioEditSession(jar, baseUrl, session, opts.debug);
   }
-
-  log.log(
-    `[EMMA] moved charge ${chargeRowId} ${result.concept ?? '?'} ` +
-      `${sourceFolioId} → ${destinationFolioId} on ${reservationId}`,
-  );
-  return result;
 }
