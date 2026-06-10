@@ -165,12 +165,18 @@ export function extractFolioChargesFromDetailsHeader(
   for (const header of headers) {
     const folioId = String(header.Folio ?? '').trim();
     if (!folioId) continue;
-    addChargeRow(byId, header, folioId);
-    for (const line of odataResults(header.FolioDetailsLine)) {
-      addChargeRow(byId, line, folioId);
+
+    const lines = odataResults(header.FolioDetailsLine);
+    if (lines.length > 0) {
+      // Parent row (often Id 000000) — EMMA shows only nested FolioDetailsLine charges.
+      for (const line of lines) {
+        addChargeRow(byId, line, folioId);
+      }
+    } else {
+      addChargeRow(byId, header, folioId);
     }
   }
-  return dedupeNewestFolioCharges([...byId.values()]);
+  return sortFolioCharges([...byId.values()]);
 }
 
 /**
