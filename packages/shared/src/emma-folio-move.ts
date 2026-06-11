@@ -35,3 +35,21 @@ export type MoveReservationFolioChargeBody = {
 
 /** Concepts routed to company folio 2 during arrival check (guest folio keeps CTAX). */
 export const ARRIVAL_CHECK_COMPANY_FOLIO_CONCEPTS = ['BB', 'CTAX2'] as const;
+
+/** Tax concepts that always stay on the guest folio (Folio 1): city tax + hotel tax. */
+export const ARRIVAL_CHECK_TAX_CONCEPTS = ['CTAX', 'CTAX2'] as const;
+
+/** Room / board concepts moved to the company folio (Folio 2) for VCC bookings. */
+export const ARRIVAL_CHECK_ROOM_BOARD_CONCEPTS = ['RO', 'BB'] as const;
+
+export function isArrivalCheckTaxConcept(concept: string | null | undefined): boolean {
+  if (!concept) return false;
+  return (ARRIVAL_CHECK_TAX_CONCEPTS as readonly string[]).includes(concept.trim().toUpperCase());
+}
+
+export function isArrivalCheckRoomBoardConcept(concept: string | null | undefined): boolean {
+  if (!concept) return false;
+  return (ARRIVAL_CHECK_ROOM_BOARD_CONCEPTS as readonly string[]).includes(
+    concept.trim().toUpperCase(),
+  );
+}

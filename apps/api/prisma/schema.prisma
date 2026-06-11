@@ -153,6 +153,7 @@ enum ArrivalCheckItemStatus {
   COMPLETED
   FAILED
   SKIPPED
+  NEEDS_MANUAL
 }
 
 enum ArrivalCheckStep {
@@ -803,6 +804,13 @@ model ArrivalCheckRunItem {
   error         String?                @db.Text
   startedAt     DateTime?
   finishedAt    DateTime?
+  source        String?
+  scenario      String?
+  categoryLabel String?
+  statusMessage String?                @db.Text
+  manualReason  String?                @db.Text
+  movesPlanned  Int                    @default(0)
+  movesDone     Int                    @default(0)
 
   @@unique([runId, reservationId])
   @@index([runId])

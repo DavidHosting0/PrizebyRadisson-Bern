@@ -2,31 +2,38 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
 import type {
+  ArrivalCheckCategoryCount,
   ArrivalCheckRunDetail,
   ArrivalCheckRunItem,
   ArrivalCheckRunSummary,
+  ArrivalCheckScenario,
+  ArrivalCheckSource,
   CheckInListTab,
   EmmaMoveFolioChargeResult,
   ReservationListItem,
 } from '@housekeeping/shared';
 import { ReservationsService } from '../reservations/reservations.service';
-import { formatHotelDateOnly } from '@housekeeping/shared';
+import { arrivalCheckCategoryLabel, formatHotelDateOnly } from '@housekeeping/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import {
   decryptSensitivePayload,
 } from '../reservations/reservation-sensitive';
+import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
-import { planGuestToCompanyChargeMoves } from './arrival-check-charge-assign';
+import { buildArrivalCheckDecision, type ArrivalCheckDecision } from './arrival-check-rules';
 import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
 
 @Injectable()
 export class ArrivalCheckService {
+  private readonly log = new Logger(ArrivalCheckService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cipher: SecretCipherService,
@@ -114,7 +121,9 @@ export class ArrivalCheckService {
       take: limit,
       include: {
         createdBy: { select: { id: true, name: true } },
-        items: { select: { status: true } },
+        items: {
+          select: { status: true, source: true, scenario: true, categoryLabel: true },
+        },
       },
     });
     return runs.map((run) => this.toSummary(run));
@@ -156,7 +165,13 @@ export class ArrivalCheckService {
     }
 
     for (const item of run.items) {
-      if (item.status !== 'PENDING' && item.status !== 'FAILED') continue;
+      if (
+        item.status !== 'PENDING' &&
+        item.status !== 'FAILED' &&
+        item.status !== 'NEEDS_MANUAL'
+      ) {
+        continue;
+      }
       await this.processRunItem(run.hotelId, item.id);
     }
 
@@ -191,31 +206,67 @@ export class ArrivalCheckService {
         status: 'IN_PROGRESS',
         currentStep: 'FOLIO_LOAD',
         error: null,
+        manualReason: null,
+        movesDone: 0,
+        statusMessage: 'Reservierungsdaten werden aus EMMA geladen …',
         startedAt: item.startedAt ?? new Date(),
         finishedAt: null,
       },
     });
 
     try {
+      await this.reservations.fetchDetailFromEmma(item.reservationId, hotelId);
       await this.reservations.fetchFolioFromEmma(item.reservationId, hotelId);
-
-      await this.prisma.arrivalCheckRunItem.update({
-        where: { id: itemId },
-        data: { currentStep: 'CHARGE_ASSIGN' },
-      });
 
       const snap = await this.prisma.reservationSnapshot.findUnique({
         where: {
           hotelId_reservationId: { hotelId, reservationId: item.reservationId },
         },
       });
-      const bundle = snap ? decryptFolioBundle(this.cipher, snap.folioEnc) : null;
-      if (!bundle) {
+      const folio = snap ? decryptFolioBundle(this.cipher, snap.folioEnc) : null;
+      if (!folio) {
         throw new Error('Folio nach EMMA-Abruf nicht verfügbar.');
       }
+      const detail = snap ? decryptDetailBundle(this.cipher, snap.detailEnc) : null;
+      const sensitive = snap ? decryptSensitivePayload(this.cipher, snap.sensitiveEnc) : null;
 
-      const moves = planGuestToCompanyChargeMoves(bundle);
-      for (const move of moves) {
+      const decision = buildArrivalCheckDecision({ sensitive, detail, folio });
+      const categoryLabel = arrivalCheckCategoryLabel(decision.source, decision.scenario);
+
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: itemId },
+        data: {
+          currentStep: 'CHARGE_ASSIGN',
+          source: decision.source,
+          scenario: decision.scenario,
+          categoryLabel,
+          movesPlanned: decision.moves.length,
+          statusMessage: this.classifyMessage(decision, categoryLabel),
+        },
+      });
+
+      if (decision.requiresManual) {
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: itemId },
+          data: {
+            status: 'NEEDS_MANUAL',
+            currentStep: null,
+            manualReason: decision.manualReason,
+            statusMessage: decision.manualReason,
+            finishedAt: new Date(),
+          },
+        });
+        return;
+      }
+
+      let movesDone = 0;
+      for (const move of decision.moves) {
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: itemId },
+          data: {
+            statusMessage: `Posten ${move.concept ?? move.chargeRowId} wird von Folio ${move.sourceFolioId} auf Folio ${move.destinationFolioId} verschoben (${movesDone + 1}/${decision.moves.length}) …`,
+          },
+        });
         await this.moveFolioCharge(
           hotelId,
           item.reservationId,
@@ -223,31 +274,76 @@ export class ArrivalCheckService {
           move.chargeRowId,
           move.destinationFolioId,
         );
+        movesDone += 1;
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: itemId },
+          data: { movesDone },
+        });
       }
 
-      if (moves.length > 0) {
+      if (decision.moves.length > 0) {
         await this.reservations.fetchFolioFromEmma(item.reservationId, hotelId);
       }
+
+      this.log.log(
+        `[ArrivalCheck] ${item.reservationId}: ${categoryLabel}, ${movesDone}/${decision.moves.length} Posten verschoben`,
+      );
 
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },
         data: {
           status: 'COMPLETED',
           currentStep: null,
+          statusMessage: this.completionMessage(decision, categoryLabel, movesDone),
           finishedAt: new Date(),
         },
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      const isLock = /blocked by|lock|session/i.test(message);
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },
         data: {
-          status: 'FAILED',
+          status: isLock ? 'NEEDS_MANUAL' : 'FAILED',
           error: message,
+          manualReason: isLock
+            ? `EMMA-Sperre: ${message}. Bitte Reservierung manuell prüfen und ggf. die andere Sitzung schliessen.`
+            : null,
+          statusMessage: isLock ? 'Reservierung durch andere EMMA-Sitzung gesperrt.' : 'Fehler bei der Verarbeitung.',
+          currentStep: null,
           finishedAt: new Date(),
         },
       });
     }
+  }
+
+  private classifyMessage(decision: ArrivalCheckDecision, categoryLabel: string): string {
+    switch (decision.scenario) {
+      case 'VCC':
+        return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, Taxen verbleiben auf Folio 1 …`;
+      case 'PREPAID':
+        return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
+      case 'DIRECT':
+        return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
+      case 'FLEXIBLE':
+        return `${categoryLabel}: keine Verschiebung nötig, Posten bereits korrekt auf Folio 1.`;
+      default:
+        return categoryLabel;
+    }
+  }
+
+  private completionMessage(
+    decision: ArrivalCheckDecision,
+    categoryLabel: string,
+    movesDone: number,
+  ): string {
+    if (decision.scenario === 'FLEXIBLE') {
+      return `${categoryLabel}: keine Verschiebung nötig.`;
+    }
+    if (movesDone === 0) {
+      return `${categoryLabel}: Posten bereits korrekt zugeordnet, keine Verschiebung nötig.`;
+    }
+    return `${categoryLabel}: ${movesDone} Posten erfolgreich verschoben.`;
   }
 
   private async refreshRunStatus(runId: string): Promise<void> {
@@ -255,10 +351,13 @@ export class ArrivalCheckService {
       where: { runId },
       select: { status: true },
     });
-    const pending = items.some((i) => i.status === 'PENDING' || i.status === 'IN_PROGRESS');
     const failed = items.some((i) => i.status === 'FAILED');
     const allDone = items.every(
-      (i) => i.status === 'COMPLETED' || i.status === 'FAILED' || i.status === 'SKIPPED',
+      (i) =>
+        i.status === 'COMPLETED' ||
+        i.status === 'FAILED' ||
+        i.status === 'SKIPPED' ||
+        i.status === 'NEEDS_MANUAL',
     );
     if (!allDone) return;
 
@@ -278,11 +377,20 @@ export class ArrivalCheckService {
     startedAt: Date;
     finishedAt: Date | null;
     createdBy: { id: string; name: string };
-    items: { status: ArrivalCheckRunItem['status'] }[];
+    items: {
+      status: ArrivalCheckRunItem['status'];
+      source?: string | null;
+      scenario?: string | null;
+      categoryLabel?: string | null;
+    }[];
   }): ArrivalCheckRunSummary {
-    const pendingCount = run.items.filter((i) => i.status === 'PENDING').length;
+    const pendingCount = run.items.filter(
+      (i) => i.status === 'PENDING' || i.status === 'IN_PROGRESS',
+    ).length;
     const completedCount = run.items.filter((i) => i.status === 'COMPLETED').length;
     const failedCount = run.items.filter((i) => i.status === 'FAILED').length;
+    const skippedCount = run.items.filter((i) => i.status === 'SKIPPED').length;
+    const manualCount = run.items.filter((i) => i.status === 'NEEDS_MANUAL').length;
     return {
       id: run.id,
       hotelId: run.hotelId,
@@ -295,7 +403,34 @@ export class ArrivalCheckService {
       pendingCount,
       completedCount,
       failedCount,
+      skippedCount,
+      manualCount,
+      categoryCounts: this.buildCategoryCounts(run.items),
     };
+  }
+
+  private buildCategoryCounts(
+    items: { source?: string | null; scenario?: string | null; categoryLabel?: string | null }[],
+  ): ArrivalCheckCategoryCount[] {
+    const map = new Map<string, ArrivalCheckCategoryCount>();
+    for (const item of items) {
+      if (!item.source || !item.scenario) continue;
+      const source = item.source as ArrivalCheckSource;
+      const scenario = item.scenario as ArrivalCheckScenario;
+      const key = `${source}|${scenario}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(key, {
+          source,
+          scenario,
+          label: item.categoryLabel ?? arrivalCheckCategoryLabel(source, scenario),
+          count: 1,
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   }
 
   private toDetail(
@@ -315,6 +450,13 @@ export class ArrivalCheckService {
         error: string | null;
         startedAt: Date | null;
         finishedAt: Date | null;
+        source: string | null;
+        scenario: string | null;
+        categoryLabel: string | null;
+        statusMessage: string | null;
+        manualReason: string | null;
+        movesPlanned: number;
+        movesDone: number;
       }[];
     },
     snapshots: {
@@ -349,6 +491,13 @@ export class ArrivalCheckService {
         departureDate: snap ? formatHotelDateOnly(snap.departureDate) : '',
         roomType: snap?.roomType ?? null,
         numPax: snap?.numPax ?? null,
+        source: (item.source as ArrivalCheckSource | null) ?? null,
+        scenario: (item.scenario as ArrivalCheckScenario | null) ?? null,
+        categoryLabel: item.categoryLabel ?? null,
+        statusMessage: item.statusMessage ?? null,
+        manualReason: item.manualReason ?? null,
+        movesPlanned: item.movesPlanned ?? 0,
+        movesDone: item.movesDone ?? 0,
       };
     });
     return { ...summary, items };
