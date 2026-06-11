@@ -38,8 +38,8 @@ function isMovableConcept(concept: string | null | undefined): boolean {
 }
 
 /**
- * Charges on guest folio 01 that should live on the company folio (BB + CTAX2).
- * City tax (CTAX) stays on folio 01 per EMMA folio routing pattern.
+ * Legacy helper: charges on guest folio 01 that should live on the company folio (RO + BB).
+ * Tax charges (CTAX city tax, CTAX2 hotel tax) stay on folio 01.
  */
 export function planGuestToCompanyChargeMoves(
   bundle: ReservationEmmaFolioBundle,

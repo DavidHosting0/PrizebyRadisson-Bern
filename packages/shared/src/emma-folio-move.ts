@@ -33,8 +33,8 @@ export type MoveReservationFolioChargeBody = {
   hotelId?: string;
 };
 
-/** Concepts routed to company folio 2 during arrival check (guest folio keeps CTAX). */
-export const ARRIVAL_CHECK_COMPANY_FOLIO_CONCEPTS = ['BB', 'CTAX2'] as const;
+/** Concepts historically routed to company folio during arrival check (legacy helper). */
+export const ARRIVAL_CHECK_COMPANY_FOLIO_CONCEPTS = ['BB', 'RO'] as const;
 
 /** Tax concepts that always stay on the guest folio (Folio 1): city tax + hotel tax. */
 export const ARRIVAL_CHECK_TAX_CONCEPTS = ['CTAX', 'CTAX2'] as const;
@@ -42,9 +42,25 @@ export const ARRIVAL_CHECK_TAX_CONCEPTS = ['CTAX', 'CTAX2'] as const;
 /** Room / board concepts moved to the company folio (Folio 2) for VCC bookings. */
 export const ARRIVAL_CHECK_ROOM_BOARD_CONCEPTS = ['RO', 'BB'] as const;
 
+const TAX_TEXT_RX = /city\s*tax|hotel\s*tax|kurtaxe|beherbergungsabgabe/i;
+
 export function isArrivalCheckTaxConcept(concept: string | null | undefined): boolean {
   if (!concept) return false;
   return (ARRIVAL_CHECK_TAX_CONCEPTS as readonly string[]).includes(concept.trim().toUpperCase());
+}
+
+/** Tax charge (city tax or hotel tax) by concept code or EMMA description. */
+export function isArrivalCheckTaxCharge(charge: {
+  concept?: string | null;
+  description?: string | null;
+  conceptNature?: string | null;
+}): boolean {
+  if (isArrivalCheckTaxConcept(charge.concept)) return true;
+  const desc = String(charge.description ?? '').trim();
+  if (desc && TAX_TEXT_RX.test(desc)) return true;
+  const nature = String(charge.conceptNature ?? '').trim();
+  if (nature && TAX_TEXT_RX.test(nature)) return true;
+  return false;
 }
 
 export function isArrivalCheckRoomBoardConcept(concept: string | null | undefined): boolean {

@@ -265,9 +265,9 @@ export default function ArrivalCheckRunPage() {
 
         <p className="rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-sm text-ink-muted">
           Posten werden automatisch zugeordnet: OTA mit VCC → Zimmer/Verpflegung auf Folio 2,
-          Taxen auf Folio 1. OTA Prepaid sowie Radisson-/CTrip-Buchungen → alle Posten auf Folio 1.
-          OTA ohne VCC (flexibel) bleibt unverändert. Unbekannte Quellen und EMMA-Sperren werden
-          zur manuellen Bearbeitung aufgelistet.
+          City Tax und Hotel Tax auf Folio 1. OTA Prepaid sowie Radisson-/CTrip-Buchungen → alle
+          Posten auf Folio 1. OTA ohne VCC (flexibel) bleibt unverändert. Unbekannte Quellen und
+          EMMA-Sperren werden zur manuellen Bearbeitung aufgelistet.
         </p>
       </header>
 

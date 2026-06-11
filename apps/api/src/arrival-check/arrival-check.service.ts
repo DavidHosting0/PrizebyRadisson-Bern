@@ -320,7 +320,7 @@ export class ArrivalCheckService {
   private classifyMessage(decision: ArrivalCheckDecision, categoryLabel: string): string {
     switch (decision.scenario) {
       case 'VCC':
-        return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, Taxen verbleiben auf Folio 1 …`;
+        return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, City Tax und Hotel Tax verbleiben bzw. werden auf Folio 1 zusammengeführt …`;
       case 'PREPAID':
         return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
       case 'DIRECT':

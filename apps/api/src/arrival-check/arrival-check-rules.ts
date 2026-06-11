@@ -4,7 +4,11 @@ import type {
   ReservationEmmaDetailBundle,
   ReservationEmmaFolioBundle,
 } from '@housekeeping/shared';
-import { isArrivalCheckRoomBoardConcept, normalizeFolioId } from '@housekeeping/shared';
+import {
+  isArrivalCheckRoomBoardConcept,
+  isArrivalCheckTaxCharge,
+  normalizeFolioId,
+} from '@housekeeping/shared';
 import type { ReservationSensitivePayload } from '../reservations/reservation-sensitive';
 import { findCompanyFolioId, type FolioChargeMovePlan } from './arrival-check-charge-assign';
 
@@ -98,12 +102,13 @@ function chargeRowId(charge: ReservationEmmaFolioBundle['charges'][number]): str
   return String(charge.position ?? charge.id).trim();
 }
 
-/** VCC: move room/board charges (RO, BB) from guest folio 01 to the company folio. */
+/** VCC: room/board Folio 1 → company folio; city/hotel tax → Folio 1. */
 function planVccMoves(
   bundle: ReservationEmmaFolioBundle,
   companyFolioId: string,
 ): FolioChargeMovePlan[] {
   const moves: FolioChargeMovePlan[] = [];
+
   for (const charge of bundle.charges ?? []) {
     if (normalizeFolioId(charge.folioId) !== GUEST_FOLIO_ID) continue;
     if (!isArrivalCheckRoomBoardConcept(charge.concept)) continue;
@@ -118,6 +123,23 @@ function planVccMoves(
       amount: charge.amount,
     });
   }
+
+  for (const charge of bundle.charges ?? []) {
+    if (!isArrivalCheckTaxCharge(charge)) continue;
+    const src = normalizeFolioId(charge.folioId);
+    if (!src || src === GUEST_FOLIO_ID) continue;
+    const rowId = chargeRowId(charge);
+    if (!rowId) continue;
+    moves.push({
+      chargeRowId: rowId,
+      sourceFolioId: src,
+      destinationFolioId: GUEST_FOLIO_ID,
+      concept: charge.concept,
+      description: charge.description,
+      amount: charge.amount,
+    });
+  }
+
   return moves;
 }
 
