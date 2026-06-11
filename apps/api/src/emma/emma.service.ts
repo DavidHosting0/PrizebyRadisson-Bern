@@ -33,6 +33,10 @@ import {
 import { fetchEmmaReservationDetailFromJar } from './emma-reservation-detail-fetch';
 import { fetchEmmaReservationFolioFromJar } from './emma-reservation-folio-fetch';
 import { moveEmmaFolioChargeFromJar } from './emma-folio-move-charge';
+import {
+  settleEmmaFolioWithVcc,
+  type EmmaVccPaymentOutcome,
+} from './emma-folio-payment';
 import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
 
@@ -497,6 +501,56 @@ export class EmmaService {
       ...params,
       hotelId: hid,
       employee: params.employee ?? operatorCode,
+      sapClient,
+      debug: emmaDebug.verbose ? emmaDebug : undefined,
+    });
+  }
+
+  /**
+   * Charge a reservation's stored VCC token to settle a folio (PaymentGateway PG3).
+   * Only ever charges a card identified as a VCC — never a personal card.
+   */
+  async payFolioWithVcc(params: {
+    hotelId?: string;
+    reservationId: string;
+    folioId: string;
+    amount: string;
+    currency: string;
+  }): Promise<EmmaVccPaymentOutcome> {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const operatorCode = creds.operatorCode?.trim();
+    if (!operatorCode) {
+      throw new ForbiddenException(
+        'EMMA Operator-Code fehlt (Admin → EMMA Login). Für VCC-Zahlung erforderlich.',
+      );
+    }
+    const hid =
+      params.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+
+    let jar = await this.loadEmmaHttpJar();
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[EMMA] HTTP session expired (${probe.reason}) — refresh`);
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    return settleEmmaFolioWithVcc(jar, baseUrl, {
+      hotelId: hid,
+      reservationId: params.reservationId,
+      folioId: params.folioId,
+      amount: params.amount,
+      currency: params.currency,
+      employee: operatorCode,
       sapClient,
       debug: emmaDebug.verbose ? emmaDebug : undefined,
     });

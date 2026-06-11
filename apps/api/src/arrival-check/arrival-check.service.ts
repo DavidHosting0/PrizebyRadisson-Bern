@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type {
   ArrivalCheckCategoryCount,
+  ArrivalCheckPaymentStatus,
   ArrivalCheckRunDetail,
   ArrivalCheckRunItem,
   ArrivalCheckRunSummary,
@@ -15,6 +16,8 @@ import type {
   ArrivalCheckSource,
   CheckInListTab,
   EmmaMoveFolioChargeResult,
+  ReservationEmmaDetailBundle,
+  ReservationEmmaFolioBundle,
   ReservationListItem,
 } from '@housekeeping/shared';
 import { ReservationsService } from '../reservations/reservations.service';
@@ -28,7 +31,18 @@ import {
 import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
 import { buildArrivalCheckDecision, type ArrivalCheckDecision } from './arrival-check-rules';
+import { planVccPayment } from './arrival-check-vcc';
 import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
+
+type PaymentPhaseResult = {
+  paymentStatus: ArrivalCheckPaymentStatus;
+  paymentAmount: string | null;
+  paymentInvoice: string | null;
+  paymentError: string | null;
+  /** True when the reservation should stop and be listed for manual intervention. */
+  manual: boolean;
+  manualReason: string | null;
+};
 
 @Injectable()
 export class ArrivalCheckService {
@@ -122,7 +136,13 @@ export class ArrivalCheckService {
       include: {
         createdBy: { select: { id: true, name: true } },
         items: {
-          select: { status: true, source: true, scenario: true, categoryLabel: true },
+          select: {
+            status: true,
+            source: true,
+            scenario: true,
+            categoryLabel: true,
+            paymentStatus: true,
+          },
         },
       },
     });
@@ -208,6 +228,10 @@ export class ArrivalCheckService {
         error: null,
         manualReason: null,
         movesDone: 0,
+        paymentStatus: null,
+        paymentAmount: null,
+        paymentInvoice: null,
+        paymentError: null,
         statusMessage: 'Reservierungsdaten werden aus EMMA geladen …',
         startedAt: item.startedAt ?? new Date(),
         finishedAt: null,
@@ -281,12 +305,52 @@ export class ArrivalCheckService {
         });
       }
 
+      let workingFolio: ReservationEmmaFolioBundle = folio;
       if (decision.moves.length > 0) {
         await this.reservations.fetchFolioFromEmma(item.reservationId, hotelId);
+        const refreshedSnap = await this.prisma.reservationSnapshot.findUnique({
+          where: { hotelId_reservationId: { hotelId, reservationId: item.reservationId } },
+        });
+        const refreshed = refreshedSnap
+          ? decryptFolioBundle(this.cipher, refreshedSnap.folioEnc)
+          : null;
+        if (refreshed) workingFolio = refreshed;
+      }
+
+      const payment = await this.settleVccPayment(
+        itemId,
+        hotelId,
+        item.reservationId,
+        decision,
+        detail,
+        workingFolio,
+      );
+
+      if (payment.manual) {
+        this.log.warn(`[ArrivalCheck] ${item.reservationId}: ${payment.manualReason}`);
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: itemId },
+          data: {
+            status: 'NEEDS_MANUAL',
+            currentStep: null,
+            paymentStatus: payment.paymentStatus,
+            paymentAmount: payment.paymentAmount,
+            paymentInvoice: payment.paymentInvoice,
+            paymentError: payment.paymentError,
+            manualReason: payment.manualReason,
+            statusMessage: payment.manualReason,
+            movesDone,
+            finishedAt: new Date(),
+          },
+        });
+        return;
       }
 
       this.log.log(
-        `[ArrivalCheck] ${item.reservationId}: ${categoryLabel}, ${movesDone}/${decision.moves.length} Posten verschoben`,
+        `[ArrivalCheck] ${item.reservationId}: ${categoryLabel}, ${movesDone}/${decision.moves.length} Posten verschoben` +
+          (payment.paymentStatus === 'PAID'
+            ? `, VCC belastet ${payment.paymentAmount}`
+            : ''),
       );
 
       await this.prisma.arrivalCheckRunItem.update({
@@ -294,7 +358,11 @@ export class ArrivalCheckService {
         data: {
           status: 'COMPLETED',
           currentStep: null,
-          statusMessage: this.completionMessage(decision, categoryLabel, movesDone),
+          paymentStatus: payment.paymentStatus,
+          paymentAmount: payment.paymentAmount,
+          paymentInvoice: payment.paymentInvoice,
+          paymentError: null,
+          statusMessage: this.completionMessage(decision, categoryLabel, movesDone, payment),
           finishedAt: new Date(),
         },
       });
@@ -317,6 +385,82 @@ export class ArrivalCheckService {
     }
   }
 
+  /**
+   * VCC settlement phase (runs after charges are routed). Charges the stored VCC
+   * token; a decline is surfaced as manual intervention (never a silent success).
+   */
+  private async settleVccPayment(
+    itemId: string,
+    hotelId: string,
+    reservationId: string,
+    decision: ArrivalCheckDecision,
+    detail: ReservationEmmaDetailBundle | null,
+    folio: ReservationEmmaFolioBundle,
+  ): Promise<PaymentPhaseResult> {
+    const plan = planVccPayment({ decision, detail, folio });
+    if (!plan) {
+      return {
+        paymentStatus: 'NOT_REQUIRED',
+        paymentAmount: null,
+        paymentInvoice: null,
+        paymentError: null,
+        manual: false,
+        manualReason: null,
+      };
+    }
+
+    await this.prisma.arrivalCheckRunItem.update({
+      where: { id: itemId },
+      data: {
+        currentStep: 'PREPAID_SETTLE',
+        paymentStatus: 'PLANNED',
+        paymentAmount: plan.amount,
+        statusMessage: `VCC wird belastet: ${plan.currency} ${plan.amount} auf Folio ${plan.folioId} …`,
+      },
+    });
+
+    const outcome = await this.emma.payFolioWithVcc({
+      hotelId,
+      reservationId,
+      folioId: plan.folioId,
+      amount: plan.amount,
+      currency: plan.currency,
+    });
+
+    if (outcome.status === 'PAID') {
+      return {
+        paymentStatus: 'PAID',
+        paymentAmount: outcome.amount ?? plan.amount,
+        paymentInvoice: outcome.invoiceNumber,
+        paymentError: null,
+        manual: false,
+        manualReason: null,
+      };
+    }
+
+    if (outcome.status === 'DECLINED') {
+      const reason = `VCC abgelehnt: ${outcome.message ?? 'Zahlung nicht erfolgreich'}. Bitte manuell prüfen.`;
+      return {
+        paymentStatus: 'DECLINED',
+        paymentAmount: outcome.amount ?? plan.amount,
+        paymentInvoice: outcome.invoiceNumber,
+        paymentError: outcome.message ?? 'Zahlung abgelehnt',
+        manual: true,
+        manualReason: reason,
+      };
+    }
+
+    // NO_VCC or AMBIGUOUS — cannot charge safely.
+    return {
+      paymentStatus: 'SKIPPED',
+      paymentAmount: null,
+      paymentInvoice: null,
+      paymentError: outcome.message,
+      manual: true,
+      manualReason: outcome.message ?? 'VCC-Zahlung nicht möglich – manuelle Prüfung nötig.',
+    };
+  }
+
   private classifyMessage(decision: ArrivalCheckDecision, categoryLabel: string): string {
     switch (decision.scenario) {
       case 'VCC':
@@ -336,14 +480,19 @@ export class ArrivalCheckService {
     decision: ArrivalCheckDecision,
     categoryLabel: string,
     movesDone: number,
+    payment?: PaymentPhaseResult,
   ): string {
+    const paid =
+      payment?.paymentStatus === 'PAID'
+        ? ` VCC belastet: ${payment.paymentAmount}.`
+        : '';
     if (decision.scenario === 'FLEXIBLE') {
-      return `${categoryLabel}: keine Verschiebung nötig.`;
+      return `${categoryLabel}: keine Verschiebung nötig.${paid}`;
     }
     if (movesDone === 0) {
-      return `${categoryLabel}: Posten bereits korrekt zugeordnet, keine Verschiebung nötig.`;
+      return `${categoryLabel}: Posten bereits korrekt zugeordnet, keine Verschiebung nötig.${paid}`;
     }
-    return `${categoryLabel}: ${movesDone} Posten erfolgreich verschoben.`;
+    return `${categoryLabel}: ${movesDone} Posten erfolgreich verschoben.${paid}`;
   }
 
   private async refreshRunStatus(runId: string): Promise<void> {
@@ -382,6 +531,7 @@ export class ArrivalCheckService {
       source?: string | null;
       scenario?: string | null;
       categoryLabel?: string | null;
+      paymentStatus?: string | null;
     }[];
   }): ArrivalCheckRunSummary {
     const pendingCount = run.items.filter(
@@ -391,6 +541,8 @@ export class ArrivalCheckService {
     const failedCount = run.items.filter((i) => i.status === 'FAILED').length;
     const skippedCount = run.items.filter((i) => i.status === 'SKIPPED').length;
     const manualCount = run.items.filter((i) => i.status === 'NEEDS_MANUAL').length;
+    const paidCount = run.items.filter((i) => i.paymentStatus === 'PAID').length;
+    const declinedCount = run.items.filter((i) => i.paymentStatus === 'DECLINED').length;
     return {
       id: run.id,
       hotelId: run.hotelId,
@@ -405,6 +557,8 @@ export class ArrivalCheckService {
       failedCount,
       skippedCount,
       manualCount,
+      paidCount,
+      declinedCount,
       categoryCounts: this.buildCategoryCounts(run.items),
     };
   }
@@ -457,6 +611,10 @@ export class ArrivalCheckService {
         manualReason: string | null;
         movesPlanned: number;
         movesDone: number;
+        paymentStatus: string | null;
+        paymentAmount: string | null;
+        paymentInvoice: string | null;
+        paymentError: string | null;
       }[];
     },
     snapshots: {
@@ -498,6 +656,11 @@ export class ArrivalCheckService {
         manualReason: item.manualReason ?? null,
         movesPlanned: item.movesPlanned ?? 0,
         movesDone: item.movesDone ?? 0,
+        paymentStatus:
+          (item.paymentStatus as ArrivalCheckPaymentStatus | null) ?? null,
+        paymentAmount: item.paymentAmount ?? null,
+        paymentInvoice: item.paymentInvoice ?? null,
+        paymentError: item.paymentError ?? null,
       };
     });
     return { ...summary, items };

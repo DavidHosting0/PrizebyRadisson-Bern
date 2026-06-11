@@ -11,6 +11,7 @@ import {
 } from '@housekeeping/shared';
 import type { ReservationSensitivePayload } from '../reservations/reservation-sensitive';
 import { findCompanyFolioId, type FolioChargeMovePlan } from './arrival-check-charge-assign';
+import { isVccCard, type EmmaCreditCardRow } from './arrival-check-vcc';
 
 export type ArrivalCheckDecision = {
   source: ArrivalCheckSource;
@@ -26,7 +27,6 @@ const GUEST_FOLIO_ID = '01';
 
 const RADISSON_DIRECT_RX =
   /desktopmedia|loyalty\s*guest|search\s*engine\s*optimisation|\bseo\b|bigmouthmedia|rezidor|direct\s*guest|radisson/i;
-const VCC_HOLDER_RX = /bookingcom|virtual\s*card|\bvcc\b|expedia\s*virtual/i;
 
 function sourceText(sensitive: ReservationSensitivePayload | null): string {
   if (!sensitive) return '';
@@ -54,24 +54,10 @@ export function detectSource(sensitive: ReservationSensitivePayload | null): Arr
   return 'OTHER';
 }
 
-function isTruthy(value: unknown): boolean {
-  if (value === true) return true;
-  if (typeof value === 'string') {
-    const s = value.trim().toLowerCase();
-    return s === 'true' || s === 'x' || s === '1' || s === 'yes';
-  }
-  return value === 1;
-}
-
 /** Virtual credit card present: EMMA IsVCC flag (primary) or holder-name keyword (fallback). */
 export function hasVcc(detail: ReservationEmmaDetailBundle | null): boolean {
-  const cards = detail?.creditCards ?? [];
-  for (const card of cards) {
-    if (isTruthy(card.IsVCC)) return true;
-    const holder = String(card.Holder ?? '').trim();
-    if (holder && VCC_HOLDER_RX.test(holder)) return true;
-  }
-  return false;
+  const cards = (detail?.creditCards ?? []) as EmmaCreditCardRow[];
+  return cards.some((card) => isVccCard(card));
 }
 
 function rateText(

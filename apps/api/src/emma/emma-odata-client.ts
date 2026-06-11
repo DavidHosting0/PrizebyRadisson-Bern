@@ -205,6 +205,140 @@ export function createDraftPath(sapClient: string): string {
   return `Draft?sap-client=${sapClient}`;
 }
 
+/** EMMA decimal action param: `5.34m` (used by Round / PaymentGateway Amount). */
+export function emmaDecimalParam(amount: string | number): string {
+  const n = typeof amount === 'number' ? amount : Number(String(amount).replace(',', '.'));
+  const value = Number.isFinite(n) ? n : 0;
+  return `${value.toFixed(2)}m`;
+}
+
+/** Strip leading zeros from an EMMA employee/operator code (PaymentGateway uses unpadded). */
+function unpadEmployee(employee: string): string {
+  return employee.replace(/^0+/, '') || employee;
+}
+
+/** showInvoicePopup (open invoice context for a folio). */
+export function showInvoicePopupPath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  folioId: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  return (
+    `showInvoicePopup?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&ReservaId=${q(input.reservationId)}` +
+    `&Folio=${q(input.folioId.padStart(2, '0'))}`
+  );
+}
+
+/** GetEmployeeTillID → Tills entity (resolves the operator's till). */
+export function getEmployeeTillIdPath(input: {
+  sapClient: string;
+  hotelId: string;
+  employee: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  const employeePadded = unpadEmployee(input.employee).padStart(10, '0');
+  return (
+    `GetEmployeeTillID?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&Employee=${q(employeePadded)}`
+  );
+}
+
+/** CreateInvoice → Invoice entity (InvoiceNumber). No email/print side effects by default. */
+export function createInvoicePath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  folioId: string;
+  invoiceType?: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  return (
+    `CreateInvoice?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&ReservationId=${q(input.reservationId)}` +
+    `&NumFolio=${q(input.folioId.padStart(2, '0'))}` +
+    `&Fkart=${q('')}` +
+    `&Lottery=${q('')}` +
+    `&PrintInvoiceAsk=false` +
+    `&ReservationEmail=${q('')}` +
+    `&OtherEmail=${q('')}` +
+    `&DefaultEmail=false` +
+    `&NoEmail=true` +
+    `&InvoiceType=${q(input.invoiceType ?? '0')}`
+  );
+}
+
+/** Round → rounds the invoice for the chosen payment method (PG3 = token). */
+export function roundInvoicePath(input: {
+  sapClient: string;
+  hotelId: string;
+  invoiceNumber: string;
+  paymentMethod: string;
+  amount: string | number;
+  currency: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  return (
+    `Round?sap-client=${input.sapClient}` +
+    `&Hotel=${q(input.hotelId)}` +
+    `&InvoiceNumber=${q(input.invoiceNumber)}` +
+    `&PaymentMethod=${q(input.paymentMethod)}` +
+    `&Amount=${emmaDecimalParam(input.amount)}` +
+    `&Currency=${q(input.currency)}`
+  );
+}
+
+/** EMMA payment-gateway token (PG3) charge. Pinpad is empty (no physical terminal). */
+export function paymentGatewayPath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  invoiceNumber: string;
+  folioId: string;
+  employee: string;
+  token: string;
+  expiry: string;
+  amount: string | number;
+  currency: string;
+  tillId: string;
+  paymentMethod: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  const employee = unpadEmployee(input.employee);
+  return (
+    `PaymentGateway?sap-client=${input.sapClient}` +
+    `&Hotel=${q(input.hotelId)}` +
+    `&Reservation=${q(input.reservationId)}` +
+    `&InvoiceNumber=${q(input.invoiceNumber)}` +
+    `&FolioId=${q(input.folioId.padStart(2, '0'))}` +
+    `&Employee=${q(employee)}` +
+    `&Preauthorization=${q('')}` +
+    `&Token=${q(input.token)}` +
+    `&Expiry=${q(input.expiry)}` +
+    `&Remarks=${q('')}` +
+    `&Amount=${emmaDecimalParam(input.amount)}` +
+    `&Currency=${q(input.currency)}` +
+    `&TillId=${q(input.tillId)}` +
+    `&Cashier=${q(employee)}` +
+    `&PaymentMethod=${q(input.paymentMethod)}` +
+    `&Pinpad=${q('')}` +
+    `&SavePinpad=${q('')}` +
+    `&RetainAmount=0m` +
+    `&RetainCurrency=${q('')}` +
+    `&RetainInvoice=${q('')}` +
+    `&RetainFormaCobro=${q('')}` +
+    `&Partial=${q('false')}`
+  );
+}
+
+/** EMMA token payment method id (`PG3` = Token, vs `PG1` = Pinpad). */
+export const EMMA_PAYMENT_METHOD_TOKEN = 'PG3';
+
 export function draftCreateBody(hotelId: string, reservationId: string): string {
   return JSON.stringify({
     HotelId: hotelId,
@@ -708,6 +842,26 @@ export function reservationDetailBatchPaths(
   ];
 }
 
+/**
+ * Extract an OData v2 error message from a (changeset) response body.
+ * EMMA returns `{"error":{"message":{"value":"Error: Not sufficient funds"}}}`
+ * on a declined gateway charge. Returns null when no error object is present.
+ */
+export function extractODataErrorMessage(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { message?: { value?: string } | string };
+    };
+    const err = parsed.error;
+    if (!err) return null;
+    if (typeof err.message === 'string') return err.message.trim() || 'EMMA error';
+    const value = err.message?.value;
+    return (value && value.trim()) || 'EMMA error';
+  } catch {
+    return null;
+  }
+}
+
 export function parseODataEntityJson(body: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(body) as { d?: Record<string, unknown> & { results?: unknown[] } };
@@ -717,6 +871,16 @@ export function parseODataEntityJson(body: string): Record<string, unknown> | nu
   } catch {
     return null;
   }
+}
+
+/** CreditCards (incl. Token) for a reservation — used transiently for VCC charging. */
+export function reservationCreditCardsPath(
+  hotelId: string,
+  reservationId: string,
+  sapClient: string,
+): string {
+  const key = reservationEntityKey(hotelId, reservationId);
+  return `${key}/CreditCards?sap-client=${sapClient}&$skip=0&$top=999`;
 }
 
 /** FolioReservationSet expand — same charge list EMMA folio UI uses. */

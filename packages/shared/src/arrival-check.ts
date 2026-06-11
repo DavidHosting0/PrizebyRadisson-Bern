@@ -10,6 +10,21 @@ export type ArrivalCheckItemStatus =
 
 export type ArrivalCheckStep = 'FOLIO_LOAD' | 'CHARGE_ASSIGN' | 'PREPAID_SETTLE';
 
+/**
+ * VCC auto-payment outcome per reservation:
+ * - NOT_REQUIRED: no VCC charge applies (flexible, Radisson direct, personal card, …).
+ * - PLANNED: a VCC charge is planned but not yet executed.
+ * - PAID: the stored VCC token was charged successfully.
+ * - DECLINED: the payment gateway declined the VCC (manual intervention, shown red).
+ * - SKIPPED: a VCC charge was expected but could not run safely (e.g. multiple VCCs).
+ */
+export type ArrivalCheckPaymentStatus =
+  | 'NOT_REQUIRED'
+  | 'PLANNED'
+  | 'PAID'
+  | 'DECLINED'
+  | 'SKIPPED';
+
 /** Detected booking source / client group. */
 export type ArrivalCheckSource =
   | 'BOOKING'
@@ -87,6 +102,14 @@ export type ArrivalCheckRunItem = {
   movesPlanned: number;
   /** Number of charge moves successfully performed. */
   movesDone: number;
+  /** VCC auto-payment status (null = not evaluated yet). */
+  paymentStatus: ArrivalCheckPaymentStatus | null;
+  /** Amount charged / attempted on the VCC (e.g. "120.50"). */
+  paymentAmount: string | null;
+  /** EMMA invoice number created for the VCC charge. */
+  paymentInvoice: string | null;
+  /** Gateway decline / error message when the VCC charge did not succeed. */
+  paymentError: string | null;
 };
 
 export type ArrivalCheckCategoryCount = {
@@ -111,6 +134,10 @@ export type ArrivalCheckRunSummary = {
   skippedCount: number;
   /** Items flagged for manual intervention (NEEDS_MANUAL). */
   manualCount: number;
+  /** Reservations whose VCC was charged successfully. */
+  paidCount: number;
+  /** Reservations whose VCC was declined (manual intervention). */
+  declinedCount: number;
   /** Aggregated counts grouped by source + scenario for the overview. */
   categoryCounts: ArrivalCheckCategoryCount[];
 };

@@ -72,6 +72,22 @@ function needsManual(item: ArrivalCheckRunItem): boolean {
   return item.status === 'NEEDS_MANUAL' || item.status === 'FAILED';
 }
 
+/** A declined VCC is rendered red (not the orange manual tone). */
+function isDeclinedVcc(item: ArrivalCheckRunItem): boolean {
+  return item.paymentStatus === 'DECLINED';
+}
+
+function itemBadgeClass(item: ArrivalCheckRunItem): string {
+  if (isDeclinedVcc(item)) return 'border-rose-300 bg-rose-100 text-rose-900';
+  return statusBadgeClass(item.status);
+}
+
+function itemStatusText(item: ArrivalCheckRunItem): string {
+  if (isDeclinedVcc(item)) return 'VCC abgelehnt';
+  if (item.paymentStatus === 'PAID') return 'Erledigt · VCC belastet';
+  return itemStatusLabel(item.status);
+}
+
 export default function ArrivalCheckRunPage() {
   const params = useParams();
   const router = useRouter();
@@ -205,6 +221,18 @@ export default function ArrivalCheckRunPage() {
           <span>{run.itemCount} Reservierungen</span>
           <span>·</span>
           <span>{run.completedCount} erledigt</span>
+          {run.paidCount > 0 && (
+            <>
+              <span>·</span>
+              <span className="text-emerald-700">{run.paidCount} VCC belastet</span>
+            </>
+          )}
+          {run.declinedCount > 0 && (
+            <>
+              <span>·</span>
+              <span className="text-rose-700">{run.declinedCount} VCC abgelehnt</span>
+            </>
+          )}
           {run.manualCount > 0 && (
             <>
               <span>·</span>
@@ -266,8 +294,10 @@ export default function ArrivalCheckRunPage() {
         <p className="rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-sm text-ink-muted">
           Posten werden automatisch zugeordnet: OTA mit VCC → Zimmer/Verpflegung auf Folio 2,
           City Tax und Hotel Tax auf Folio 1. OTA Prepaid sowie Radisson-/CTrip-Buchungen → alle
-          Posten auf Folio 1. OTA ohne VCC (flexibel) bleibt unverändert. Unbekannte Quellen und
-          EMMA-Sperren werden zur manuellen Bearbeitung aufgelistet.
+          Posten auf Folio 1. OTA ohne VCC (flexibel) bleibt unverändert. Anschliessend wird die
+          VCC automatisch belastet (OTA → Folio 2, CTrip → Folio 1); persönliche Karten werden nie
+          belastet. Abgelehnte VCC, unbekannte Quellen und EMMA-Sperren werden rot zur manuellen
+          Bearbeitung aufgelistet.
         </p>
       </header>
 
@@ -301,7 +331,10 @@ export default function ArrivalCheckRunPage() {
             {manualItems.map((item) => (
               <li
                 key={item.id}
-                className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-orange-200 bg-surface px-3 py-2.5 text-sm"
+                className={clsx(
+                  'flex flex-wrap items-start justify-between gap-2 rounded-lg border bg-surface px-3 py-2.5 text-sm',
+                  isDeclinedVcc(item) ? 'border-rose-300' : 'border-orange-200',
+                )}
               >
                 <div>
                   <span className="font-medium text-ink">{item.mainGuestName ?? '—'}</span>
@@ -309,8 +342,18 @@ export default function ArrivalCheckRunPage() {
                   {item.roomId && (
                     <span className="ml-2 tabular-nums text-ink-muted">Zi. {item.roomId}</span>
                   )}
-                  <p className="mt-0.5 text-xs text-orange-800">
-                    {item.manualReason ?? item.error ?? 'Manuelle Prüfung erforderlich.'}
+                  {isDeclinedVcc(item) && (
+                    <span className="ml-2 rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-900">
+                      VCC abgelehnt
+                    </span>
+                  )}
+                  <p
+                    className={clsx(
+                      'mt-0.5 text-xs',
+                      isDeclinedVcc(item) ? 'text-rose-800' : 'text-orange-800',
+                    )}
+                  >
+                    {item.manualReason ?? item.paymentError ?? item.error ?? 'Manuelle Prüfung erforderlich.'}
                   </p>
                 </div>
                 <Link
@@ -369,11 +412,16 @@ export default function ArrivalCheckRunPage() {
                     <span
                       className={clsx(
                         'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium',
-                        statusBadgeClass(item.status),
+                        itemBadgeClass(item),
                       )}
                     >
-                      {itemStatusLabel(item.status)}
+                      {itemStatusText(item)}
                     </span>
+                    {item.paymentStatus === 'PAID' && item.paymentAmount && (
+                      <p className="mt-1 text-[11px] text-emerald-700">
+                        VCC belastet: {item.paymentAmount}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 text-xs text-ink-muted">
                     {item.statusMessage ?? '—'}
