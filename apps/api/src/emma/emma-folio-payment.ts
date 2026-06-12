@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { normalizeFolioId } from '@housekeeping/shared';
 import type { EmmaCookieJar } from './emma-cookie-jar';
 import { emmaHttpFetchCsrfToken, emmaHttpPostBatch } from './emma-http-auth';
 import type { EmmaSyncDebug } from './emma-sync-debug';
@@ -12,11 +13,13 @@ import {
   EMMA_PAYMENT_METHOD_TOKEN,
   extractODataErrorMessage,
   getEmployeeTillIdPath,
+  invoiceNumberFromSapMessage,
   parseODataBatchResponse,
   parseODataEntityJson,
   parseODataResultsJson,
   paymentGatewayPath,
   reservationCreditCardsPath,
+  reservationInvoicesPath,
   roundInvoicePath,
   showInvoicePopupPath,
 } from './emma-odata-client';
@@ -72,7 +75,7 @@ async function postChangesetAction(
   label: string,
   requestObjectKey: string,
   opts: { allowError?: boolean; debug?: EmmaSyncDebug } = {},
-): Promise<{ status: number; body: string }> {
+): Promise<{ status: number; body: string; headers: Record<string, string> }> {
   const { body, contentType } = buildODataChangesetBatchBody([{ actionPath }], csrf, {
     requestObjectKey,
   });
@@ -95,7 +98,62 @@ async function postChangesetAction(
     const snippet = extractODataErrorMessage(part.body) ?? part.body.slice(0, 300);
     throw new Error(`EMMA ${label} failed (HTTP ${part.status}): ${snippet}`);
   }
-  return { status: part.status, body: part.body };
+  return { status: part.status, body: part.body, headers: part.headers };
+}
+
+type ReusableInvoice = { invoiceNumber: string; amount: string | null };
+
+function parseAmountStr(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Find an already-created but unpaid invoice for a folio so a retry (e.g. after a
+ * decline) reuses it instead of failing with "invoice already created". Returns
+ * 'multiple' when the folio has several open invoices (manual intervention).
+ */
+async function findReusableInvoice(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  sapClient: string,
+  csrf: string,
+  opts: { hotelId: string; reservationId: string; folioId: string; debug?: EmmaSyncDebug },
+): Promise<ReusableInvoice | 'multiple' | null> {
+  const path = reservationInvoicesPath(opts.hotelId, opts.reservationId, sapClient);
+  const { body, contentType } = buildODataBatchBody([{ path }], csrf);
+  const raw = await emmaHttpPostBatch(
+    jar,
+    baseUrl,
+    EMMA_ODATA_RSRVS_SRV,
+    sapClient,
+    csrf,
+    body,
+    contentType,
+    { label: `invoices.${opts.reservationId}`, debug: opts.debug },
+  );
+  const parts = parseODataBatchResponse(raw);
+  const part = parts[0];
+  if (!part || part.status < 200 || part.status >= 300) return null;
+
+  const target = normalizeFolioId(opts.folioId);
+  const open: ReusableInvoice[] = [];
+  for (const row of parseODataResultsJson(part.body)) {
+    if (normalizeFolioId(row.FolioId) !== target) continue;
+    const invoiceNumber = String(row.InvoiceNumber ?? '').trim();
+    if (!invoiceNumber) continue;
+    const status = String(row.Status ?? '').trim();
+    if (/paid|cancel|storn|annul/i.test(status)) continue;
+    const paid = parseAmountStr(row.TotalPaid) ?? 0;
+    if (paid > 0) continue;
+    const payable = parseAmountStr(row.TotalPay) ?? parseAmountStr(row.Total);
+    if (payable == null || payable <= 0) continue;
+    open.push({ invoiceNumber, amount: payable.toFixed(2) });
+  }
+  if (open.length === 0) return null;
+  if (open.length > 1) return 'multiple';
+  return open[0];
 }
 
 /** Fetch the reservation's credit cards (incl. Token) — kept transient, never persisted. */
@@ -186,21 +244,45 @@ export async function chargeEmmaFolioWithVccToken(
     throw new Error('EMMA GetEmployeeTillID returned no TillId for operator');
   }
 
-  // 3) Create the invoice for this folio.
-  const invoiceRes = await postChangesetAction(
-    jar,
-    baseUrl,
-    sapClient,
-    csrf,
-    createInvoicePath({ sapClient, hotelId, reservationId, folioId }),
-    'CreateInvoice',
-    requestObjectKey,
-    { debug: opts.debug },
-  );
-  const invoiceEntity = parseODataEntityJson(invoiceRes.body);
-  const invoiceNumber = String(invoiceEntity?.InvoiceNumber ?? '').trim();
-  if (!invoiceNumber) {
-    throw new Error('EMMA CreateInvoice returned no InvoiceNumber');
+  // 3) Reuse an existing unpaid invoice for this folio, otherwise create one.
+  const reusable = await findReusableInvoice(jar, baseUrl, sapClient, csrf, {
+    hotelId,
+    reservationId,
+    folioId,
+    debug: opts.debug,
+  });
+  if (reusable === 'multiple') {
+    throw new Error(
+      `MANUAL: Mehrere offene Rechnungen auf Folio ${folioId} – VCC-Zahlung manuell prüfen.`,
+    );
+  }
+
+  let invoiceNumber: string;
+  let chargeAmount = opts.amount;
+  if (reusable) {
+    invoiceNumber = reusable.invoiceNumber;
+    if (reusable.amount) chargeAmount = reusable.amount;
+    log.log(
+      `[EMMA] reusing open invoice ${invoiceNumber} on ${reservationId} folio ${folioId} (${chargeAmount} ${currency})`,
+    );
+  } else {
+    const invoiceRes = await postChangesetAction(
+      jar,
+      baseUrl,
+      sapClient,
+      csrf,
+      createInvoicePath({ sapClient, hotelId, reservationId, folioId }),
+      'CreateInvoice',
+      requestObjectKey,
+      { debug: opts.debug },
+    );
+    // EMMA returns the invoice number in the sap-message header (body field is empty).
+    invoiceNumber =
+      invoiceNumberFromSapMessage(invoiceRes.headers) ??
+      String(parseODataEntityJson(invoiceRes.body)?.InvoiceNumber ?? '').trim();
+    if (!invoiceNumber) {
+      throw new Error('EMMA CreateInvoice returned no InvoiceNumber (sap-message header missing)');
+    }
   }
 
   // 4) Round the invoice for the token payment method.
@@ -214,7 +296,7 @@ export async function chargeEmmaFolioWithVccToken(
       hotelId,
       invoiceNumber,
       paymentMethod: EMMA_PAYMENT_METHOD_TOKEN,
-      amount: opts.amount,
+      amount: chargeAmount,
       currency,
     }),
     'Round',
@@ -237,7 +319,7 @@ export async function chargeEmmaFolioWithVccToken(
       employee,
       token,
       expiry,
-      amount: opts.amount,
+      amount: chargeAmount,
       currency,
       tillId,
       paymentMethod: EMMA_PAYMENT_METHOD_TOKEN,
@@ -251,7 +333,7 @@ export async function chargeEmmaFolioWithVccToken(
   const ok = gatewayRes.status >= 200 && gatewayRes.status < 300 && !errorMessage;
   if (ok) {
     log.log(
-      `[EMMA] VCC charge OK ${reservationId} folio ${folioId} ${opts.amount} ${currency} (invoice ${invoiceNumber})`,
+      `[EMMA] VCC charge OK ${reservationId} folio ${folioId} ${chargeAmount} ${currency} (invoice ${invoiceNumber})`,
     );
   } else {
     log.warn(
@@ -262,7 +344,7 @@ export async function chargeEmmaFolioWithVccToken(
   return {
     ok,
     invoiceNumber,
-    amount: opts.amount,
+    amount: chargeAmount,
     currency,
     message: ok ? null : (errorMessage ?? `EMMA PaymentGateway HTTP ${gatewayRes.status}`),
   };

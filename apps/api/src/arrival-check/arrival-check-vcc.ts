@@ -3,8 +3,11 @@ import type {
   ReservationEmmaFolioBundle,
   ReservationFolioCharge,
 } from '@housekeeping/shared';
-import { normalizeFolioId } from '@housekeeping/shared';
-import { findCompanyFolioId } from './arrival-check-charge-assign';
+import {
+  isArrivalCheckPrepaymentCharge,
+  isArrivalCheckRoomBoardConcept,
+  normalizeFolioId,
+} from '@housekeeping/shared';
 import type { ArrivalCheckDecision } from './arrival-check-rules';
 
 const GUEST_FOLIO_ID = '01';
@@ -114,14 +117,43 @@ function folioCharges(
   return (folio.charges ?? []).filter((c) => normalizeFolioId(c.folioId) === fid);
 }
 
-/** Outstanding balance of a folio = sum of its visible charge amounts. */
+/** EMMA Folios entity row by folio id. */
+function folioEntity(
+  folio: ReservationEmmaFolioBundle,
+  folioId: string,
+): Record<string, unknown> | null {
+  const fid = normalizeFolioId(folioId);
+  return (folio.folios ?? []).find((f) => normalizeFolioId(f.Id) === fid) ?? null;
+}
+
+/**
+ * Outstanding balance of a folio. Prefers the EMMA `AmountDue` field (authoritative,
+ * matches what CreateInvoice will post); falls back to the sum of visible charges.
+ */
 function folioBalance(
   folio: ReservationEmmaFolioBundle,
   folioId: string,
 ): { amount: number; currency: string | null } {
+  const entity = folioEntity(folio, folioId);
+  const charges = folioCharges(folio, folioId);
+  let currency: string | null =
+    entity && entity.Currency ? String(entity.Currency) : null;
+
+  const due = entity ? parseAmount(entity.AmountDue) : null;
+  if (due != null) {
+    if (!currency) {
+      for (const c of charges) {
+        if (c.currency) {
+          currency = c.currency;
+          break;
+        }
+      }
+    }
+    return { amount: Math.round(due * 100) / 100, currency };
+  }
+
   let total = 0;
-  let currency: string | null = null;
-  for (const charge of folioCharges(folio, folioId)) {
+  for (const charge of charges) {
     const n = parseAmount(charge.amount);
     if (n != null) total += n;
     if (!currency && charge.currency) currency = charge.currency;
@@ -129,9 +161,38 @@ function folioBalance(
   return { amount: Math.round(total * 100) / 100, currency };
 }
 
+/** Non-guest folio(s) that actually hold room/board charges (where the VCC pays). */
+function roomBoardFolioIds(folio: ReservationEmmaFolioBundle): string[] {
+  const ids = new Set<string>();
+  for (const charge of folio.charges ?? []) {
+    if (isArrivalCheckPrepaymentCharge(charge)) continue;
+    if (!isArrivalCheckRoomBoardConcept(charge.concept)) continue;
+    const fid = normalizeFolioId(charge.folioId);
+    if (fid && fid !== GUEST_FOLIO_ID) ids.add(fid);
+  }
+  return [...ids];
+}
+
+/** Pick the company folio for OTA VCC settlement (the one carrying room/board). */
+function pickCompanyFolioId(folio: ReservationEmmaFolioBundle): string | null {
+  const roomBoard = roomBoardFolioIds(folio);
+  if (roomBoard.length === 1) return roomBoard[0];
+  if (roomBoard.length > 1) {
+    // Prefer an explicit company folio among the candidates.
+    const company = roomBoard.find((id) => {
+      const e = folioEntity(folio, id);
+      return e ? e.IsCompany === true || String(e.IsCompany) === 'true' : false;
+    });
+    return company ?? roomBoard[0];
+  }
+  // No room/board outside folio 01 — nothing for the VCC to settle on Folio 2.
+  return null;
+}
+
 /**
  * Decide whether (and what) to charge on the VCC after charges are routed:
- * - OTA (Booking/Expedia/Agoda) + VCC: settle the company folio (room/board).
+ * - OTA (Booking/Expedia/Agoda) + VCC: settle the company folio (Folio 2) that holds
+ *   the room/board charges.
  * - CTrip + VCC: settle the guest folio 01 (all costs).
  * - Everything else (Radisson direct, prepaid, flexible, personal card): no charge.
  * Returns null when no charge applies or the folio balance is not positive.
@@ -150,7 +211,7 @@ export function planVccPayment(input: {
       decision.source === 'AGODA') &&
     decision.scenario === 'VCC'
   ) {
-    folioId = findCompanyFolioId(folio.folios ?? []);
+    folioId = pickCompanyFolioId(folio);
   } else if (decision.source === 'CTRIP' && decision.vcc) {
     folioId = GUEST_FOLIO_ID;
   }

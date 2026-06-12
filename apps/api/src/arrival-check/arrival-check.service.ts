@@ -192,6 +192,9 @@ export class ArrivalCheckService {
       ) {
         continue;
       }
+      // A declined VCC must be resolved manually in EMMA — never silently re-run
+      // (the invoice already exists; an automatic retry would mask the open balance).
+      if (item.paymentStatus === 'DECLINED') continue;
       await this.processRunItem(run.hotelId, item.id);
     }
 
@@ -367,17 +370,26 @@ export class ArrivalCheckService {
         },
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
+      const isManual = raw.startsWith('MANUAL:');
+      const message = isManual ? raw.slice('MANUAL:'.length).trim() : raw;
       const isLock = /blocked by|lock|session/i.test(message);
+      const manual = isManual || isLock;
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },
         data: {
-          status: isLock ? 'NEEDS_MANUAL' : 'FAILED',
+          status: manual ? 'NEEDS_MANUAL' : 'FAILED',
           error: message,
           manualReason: isLock
             ? `EMMA-Sperre: ${message}. Bitte Reservierung manuell prüfen und ggf. die andere Sitzung schliessen.`
-            : null,
-          statusMessage: isLock ? 'Reservierung durch andere EMMA-Sitzung gesperrt.' : 'Fehler bei der Verarbeitung.',
+            : isManual
+              ? message
+              : null,
+          statusMessage: isLock
+            ? 'Reservierung durch andere EMMA-Sitzung gesperrt.'
+            : manual
+              ? message
+              : 'Fehler bei der Verarbeitung.',
           currentStep: null,
           finishedAt: new Date(),
         },

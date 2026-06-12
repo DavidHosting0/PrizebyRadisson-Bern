@@ -5,6 +5,7 @@ import type {
   ReservationEmmaFolioBundle,
 } from '@housekeeping/shared';
 import {
+  isArrivalCheckPrepaymentCharge,
   isArrivalCheckRoomBoardConcept,
   isArrivalCheckTaxCharge,
   normalizeFolioId,
@@ -97,6 +98,7 @@ function planVccMoves(
 
   for (const charge of bundle.charges ?? []) {
     if (normalizeFolioId(charge.folioId) !== GUEST_FOLIO_ID) continue;
+    if (isArrivalCheckPrepaymentCharge(charge)) continue;
     if (!isArrivalCheckRoomBoardConcept(charge.concept)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
@@ -111,6 +113,7 @@ function planVccMoves(
   }
 
   for (const charge of bundle.charges ?? []) {
+    if (isArrivalCheckPrepaymentCharge(charge)) continue;
     if (!isArrivalCheckTaxCharge(charge)) continue;
     const src = normalizeFolioId(charge.folioId);
     if (!src || src === GUEST_FOLIO_ID) continue;
@@ -135,6 +138,7 @@ function planConsolidateToGuestFolio(bundle: ReservationEmmaFolioBundle): FolioC
   for (const charge of bundle.charges ?? []) {
     const src = normalizeFolioId(charge.folioId);
     if (!src || src === GUEST_FOLIO_ID) continue;
+    if (isArrivalCheckPrepaymentCharge(charge)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
     moves.push({

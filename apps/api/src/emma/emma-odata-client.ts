@@ -351,6 +351,8 @@ export type EmmaODataBatchPartResult = {
   status: number;
   body: string;
   contentType: string | null;
+  /** Lowercased response headers of the embedded HTTP part (e.g. `sap-message`). */
+  headers: Record<string, string>;
 };
 
 export type ODataBatchPartSpec = {
@@ -458,11 +460,19 @@ export function parseODataBatchResponse(raw: string): EmmaODataBatchPartResult[]
     const body = httpSection.slice(headerEndLf + (headerEnd >= 0 ? 4 : 2)).trim();
     const statusMatch = headerBlock.match(/HTTP\/1\.[01]\s+(\d+)/);
     const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-    const ctMatch = headerBlock.match(/Content-Type:\s*([^\r\n]+)/i);
+    const headers: Record<string, string> = {};
+    for (const line of headerBlock.split(/\r?\n/)) {
+      const idx = line.indexOf(':');
+      if (idx <= 0) continue;
+      const name = line.slice(0, idx).trim().toLowerCase();
+      if (!name || name.startsWith('http/')) continue;
+      headers[name] = line.slice(idx + 1).trim();
+    }
     out.push({
       status,
       body,
-      contentType: ctMatch?.[1]?.trim() ?? null,
+      contentType: headers['content-type'] ?? null,
+      headers,
     });
   }
   return out;
@@ -881,6 +891,37 @@ export function reservationCreditCardsPath(
 ): string {
   const key = reservationEntityKey(hotelId, reservationId);
   return `${key}/CreditCards?sap-client=${sapClient}&$skip=0&$top=999`;
+}
+
+/** Existing invoices for a reservation (to detect/reuse an already-created invoice). */
+export function reservationInvoicesPath(
+  hotelId: string,
+  reservationId: string,
+  sapClient: string,
+): string {
+  const key = reservationEntityKey(hotelId, reservationId);
+  return `${key}/Invoices?sap-client=${sapClient}&$skip=0&$top=999`;
+}
+
+/**
+ * EMMA CreateInvoice returns the new invoice number in the `sap-message` response
+ * header (the entity body's InvoiceNumber is empty). Parse it from the header map.
+ */
+export function invoiceNumberFromSapMessage(
+  headers: Record<string, string> | undefined,
+): string | null {
+  const raw = headers?.['sap-message'];
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { message?: string; severity?: string };
+    const msg = (parsed.message ?? '').trim();
+    if (!msg) return null;
+    // Real invoice numbers look like "AIS6X02302"; ignore obvious error text.
+    if (/^[A-Z0-9]{6,12}$/.test(msg)) return msg;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** FolioReservationSet expand — same charge list EMMA folio UI uses. */

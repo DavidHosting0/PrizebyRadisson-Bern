@@ -1,6 +1,7 @@
 import type { ReservationEmmaFolioBundle, ReservationFolioCharge } from '@housekeeping/shared';
 import {
   ARRIVAL_CHECK_COMPANY_FOLIO_CONCEPTS,
+  isArrivalCheckPrepaymentCharge,
   normalizeFolioId,
 } from '@housekeeping/shared';
 
@@ -53,6 +54,7 @@ export function planGuestToCompanyChargeMoves(
 
   for (const charge of bundle.charges ?? []) {
     if (normalizeFolioId(charge.folioId) !== guestId) continue;
+    if (isArrivalCheckPrepaymentCharge(charge)) continue;
     if (!isMovableConcept(charge.concept)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;

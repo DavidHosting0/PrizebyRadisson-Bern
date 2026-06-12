@@ -42,7 +42,14 @@ export const ARRIVAL_CHECK_TAX_CONCEPTS = ['CTAX', 'CTAX2'] as const;
 /** Room / board concepts moved to the company folio (Folio 2) for VCC bookings. */
 export const ARRIVAL_CHECK_ROOM_BOARD_CONCEPTS = ['RO', 'BB'] as const;
 
+/** Pre-payment / deposit concepts that must NEVER be moved between folios. */
+export const ARRIVAL_CHECK_PREPAYMENT_CONCEPTS = ['PPWO'] as const;
+
+/** EMMA ConceptNature for pre-payment / deposit lines. */
+export const ARRIVAL_CHECK_PREPAYMENT_NATURE = '51';
+
 const TAX_TEXT_RX = /city\s*tax|hotel\s*tax|kurtaxe|beherbergungsabgabe/i;
+const PREPAYMENT_TEXT_RX = /pre-?payment|prepayment|anzahlung|vorauszahlung|acconto|deposit/i;
 
 export function isArrivalCheckTaxConcept(concept: string | null | undefined): boolean {
   if (!concept) return false;
@@ -68,4 +75,22 @@ export function isArrivalCheckRoomBoardConcept(concept: string | null | undefine
   return (ARRIVAL_CHECK_ROOM_BOARD_CONCEPTS as readonly string[]).includes(
     concept.trim().toUpperCase(),
   );
+}
+
+/**
+ * Pre-payment / deposit line (EMMA concept PPWO / ConceptNature 51 / "Pre-payment").
+ * These must never be moved between folios during the arrival check.
+ */
+export function isArrivalCheckPrepaymentCharge(charge: {
+  concept?: string | null;
+  description?: string | null;
+  conceptNature?: string | null;
+}): boolean {
+  const concept = String(charge.concept ?? '').trim().toUpperCase();
+  if (concept && (ARRIVAL_CHECK_PREPAYMENT_CONCEPTS as readonly string[]).includes(concept)) {
+    return true;
+  }
+  if (String(charge.conceptNature ?? '').trim() === ARRIVAL_CHECK_PREPAYMENT_NATURE) return true;
+  const desc = String(charge.description ?? '').trim();
+  return Boolean(desc && PREPAYMENT_TEXT_RX.test(desc));
 }
