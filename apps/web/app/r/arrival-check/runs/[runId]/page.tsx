@@ -77,15 +77,34 @@ function isDeclinedVcc(item: ArrivalCheckRunItem): boolean {
   return item.paymentStatus === 'DECLINED';
 }
 
+/** This reservation was auto-skipped because an earlier run already completed it. */
+function isAlreadyDone(item: ArrivalCheckRunItem): boolean {
+  return Boolean(item.alreadyCompletedAt);
+}
+
 function itemBadgeClass(item: ArrivalCheckRunItem): string {
   if (isDeclinedVcc(item)) return 'border-rose-300 bg-rose-100 text-rose-900';
+  if (isAlreadyDone(item)) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   return statusBadgeClass(item.status);
 }
 
 function itemStatusText(item: ArrivalCheckRunItem): string {
   if (isDeclinedVcc(item)) return 'VCC abgelehnt';
+  if (isAlreadyDone(item)) return 'Bereits erledigt';
   if (item.paymentStatus === 'PAID') return 'Erledigt · VCC belastet';
   return itemStatusLabel(item.status);
+}
+
+function formatRunTime(value: string | null): string {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString('de-CH', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+  } catch {
+    return value;
+  }
 }
 
 export default function ArrivalCheckRunPage() {
@@ -231,6 +250,12 @@ export default function ArrivalCheckRunPage() {
             <>
               <span>·</span>
               <span className="text-rose-700">{run.declinedCount} VCC abgelehnt</span>
+            </>
+          )}
+          {run.alreadyDoneCount > 0 && (
+            <>
+              <span>·</span>
+              <span className="text-emerald-700">{run.alreadyDoneCount} bereits erledigt</span>
             </>
           )}
           {run.manualCount > 0 && (
@@ -439,6 +464,16 @@ export default function ArrivalCheckRunPage() {
                   </td>
                   <td className="px-4 py-3.5 text-xs text-ink-muted">
                     {item.statusMessage ?? '—'}
+                    {isAlreadyDone(item) && item.alreadyCompletedRunId && (
+                      <p className="mt-1">
+                        <Link
+                          href={`/r/arrival-check/runs/${item.alreadyCompletedRunId}`}
+                          className="text-emerald-700 underline-offset-2 hover:underline"
+                        >
+                          Früherer Lauf vom {formatRunTime(item.alreadyCompletedAt)}
+                        </Link>
+                      </p>
+                    )}
                     {item.manualReason && item.manualReason !== item.statusMessage && (
                       <p className="mt-1 text-orange-700">{item.manualReason}</p>
                     )}

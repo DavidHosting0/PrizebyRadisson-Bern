@@ -481,6 +481,14 @@ export class EmmaService {
         'EMMA Operator-Code fehlt (Admin → EMMA Login). Für MoveCharge erforderlich.',
       );
     }
+    // Outer guard against cross-reservation moves before we even open a session.
+    const destReservation =
+      (params.destinationReservationId ?? params.reservationId).trim();
+    if (destReservation && destReservation !== params.reservationId.trim()) {
+      throw new ForbiddenException(
+        `Cross-Reservation-Move nicht erlaubt (${params.reservationId} → ${destReservation}).`,
+      );
+    }
     const hid =
       params.hotelId?.trim() ||
       creds.hotelId?.trim() ||
@@ -497,6 +505,15 @@ export class EmmaService {
       await this.refreshHttpSession();
       jar = await this.loadEmmaHttpJar();
     }
+
+    // Pre-flight audit (before the mutex). A grep for [EMMA-MOVE-AUDIT] gives
+    // the full move history including source/destination reservation, folios
+    // and charge row id — the data the user wants to be able to reconcile.
+    this.log.log(
+      `[EMMA-MOVE-AUDIT] moveFolioCharge requested reservation=${params.reservationId} ` +
+        `chargeRow=${params.chargeRowId} ${params.sourceFolioId}→${params.destinationFolioId} ` +
+        `destReservation=${destReservation} hotel=${hid}`,
+    );
 
     const emmaDebug = createEmmaSyncDebug(this.log);
     return this.mutationLock.run(() =>
@@ -546,6 +563,14 @@ export class EmmaService {
       await this.refreshHttpSession();
       jar = await this.loadEmmaHttpJar();
     }
+
+    // Pre-flight audit (before the mutex). Captures EXACTLY what the API layer
+    // received from the orchestrator — so a future investigation can compare
+    // "what was requested" against "what was charged" in EMMA.
+    this.log.log(
+      `[EMMA-VCC-AUDIT] payFolioWithVcc requested reservation=${params.reservationId} ` +
+        `folio=${params.folioId} amount=${params.amount} ${params.currency} hotel=${hid}`,
+    );
 
     const emmaDebug = createEmmaSyncDebug(this.log);
     return this.mutationLock.run(() =>

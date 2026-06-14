@@ -33,6 +33,7 @@ import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
 import { buildArrivalCheckDecision, type ArrivalCheckDecision } from './arrival-check-rules';
 import { planVccPayment } from './arrival-check-vcc';
+import { crossCheckFolioAmount } from './arrival-check-payment-guard';
 import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
 
 type PaymentPhaseResult = {
@@ -187,6 +188,7 @@ export class ArrivalCheckService {
             scenario: true,
             categoryLabel: true,
             paymentStatus: true,
+            alreadyCompletedAt: true,
           },
         },
       },
@@ -294,6 +296,31 @@ export class ArrivalCheckService {
   }
 
   /**
+   * Convert a still-pending item into SKIPPED because the reservation's arrival
+   * check is already on record as completed. Avoids running EMMA work twice.
+   */
+  private async markItemAlreadyCompleted(
+    itemId: string,
+    completedAt: Date,
+    lastRunId: string | null,
+  ): Promise<void> {
+    const msg = `Anreise-Check bereits am ${this.formatTimestamp(completedAt)} durchgeführt – übersprungen.`;
+    await this.prisma.arrivalCheckRunItem.update({
+      where: { id: itemId },
+      data: {
+        status: 'SKIPPED',
+        currentStep: null,
+        statusMessage: msg,
+        manualReason: null,
+        error: null,
+        alreadyCompletedAt: completedAt,
+        alreadyCompletedRunId: lastRunId,
+        finishedAt: new Date(),
+      },
+    });
+  }
+
+  /**
    * Hard-block an automatic re-run of an item that was mid-payment when it failed.
    * Once `paymentStatus === 'PLANNED'` we cannot prove the card was not charged,
    * so the item is sealed to NEEDS_MANUAL until a human checks EMMA.
@@ -312,6 +339,43 @@ export class ArrivalCheckService {
         finishedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * Hard cross-check before a move: the charge must (a) actually exist in the
+   * locally-cached folio bundle for THIS reservation, (b) currently live on
+   * the expected source folio, and (c) the bundle's reservation id must match.
+   * Anything else means our plan and EMMA's reality disagree — we abort.
+   */
+  private assertChargeBelongsToReservation(
+    folio: ReservationEmmaFolioBundle,
+    reservationId: string,
+    chargeRowId: string,
+    sourceFolioId: string,
+  ): void {
+    const folioRes = String(
+      (folio.reservation as { ReservationId?: unknown } | undefined)?.ReservationId ?? '',
+    ).trim();
+    if (folioRes && folioRes !== reservationId.trim()) {
+      throw new Error(
+        `MANUAL: Geladenes Folio gehört zu Reservierung ${folioRes}, erwartet ${reservationId} – Move abgebrochen.`,
+      );
+    }
+    const charges = folio.charges ?? [];
+    const target = chargeRowId.trim();
+    const match = charges.find((c) => (c.position ?? c.id ?? '').toString().trim() === target);
+    if (!match) {
+      throw new Error(
+        `MANUAL: Posten ${target} nicht im aktuell geladenen Folio von ${reservationId} gefunden – Move abgebrochen.`,
+      );
+    }
+    const actualFolio = String(match.folioId ?? '').padStart(2, '0');
+    const expectedFolio = sourceFolioId.padStart(2, '0');
+    if (actualFolio !== expectedFolio) {
+      throw new Error(
+        `MANUAL: Posten ${target} liegt auf Folio ${actualFolio}, geplant war Folio ${expectedFolio} – Move abgebrochen.`,
+      );
+    }
   }
 
   /** Move one folio charge via EMMA (used by arrival check and future scripts). */
@@ -401,7 +465,27 @@ export class ArrivalCheckService {
       }
 
       let movesDone = 0;
+      let workingFolioForMoves = folio;
       for (const move of decision.moves) {
+        // Per-move freshness: re-read the snapshot so we always operate on the
+        // latest charge layout. Then assert the charge still belongs to THIS
+        // reservation and lives on the expected source folio — never move a
+        // charge that has drifted to a different folio (or worse, isn't on
+        // this reservation any more).
+        const beforeSnap = await this.prisma.reservationSnapshot.findUnique({
+          where: { hotelId_reservationId: { hotelId, reservationId: item.reservationId } },
+        });
+        const beforeFolio = beforeSnap
+          ? decryptFolioBundle(this.cipher, beforeSnap.folioEnc)
+          : null;
+        if (beforeFolio) workingFolioForMoves = beforeFolio;
+        this.assertChargeBelongsToReservation(
+          workingFolioForMoves,
+          item.reservationId,
+          move.chargeRowId,
+          move.sourceFolioId,
+        );
+
         await this.prisma.arrivalCheckRunItem.update({
           where: { id: itemId },
           data: {
@@ -472,6 +556,7 @@ export class ArrivalCheckService {
             : ''),
       );
 
+      const completedAt = new Date();
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },
         data: {
@@ -484,7 +569,17 @@ export class ArrivalCheckService {
           paymentInvoice: payment.paymentInvoice,
           paymentError: null,
           statusMessage: this.completionMessage(decision, categoryLabel, movesDone, payment),
-          finishedAt: new Date(),
+          finishedAt: completedAt,
+        },
+      });
+      // Remember the completion on the reservation snapshot so that a future
+      // arrival-check run on the same reservation can short-circuit to SKIPPED.
+      await this.prisma.reservationSnapshot.updateMany({
+        where: { hotelId, reservationId: item.reservationId },
+        data: {
+          arrivalCheckCompletedAt: completedAt,
+          arrivalCheckLastRunItemId: itemId,
+          arrivalCheckLastRunId: item.runId,
         },
       });
     } catch (err: unknown) {
@@ -578,6 +673,25 @@ export class ArrivalCheckService {
         paymentError: null,
         manual: false,
         manualReason: null,
+      };
+    }
+
+    // Defence-in-depth: cross-check our computed plan amount against the EMMA
+    // *displayed* folio totals (AmountDue / AmountPaid). If staff see one number
+    // in EMMA and we compute another, NEVER charge. This blocks the worst case:
+    // "charged the wrong amount because we mis-read the line items".
+    const folioCheck = crossCheckFolioAmount(paymentFolio, plan.folioId, plan.amount);
+    if (!folioCheck.ok) {
+      this.log.error(`[ArrivalCheck-SAFETY] ${reservationId}: ${folioCheck.reason}`);
+      return {
+        paymentStatus: 'SKIPPED',
+        paymentAmount: null,
+        paymentExpectedAmount: plan.amount,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentError: folioCheck.reason,
+        manual: true,
+        manualReason: folioCheck.reason,
       };
     }
 
@@ -742,6 +856,7 @@ export class ArrivalCheckService {
       scenario?: string | null;
       categoryLabel?: string | null;
       paymentStatus?: string | null;
+      alreadyCompletedAt?: Date | null;
     }[];
   }): ArrivalCheckRunSummary {
     const pendingCount = run.items.filter(
@@ -753,6 +868,7 @@ export class ArrivalCheckService {
     const manualCount = run.items.filter((i) => i.status === 'NEEDS_MANUAL').length;
     const paidCount = run.items.filter((i) => i.paymentStatus === 'PAID').length;
     const declinedCount = run.items.filter((i) => i.paymentStatus === 'DECLINED').length;
+    const alreadyDoneCount = run.items.filter((i) => Boolean(i.alreadyCompletedAt)).length;
     return {
       id: run.id,
       hotelId: run.hotelId,
@@ -769,6 +885,7 @@ export class ArrivalCheckService {
       manualCount,
       paidCount,
       declinedCount,
+      alreadyDoneCount,
       categoryCounts: this.buildCategoryCounts(run.items),
     };
   }
@@ -827,6 +944,8 @@ export class ArrivalCheckService {
         paymentCardMask: string | null;
         paymentInvoice: string | null;
         paymentError: string | null;
+        alreadyCompletedAt: Date | null;
+        alreadyCompletedRunId: string | null;
       }[];
     },
     snapshots: {
@@ -875,6 +994,8 @@ export class ArrivalCheckService {
         paymentCardMask: item.paymentCardMask ?? null,
         paymentInvoice: item.paymentInvoice ?? null,
         paymentError: item.paymentError ?? null,
+        alreadyCompletedAt: item.alreadyCompletedAt?.toISOString() ?? null,
+        alreadyCompletedRunId: item.alreadyCompletedRunId ?? null,
       };
     });
     return { ...summary, items };

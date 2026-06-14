@@ -6,6 +6,7 @@ import {
   assertPaymentContextSafe,
   canReuseInvoice,
   computeExpectedVccChargeAmount,
+  crossCheckFolioAmount,
   filterCreditCardsForReservation,
 } from './arrival-check-payment-guard';
 import type { ArrivalCheckDecision } from './arrival-check-rules';
@@ -35,10 +36,11 @@ function ctripDecision(): ArrivalCheckDecision {
 
 function folioWithCharges(
   charges: ReservationEmmaFolioBundle['charges'],
+  folios: ReservationEmmaFolioBundle['folios'] = [],
 ): ReservationEmmaFolioBundle {
   return {
     reservation: {},
-    folios: [],
+    folios,
     charges,
     chargesByFolio: {
       '01': charges.filter((c) => c.folioId === '01'),
@@ -202,6 +204,46 @@ describe('assertPaymentContextSafe', () => {
       invoice: { ReservationId: '0161111111', FolioId: '02', TotalPay: '120.00' },
     });
     assert.equal(result.ok, true);
+  });
+});
+
+describe('crossCheckFolioAmount', () => {
+  it('accepts when AmountDue matches the planned charge exactly', () => {
+    const folio = folioWithCharges(
+      [charge({ id: '1', folioId: '02', concept: 'RO', amount: '120.00' })],
+      [{ Id: '02', AmountTotal: 120.0, AmountPaid: 0, AmountDue: 120.0 }],
+    );
+    const result = crossCheckFolioAmount(folio, '02', '120.00');
+    assert.equal(result.ok, true);
+  });
+
+  it('blocks when EMMA AmountDue diverges from the planned charge', () => {
+    const folio = folioWithCharges(
+      [charge({ id: '1', folioId: '02', concept: 'RO', amount: '120.00' })],
+      [{ Id: '02', AmountTotal: 240.0, AmountPaid: 0, AmountDue: 240.0 }],
+    );
+    const result = crossCheckFolioAmount(folio, '02', '120.00');
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.reason, /weicht.*ab/);
+  });
+
+  it('blocks when the folio already shows AmountPaid (double-charge guard)', () => {
+    const folio = folioWithCharges(
+      [charge({ id: '1', folioId: '02', concept: 'RO', amount: '120.00' })],
+      [{ Id: '02', AmountTotal: 120.0, AmountPaid: 120.0, AmountDue: 0 }],
+    );
+    const result = crossCheckFolioAmount(folio, '02', '120.00');
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.reason, /AmountPaid/);
+  });
+
+  it('blocks when the folio entity does not expose AmountDue', () => {
+    const folio = folioWithCharges(
+      [charge({ id: '1', folioId: '02', concept: 'RO', amount: '120.00' })],
+      [{ Id: '02' }],
+    );
+    const result = crossCheckFolioAmount(folio, '02', '120.00');
+    assert.equal(result.ok, false);
   });
 });
 

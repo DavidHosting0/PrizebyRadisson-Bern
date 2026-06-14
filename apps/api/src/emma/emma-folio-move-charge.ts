@@ -152,6 +152,23 @@ export async function moveEmmaFolioChargeFromJar(
     throw new Error('hotelId, reservationId, sourceFolioId, chargeRowId and destinationFolioId required');
   }
 
+  // Hard rule: a charge may only be moved between folios of the same reservation.
+  // Cross-reservation moves are technically possible in EMMA but never intended
+  // for the arrival check (the rules engine never plans them). Block any attempt.
+  if (destinationReservationId !== reservationId) {
+    throw new Error(
+      `MANUAL: Cross-Reservation-Move blockiert (Quelle=${reservationId}, Ziel=${destinationReservationId}). ` +
+        `Charges dürfen nur innerhalb derselben Reservierung verschoben werden.`,
+    );
+  }
+  // Equally critical: source and destination folio must differ — moving a charge
+  // onto its own folio is meaningless and could only hide a logic bug upstream.
+  if (sourceFolioId.padStart(2, '0') === destinationFolioId.padStart(2, '0')) {
+    throw new Error(
+      `MANUAL: Quell- und Ziel-Folio sind identisch (${sourceFolioId}) – Move abgebrochen.`,
+    );
+  }
+
   const employee = opts.employee?.trim();
   if (!employee) {
     throw new Error('EMMA operator employee number required for MoveCharge');

@@ -655,6 +655,8 @@ export class ReservationsService {
     detailFetchedAt?: Date | null;
     folioEnc?: string | null;
     folioFetchedAt?: Date | null;
+    arrivalCheckCompletedAt?: Date | null;
+    arrivalCheckLastRunId?: string | null;
     syncedAt: Date;
   }, inHouseList = false): ReservationListItem {
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
@@ -703,6 +705,8 @@ export class ReservationsService {
       isArrivalToday: stay.isArrivalToday,
       isRestant: stay.isRestant,
       ocoDone: stay.ocoDone ?? false,
+      arrivalCheckCompletedAt: row.arrivalCheckCompletedAt?.toISOString() ?? null,
+      arrivalCheckLastRunId: row.arrivalCheckLastRunId ?? null,
     };
   }
 

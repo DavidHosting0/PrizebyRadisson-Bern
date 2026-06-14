@@ -261,7 +261,17 @@ export function ArrivalsTable({
                     />
                   </td>
                 )}
-                <td className="px-4 py-3.5 font-medium text-ink">{r.mainGuestName ?? '—'}</td>
+                <td className="px-4 py-3.5 font-medium text-ink">
+                  {r.mainGuestName ?? '—'}
+                  {r.arrivalCheckCompletedAt && (
+                    <span
+                      title={`Anreise-Check erledigt am ${new Date(r.arrivalCheckCompletedAt).toLocaleString('de-CH')}`}
+                      className="ml-2 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-800"
+                    >
+                      Check erledigt
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3.5 tabular-nums text-ink-muted">{r.reservationId}</td>
                 <td className="px-4 py-3.5 tabular-nums text-ink">{r.roomId ?? '—'}</td>
                 <td className="whitespace-nowrap px-4 py-3.5 text-ink-muted">

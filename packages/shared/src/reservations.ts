@@ -38,6 +38,10 @@ export type ReservationListItem = {
   isArrivalToday?: boolean;
   /** Continuing stay (Anreise vor heute, Abreise nach heute). */
   isRestant?: boolean;
+  /** Timestamp of the last successful arrival check (for the Arrival-Check UI). */
+  arrivalCheckCompletedAt?: string | null;
+  /** Run id of that earlier arrival check. */
+  arrivalCheckLastRunId?: string | null;
 };
 
 export type ReservationDetail = ReservationListItem & {

@@ -62,6 +62,84 @@ function folioChargesOnTarget(
   return (folio.charges ?? []).filter((c) => normalizeFolioId(c.folioId) === fid);
 }
 
+export type FolioDisplayedAmounts = {
+  amountTotal: number | null;
+  amountPaid: number | null;
+  amountDue: number | null;
+};
+
+/**
+ * Pull the EMMA-displayed totals for one folio (the same numbers staff see in
+ * the EMMA Folio Management screen): AmountTotal, AmountPaid, AmountDue.
+ */
+export function getFolioDisplayedAmounts(
+  folio: ReservationEmmaFolioBundle,
+  folioId: string,
+): FolioDisplayedAmounts {
+  const fid = normalizeFolioId(folioId);
+  const entity = (folio.folios ?? []).find(
+    (f) => normalizeFolioId(String((f as { Id?: unknown }).Id ?? '')) === fid,
+  ) as Record<string, unknown> | undefined;
+  if (!entity) {
+    return { amountTotal: null, amountPaid: null, amountDue: null };
+  }
+  return {
+    amountTotal: parseAmount(entity.AmountTotal),
+    amountPaid: parseAmount(entity.AmountPaid),
+    amountDue: parseAmount(entity.AmountDue),
+  };
+}
+
+export type FolioAmountCrossCheckResult =
+  | { ok: true; folioDue: number | null }
+  | { ok: false; reason: string };
+
+/**
+ * Verify that the amount we plan to charge matches the EMMA-displayed totals.
+ *
+ * Two independent comparisons:
+ *  1. Computed amount (from line items) vs AmountDue (EMMA's outstanding figure).
+ *     If they diverge by more than a cent, our line-item interpretation does
+ *     not match what the folio actually owes — never charge in that case.
+ *  2. AmountPaid must be 0 (or undefined): EMMA already shows the folio paid →
+ *     a second charge would double-bill the guest.
+ */
+export function crossCheckFolioAmount(
+  folio: ReservationEmmaFolioBundle,
+  folioId: string,
+  expectedAmount: string,
+  tolerance = PAYMENT_AMOUNT_TOLERANCE,
+): FolioAmountCrossCheckResult {
+  const displayed = getFolioDisplayedAmounts(folio, folioId);
+  const expected = parseAmount(expectedAmount);
+  if (expected == null || expected <= 0) {
+    return { ok: false, reason: `Erwarteter Betrag ungültig (${expectedAmount}).` };
+  }
+  if (displayed.amountPaid != null && displayed.amountPaid > tolerance) {
+    return {
+      ok: false,
+      reason: `Folio ${folioId} bereits mit ${displayed.amountPaid.toFixed(2)} belastet (AmountPaid) – Doppelbelastung verhindert.`,
+    };
+  }
+  if (displayed.amountDue == null) {
+    // Cannot cross-check — folio entity does not expose AmountDue. We do NOT
+    // silently accept that; require a manual sign-off.
+    return {
+      ok: false,
+      reason: `EMMA-Folio ${folioId} liefert keinen "AmountDue" – Quervergleich nicht möglich, Zahlung manuell.`,
+    };
+  }
+  if (!amountsMatch(displayed.amountDue, expected, tolerance)) {
+    return {
+      ok: false,
+      reason:
+        `Geplanter Betrag ${expected.toFixed(2)} weicht von EMMA-Folio-Anzeige ` +
+        `${displayed.amountDue.toFixed(2)} (AmountDue Folio ${folioId}) ab – Zahlung abgebrochen.`,
+    };
+  }
+  return { ok: true, folioDue: displayed.amountDue };
+}
+
 /**
  * Compute the chargeable VCC amount from visible folio lines (never AmountDue alone).
  * - OTA + VCC: RO/BB on the target folio only.
