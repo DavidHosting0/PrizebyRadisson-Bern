@@ -355,6 +355,12 @@ export default function ArrivalCheckRunPage() {
                   >
                     {item.manualReason ?? item.paymentError ?? item.error ?? 'Manuelle Prüfung erforderlich.'}
                   </p>
+                  {item.paymentExpectedAmount && (
+                    <p className="mt-0.5 text-[11px] text-ink-muted">
+                      Erwarteter Betrag: {item.paymentExpectedAmount}
+                      {item.paymentCardMask ? ` · Karte ${item.paymentCardMask}` : ''}
+                    </p>
+                  )}
                 </div>
                 <Link
                   href={`/r/reservations/${item.reservationId}?from=arrivals`}
@@ -420,8 +426,16 @@ export default function ArrivalCheckRunPage() {
                     {item.paymentStatus === 'PAID' && item.paymentAmount && (
                       <p className="mt-1 text-[11px] text-emerald-700">
                         VCC belastet: {item.paymentAmount}
+                        {item.paymentCardMask ? ` (${item.paymentCardMask})` : ''}
                       </p>
                     )}
+                    {item.paymentExpectedAmount &&
+                      item.paymentExpectedAmount !== item.paymentAmount &&
+                      item.paymentStatus !== 'PAID' && (
+                        <p className="mt-1 text-[11px] text-ink-muted">
+                          Erwartet: {item.paymentExpectedAmount}
+                        </p>
+                      )}
                   </td>
                   <td className="px-4 py-3.5 text-xs text-ink-muted">
                     {item.statusMessage ?? '—'}

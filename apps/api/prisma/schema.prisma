@@ -752,6 +752,9 @@ model ReservationSnapshot {
   detailFetchedAt DateTime?
   folioEnc      String?  @db.Text
   folioFetchedAt DateTime?
+  arrivalCheckCompletedAt   DateTime?
+  arrivalCheckLastRunId     String?
+  arrivalCheckLastRunItemId String?
   syncedAt      DateTime
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -764,6 +767,7 @@ model ReservationSnapshot {
   @@index([hotelId, inCheckInDone])
   @@index([hotelId, checkIn, checkOut])
   @@index([hotelId, reservationId])
+  @@index([hotelId, arrivalCheckCompletedAt])
 }
 
 model ReservationSyncRun {
@@ -813,8 +817,13 @@ model ArrivalCheckRunItem {
   movesDone     Int                    @default(0)
   paymentStatus String?
   paymentAmount String?
+  paymentExpectedAmount String?
+  paymentCardMask String?
   paymentInvoice String?
   paymentError  String?                @db.Text
+  /** Set when this item was auto-skipped because an earlier run completed the same reservation. */
+  alreadyCompletedAt    DateTime?
+  alreadyCompletedRunId String?
 
   @@unique([runId, reservationId])
   @@index([runId])

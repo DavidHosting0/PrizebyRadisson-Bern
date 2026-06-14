@@ -106,10 +106,21 @@ export type ArrivalCheckRunItem = {
   paymentStatus: ArrivalCheckPaymentStatus | null;
   /** Amount charged / attempted on the VCC (e.g. "120.50"). */
   paymentAmount: string | null;
+  /** Expected charge amount computed from folio lines before payment. */
+  paymentExpectedAmount: string | null;
+  /** Mask of the VCC that was selected for charging (audit). */
+  paymentCardMask: string | null;
   /** EMMA invoice number created for the VCC charge. */
   paymentInvoice: string | null;
   /** Gateway decline / error message when the VCC charge did not succeed. */
   paymentError: string | null;
+  /**
+   * When the reservation was already completed in a previous run: ISO timestamp
+   * of the earlier completion. Such items are auto-skipped to avoid double work.
+   */
+  alreadyCompletedAt: string | null;
+  /** Run id of the earlier successful arrival check (for linking in the UI). */
+  alreadyCompletedRunId: string | null;
 };
 
 export type ArrivalCheckCategoryCount = {
@@ -138,6 +149,8 @@ export type ArrivalCheckRunSummary = {
   paidCount: number;
   /** Reservations whose VCC was declined (manual intervention). */
   declinedCount: number;
+  /** Reservations that were skipped because a previous run already completed them. */
+  alreadyDoneCount: number;
   /** Aggregated counts grouped by source + scenario for the overview. */
   categoryCounts: ArrivalCheckCategoryCount[];
 };

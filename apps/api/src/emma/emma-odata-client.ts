@@ -41,7 +41,46 @@ export function buildEmmaRequestObjectKey(
     pad(at.getMinutes(), 2),
     pad(at.getSeconds(), 2),
   ].join('');
-  return `${hotelId}   ${reservationId}${stamp}000`;
+  const nonce = randomBytes(2).toString('hex');
+  return `${hotelId}   ${reservationId}${stamp}${nonce}000`;
+}
+
+/** SetActivityTime — binds invoice/payment context to a reservation (payment HAR). */
+export function setActivityTimePath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  /** EMMA sub-action: '03' after showInvoicePopup, '04' before PaymentGateway. */
+  subAction: '03' | '04';
+  activityId?: string;
+  status?: 'S' | 'F';
+}): string {
+  const q = emmaODataStringLiteral;
+  const id = input.activityId?.trim() ?? '';
+  const status = input.status ?? 'S';
+  return (
+    `SetActivityTime?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&ReservationId=${q(input.reservationId)}` +
+    `&Id=${q(id)}` +
+    `&Channel=${q('NUI')}` +
+    `&Action=${q('CO')}` +
+    `&Status=${q(status)}` +
+    `&Operation=${q('CO')}` +
+    `&IsPickUp=${q('')}` +
+    `&SubAction=${q(input.subAction)}` +
+    `&Source=${q('SR')}`
+  );
+}
+
+/** Single invoice entity (validation after CreateInvoice / before PaymentGateway). */
+export function invoiceEntityPath(
+  hotelId: string,
+  invoiceNumber: string,
+  sapClient: string,
+): string {
+  const q = emmaODataStringLiteral;
+  return `Invoice(InvoiceNumber=${q(invoiceNumber)},HotelId=${q(hotelId)})?sap-client=${sapClient}`;
 }
 
 export function normalizeEmmaChargeRowId(value: string): string {

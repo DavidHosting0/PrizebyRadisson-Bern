@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -37,6 +38,8 @@ import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
 type PaymentPhaseResult = {
   paymentStatus: ArrivalCheckPaymentStatus;
   paymentAmount: string | null;
+  paymentExpectedAmount: string | null;
+  paymentCardMask: string | null;
   paymentInvoice: string | null;
   paymentError: string | null;
   /** True when the reservation should stop and be listed for manual intervention. */
@@ -47,6 +50,14 @@ type PaymentPhaseResult = {
 @Injectable()
 export class ArrivalCheckService {
   private readonly log = new Logger(ArrivalCheckService.name);
+  /**
+   * Service-wide guard: at most one `executeRun` may be processing items at a time.
+   * Even across different runs / different HTTP requests / different users — because
+   * everything ultimately drives the same EMMA HTTP session jar. Without this, two
+   * parallel runs could load each other's folios into the shared jar between mutex'd
+   * write calls and corrupt the payment context.
+   */
+  private executingRunId: string | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -109,15 +120,37 @@ export class ArrivalCheckService {
       });
     }
 
+    // Reservations whose arrival check already completed earlier: persist the
+    // RunItem in status SKIPPED right away so the user sees "bereits erledigt"
+    // instead of re-running the same EMMA operations.
+    const previousBySnapshotId = new Map(
+      validSnapshots
+        .filter((s) => s.arrivalCheckCompletedAt)
+        .map((s) => [s.reservationId, s] as const),
+    );
+
     const run = await this.prisma.arrivalCheckRun.create({
       data: {
         hotelId: hid,
         createdByUserId: user.id,
         items: {
-          create: uniqueIds.map((reservationId) => ({
-            reservationId,
-            hotelId: hid,
-          })),
+          create: uniqueIds.map((reservationId) => {
+            const prev = previousBySnapshotId.get(reservationId);
+            if (!prev || !prev.arrivalCheckCompletedAt) {
+              return { reservationId, hotelId: hid };
+            }
+            const when = prev.arrivalCheckCompletedAt;
+            return {
+              reservationId,
+              hotelId: hid,
+              status: 'SKIPPED' as const,
+              statusMessage: `Anreise-Check bereits am ${this.formatTimestamp(when)} durchgeführt – übersprungen.`,
+              alreadyCompletedAt: when,
+              alreadyCompletedRunId: prev.arrivalCheckLastRunId,
+              startedAt: new Date(),
+              finishedAt: new Date(),
+            };
+          }),
         },
       },
       include: {
@@ -127,6 +160,18 @@ export class ArrivalCheckService {
     });
 
     return this.toDetail(run, validSnapshots);
+  }
+
+  private formatTimestamp(date: Date): string {
+    try {
+      return new Intl.DateTimeFormat('de-CH', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'Europe/Zurich',
+      }).format(date);
+    } catch {
+      return date.toISOString();
+    }
   }
 
   async listRuns(limit = 20): Promise<ArrivalCheckRunSummary[]> {
@@ -184,22 +229,89 @@ export class ArrivalCheckService {
       throw new BadRequestException('Abgebrochener Lauf kann nicht ausgeführt werden.');
     }
 
-    for (const item of run.items) {
-      if (
-        item.status !== 'PENDING' &&
-        item.status !== 'FAILED' &&
-        item.status !== 'NEEDS_MANUAL'
-      ) {
-        continue;
-      }
-      // A declined VCC must be resolved manually in EMMA — never silently re-run
-      // (the invoice already exists; an automatic retry would mask the open balance).
-      if (item.paymentStatus === 'DECLINED') continue;
-      await this.processRunItem(run.hotelId, item.id);
+    const alreadyRunning = run.items.some((i) => i.status === 'IN_PROGRESS');
+    if (alreadyRunning) {
+      throw new ConflictException('Lauf wird bereits ausgeführt.');
     }
+    if (this.executingRunId && this.executingRunId !== runId) {
+      throw new ConflictException(
+        'Ein anderer Anreise-Check-Lauf wird gerade verarbeitet. Bitte warten.',
+      );
+    }
+    this.executingRunId = runId;
 
-    await this.refreshRunStatus(runId);
-    return this.getRun(runId);
+    await this.prisma.arrivalCheckRun.update({
+      where: { id: runId },
+      data: { status: 'RUNNING' },
+    });
+
+    try {
+      for (const item of run.items) {
+        if (
+          item.status !== 'PENDING' &&
+          item.status !== 'FAILED' &&
+          item.status !== 'NEEDS_MANUAL'
+        ) {
+          continue;
+        }
+        // A declined VCC must be resolved manually in EMMA — never silently re-run
+        // (the invoice already exists; an automatic retry would mask the open balance).
+        if (item.paymentStatus === 'DECLINED') continue;
+        // PaymentGateway may have been called and the response lost (network/crash).
+        // We do NOT know whether EMMA already charged the card. Force manual review.
+        if (item.paymentStatus === 'PLANNED') {
+          await this.markItemUnsafeRetry(item.id);
+          continue;
+        }
+        // Defensive: another run (or a snapshot-level mark) may have completed
+        // this reservation in the meantime. Convert the item to SKIPPED instead
+        // of processing it twice.
+        const snap = await this.prisma.reservationSnapshot.findUnique({
+          where: {
+            hotelId_reservationId: {
+              hotelId: run.hotelId,
+              reservationId: item.reservationId,
+            },
+          },
+          select: { arrivalCheckCompletedAt: true, arrivalCheckLastRunId: true },
+        });
+        if (snap?.arrivalCheckCompletedAt) {
+          await this.markItemAlreadyCompleted(
+            item.id,
+            snap.arrivalCheckCompletedAt,
+            snap.arrivalCheckLastRunId,
+          );
+          continue;
+        }
+        await this.processRunItem(run.hotelId, item.id);
+      }
+
+      await this.refreshRunStatus(runId);
+      return this.getRun(runId);
+    } finally {
+      this.executingRunId = null;
+    }
+  }
+
+  /**
+   * Hard-block an automatic re-run of an item that was mid-payment when it failed.
+   * Once `paymentStatus === 'PLANNED'` we cannot prove the card was not charged,
+   * so the item is sealed to NEEDS_MANUAL until a human checks EMMA.
+   */
+  private async markItemUnsafeRetry(itemId: string): Promise<void> {
+    const reason =
+      'Zahlung wurde bereits gestartet (Status PLANNED). Automatischer Wiederholungslauf gesperrt – ' +
+      'bitte in EMMA prüfen, ob die VCC bereits belastet wurde, bevor erneut gestartet wird.';
+    await this.prisma.arrivalCheckRunItem.update({
+      where: { id: itemId },
+      data: {
+        status: 'NEEDS_MANUAL',
+        currentStep: null,
+        manualReason: reason,
+        statusMessage: reason,
+        finishedAt: new Date(),
+      },
+    });
   }
 
   /** Move one folio charge via EMMA (used by arrival check and future scripts). */
@@ -233,6 +345,8 @@ export class ArrivalCheckService {
         movesDone: 0,
         paymentStatus: null,
         paymentAmount: null,
+        paymentExpectedAmount: null,
+        paymentCardMask: null,
         paymentInvoice: null,
         paymentError: null,
         statusMessage: 'Reservierungsdaten werden aus EMMA geladen …',
@@ -338,6 +452,8 @@ export class ArrivalCheckService {
             currentStep: null,
             paymentStatus: payment.paymentStatus,
             paymentAmount: payment.paymentAmount,
+            paymentExpectedAmount: payment.paymentExpectedAmount,
+            paymentCardMask: payment.paymentCardMask,
             paymentInvoice: payment.paymentInvoice,
             paymentError: payment.paymentError,
             manualReason: payment.manualReason,
@@ -363,6 +479,8 @@ export class ArrivalCheckService {
           currentStep: null,
           paymentStatus: payment.paymentStatus,
           paymentAmount: payment.paymentAmount,
+          paymentExpectedAmount: payment.paymentExpectedAmount,
+          paymentCardMask: payment.paymentCardMask,
           paymentInvoice: payment.paymentInvoice,
           paymentError: null,
           statusMessage: this.completionMessage(decision, categoryLabel, movesDone, payment),
@@ -374,22 +492,34 @@ export class ArrivalCheckService {
       const isManual = raw.startsWith('MANUAL:');
       const message = isManual ? raw.slice('MANUAL:'.length).trim() : raw;
       const isLock = /blocked by|lock|session/i.test(message);
-      const manual = isManual || isLock;
+
+      // If we failed AFTER the plan was persisted, the gateway call may have hit
+      // EMMA before the response was lost. We MUST NOT mark this FAILED (which
+      // would allow auto-retry); always NEEDS_MANUAL so a human inspects EMMA.
+      const current = await this.prisma.arrivalCheckRunItem.findUnique({
+        where: { id: itemId },
+        select: { paymentStatus: true },
+      });
+      const wasMidPayment = current?.paymentStatus === 'PLANNED';
+      const manual = isManual || isLock || wasMidPayment;
+
+      const lockMsg = isLock
+        ? `EMMA-Sperre: ${message}. Bitte Reservierung manuell prüfen und ggf. die andere Sitzung schliessen.`
+        : null;
+      const midPaymentMsg = wasMidPayment
+        ? `Fehler nach Zahlungsstart (${message}). Bitte in EMMA prüfen, ob die VCC bereits belastet wurde.`
+        : null;
+
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },
         data: {
           status: manual ? 'NEEDS_MANUAL' : 'FAILED',
           error: message,
-          manualReason: isLock
-            ? `EMMA-Sperre: ${message}. Bitte Reservierung manuell prüfen und ggf. die andere Sitzung schliessen.`
-            : isManual
-              ? message
-              : null,
-          statusMessage: isLock
-            ? 'Reservierung durch andere EMMA-Sitzung gesperrt.'
-            : manual
-              ? message
-              : 'Fehler bei der Verarbeitung.',
+          manualReason: lockMsg ?? midPaymentMsg ?? (isManual ? message : null),
+          statusMessage:
+            lockMsg ??
+            midPaymentMsg ??
+            (manual ? message : 'Fehler bei der Verarbeitung.'),
           currentStep: null,
           finishedAt: new Date(),
         },
@@ -409,11 +539,41 @@ export class ArrivalCheckService {
     detail: ReservationEmmaDetailBundle | null,
     folio: ReservationEmmaFolioBundle,
   ): Promise<PaymentPhaseResult> {
-    const plan = planVccPayment({ decision, detail, folio });
+    await this.reservations.fetchFolioFromEmma(reservationId, hotelId);
+    const freshSnap = await this.prisma.reservationSnapshot.findUnique({
+      where: { hotelId_reservationId: { hotelId, reservationId } },
+    });
+    const paymentFolio =
+      (freshSnap ? decryptFolioBundle(this.cipher, freshSnap.folioEnc) : null) ?? folio;
+
+    // CROSS-CHECK: the refreshed folio must belong to the reservation we're paying.
+    // Without this, an EMMA cache/session bleed could give us another reservation's
+    // folio data — and we would compute the wrong amount on the wrong card.
+    const folioResId = String(
+      (paymentFolio.reservation as { ReservationId?: unknown } | undefined)?.ReservationId ?? '',
+    ).trim();
+    if (folioResId && folioResId !== reservationId.trim()) {
+      const reason = `Folio gehört zu Reservierung ${folioResId}, erwartet ${reservationId} – Zahlung blockiert.`;
+      this.log.error(`[ArrivalCheck-SAFETY] ${reason}`);
+      return {
+        paymentStatus: 'SKIPPED',
+        paymentAmount: null,
+        paymentExpectedAmount: null,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentError: reason,
+        manual: true,
+        manualReason: reason,
+      };
+    }
+
+    const plan = planVccPayment({ decision, detail, folio: paymentFolio });
     if (!plan) {
       return {
         paymentStatus: 'NOT_REQUIRED',
         paymentAmount: null,
+        paymentExpectedAmount: null,
+        paymentCardMask: null,
         paymentInvoice: null,
         paymentError: null,
         manual: false,
@@ -421,15 +581,47 @@ export class ArrivalCheckService {
       };
     }
 
+    // Persist the plan BEFORE the EMMA call. If the server crashes mid-payment,
+    // executeRun will see paymentStatus === 'PLANNED' and refuse to auto-retry.
     await this.prisma.arrivalCheckRunItem.update({
       where: { id: itemId },
       data: {
         currentStep: 'PREPAID_SETTLE',
         paymentStatus: 'PLANNED',
         paymentAmount: plan.amount,
+        paymentExpectedAmount: plan.amount,
         statusMessage: `VCC wird belastet: ${plan.currency} ${plan.amount} auf Folio ${plan.folioId} …`,
       },
     });
+
+    // Defence-in-depth read-back: re-read the persisted plan and compare with what
+    // we computed in memory. A divergence here would mean someone changed the row
+    // in parallel — we abort instead of paying.
+    const persisted = await this.prisma.arrivalCheckRunItem.findUnique({
+      where: { id: itemId },
+      select: { paymentExpectedAmount: true, paymentStatus: true, reservationId: true },
+    });
+    if (
+      !persisted ||
+      persisted.paymentExpectedAmount !== plan.amount ||
+      persisted.paymentStatus !== 'PLANNED' ||
+      persisted.reservationId !== reservationId
+    ) {
+      const reason = 'Plan-Persistierung weicht ab – Zahlung aus Sicherheitsgründen abgebrochen.';
+      this.log.error(
+        `[ArrivalCheck-SAFETY] ${reason} expected=${plan.amount} stored=${persisted?.paymentExpectedAmount ?? '?'} resId=${persisted?.reservationId ?? '?'}`,
+      );
+      return {
+        paymentStatus: 'SKIPPED',
+        paymentAmount: null,
+        paymentExpectedAmount: plan.amount,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentError: reason,
+        manual: true,
+        manualReason: reason,
+      };
+    }
 
     const outcome = await this.emma.payFolioWithVcc({
       hotelId,
@@ -443,6 +635,8 @@ export class ArrivalCheckService {
       return {
         paymentStatus: 'PAID',
         paymentAmount: outcome.amount ?? plan.amount,
+        paymentExpectedAmount: outcome.expectedAmount ?? plan.amount,
+        paymentCardMask: outcome.cardMask,
         paymentInvoice: outcome.invoiceNumber,
         paymentError: null,
         manual: false,
@@ -455,6 +649,8 @@ export class ArrivalCheckService {
       return {
         paymentStatus: 'DECLINED',
         paymentAmount: outcome.amount ?? plan.amount,
+        paymentExpectedAmount: outcome.expectedAmount ?? plan.amount,
+        paymentCardMask: outcome.cardMask,
         paymentInvoice: outcome.invoiceNumber,
         paymentError: outcome.message ?? 'Zahlung abgelehnt',
         manual: true,
@@ -462,10 +658,12 @@ export class ArrivalCheckService {
       };
     }
 
-    // NO_VCC or AMBIGUOUS — cannot charge safely.
+    // NO_VCC, AMBIGUOUS, UNSAFE — cannot charge safely.
     return {
       paymentStatus: 'SKIPPED',
       paymentAmount: null,
+      paymentExpectedAmount: plan.amount,
+      paymentCardMask: outcome.cardMask,
       paymentInvoice: null,
       paymentError: outcome.message,
       manual: true,
@@ -625,6 +823,8 @@ export class ArrivalCheckService {
         movesDone: number;
         paymentStatus: string | null;
         paymentAmount: string | null;
+        paymentExpectedAmount: string | null;
+        paymentCardMask: string | null;
         paymentInvoice: string | null;
         paymentError: string | null;
       }[];
@@ -671,6 +871,8 @@ export class ArrivalCheckService {
         paymentStatus:
           (item.paymentStatus as ArrivalCheckPaymentStatus | null) ?? null,
         paymentAmount: item.paymentAmount ?? null,
+        paymentExpectedAmount: item.paymentExpectedAmount ?? null,
+        paymentCardMask: item.paymentCardMask ?? null,
         paymentInvoice: item.paymentInvoice ?? null,
         paymentError: item.paymentError ?? null,
       };

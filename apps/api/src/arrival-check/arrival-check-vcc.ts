@@ -9,6 +9,7 @@ import {
   normalizeFolioId,
 } from '@housekeeping/shared';
 import type { ArrivalCheckDecision } from './arrival-check-rules';
+import { computeExpectedVccChargeAmount } from './arrival-check-payment-guard';
 
 const GUEST_FOLIO_ID = '01';
 
@@ -22,6 +23,8 @@ export const VCC_HOLDER_RX =
 
 /** Raw EMMA CreditCard row (ZEYUI_RSRVS_SRV CreditCard entity). */
 export type EmmaCreditCardRow = {
+  ReservaId?: unknown;
+  ReservationId?: unknown;
   Token?: unknown;
   Expiry?: unknown;
   Holder?: unknown;
@@ -127,38 +130,15 @@ function folioEntity(
 }
 
 /**
- * Outstanding balance of a folio. Prefers the EMMA `AmountDue` field (authoritative,
- * matches what CreateInvoice will post); falls back to the sum of visible charges.
+ * Outstanding balance from eligible charge lines (never AmountDue alone).
+ * Delegates to {@link computeExpectedVccChargeAmount} for VCC scenarios.
  */
-function folioBalance(
+function expectedChargeForPlan(
+  decision: ArrivalCheckDecision,
   folio: ReservationEmmaFolioBundle,
   folioId: string,
-): { amount: number; currency: string | null } {
-  const entity = folioEntity(folio, folioId);
-  const charges = folioCharges(folio, folioId);
-  let currency: string | null =
-    entity && entity.Currency ? String(entity.Currency) : null;
-
-  const due = entity ? parseAmount(entity.AmountDue) : null;
-  if (due != null) {
-    if (!currency) {
-      for (const c of charges) {
-        if (c.currency) {
-          currency = c.currency;
-          break;
-        }
-      }
-    }
-    return { amount: Math.round(due * 100) / 100, currency };
-  }
-
-  let total = 0;
-  for (const charge of charges) {
-    const n = parseAmount(charge.amount);
-    if (n != null) total += n;
-    if (!currency && charge.currency) currency = charge.currency;
-  }
-  return { amount: Math.round(total * 100) / 100, currency };
+): { amount: number; currency: string | null } | null {
+  return computeExpectedVccChargeAmount(decision, folio, folioId);
 }
 
 /** Non-guest folio(s) that actually hold room/board charges (where the VCC pays). */
@@ -178,14 +158,12 @@ function pickCompanyFolioId(folio: ReservationEmmaFolioBundle): string | null {
   const roomBoard = roomBoardFolioIds(folio);
   if (roomBoard.length === 1) return roomBoard[0];
   if (roomBoard.length > 1) {
-    // Prefer an explicit company folio among the candidates.
     const company = roomBoard.find((id) => {
       const e = folioEntity(folio, id);
       return e ? e.IsCompany === true || String(e.IsCompany) === 'true' : false;
     });
     return company ?? roomBoard[0];
   }
-  // No room/board outside folio 01 — nothing for the VCC to settle on Folio 2.
   return null;
 }
 
@@ -217,12 +195,12 @@ export function planVccPayment(input: {
   }
 
   if (!folioId) return null;
-  const { amount, currency } = folioBalance(folio, folioId);
-  if (amount <= 0) return null;
+  const expected = expectedChargeForPlan(decision, folio, folioId);
+  if (!expected || expected.amount <= 0) return null;
 
   return {
     folioId: normalizeFolioId(folioId),
-    amount: amount.toFixed(2),
-    currency: currency ?? 'CHF',
+    amount: expected.amount.toFixed(2),
+    currency: expected.currency ?? 'CHF',
   };
 }

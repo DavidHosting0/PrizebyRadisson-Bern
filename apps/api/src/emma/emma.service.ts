@@ -37,6 +37,7 @@ import {
   settleEmmaFolioWithVcc,
   type EmmaVccPaymentOutcome,
 } from './emma-folio-payment';
+import { EmmaMutationLock } from './emma-mutation-lock';
 import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
 
@@ -49,6 +50,7 @@ export type EmmaRoomSyncTriggerKind = 'cron' | 'action' | 'view';
 @Injectable()
 export class EmmaService {
   private readonly log = new Logger(EmmaService.name);
+  private readonly mutationLock = new EmmaMutationLock();
   private backgroundSyncInProgress = false;
   private suppressActivityScheduling = false;
   private activityDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -497,13 +499,15 @@ export class EmmaService {
     }
 
     const emmaDebug = createEmmaSyncDebug(this.log);
-    return moveEmmaFolioChargeFromJar(jar, baseUrl, {
-      ...params,
-      hotelId: hid,
-      employee: params.employee ?? operatorCode,
-      sapClient,
-      debug: emmaDebug.verbose ? emmaDebug : undefined,
-    });
+    return this.mutationLock.run(() =>
+      moveEmmaFolioChargeFromJar(jar, baseUrl, {
+        ...params,
+        hotelId: hid,
+        employee: params.employee ?? operatorCode,
+        sapClient,
+        debug: emmaDebug.verbose ? emmaDebug : undefined,
+      }),
+    );
   }
 
   /**
@@ -544,16 +548,18 @@ export class EmmaService {
     }
 
     const emmaDebug = createEmmaSyncDebug(this.log);
-    return settleEmmaFolioWithVcc(jar, baseUrl, {
-      hotelId: hid,
-      reservationId: params.reservationId,
-      folioId: params.folioId,
-      amount: params.amount,
-      currency: params.currency,
-      employee: operatorCode,
-      sapClient,
-      debug: emmaDebug.verbose ? emmaDebug : undefined,
-    });
+    return this.mutationLock.run(() =>
+      settleEmmaFolioWithVcc(jar, baseUrl, {
+        hotelId: hid,
+        reservationId: params.reservationId,
+        folioId: params.folioId,
+        amount: params.amount,
+        currency: params.currency,
+        employee: operatorCode,
+        sapClient,
+        debug: emmaDebug.verbose ? emmaDebug : undefined,
+      }),
+    );
   }
 
   private hasCompleteCredentials(creds: EmmaLoginStored | null): boolean {

@@ -4,6 +4,11 @@ import type { EmmaCookieJar } from './emma-cookie-jar';
 import { emmaHttpFetchCsrfToken, emmaHttpPostBatch } from './emma-http-auth';
 import type { EmmaSyncDebug } from './emma-sync-debug';
 import {
+  assertPaymentContextSafe,
+  canReuseInvoice,
+  filterCreditCardsForReservation,
+} from '../arrival-check/arrival-check-payment-guard';
+import {
   buildEmmaRequestObjectKey,
   buildODataBatchBody,
   buildODataChangesetBatchBody,
@@ -13,6 +18,7 @@ import {
   EMMA_PAYMENT_METHOD_TOKEN,
   extractODataErrorMessage,
   getEmployeeTillIdPath,
+  invoiceEntityPath,
   invoiceNumberFromSapMessage,
   parseODataBatchResponse,
   parseODataEntityJson,
@@ -21,6 +27,7 @@ import {
   reservationCreditCardsPath,
   reservationInvoicesPath,
   roundInvoicePath,
+  setActivityTimePath,
   showInvoicePopupPath,
 } from './emma-odata-client';
 import {
@@ -35,34 +42,34 @@ export type EmmaVccChargeParams = {
   hotelId: string;
   reservationId: string;
   folioId: string;
-  /** Amount to charge, formatted to 2 decimals (e.g. "120.50"). */
+  /** Expected amount to charge, formatted to 2 decimals (e.g. "120.50"). */
   amount: string;
   currency: string;
-  /** Operator / employee code (cashier) from EMMA login. */
   employee: string;
   token: string;
   expiry: string;
+  cardMask: string | null;
+  cardReservaId: string | null;
   sapClient?: string;
   debug?: EmmaSyncDebug;
 };
 
 export type EmmaVccChargeResult = {
-  /** True only when the gateway confirmed the charge (inner 2xx, no error). */
   ok: boolean;
   invoiceNumber: string | null;
   amount: string;
   currency: string;
-  /** Gateway decline / error message when ok=false. */
   message: string | null;
 };
 
 /** Outcome of an arrival-check VCC settlement (business result, not an exception). */
 export type EmmaVccPaymentOutcome = {
-  status: 'PAID' | 'DECLINED' | 'NO_VCC' | 'AMBIGUOUS';
+  status: 'PAID' | 'DECLINED' | 'NO_VCC' | 'AMBIGUOUS' | 'UNSAFE';
   invoiceNumber: string | null;
   amount: string | null;
   currency: string | null;
   cardMask: string | null;
+  expectedAmount: string | null;
   message: string | null;
 };
 
@@ -101,7 +108,7 @@ async function postChangesetAction(
   return { status: part.status, body: part.body, headers: part.headers };
 }
 
-type ReusableInvoice = { invoiceNumber: string; amount: string | null };
+type ReusableInvoice = { invoiceNumber: string; amount: string };
 
 function parseAmountStr(value: unknown): number | null {
   if (value == null || value === '') return null;
@@ -109,18 +116,50 @@ function parseAmountStr(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+async function fetchInvoiceEntity(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  sapClient: string,
+  csrf: string,
+  hotelId: string,
+  invoiceNumber: string,
+  debug?: EmmaSyncDebug,
+): Promise<Record<string, unknown> | null> {
+  const path = invoiceEntityPath(hotelId, invoiceNumber, sapClient);
+  const { body, contentType } = buildODataBatchBody([{ path }], csrf);
+  const raw = await emmaHttpPostBatch(
+    jar,
+    baseUrl,
+    EMMA_ODATA_RSRVS_SRV,
+    sapClient,
+    csrf,
+    body,
+    contentType,
+    { label: `invoice.${invoiceNumber}`, debug },
+  );
+  const parts = parseODataBatchResponse(raw);
+  const part = parts[0];
+  if (!part || part.status < 200 || part.status >= 300) return null;
+  return parseODataEntityJson(part.body);
+}
+
 /**
- * Find an already-created but unpaid invoice for a folio so a retry (e.g. after a
- * decline) reuses it instead of failing with "invoice already created". Returns
- * 'multiple' when the folio has several open invoices (manual intervention).
+ * Find an already-created but unpaid invoice for a folio when the amount matches
+ * the expected charge exactly. Returns 'multiple' when several candidates exist.
  */
 async function findReusableInvoice(
   jar: EmmaCookieJar,
   baseUrl: string,
   sapClient: string,
   csrf: string,
-  opts: { hotelId: string; reservationId: string; folioId: string; debug?: EmmaSyncDebug },
-): Promise<ReusableInvoice | 'multiple' | null> {
+  opts: {
+    hotelId: string;
+    reservationId: string;
+    folioId: string;
+    expectedAmount: string;
+    debug?: EmmaSyncDebug;
+  },
+): Promise<ReusableInvoice | 'multiple' | 'amount_mismatch' | null> {
   const path = reservationInvoicesPath(opts.hotelId, opts.reservationId, sapClient);
   const { body, contentType } = buildODataBatchBody([{ path }], csrf);
   const raw = await emmaHttpPostBatch(
@@ -139,19 +178,31 @@ async function findReusableInvoice(
 
   const target = normalizeFolioId(opts.folioId);
   const open: ReusableInvoice[] = [];
+  let mismatch = false;
   for (const row of parseODataResultsJson(part.body)) {
     if (normalizeFolioId(row.FolioId) !== target) continue;
     const invoiceNumber = String(row.InvoiceNumber ?? '').trim();
     if (!invoiceNumber) continue;
-    const status = String(row.Status ?? '').trim();
-    if (/paid|cancel|storn|annul/i.test(status)) continue;
-    const paid = parseAmountStr(row.TotalPaid) ?? 0;
-    if (paid > 0) continue;
-    const payable = parseAmountStr(row.TotalPay) ?? parseAmountStr(row.Total);
-    if (payable == null || payable <= 0) continue;
-    open.push({ invoiceNumber, amount: payable.toFixed(2) });
+    if (
+      canReuseInvoice(row, {
+        reservationId: opts.reservationId,
+        folioId: opts.folioId,
+        expectedAmount: opts.expectedAmount,
+      })
+    ) {
+      const payable = parseAmountStr(row.TotalPay) ?? parseAmountStr(row.Total);
+      open.push({ invoiceNumber, amount: payable!.toFixed(2) });
+      continue;
+    }
+    const rowRes = String(row.ReservationId ?? '').trim();
+    if (rowRes === opts.reservationId.trim()) {
+      const status = String(row.Status ?? '').trim();
+      if (!/paid|cancel|storn|annul/i.test(status)) mismatch = true;
+    }
   }
-  if (open.length === 0) return null;
+  if (open.length === 0) {
+    return mismatch ? 'amount_mismatch' : null;
+  }
   if (open.length > 1) return 'multiple';
   return open[0];
 }
@@ -184,12 +235,15 @@ export async function fetchEmmaReservationCreditCardsFromJar(
   return parseODataResultsJson(part.body) as EmmaCreditCardRow[];
 }
 
+function tokenSuffix(token: string): string {
+  const t = token.trim();
+  return t.length >= 4 ? t.slice(-4) : '????';
+}
+
 /**
  * Charge a stored VCC token against a folio invoice.
- * Mirrors the confirmed EMMA flow (payment2.com.har):
- *   showInvoicePopup -> GetEmployeeTillID -> CreateInvoice -> Round(PG3) -> PaymentGateway(PG3, Token).
- * The outer $batch returns 202 regardless; success/decline is read from the inner part:
- * a 2xx with no `error` object is a confirmed charge, anything else is a decline.
+ * Flow (payment HAR): showInvoicePopup → SetActivityTime(03) → GetEmployeeTillID →
+ * CreateInvoice → Round(PG3) → SetActivityTime(04) → PaymentGateway(PG3, Token).
  */
 export async function chargeEmmaFolioWithVccToken(
   jar: EmmaCookieJar,
@@ -204,6 +258,7 @@ export async function chargeEmmaFolioWithVccToken(
   const token = opts.token.trim();
   const expiry = opts.expiry.trim();
   const currency = opts.currency.trim() || 'CHF';
+  const expectedAmount = opts.amount.trim();
 
   if (!hotelId || !reservationId || !folioId) {
     throw new Error('hotelId, reservationId and folioId required for VCC charge');
@@ -215,7 +270,6 @@ export async function chargeEmmaFolioWithVccToken(
   const requestObjectKey = buildEmmaRequestObjectKey(hotelId, reservationId);
   const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
 
-  // 1) Open invoice context for the folio.
   await postChangesetAction(
     jar,
     baseUrl,
@@ -227,7 +281,17 @@ export async function chargeEmmaFolioWithVccToken(
     { debug: opts.debug },
   );
 
-  // 2) Resolve the operator's till.
+  await postChangesetAction(
+    jar,
+    baseUrl,
+    sapClient,
+    csrf,
+    setActivityTimePath({ sapClient, hotelId, reservationId, subAction: '03' }),
+    'SetActivityTime(03)',
+    requestObjectKey,
+    { debug: opts.debug },
+  );
+
   const tillRes = await postChangesetAction(
     jar,
     baseUrl,
@@ -244,11 +308,11 @@ export async function chargeEmmaFolioWithVccToken(
     throw new Error('EMMA GetEmployeeTillID returned no TillId for operator');
   }
 
-  // 3) Reuse an existing unpaid invoice for this folio, otherwise create one.
   const reusable = await findReusableInvoice(jar, baseUrl, sapClient, csrf, {
     hotelId,
     reservationId,
     folioId,
+    expectedAmount,
     debug: opts.debug,
   });
   if (reusable === 'multiple') {
@@ -256,12 +320,16 @@ export async function chargeEmmaFolioWithVccToken(
       `MANUAL: Mehrere offene Rechnungen auf Folio ${folioId} – VCC-Zahlung manuell prüfen.`,
     );
   }
+  if (reusable === 'amount_mismatch') {
+    throw new Error(
+      `MANUAL: Offene Rechnung auf Folio ${folioId} mit abweichendem Betrag – manuell prüfen.`,
+    );
+  }
 
   let invoiceNumber: string;
-  let chargeAmount = opts.amount;
+  const chargeAmount = expectedAmount;
   if (reusable) {
     invoiceNumber = reusable.invoiceNumber;
-    if (reusable.amount) chargeAmount = reusable.amount;
     log.log(
       `[EMMA] reusing open invoice ${invoiceNumber} on ${reservationId} folio ${folioId} (${chargeAmount} ${currency})`,
     );
@@ -276,7 +344,6 @@ export async function chargeEmmaFolioWithVccToken(
       requestObjectKey,
       { debug: opts.debug },
     );
-    // EMMA returns the invoice number in the sap-message header (body field is empty).
     invoiceNumber =
       invoiceNumberFromSapMessage(invoiceRes.headers) ??
       String(parseODataEntityJson(invoiceRes.body)?.InvoiceNumber ?? '').trim();
@@ -285,7 +352,33 @@ export async function chargeEmmaFolioWithVccToken(
     }
   }
 
-  // 4) Round the invoice for the token payment method.
+  const invoiceEntity = await fetchInvoiceEntity(
+    jar,
+    baseUrl,
+    sapClient,
+    csrf,
+    hotelId,
+    invoiceNumber,
+    opts.debug,
+  );
+  // We REQUIRE the invoice entity to be readable; if we can't read it back we
+  // cannot validate the reservation/folio/amount tying — refuse to charge.
+  if (!invoiceEntity) {
+    throw new Error(
+      `MANUAL: Rechnung ${invoiceNumber} konnte nicht aus EMMA gelesen werden – Zahlung abgebrochen.`,
+    );
+  }
+  const guard = assertPaymentContextSafe({
+    reservationId,
+    folioId,
+    expectedAmount: chargeAmount,
+    card: { token, mask: opts.cardMask, reservaId: opts.cardReservaId },
+    invoice: invoiceEntity,
+  });
+  if (!guard.ok) {
+    throw new Error(`MANUAL: ${guard.reason}`);
+  }
+
   await postChangesetAction(
     jar,
     baseUrl,
@@ -304,7 +397,21 @@ export async function chargeEmmaFolioWithVccToken(
     { debug: opts.debug },
   );
 
-  // 5) Charge the stored VCC token via the payment gateway.
+  await postChangesetAction(
+    jar,
+    baseUrl,
+    sapClient,
+    csrf,
+    setActivityTimePath({ sapClient, hotelId, reservationId, subAction: '04' }),
+    'SetActivityTime(04)',
+    requestObjectKey,
+    { debug: opts.debug },
+  );
+
+  log.log(
+    `[EMMA-VCC-AUDIT] reservation=${reservationId} folio=${folioId} amount=${chargeAmount} ${currency} invoice=${invoiceNumber} cardMask=${opts.cardMask ?? '—'} tokenSuffix=${tokenSuffix(token)} requestObjectKey=${requestObjectKey}`,
+  );
+
   const gatewayRes = await postChangesetAction(
     jar,
     baseUrl,
@@ -352,8 +459,7 @@ export async function chargeEmmaFolioWithVccToken(
 
 /**
  * Select the chargeable VCC for the reservation and settle the folio.
- * Safety: only a card identified as a VCC (IsVCC flag or holder keyword) is ever
- * charged — personal cards are never touched. Multiple VCCs => AMBIGUOUS (manual).
+ * Safety: ReservaId filter, invoice validation, and audit log before any charge.
  */
 export async function settleEmmaFolioWithVcc(
   jar: EmmaCookieJar,
@@ -369,21 +475,37 @@ export async function settleEmmaFolioWithVcc(
     debug?: EmmaSyncDebug;
   },
 ): Promise<EmmaVccPaymentOutcome> {
-  const cards = await fetchEmmaReservationCreditCardsFromJar(jar, baseUrl, {
+  const expectedAmount = opts.amount.trim();
+  const allCards = await fetchEmmaReservationCreditCardsFromJar(jar, baseUrl, {
     hotelId: opts.hotelId,
     reservationId: opts.reservationId,
     sapClient: opts.sapClient,
     debug: opts.debug,
   });
 
+  const cards = filterCreditCardsForReservation(allCards, opts.reservationId);
+  if (cards.length === 0 && allCards.length > 0) {
+    return {
+      status: 'UNSAFE',
+      invoiceNumber: null,
+      amount: expectedAmount,
+      currency: opts.currency,
+      cardMask: null,
+      expectedAmount,
+      message:
+        'Keine VCC mit passender ReservaId gefunden – Zahlung aus Sicherheitsgründen abgebrochen.',
+    };
+  }
+
   const selection: VccSelection = selectChargeableVcc(cards);
   if (selection.kind === 'none') {
     return {
       status: 'NO_VCC',
       invoiceNumber: null,
-      amount: opts.amount,
+      amount: expectedAmount,
       currency: opts.currency,
       cardMask: null,
+      expectedAmount,
       message: 'Keine virtuelle Kreditkarte (VCC) mit Token gefunden.',
     };
   }
@@ -391,33 +513,73 @@ export async function settleEmmaFolioWithVcc(
     return {
       status: 'AMBIGUOUS',
       invoiceNumber: null,
-      amount: opts.amount,
+      amount: expectedAmount,
       currency: opts.currency,
       cardMask: null,
+      expectedAmount,
       message: `Mehrere VCC (${selection.count}) hinterlegt – manuelle Auswahl nötig.`,
     };
   }
 
   const card = selection.card;
-  const charge = await chargeEmmaFolioWithVccToken(jar, baseUrl, {
-    hotelId: opts.hotelId,
-    reservationId: opts.reservationId,
-    folioId: opts.folioId,
-    amount: opts.amount,
-    currency: opts.currency,
-    employee: opts.employee,
-    token: card.token,
-    expiry: card.expiry,
-    sapClient: opts.sapClient,
-    debug: opts.debug,
-  });
+  const matchedRow = cards.find((c) => String(c.Token ?? '').trim() === card.token);
+  // Hard requirement: the EMMA CreditCard row must expose an explicit ReservaId
+  // tying it to the reservation we are charging. No fallback to the call argument —
+  // that would defeat the whole guard (cardReservaId === reservationId trivially).
+  const rawCardReservaId = String(
+    matchedRow?.ReservaId ?? matchedRow?.ReservationId ?? '',
+  ).trim();
+  if (!rawCardReservaId || rawCardReservaId !== opts.reservationId.trim()) {
+    return {
+      status: 'UNSAFE',
+      invoiceNumber: null,
+      amount: expectedAmount,
+      currency: opts.currency,
+      cardMask: card.mask,
+      expectedAmount,
+      message: `VCC ohne passende ReservaId (Karte=${rawCardReservaId || '—'}, Reservierung=${opts.reservationId}) – Zahlung abgebrochen.`,
+    };
+  }
+  const cardReservaId = rawCardReservaId;
 
-  return {
-    status: charge.ok ? 'PAID' : 'DECLINED',
-    invoiceNumber: charge.invoiceNumber,
-    amount: charge.amount,
-    currency: charge.currency,
-    cardMask: card.mask,
-    message: charge.message,
-  };
+  try {
+    const charge = await chargeEmmaFolioWithVccToken(jar, baseUrl, {
+      hotelId: opts.hotelId,
+      reservationId: opts.reservationId,
+      folioId: opts.folioId,
+      amount: expectedAmount,
+      currency: opts.currency,
+      employee: opts.employee,
+      token: card.token,
+      expiry: card.expiry,
+      cardMask: card.mask,
+      cardReservaId,
+      sapClient: opts.sapClient,
+      debug: opts.debug,
+    });
+
+    return {
+      status: charge.ok ? 'PAID' : 'DECLINED',
+      invoiceNumber: charge.invoiceNumber,
+      amount: charge.amount,
+      currency: charge.currency,
+      cardMask: card.mask,
+      expectedAmount,
+      message: charge.message,
+    };
+  } catch (err: unknown) {
+    const raw = err instanceof Error ? err.message : String(err);
+    if (raw.startsWith('MANUAL:')) {
+      return {
+        status: 'UNSAFE',
+        invoiceNumber: null,
+        amount: expectedAmount,
+        currency: opts.currency,
+        cardMask: card.mask,
+        expectedAmount,
+        message: raw.slice('MANUAL:'.length).trim(),
+      };
+    }
+    throw err;
+  }
 }
