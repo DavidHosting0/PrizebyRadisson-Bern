@@ -127,15 +127,26 @@ export default function ArrivalCheckRunPage() {
     queryKey: ['arrival-check', 'run', runId],
     queryFn: () => api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}`),
     enabled: !!runId && canArrivalCheck,
-    refetchInterval: () => (executing ? 1500 : false),
+    refetchInterval: (query) => {
+      const data = query.state.data as ArrivalCheckRunDetail | undefined;
+      if (executing) return 1500;
+      if (data && data.status === 'RUNNING') return 1500;
+      return false;
+    },
   });
 
   const run = runQuery.data;
+  const serverRunning = run?.status === 'RUNNING';
   const canExecute =
     run &&
     run.status !== 'CANCELLED' &&
     run.pendingCount + run.failedCount + run.manualCount > 0 &&
-    !executing;
+    !executing &&
+    !serverRunning;
+  const allAlreadyDone =
+    run !== undefined &&
+    run.itemCount > 0 &&
+    run.alreadyDoneCount === run.itemCount;
 
   const processed = run
     ? run.completedCount + run.failedCount + run.manualCount + run.skippedCount
@@ -290,7 +301,7 @@ export default function ArrivalCheckRunPage() {
             />
           </div>
           <p className="text-sm text-ink-muted">
-            {executing || run.status === 'RUNNING' ? (
+            {executing || serverRunning ? (
               <span>
                 {liveMessage ?? 'Anreise-Check wird ausgeführt …'}{' '}
                 <span className="tabular-nums">
@@ -313,6 +324,21 @@ export default function ArrivalCheckRunPage() {
         {executeError && (
           <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
             {executeError}
+          </p>
+        )}
+
+        {allAlreadyDone && isDone && !run.forceRerun && (
+          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            Alle {run.itemCount} Reservierungen wurden bereits in einem früheren Lauf bearbeitet und
+            automatisch übersprungen. Es war nichts mehr zu tun.
+          </p>
+        )}
+
+        {run.forceRerun && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            Erneuter Lauf: Reservierungen werden auch dann verarbeitet, wenn sie zuvor als erledigt
+            markiert waren. VCC-Zahlungen werden nur ausgeführt, wenn das Folio in EMMA noch offen
+            ist (keine Doppelbelastung).
           </p>
         )}
 

@@ -41,8 +41,10 @@ export function buildEmmaRequestObjectKey(
     pad(at.getMinutes(), 2),
     pad(at.getSeconds(), 2),
   ].join('');
-  const nonce = randomBytes(2).toString('hex');
-  return `${hotelId}   ${reservationId}${stamp}${nonce}000`;
+  // Must stay purely numeric after reservationId — EMMA ManageLocks parses the
+  // suffix as a number (RFC Error if hex/non-digits are present). Matches browser
+  // HAR, e.g. CHBRNPR   016688993020260611004257000
+  return `${hotelId}   ${reservationId}${stamp}000`;
 }
 
 /** SetActivityTime — binds invoice/payment context to a reservation (payment HAR). */

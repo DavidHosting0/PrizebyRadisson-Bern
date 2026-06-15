@@ -133,6 +133,8 @@ export type ArrivalCheckCategoryCount = {
 export type ArrivalCheckRunSummary = {
   id: string;
   hotelId: string;
+  /** When true, reservations already marked completed were included for re-processing. */
+  forceRerun: boolean;
   status: ArrivalCheckRunStatus;
   startedAt: string;
   finishedAt: string | null;
@@ -162,4 +164,6 @@ export type ArrivalCheckRunDetail = ArrivalCheckRunSummary & {
 export type CreateArrivalCheckRunBody = {
   reservationIds: string[];
   hotelId?: string;
+  /** Re-run even if an earlier arrival check marked these reservations as completed. */
+  forceRerun?: boolean;
 };

@@ -99,6 +99,7 @@ export class ArrivalCheckService {
     user: User,
     reservationIds: string[],
     hotelId?: string,
+    forceRerun = false,
   ): Promise<ArrivalCheckRunDetail> {
     const hid = this.defaultHotelId(hotelId);
     const uniqueIds = [...new Set(reservationIds.map((id) => id.trim()).filter(Boolean))];
@@ -123,17 +124,20 @@ export class ArrivalCheckService {
 
     // Reservations whose arrival check already completed earlier: persist the
     // RunItem in status SKIPPED right away so the user sees "bereits erledigt"
-    // instead of re-running the same EMMA operations.
-    const previousBySnapshotId = new Map(
-      validSnapshots
-        .filter((s) => s.arrivalCheckCompletedAt)
-        .map((s) => [s.reservationId, s] as const),
-    );
+    // instead of re-running the same EMMA operations — unless forceRerun.
+    const previousBySnapshotId = forceRerun
+      ? new Map<string, (typeof validSnapshots)[number]>()
+      : new Map(
+          validSnapshots
+            .filter((s) => s.arrivalCheckCompletedAt)
+            .map((s) => [s.reservationId, s] as const),
+        );
 
     const run = await this.prisma.arrivalCheckRun.create({
       data: {
         hotelId: hid,
         createdByUserId: user.id,
+        forceRerun,
         items: {
           create: uniqueIds.map((reservationId) => {
             const prev = previousBySnapshotId.get(reservationId);
@@ -159,6 +163,24 @@ export class ArrivalCheckService {
         items: true,
       },
     });
+
+    const allSkipped =
+      run.items.length > 0 && run.items.every((i) => i.status === 'SKIPPED');
+    if (allSkipped) {
+      await this.refreshRunStatus(run.id);
+      return this.getRun(run.id);
+    }
+
+    const hasActionable = run.items.some((i) => i.status === 'PENDING');
+    if (hasActionable) {
+      void this.executeRun(run.id).catch((err) => {
+        this.log.error(
+          `[ArrivalCheck] auto-execute failed for ${run.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    }
 
     return this.toDetail(run, validSnapshots);
   }
@@ -265,25 +287,24 @@ export class ArrivalCheckService {
           await this.markItemUnsafeRetry(item.id);
           continue;
         }
-        // Defensive: another run (or a snapshot-level mark) may have completed
-        // this reservation in the meantime. Convert the item to SKIPPED instead
-        // of processing it twice.
-        const snap = await this.prisma.reservationSnapshot.findUnique({
-          where: {
-            hotelId_reservationId: {
-              hotelId: run.hotelId,
-              reservationId: item.reservationId,
+        if (!run.forceRerun) {
+          const snap = await this.prisma.reservationSnapshot.findUnique({
+            where: {
+              hotelId_reservationId: {
+                hotelId: run.hotelId,
+                reservationId: item.reservationId,
+              },
             },
-          },
-          select: { arrivalCheckCompletedAt: true, arrivalCheckLastRunId: true },
-        });
-        if (snap?.arrivalCheckCompletedAt) {
-          await this.markItemAlreadyCompleted(
-            item.id,
-            snap.arrivalCheckCompletedAt,
-            snap.arrivalCheckLastRunId,
-          );
-          continue;
+            select: { arrivalCheckCompletedAt: true, arrivalCheckLastRunId: true },
+          });
+          if (snap?.arrivalCheckCompletedAt) {
+            await this.markItemAlreadyCompleted(
+              item.id,
+              snap.arrivalCheckCompletedAt,
+              snap.arrivalCheckLastRunId,
+            );
+            continue;
+          }
         }
         await this.processRunItem(run.hotelId, item.id);
       }
@@ -396,8 +417,22 @@ export class ArrivalCheckService {
   }
 
   private async processRunItem(hotelId: string, itemId: string): Promise<void> {
-    const item = await this.prisma.arrivalCheckRunItem.findUnique({ where: { id: itemId } });
+    const item = await this.prisma.arrivalCheckRunItem.findUnique({
+      where: { id: itemId },
+      include: { run: { select: { forceRerun: true } } },
+    });
     if (!item) return;
+
+    if (item.run.forceRerun) {
+      await this.prisma.reservationSnapshot.updateMany({
+        where: { hotelId, reservationId: item.reservationId },
+        data: {
+          arrivalCheckCompletedAt: null,
+          arrivalCheckLastRunId: null,
+          arrivalCheckLastRunItemId: null,
+        },
+      });
+    }
 
     await this.prisma.arrivalCheckRunItem.update({
       where: { id: itemId },
@@ -846,6 +881,7 @@ export class ArrivalCheckService {
   private toSummary(run: {
     id: string;
     hotelId: string;
+    forceRerun?: boolean;
     status: ArrivalCheckRunDetail['status'];
     startedAt: Date;
     finishedAt: Date | null;
@@ -872,6 +908,7 @@ export class ArrivalCheckService {
     return {
       id: run.id,
       hotelId: run.hotelId,
+      forceRerun: run.forceRerun ?? false,
       status: run.status,
       startedAt: run.startedAt.toISOString(),
       finishedAt: run.finishedAt?.toISOString() ?? null,

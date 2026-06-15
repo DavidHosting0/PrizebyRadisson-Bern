@@ -789,6 +789,8 @@ model ArrivalCheckRun {
   createdByUserId String
   createdBy       User                  @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   status          ArrivalCheckRunStatus @default(RUNNING)
+  /** When true, reservations marked as completed earlier are processed again. */
+  forceRerun      Boolean               @default(false)
   startedAt       DateTime              @default(now())
   finishedAt      DateTime?
   items           ArrivalCheckRunItem[]

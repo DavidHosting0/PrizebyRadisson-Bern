@@ -32,7 +32,12 @@ export class ArrivalCheckController {
   @Post('runs')
   @RequirePermissions(PermissionCode.ARRIVAL_CHECK)
   createRun(@Body() dto: CreateArrivalCheckRunDto, @CurrentUser() user: User) {
-    return this.arrivalCheck.createRun(user, dto.reservationIds, dto.hotelId);
+    return this.arrivalCheck.createRun(
+      user,
+      dto.reservationIds,
+      dto.hotelId,
+      dto.forceRerun === true,
+    );
   }
 
   @Get('runs')

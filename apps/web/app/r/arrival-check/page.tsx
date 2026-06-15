@@ -43,6 +43,7 @@ export default function ArrivalCheckPage() {
   const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
   const [sortDir, setSortDir] = useState<ArrivalsSortDir>('asc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [forceRerun, setForceRerun] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,10 +79,13 @@ export default function ArrivalCheckPage() {
   });
 
   const startMut = useMutation({
-    mutationFn: (reservationIds: string[]) =>
+    mutationFn: (input: { reservationIds: string[]; forceRerun: boolean }) =>
       api<ArrivalCheckRunDetail>('/arrival-check/runs', {
         method: 'POST',
-        body: JSON.stringify({ reservationIds }),
+        body: JSON.stringify({
+          reservationIds: input.reservationIds,
+          forceRerun: input.forceRerun,
+        }),
       }),
     onSuccess: (run) => {
       setStartError(null);
@@ -207,9 +211,20 @@ export default function ArrivalCheckPage() {
               <span className="text-sm text-ink-muted">
                 {selectedCount} von {sortedRows.length} ausgewählt
               </span>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={forceRerun}
+                  onChange={(e) => setForceRerun(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Bereits erledigte erneut ausführen
+              </label>
               <button
                 type="button"
-                onClick={() => startMut.mutate([...selectedIds])}
+                onClick={() =>
+                  startMut.mutate({ reservationIds: [...selectedIds], forceRerun })
+                }
                 disabled={selectedCount === 0 || startMut.isPending}
                 className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:opacity-50"
               >
