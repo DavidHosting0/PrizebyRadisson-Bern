@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 const STORAGE_KEY = 'hk_cmdk_recent';
 const MAX_RECENT = 8;
@@ -28,11 +28,7 @@ function readRecent(): RecentCommandItem[] {
 }
 
 export function useCommandRecent() {
-  const [recent, setRecent] = useState<RecentCommandItem[]>([]);
-
-  useEffect(() => {
-    setRecent(readRecent());
-  }, []);
+  const [recent, setRecent] = useState<RecentCommandItem[]>(() => readRecent());
 
   const pushRecent = useCallback((item: RecentCommandItem) => {
     setRecent((prev) => {

@@ -172,22 +172,14 @@ export function CommandPalette({ open, onOpenChange }: Props) {
   if (!user) return null;
 
   return (
-    <>
-      {open && (
-        <button
-          type="button"
-          className="fixed inset-0 z-[80] bg-ink/20 backdrop-blur-sm"
-          aria-label={tCmd('close')}
-          onClick={() => onOpenChange(false)}
-        />
-      )}
-      <Command.Dialog
-        open={open}
-        onOpenChange={onOpenChange}
-        label={tCmd('title')}
-        className="fixed left-1/2 top-[12%] z-[90] w-[min(100vw-1.5rem,32rem)] -translate-x-1/2 overflow-hidden rounded-card border border-border bg-surface shadow-lift page-enter"
-      >
-        <div className="flex items-center gap-3 border-b border-border px-4">
+    <Command.Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      label={tCmd('title')}
+      overlayClassName="fixed inset-0 z-[80] bg-ink/20 backdrop-blur-sm data-[state=open]:animate-none data-[state=closed]:animate-none"
+      contentClassName="fixed left-1/2 top-[12%] z-[90] w-[min(100vw-1.5rem,32rem)] -translate-x-1/2 overflow-hidden rounded-card border border-border bg-surface shadow-lift outline-none data-[state=open]:animate-none data-[state=closed]:animate-none"
+    >
+      <div className="flex items-center gap-3 border-b border-border px-4">
           <IconSearch className="h-5 w-5 shrink-0 text-ink-muted" />
           <Command.Input
             value={query}
@@ -200,7 +192,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
           </kbd>
         </div>
 
-        <Command.List className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
+        <Command.List className="max-h-[min(60vh,420px)] min-h-[220px] overflow-y-auto p-2">
           <Command.Empty className="px-4 py-8 text-center text-sm text-ink-muted">
             {showSearch ? tCmd('noResults', { query: query.trim() }) : tCmd('emptyHint')}
           </Command.Empty>
@@ -239,7 +231,6 @@ export function CommandPalette({ open, onOpenChange }: Props) {
           <span>{tCmd('footer.close')}</span>
         </div>
       </Command.Dialog>
-    </>
   );
 }
 
