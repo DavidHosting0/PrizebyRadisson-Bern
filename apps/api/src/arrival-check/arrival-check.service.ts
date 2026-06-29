@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
   forwardRef,
 } from '@nestjs/common';
 import type {
@@ -49,7 +50,7 @@ type PaymentPhaseResult = {
 };
 
 @Injectable()
-export class ArrivalCheckService {
+export class ArrivalCheckService implements OnModuleInit {
   private readonly log = new Logger(ArrivalCheckService.name);
   /**
    * Service-wide guard: at most one `executeRun` may be processing items at a time.
@@ -59,6 +60,8 @@ export class ArrivalCheckService {
    * write calls and corrupt the payment context.
    */
   private executingRunId: string | null = null;
+  /** Prevents duplicate auto-resume triggers from concurrent getRun polls. */
+  private resumeInFlight = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -67,6 +70,23 @@ export class ArrivalCheckService {
     @Inject(forwardRef(() => ReservationsService))
     private readonly reservations: ReservationsService,
   ) {}
+
+  /** After PM2 restart / crash: orphaned IN_PROGRESS items block forever without this. */
+  async onModuleInit(): Promise<void> {
+    const interrupted = await this.prisma.arrivalCheckRun.findMany({
+      where: { status: 'RUNNING' },
+      select: { id: true },
+    });
+    if (interrupted.length === 0) return;
+
+    this.log.warn(
+      `[ArrivalCheck] recovering ${interrupted.length} interrupted run(s) after process start`,
+    );
+    for (const run of interrupted) {
+      await this.resetOrphanedInProgressItems(run.id);
+      this.scheduleResumeIfInterrupted(run.id);
+    }
+  }
 
   listCheckInTab(
     tab: CheckInListTab,
@@ -236,7 +256,95 @@ export class ArrivalCheckService {
           })
         : [];
 
-    return this.toDetail(run, snapshots);
+    const detail = this.toDetail(run, snapshots);
+    this.scheduleResumeIfInterrupted(run.id);
+    return detail;
+  }
+
+  /**
+   * Items left IN_PROGRESS after a process crash / PM2 restart have no live worker.
+   * Reset them to PENDING (or seal mid-payment rows) so executeRun can continue.
+   */
+  private async resetOrphanedInProgressItems(runId: string): Promise<number> {
+    if (this.executingRunId === runId) return 0;
+
+    const orphans = await this.prisma.arrivalCheckRunItem.findMany({
+      where: { runId, status: 'IN_PROGRESS' },
+    });
+    if (orphans.length === 0) return 0;
+
+    let reset = 0;
+    for (const item of orphans) {
+      if (item.paymentStatus === 'PLANNED') {
+        await this.markItemUnsafeRetry(item.id);
+        this.log.warn(
+          `[ArrivalCheck] sealed orphaned mid-payment item ${item.reservationId} in run ${runId}`,
+        );
+        continue;
+      }
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: item.id },
+        data: {
+          status: 'PENDING',
+          currentStep: null,
+          statusMessage: 'Unterbrochen – wird fortgesetzt.',
+          finishedAt: null,
+        },
+      });
+      reset += 1;
+    }
+    if (reset > 0) {
+      this.log.warn(`[ArrivalCheck] reset ${reset} orphaned IN_PROGRESS item(s) in run ${runId}`);
+    }
+    return reset;
+  }
+
+  /** If a RUNNING run has no in-memory worker, kick executeRun (e.g. after API restart). */
+  private scheduleResumeIfInterrupted(runId: string): void {
+    if (this.executingRunId) return;
+    if (this.resumeInFlight.has(runId)) return;
+
+    void (async () => {
+      const run = await this.prisma.arrivalCheckRun.findUnique({
+        where: { id: runId },
+        select: {
+          id: true,
+          status: true,
+          items: {
+            select: { status: true, paymentStatus: true },
+          },
+        },
+      });
+      if (!run || run.status !== 'RUNNING') return;
+      if (this.executingRunId) return;
+
+      const hasWork = run.items.some(
+        (i) =>
+          i.status === 'PENDING' ||
+          i.status === 'IN_PROGRESS' ||
+          ((i.status === 'FAILED' || i.status === 'NEEDS_MANUAL') &&
+            i.paymentStatus !== 'DECLINED' &&
+            i.paymentStatus !== 'PLANNED'),
+      );
+      if (!hasWork) {
+        await this.refreshRunStatus(runId);
+        return;
+      }
+
+      this.resumeInFlight.add(runId);
+      try {
+        await this.resetOrphanedInProgressItems(runId);
+        await this.executeRun(runId);
+      } catch (err) {
+        this.log.error(
+          `[ArrivalCheck] auto-resume failed for ${runId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      } finally {
+        this.resumeInFlight.delete(runId);
+      }
+    })();
   }
 
   /** Process pending run items: load folio, move misassigned charges, refresh folio. */
@@ -253,14 +361,15 @@ export class ArrivalCheckService {
       throw new BadRequestException('Abgebrochener Lauf kann nicht ausgeführt werden.');
     }
 
-    const alreadyRunning = run.items.some((i) => i.status === 'IN_PROGRESS');
-    if (alreadyRunning) {
-      throw new ConflictException('Lauf wird bereits ausgeführt.');
-    }
+    await this.resetOrphanedInProgressItems(runId);
+
     if (this.executingRunId && this.executingRunId !== runId) {
       throw new ConflictException(
         'Ein anderer Anreise-Check-Lauf wird gerade verarbeitet. Bitte warten.',
       );
+    }
+    if (this.executingRunId === runId) {
+      return this.getRunWithoutResume(runId);
     }
     this.executingRunId = runId;
 
@@ -270,28 +379,36 @@ export class ArrivalCheckService {
     });
 
     try {
-      for (const item of run.items) {
-        if (
-          item.status !== 'PENDING' &&
-          item.status !== 'FAILED' &&
-          item.status !== 'NEEDS_MANUAL'
-        ) {
-          continue;
+      while (true) {
+        const runState = await this.prisma.arrivalCheckRun.findUnique({
+          where: { id: runId },
+          select: { status: true, forceRerun: true, hotelId: true },
+        });
+        if (!runState || runState.status === 'CANCELLED') {
+          await this.skipPendingRunItems(runId, 'Lauf abgebrochen – nicht verarbeitet.');
+          break;
         }
-        // A declined VCC must be resolved manually in EMMA — never silently re-run
-        // (the invoice already exists; an automatic retry would mask the open balance).
-        if (item.paymentStatus === 'DECLINED') continue;
-        // PaymentGateway may have been called and the response lost (network/crash).
-        // We do NOT know whether EMMA already charged the card. Force manual review.
+
+        const items = await this.prisma.arrivalCheckRunItem.findMany({
+          where: { runId },
+          orderBy: { reservationId: 'asc' },
+        });
+        const item = items.find(
+          (i) =>
+            (i.status === 'PENDING' || i.status === 'FAILED' || i.status === 'NEEDS_MANUAL') &&
+            i.paymentStatus !== 'DECLINED',
+        );
+        if (!item) break;
+
         if (item.paymentStatus === 'PLANNED') {
           await this.markItemUnsafeRetry(item.id);
           continue;
         }
-        if (!run.forceRerun) {
+        if (!runState.forceRerun) {
           const snap = await this.prisma.reservationSnapshot.findUnique({
             where: {
               hotelId_reservationId: {
-                hotelId: run.hotelId,
+                hotelId: runState.hotelId,
                 reservationId: item.reservationId,
               },
             },
@@ -306,14 +423,70 @@ export class ArrivalCheckService {
             continue;
           }
         }
-        await this.processRunItem(run.hotelId, item.id);
+        await this.processRunItem(runState.hotelId, item.id);
       }
 
       await this.refreshRunStatus(runId);
-      return this.getRun(runId);
+      return this.getRunWithoutResume(runId);
     } finally {
       this.executingRunId = null;
     }
+  }
+
+  /** getRun without triggering another auto-resume (used from executeRun tail). */
+  private async getRunWithoutResume(id: string): Promise<ArrivalCheckRunDetail> {
+    const run = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        items: { orderBy: { reservationId: 'asc' } },
+      },
+    });
+    if (!run) throw new NotFoundException('Anreise-Check-Lauf nicht gefunden.');
+
+    const reservationIds = run.items.map((i) => i.reservationId);
+    const snapshots =
+      reservationIds.length > 0
+        ? await this.prisma.reservationSnapshot.findMany({
+            where: { hotelId: run.hotelId, reservationId: { in: reservationIds } },
+          })
+        : [];
+
+    return this.toDetail(run, snapshots);
+  }
+
+  /** Stop a running or queued arrival check. The current reservation (if any) still finishes for EMMA safety. */
+  async cancelRun(runId: string): Promise<ArrivalCheckRunDetail> {
+    const run = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id: runId },
+      select: { id: true, status: true },
+    });
+    if (!run) throw new NotFoundException('Anreise-Check-Lauf nicht gefunden.');
+    if (run.status === 'CANCELLED') return this.getRun(runId);
+    if (run.status === 'COMPLETED' || run.status === 'FAILED') {
+      throw new BadRequestException('Abgeschlossener Lauf kann nicht abgebrochen werden.');
+    }
+
+    await this.prisma.arrivalCheckRun.update({
+      where: { id: runId },
+      data: { status: 'CANCELLED', finishedAt: new Date() },
+    });
+    await this.skipPendingRunItems(runId, 'Lauf abgebrochen – nicht verarbeitet.');
+
+    this.log.warn(`[ArrivalCheck] run ${runId} cancelled by user`);
+    return this.getRun(runId);
+  }
+
+  private async skipPendingRunItems(runId: string, message: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.arrivalCheckRunItem.updateMany({
+      where: { runId, status: 'PENDING' },
+      data: {
+        status: 'SKIPPED',
+        statusMessage: message,
+        finishedAt: now,
+      },
+    });
   }
 
   /**
@@ -823,10 +996,16 @@ export class ArrivalCheckService {
   private classifyMessage(decision: ArrivalCheckDecision, categoryLabel: string): string {
     switch (decision.scenario) {
       case 'VCC':
+        if (decision.source === 'CTRIP') {
+          return `${categoryLabel} erkannt – alle Posten werden auf Folio 2 verschoben und die VCC dort belastet …`;
+        }
         return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, City Tax und Hotel Tax verbleiben bzw. werden auf Folio 1 zusammengeführt …`;
       case 'PREPAID':
         return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
       case 'DIRECT':
+        if (decision.source === 'CTRIP' || decision.source === 'APPSMEDIA_IOS') {
+          return `${categoryLabel}: alle Posten werden auf Folio 2 zusammengeführt …`;
+        }
         return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
       case 'FLEXIBLE':
         return `${categoryLabel}: keine Verschiebung nötig, Posten bereits korrekt auf Folio 1.`;
@@ -855,6 +1034,15 @@ export class ArrivalCheckService {
   }
 
   private async refreshRunStatus(runId: string): Promise<void> {
+    const run = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id: runId },
+      select: { status: true },
+    });
+    if (run?.status === 'CANCELLED') {
+      await this.skipPendingRunItems(runId, 'Lauf abgebrochen – nicht verarbeitet.');
+      return;
+    }
+
     const items = await this.prisma.arrivalCheckRunItem.findMany({
       where: { runId },
       select: { status: true },

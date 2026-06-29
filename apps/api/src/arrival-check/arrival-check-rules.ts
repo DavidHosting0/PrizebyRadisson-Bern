@@ -29,6 +29,9 @@ const GUEST_FOLIO_ID = '01';
 const RADISSON_DIRECT_RX =
   /desktopmedia|loyalty\s*guest|search\s*engine\s*optimisation|\bseo\b|bigmouthmedia|rezidor|direct\s*guest|radisson/i;
 
+/** Client name e.g. "APPSMEDIA - IOS" (Radisson app bookings). */
+const APPSMEDIA_IOS_RX = /appsmedia\s*-\s*ios/i;
+
 function sourceText(sensitive: ReservationSensitivePayload | null): string {
   if (!sensitive) return '';
   return [
@@ -51,6 +54,7 @@ export function detectSource(sensitive: ReservationSensitivePayload | null): Arr
   if (/expedia/.test(text)) return 'EXPEDIA';
   if (/agoda|priceline/.test(text)) return 'AGODA';
   if (/ctrip/.test(text)) return 'CTRIP';
+  if (APPSMEDIA_IOS_RX.test(text)) return 'APPSMEDIA_IOS';
   if (RADISSON_DIRECT_RX.test(text)) return 'RADISSON';
   return 'OTHER';
 }
@@ -132,19 +136,23 @@ function planVccMoves(
   return moves;
 }
 
-/** Consolidate: move every charge that is not on the guest folio 01 onto folio 01. */
-function planConsolidateToGuestFolio(bundle: ReservationEmmaFolioBundle): FolioChargeMovePlan[] {
+/** Consolidate: move every non-prepayment charge onto the target folio. */
+function planConsolidateToFolio(
+  bundle: ReservationEmmaFolioBundle,
+  destinationFolioId: string,
+): FolioChargeMovePlan[] {
+  const dest = normalizeFolioId(destinationFolioId);
   const moves: FolioChargeMovePlan[] = [];
   for (const charge of bundle.charges ?? []) {
     const src = normalizeFolioId(charge.folioId);
-    if (!src || src === GUEST_FOLIO_ID) continue;
+    if (!src || src === dest) continue;
     if (isArrivalCheckPrepaymentCharge(charge)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
     moves.push({
       chargeRowId: rowId,
       sourceFolioId: src,
-      destinationFolioId: GUEST_FOLIO_ID,
+      destinationFolioId: dest,
       concept: charge.concept,
       description: charge.description,
       amount: charge.amount,
@@ -153,10 +161,44 @@ function planConsolidateToGuestFolio(bundle: ReservationEmmaFolioBundle): FolioC
   return moves;
 }
 
+/** Consolidate: move every charge that is not on the guest folio 01 onto folio 01. */
+function planConsolidateToGuestFolio(bundle: ReservationEmmaFolioBundle): FolioChargeMovePlan[] {
+  return planConsolidateToFolio(bundle, GUEST_FOLIO_ID);
+}
+
 function sortMoves(moves: FolioChargeMovePlan[]): FolioChargeMovePlan[] {
   return [...moves].sort((a, b) =>
     a.chargeRowId.localeCompare(b.chargeRowId, undefined, { numeric: true }),
   );
+}
+
+/** All non-prepayment charges → company folio (Folio 2). Used by CTrip and App Media iOS. */
+function buildConsolidateToCompanyFolioDecision(
+  source: ArrivalCheckSource,
+  folio: ReservationEmmaFolioBundle,
+  vcc: boolean,
+  opts: { chargeVccOnCompanyFolio: boolean; manualLabel: string },
+): ArrivalCheckDecision {
+  const companyFolioId = findCompanyFolioId(folio.folios ?? []);
+  const scenario = opts.chargeVccOnCompanyFolio && vcc ? 'VCC' : 'DIRECT';
+  if (!companyFolioId) {
+    return {
+      source,
+      scenario,
+      moves: [],
+      requiresManual: true,
+      manualReason: `${opts.manualLabel}: kein Firmen-Folio (Folio 2) vorhanden – manuelle Zuordnung nötig.`,
+      vcc,
+    };
+  }
+  return {
+    source,
+    scenario,
+    moves: sortMoves(planConsolidateToFolio(folio, companyFolioId)),
+    requiresManual: false,
+    manualReason: null,
+    vcc,
+  };
 }
 
 /**
@@ -172,7 +214,21 @@ export function buildArrivalCheckDecision(input: {
   const source = detectSource(sensitive);
   const vcc = hasVcc(detail);
 
-  if (source === 'RADISSON' || source === 'CTRIP') {
+  if (source === 'CTRIP') {
+    return buildConsolidateToCompanyFolioDecision(source, folio, vcc, {
+      chargeVccOnCompanyFolio: true,
+      manualLabel: 'CTrip',
+    });
+  }
+
+  if (source === 'APPSMEDIA_IOS') {
+    return buildConsolidateToCompanyFolioDecision(source, folio, vcc, {
+      chargeVccOnCompanyFolio: false,
+      manualLabel: 'App Media iOS',
+    });
+  }
+
+  if (source === 'RADISSON') {
     return {
       source,
       scenario: 'DIRECT',

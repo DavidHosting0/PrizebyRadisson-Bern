@@ -9,6 +9,7 @@ import {
   normalizeFolioId,
 } from '@housekeeping/shared';
 import type { ArrivalCheckDecision } from './arrival-check-rules';
+import { findCompanyFolioId } from './arrival-check-charge-assign';
 import { computeExpectedVccChargeAmount } from './arrival-check-payment-guard';
 
 const GUEST_FOLIO_ID = '01';
@@ -50,7 +51,7 @@ export type VccSelection =
   | { kind: 'ambiguous'; count: number };
 
 export type VccPaymentPlan = {
-  /** Folio to settle (company folio for OTA, guest folio 01 for CTrip). */
+  /** Folio to settle (company folio for OTA and CTrip VCC). */
   folioId: string;
   /** Amount to charge, formatted to 2 decimals (e.g. "120.50"). */
   amount: string;
@@ -169,9 +170,8 @@ function pickCompanyFolioId(folio: ReservationEmmaFolioBundle): string | null {
 
 /**
  * Decide whether (and what) to charge on the VCC after charges are routed:
- * - OTA (Booking/Expedia/Agoda) + VCC: settle the company folio (Folio 2) that holds
- *   the room/board charges.
- * - CTrip + VCC: settle the guest folio 01 (all costs).
+ * - OTA (Booking/Expedia/Agoda) + VCC: settle the company folio (Folio 2) room/board.
+ * - CTrip + VCC: settle the company folio (Folio 2) for all costs.
  * - Everything else (Radisson direct, prepaid, flexible, personal card): no charge.
  * Returns null when no charge applies or the folio balance is not positive.
  */
@@ -191,7 +191,7 @@ export function planVccPayment(input: {
   ) {
     folioId = pickCompanyFolioId(folio);
   } else if (decision.source === 'CTRIP' && decision.vcc) {
-    folioId = GUEST_FOLIO_ID;
+    folioId = findCompanyFolioId(folio.folios ?? []);
   }
 
   if (!folioId) return null;

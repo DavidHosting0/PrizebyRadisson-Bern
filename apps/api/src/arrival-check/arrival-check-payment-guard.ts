@@ -143,7 +143,7 @@ export function crossCheckFolioAmount(
 /**
  * Compute the chargeable VCC amount from visible folio lines (never AmountDue alone).
  * - OTA + VCC: RO/BB on the target folio only.
- * - CTrip + VCC: all non-prepayment charges on Folio 01.
+ * - CTrip + VCC: all non-prepayment charges on Folio 02.
  */
 export function computeExpectedVccChargeAmount(
   decision: ArrivalCheckDecision,

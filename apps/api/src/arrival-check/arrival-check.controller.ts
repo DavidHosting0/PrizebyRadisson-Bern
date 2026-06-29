@@ -58,4 +58,11 @@ export class ArrivalCheckController {
   executeRun(@Param('id') id: string) {
     return this.arrivalCheck.executeRun(id);
   }
+
+  @Post('runs/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.ARRIVAL_CHECK)
+  cancelRun(@Param('id') id: string) {
+    return this.arrivalCheck.cancelRun(id);
+  }
 }

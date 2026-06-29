@@ -32,6 +32,7 @@ export type ArrivalCheckSource =
   | 'AGODA'
   | 'RADISSON'
   | 'CTRIP'
+  | 'APPSMEDIA_IOS'
   | 'OTHER';
 
 /**
@@ -39,7 +40,7 @@ export type ArrivalCheckSource =
  * - VCC: virtual card present → room/board to Folio 2, taxes stay on Folio 1.
  * - PREPAID: no VCC but prepaid rate → consolidate all charges on Folio 1.
  * - FLEXIBLE: no VCC, flexible rate → no charge moves.
- * - DIRECT: Radisson direct / CTrip → consolidate all charges on Folio 1.
+ * - DIRECT: Radisson direct → Folio 1; CTrip / App Media iOS → Folio 2.
  * - MANUAL: no rule matched or a runtime error → manual intervention.
  */
 export type ArrivalCheckScenario = 'VCC' | 'PREPAID' | 'FLEXIBLE' | 'DIRECT' | 'MANUAL';
@@ -55,6 +56,7 @@ export function arrivalCheckCategoryLabel(
     AGODA: 'Agoda',
     RADISSON: 'Radisson',
     CTRIP: 'CTrip',
+    APPSMEDIA_IOS: 'App Media iOS',
     OTHER: 'Unbekannt',
   };
   const s = sourceLabel[source];
@@ -66,7 +68,9 @@ export function arrivalCheckCategoryLabel(
     case 'FLEXIBLE':
       return `${s} ohne VCC – flexibel`;
     case 'DIRECT':
-      return `${s} – Folio 1`;
+      return source === 'CTRIP' || source === 'APPSMEDIA_IOS'
+        ? `${s} – Folio 2`
+        : `${s} – Folio 1`;
     case 'MANUAL':
     default:
       return `${s} – manuell`;

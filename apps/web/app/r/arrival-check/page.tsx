@@ -157,9 +157,9 @@ export default function ArrivalCheckPage() {
     <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Arrival Check</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Anreise-Check</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Listen entsprechen EMMA Check-In (Hotel-Datum, nicht Kalendertag nach Mitternacht).
+            Reservierungen auswählen und Check starten.
           </p>
         </div>
         <button

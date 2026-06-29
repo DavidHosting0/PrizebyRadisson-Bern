@@ -2,108 +2,79 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type {
-  ArrivalCheckItemStatus,
-  ArrivalCheckRunDetail,
-  ArrivalCheckRunItem,
-  ArrivalCheckRunStatus,
-} from '@housekeeping/shared';
+import { useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import type { ArrivalCheckRunDetail, ArrivalCheckRunItem } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { getFirstAllowedPath, RECEPTION_NAV } from '@/lib/permission-routes';
 import clsx from 'clsx';
 
-function runStatusLabel(status: ArrivalCheckRunStatus): string {
-  switch (status) {
-    case 'RUNNING':
-      return 'Läuft';
-    case 'COMPLETED':
-      return 'Abgeschlossen';
-    case 'FAILED':
-      return 'Mit Hinweisen abgeschlossen';
-    case 'CANCELLED':
-      return 'Abgebrochen';
-    default:
-      return status;
-  }
-}
-
-function itemStatusLabel(status: ArrivalCheckItemStatus): string {
-  switch (status) {
-    case 'PENDING':
-      return 'Ausstehend';
-    case 'IN_PROGRESS':
-      return 'In Bearbeitung';
-    case 'COMPLETED':
-      return 'Erledigt';
-    case 'FAILED':
-      return 'Fehler';
-    case 'SKIPPED':
-      return 'Übersprungen';
-    case 'NEEDS_MANUAL':
-      return 'Manuell nötig';
-    default:
-      return status;
-  }
-}
-
-function statusBadgeClass(status: ArrivalCheckItemStatus | ArrivalCheckRunStatus): string {
-  switch (status) {
-    case 'COMPLETED':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-    case 'FAILED':
-      return 'border-rose-200 bg-rose-50 text-rose-900';
-    case 'NEEDS_MANUAL':
-      return 'border-orange-200 bg-orange-50 text-orange-900';
-    case 'IN_PROGRESS':
-    case 'RUNNING':
-      return 'border-amber-200 bg-amber-50 text-amber-950';
-    case 'SKIPPED':
-    case 'CANCELLED':
-      return 'border-border bg-surface-muted text-ink-muted';
-    default:
-      return 'border-border bg-surface-muted text-ink-muted';
-  }
-}
-
 function needsManual(item: ArrivalCheckRunItem): boolean {
   return item.status === 'NEEDS_MANUAL' || item.status === 'FAILED';
 }
 
-/** A declined VCC is rendered red (not the orange manual tone). */
 function isDeclinedVcc(item: ArrivalCheckRunItem): boolean {
   return item.paymentStatus === 'DECLINED';
 }
 
-/** This reservation was auto-skipped because an earlier run already completed it. */
-function isAlreadyDone(item: ArrivalCheckRunItem): boolean {
-  return Boolean(item.alreadyCompletedAt);
+function manualReasonText(item: ArrivalCheckRunItem): string {
+  return item.manualReason ?? item.paymentError ?? item.error ?? 'Manuelle Prüfung erforderlich.';
 }
 
-function itemBadgeClass(item: ArrivalCheckRunItem): string {
-  if (isDeclinedVcc(item)) return 'border-rose-300 bg-rose-100 text-rose-900';
-  if (isAlreadyDone(item)) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-  return statusBadgeClass(item.status);
+/** True while the backend may still be processing — keep polling. */
+function isRunActive(run: ArrivalCheckRunDetail | undefined): boolean {
+  if (!run) return true;
+  if (run.status === 'RUNNING') return true;
+  if (run.items.some((i) => i.status === 'IN_PROGRESS')) return true;
+  if (
+    run.status !== 'COMPLETED' &&
+    run.status !== 'FAILED' &&
+    run.status !== 'CANCELLED' &&
+    run.pendingCount > 0
+  ) {
+    return true;
+  }
+  return false;
 }
 
-function itemStatusText(item: ArrivalCheckRunItem): string {
-  if (isDeclinedVcc(item)) return 'VCC abgelehnt';
-  if (isAlreadyDone(item)) return 'Bereits erledigt';
-  if (item.paymentStatus === 'PAID') return 'Erledigt · VCC belastet';
-  return itemStatusLabel(item.status);
+function isRunFinished(run: ArrivalCheckRunDetail): boolean {
+  return run.status === 'COMPLETED' || run.status === 'FAILED' || run.status === 'CANCELLED';
 }
 
-function formatRunTime(value: string | null): string {
-  if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString('de-CH', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-  } catch {
-    return value;
+/** Progress 0–100 including partial credit for the reservation currently in progress. */
+function computeProgressPct(run: ArrivalCheckRunDetail): number {
+  if (run.itemCount === 0) return 0;
+  const weight = 1 / run.itemCount;
+  let total = 0;
+  for (const item of run.items) {
+    if (item.status === 'IN_PROGRESS') {
+      total += weight * inProgressFraction(item);
+    } else if (
+      item.status === 'COMPLETED' ||
+      item.status === 'SKIPPED' ||
+      item.status === 'NEEDS_MANUAL' ||
+      item.status === 'FAILED'
+    ) {
+      total += weight;
+    }
+  }
+  return Math.min(100, Math.round(total * 100));
+}
+
+function inProgressFraction(item: ArrivalCheckRunItem): number {
+  switch (item.currentStep) {
+    case 'PREPAID_SETTLE':
+      return 0.9;
+    case 'CHARGE_ASSIGN':
+      if (item.movesPlanned > 0) {
+        return 0.25 + (0.55 * item.movesDone) / item.movesPlanned;
+      }
+      return 0.45;
+    case 'FOLIO_LOAD':
+      return 0.12;
+    default:
+      return 0.08;
   }
 }
 
@@ -114,8 +85,14 @@ export default function ArrivalCheckRunPage() {
   const canArrivalCheck = usePermission('ARRIVAL_CHECK');
   const runId = String(params.runId ?? '');
   const queryClient = useQueryClient();
-  const [executing, setExecuting] = useState(false);
-  const [executeError, setExecuteError] = useState<string | null>(null);
+
+  const cancelMut = useMutation({
+    mutationFn: () =>
+      api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}/cancel`, { method: 'POST' }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arrival-check', 'run', runId], data);
+    },
+  });
 
   useEffect(() => {
     if (loading) return;
@@ -127,75 +104,47 @@ export default function ArrivalCheckRunPage() {
     queryKey: ['arrival-check', 'run', runId],
     queryFn: () => api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}`),
     enabled: !!runId && canArrivalCheck,
-    refetchInterval: (query) => {
-      const data = query.state.data as ArrivalCheckRunDetail | undefined;
-      if (executing) return 1500;
-      if (data && data.status === 'RUNNING') return 1500;
-      return false;
-    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => (isRunActive(query.state.data as ArrivalCheckRunDetail | undefined) ? 1000 : false),
   });
 
   const run = runQuery.data;
-  const serverRunning = run?.status === 'RUNNING';
-  const canExecute =
-    run &&
-    run.status !== 'CANCELLED' &&
-    run.pendingCount + run.failedCount + run.manualCount > 0 &&
-    !executing &&
-    !serverRunning;
-  const allAlreadyDone =
-    run !== undefined &&
-    run.itemCount > 0 &&
-    run.alreadyDoneCount === run.itemCount;
+  const active = run ? isRunActive(run) : true;
+  const finished = run ? isRunFinished(run) : false;
+  const progressPct = run ? computeProgressPct(run) : 0;
 
-  const processed = run
-    ? run.completedCount + run.failedCount + run.manualCount + run.skippedCount
-    : 0;
-  const progressPct = run && run.itemCount > 0 ? Math.round((processed / run.itemCount) * 100) : 0;
-
-  const liveMessage = useMemo(() => {
-    if (!run) return null;
-    const active = run.items.find((i) => i.status === 'IN_PROGRESS');
-    if (active) return active.statusMessage ?? `${active.reservationId} wird verarbeitet …`;
-    return null;
-  }, [run]);
-
-  const manualItems = useMemo(() => (run ? run.items.filter(needsManual) : []), [run]);
-
-  async function handleExecute() {
-    if (!runId) return;
-    setExecuting(true);
-    setExecuteError(null);
-    try {
-      await api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}/execute`, { method: 'POST' });
-      await queryClient.invalidateQueries({ queryKey: ['arrival-check', 'run', runId] });
-    } catch (err) {
-      setExecuteError(err instanceof Error ? err.message : 'Ausführung fehlgeschlagen.');
-    } finally {
-      setExecuting(false);
-    }
-  }
+  const manualItems = useMemo(
+    () => (run ? run.items.filter(needsManual) : []),
+    [run],
+  );
 
   if (loading || !user || !canArrivalCheck) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
+      <div className="flex min-h-[50vh] items-center justify-center">
         <p className="text-sm text-ink-muted">Lädt…</p>
       </div>
     );
   }
 
-  if (runQuery.isLoading) {
+  if (runQuery.isLoading && !run) {
     return (
-      <div className="mx-auto max-w-[1200px] p-4 md:p-8">
-        <p className="text-sm text-ink-muted">Lädt…</p>
+      <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col items-center justify-center gap-6 p-6">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-ink/20" />
+        </div>
+        <p className="text-sm text-ink-muted">Anreise-Check wird geladen…</p>
       </div>
     );
   }
 
   if (runQuery.isError || !run) {
     return (
-      <div className="mx-auto max-w-[1200px] space-y-4 p-4 md:p-8">
-        <p className="text-sm text-danger">{(runQuery.error as Error)?.message ?? 'Lauf nicht gefunden.'}</p>
+      <div className="mx-auto max-w-lg space-y-4 p-6">
+        <p className="text-sm text-danger">
+          {(runQuery.error as Error)?.message ?? 'Lauf nicht gefunden.'}
+        </p>
         <Link href="/r/arrival-check" className="text-sm font-medium text-ink underline">
           Zurück zur Auswahl
         </Link>
@@ -203,321 +152,150 @@ export default function ArrivalCheckRunPage() {
     );
   }
 
-  const isDone = run.status === 'COMPLETED' || run.status === 'FAILED';
-
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 p-4 md:p-8">
-      <header className="space-y-3 border-b border-border pb-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <button
-              type="button"
-              onClick={() => router.push('/r/arrival-check')}
-              className="mb-2 text-sm text-ink-muted hover:text-ink"
-            >
-              ← Zurück zur Auswahl
-            </button>
-            <h1 className="text-2xl font-semibold tracking-tight text-ink">Anreise-Check Lauf</h1>
-            <p className="mt-1 text-sm text-ink-muted">
-              Gestartet von {run.createdByName} ·{' '}
-              {new Date(run.startedAt).toLocaleString('de-CH')} · Hotel {run.hotelId}
-            </p>
-          </div>
-          <span
-            className={clsx(
-              'rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide',
-              statusBadgeClass(run.status),
-            )}
+    <div className="mx-auto max-w-2xl space-y-8 p-6 md:p-10">
+      <header className="flex items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={() => router.push('/r/arrival-check')}
+          className="text-sm text-ink-muted hover:text-ink"
+        >
+          ← Zurück
+        </button>
+        {active && run.status === 'RUNNING' && (
+          <button
+            type="button"
+            onClick={() => cancelMut.mutate()}
+            disabled={cancelMut.isPending}
+            className="text-sm text-rose-700 hover:text-rose-900 disabled:opacity-50"
           >
-            {runStatusLabel(run.status)}
-          </span>
-          {canExecute && (
-            <button
-              type="button"
-              onClick={() => void handleExecute()}
-              disabled={executing}
-              className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-surface hover:bg-ink/90 disabled:opacity-50"
-            >
-              {executing
-                ? 'Läuft…'
-                : run.completedCount + run.failedCount + run.manualCount > 0
-                  ? 'Erneut ausführen'
-                  : 'Anreise-Check ausführen'}
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-3 text-sm text-ink-muted">
-          <span>{run.itemCount} Reservierungen</span>
-          <span>·</span>
-          <span>{run.completedCount} erledigt</span>
-          {run.paidCount > 0 && (
-            <>
-              <span>·</span>
-              <span className="text-emerald-700">{run.paidCount} VCC belastet</span>
-            </>
-          )}
-          {run.declinedCount > 0 && (
-            <>
-              <span>·</span>
-              <span className="text-rose-700">{run.declinedCount} VCC abgelehnt</span>
-            </>
-          )}
-          {run.alreadyDoneCount > 0 && (
-            <>
-              <span>·</span>
-              <span className="text-emerald-700">{run.alreadyDoneCount} bereits erledigt</span>
-            </>
-          )}
-          {run.manualCount > 0 && (
-            <>
-              <span>·</span>
-              <span className="text-orange-700">{run.manualCount} manuell nötig</span>
-            </>
-          )}
-          {run.failedCount > 0 && (
-            <>
-              <span>·</span>
-              <span className="text-rose-700">{run.failedCount} fehlgeschlagen</span>
-            </>
-          )}
-          {run.pendingCount > 0 && (
-            <>
-              <span>·</span>
-              <span>{run.pendingCount} ausstehend</span>
-            </>
-          )}
-        </div>
-
-        {/* Status bar */}
-        <div className="space-y-2">
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-muted">
-            <div
-              className={clsx(
-                'h-full rounded-full transition-all duration-500',
-                run.failedCount > 0 || run.manualCount > 0 ? 'bg-amber-500' : 'bg-emerald-500',
-              )}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-          <p className="text-sm text-ink-muted">
-            {executing || serverRunning ? (
-              <span>
-                {liveMessage ?? 'Anreise-Check wird ausgeführt …'}{' '}
-                <span className="tabular-nums">
-                  ({processed}/{run.itemCount})
-                </span>
-              </span>
-            ) : isDone ? (
-              <span>
-                Anreise-Check abgeschlossen · {processed}/{run.itemCount} verarbeitet.
-              </span>
-            ) : (
-              <span>
-                Bereit zur Ausführung. Klicke „Anreise-Check ausführen“, um die Posten gemäss
-                Regelwerk auf die Folios zu verteilen.
-              </span>
-            )}
-          </p>
-        </div>
-
-        {executeError && (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
-            {executeError}
-          </p>
+            {cancelMut.isPending ? 'Wird abgebrochen…' : 'Abbrechen'}
+          </button>
         )}
-
-        {allAlreadyDone && isDone && !run.forceRerun && (
-          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            Alle {run.itemCount} Reservierungen wurden bereits in einem früheren Lauf bearbeitet und
-            automatisch übersprungen. Es war nichts mehr zu tun.
-          </p>
-        )}
-
-        {run.forceRerun && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            Erneuter Lauf: Reservierungen werden auch dann verarbeitet, wenn sie zuvor als erledigt
-            markiert waren. VCC-Zahlungen werden nur ausgeführt, wenn das Folio in EMMA noch offen
-            ist (keine Doppelbelastung).
-          </p>
-        )}
-
-        <p className="rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-sm text-ink-muted">
-          Posten werden automatisch zugeordnet: OTA mit VCC → Zimmer/Verpflegung auf Folio 2,
-          City Tax und Hotel Tax auf Folio 1. OTA Prepaid sowie Radisson-/CTrip-Buchungen → alle
-          Posten auf Folio 1. OTA ohne VCC (flexibel) bleibt unverändert. Anschliessend wird die
-          VCC automatisch belastet (OTA → Folio 2, CTrip → Folio 1); persönliche Karten werden nie
-          belastet. Abgelehnte VCC, unbekannte Quellen und EMMA-Sperren werden rot zur manuellen
-          Bearbeitung aufgelistet.
-        </p>
       </header>
 
-      {/* Overview after completion */}
-      {isDone && run.categoryCounts.length > 0 && (
-        <section className="rounded-xl border border-border bg-surface p-4 shadow-card md:p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
-            Übersicht
-          </h2>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {run.categoryCounts.map((c) => (
-              <li
-                key={`${c.source}-${c.scenario}`}
-                className="flex items-center justify-between rounded-lg border border-border bg-surface-muted/40 px-3 py-2 text-sm"
-              >
-                <span className="text-ink">{c.label}</span>
-                <span className="tabular-nums font-semibold text-ink">{c.count}</span>
-              </li>
-            ))}
-          </ul>
+      {active && (
+        <section className="space-y-6 py-8">
+          <div className="text-center">
+            <h1 className="text-xl font-semibold text-ink">Anreise-Check läuft</h1>
+            <p className="mt-1 text-sm text-ink-muted">
+              {run.itemCount} Reservierung{run.itemCount === 1 ? '' : 'en'}
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-surface-muted">
+              <div
+                className="h-full rounded-full bg-ink transition-[width] duration-700 ease-out"
+                style={{ width: `${Math.max(progressPct, 2)}%` }}
+              />
+            </div>
+            <p className="text-center text-sm tabular-nums text-ink-muted">{progressPct}%</p>
+          </div>
         </section>
       )}
 
-      {/* Manual intervention list */}
-      {manualItems.length > 0 && (
-        <section className="rounded-xl border border-orange-200 bg-orange-50/60 p-4 shadow-card md:p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-orange-900">
-            Manuelle Bearbeitung nötig ({manualItems.length})
-          </h2>
-          <ul className="mt-3 space-y-2">
-            {manualItems.map((item) => (
-              <li
-                key={item.id}
-                className={clsx(
-                  'flex flex-wrap items-start justify-between gap-2 rounded-lg border bg-surface px-3 py-2.5 text-sm',
-                  isDeclinedVcc(item) ? 'border-rose-300' : 'border-orange-200',
+      {finished && (
+        <section className="space-y-6">
+          <div className="text-center">
+            <h1 className="text-xl font-semibold text-ink">
+              {run.status === 'CANCELLED'
+                ? 'Anreise-Check abgebrochen'
+                : manualItems.length > 0
+                  ? 'Anreise-Check abgeschlossen'
+                  : 'Alles erledigt'}
+            </h1>
+            {run.status !== 'CANCELLED' && manualItems.length === 0 && (
+              <p className="mt-2 text-sm text-ink-muted">
+                {run.completedCount > 0 && (
+                  <span>
+                    {run.completedCount} erfolgreich
+                    {run.paidCount > 0 ? ` · ${run.paidCount} VCC belastet` : ''}
+                  </span>
                 )}
-              >
-                <div>
-                  <span className="font-medium text-ink">{item.mainGuestName ?? '—'}</span>
-                  <span className="ml-2 tabular-nums text-ink-muted">{item.reservationId}</span>
-                  {item.roomId && (
-                    <span className="ml-2 tabular-nums text-ink-muted">Zi. {item.roomId}</span>
-                  )}
-                  {isDeclinedVcc(item) && (
-                    <span className="ml-2 rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-900">
-                      VCC abgelehnt
-                    </span>
-                  )}
-                  <p
-                    className={clsx(
-                      'mt-0.5 text-xs',
-                      isDeclinedVcc(item) ? 'text-rose-800' : 'text-orange-800',
-                    )}
-                  >
-                    {item.manualReason ?? item.paymentError ?? item.error ?? 'Manuelle Prüfung erforderlich.'}
-                  </p>
-                  {item.paymentExpectedAmount && (
-                    <p className="mt-0.5 text-[11px] text-ink-muted">
-                      Erwarteter Betrag: {item.paymentExpectedAmount}
-                      {item.paymentCardMask ? ` · Karte ${item.paymentCardMask}` : ''}
-                    </p>
-                  )}
-                </div>
-                <Link
-                  href={`/r/reservations/${item.reservationId}?from=arrivals`}
-                  className="shrink-0 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-ink hover:bg-surface-muted"
-                >
-                  Reservierung öffnen
-                </Link>
-              </li>
-            ))}
-          </ul>
+                {run.skippedCount > 0 && (
+                  <span>
+                    {run.completedCount > 0 ? ' · ' : ''}
+                    {run.skippedCount} übersprungen
+                  </span>
+                )}
+              </p>
+            )}
+            {run.status === 'CANCELLED' && (
+              <p className="mt-2 text-sm text-ink-muted">
+                Ausstehende Reservierungen wurden nicht verarbeitet.
+              </p>
+            )}
+          </div>
+
+          {manualItems.length > 0 ? (
+            <div className="space-y-4">
+              <h2 className="text-sm font-semibold text-ink">
+                Manuelle Bearbeitung nötig ({manualItems.length})
+              </h2>
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+                {manualItems.map((item) => (
+                  <li key={item.id} className="p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-ink">
+                          {item.mainGuestName ?? '—'}
+                          {item.roomId && (
+                            <span className="ml-2 font-normal text-ink-muted">
+                              Zi. {item.roomId}
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-0.5 text-xs tabular-nums text-ink-muted">
+                          {item.reservationId}
+                        </p>
+                        <p
+                          className={clsx(
+                            'mt-2 text-sm',
+                            isDeclinedVcc(item) ? 'text-rose-800' : 'text-orange-800',
+                          )}
+                        >
+                          {manualReasonText(item)}
+                        </p>
+                        {isDeclinedVcc(item) && (
+                          <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-900">
+                            VCC abgelehnt
+                          </span>
+                        )}
+                      </div>
+                      <Link
+                        href={`/r/reservations/${item.reservationId}?from=arrivals`}
+                        className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-muted"
+                      >
+                        Öffnen
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            run.status !== 'CANCELLED' && (
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-900">
+                Keine manuelle Nachbearbeitung nötig.
+              </p>
+            )
+          )}
+
+          {cancelMut.isError && (
+            <p className="text-sm text-rose-700">{(cancelMut.error as Error).message}</p>
+          )}
         </section>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="border-b border-border bg-surface-muted/50">
-              <tr>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Gast
-                </th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Res.
-                </th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Zimmer
-                </th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Kategorie
-                </th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Verlauf
-                </th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/70">
-              {run.items.map((item) => (
-                <tr key={item.id} className="hover:bg-surface-muted/40">
-                  <td className="px-4 py-3.5 font-medium text-ink">{item.mainGuestName ?? '—'}</td>
-                  <td className="px-4 py-3.5 tabular-nums text-ink-muted">{item.reservationId}</td>
-                  <td className="px-4 py-3.5 tabular-nums text-ink">{item.roomId ?? '—'}</td>
-                  <td className="px-4 py-3.5 text-ink-muted">
-                    {item.categoryLabel ?? '—'}
-                    {item.movesPlanned > 0 && (
-                      <span className="ml-1 tabular-nums text-xs text-ink-muted/70">
-                        ({item.movesDone}/{item.movesPlanned})
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <span
-                      className={clsx(
-                        'inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium',
-                        itemBadgeClass(item),
-                      )}
-                    >
-                      {itemStatusText(item)}
-                    </span>
-                    {item.paymentStatus === 'PAID' && item.paymentAmount && (
-                      <p className="mt-1 text-[11px] text-emerald-700">
-                        VCC belastet: {item.paymentAmount}
-                        {item.paymentCardMask ? ` (${item.paymentCardMask})` : ''}
-                      </p>
-                    )}
-                    {item.paymentExpectedAmount &&
-                      item.paymentExpectedAmount !== item.paymentAmount &&
-                      item.paymentStatus !== 'PAID' && (
-                        <p className="mt-1 text-[11px] text-ink-muted">
-                          Erwartet: {item.paymentExpectedAmount}
-                        </p>
-                      )}
-                  </td>
-                  <td className="px-4 py-3.5 text-xs text-ink-muted">
-                    {item.statusMessage ?? '—'}
-                    {isAlreadyDone(item) && item.alreadyCompletedRunId && (
-                      <p className="mt-1">
-                        <Link
-                          href={`/r/arrival-check/runs/${item.alreadyCompletedRunId}`}
-                          className="text-emerald-700 underline-offset-2 hover:underline"
-                        >
-                          Früherer Lauf vom {formatRunTime(item.alreadyCompletedAt)}
-                        </Link>
-                      </p>
-                    )}
-                    {item.manualReason && item.manualReason !== item.statusMessage && (
-                      <p className="mt-1 text-orange-700">{item.manualReason}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <Link
-                      href={`/r/reservations/${item.reservationId}?from=arrivals`}
-                      className="text-xs font-medium text-ink-muted hover:text-ink"
-                    >
-                      Reservierung
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {!active && !finished && (
+        <section className="space-y-4 py-8 text-center">
+          <p className="text-sm text-ink-muted">Warte auf Start…</p>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+            <div className="h-full w-1/4 animate-pulse rounded-full bg-ink/20" />
+          </div>
+        </section>
+      )}
     </div>
   );
 }

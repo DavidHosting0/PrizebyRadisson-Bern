@@ -101,19 +101,19 @@ describe('computeExpectedVccChargeAmount', () => {
     assert.deepEqual(result, { amount: 120, currency: 'CHF' });
   });
 
-  it('sums all non-prepayment charges on CTrip folio 01', () => {
+  it('sums all non-prepayment charges on CTrip folio 02', () => {
     const folio = folioWithCharges([
-      charge({ id: '1', folioId: '01', concept: 'RO', amount: '80.00' }),
-      charge({ id: '2', folioId: '01', concept: 'CTAX', amount: '4.50' }),
+      charge({ id: '1', folioId: '02', concept: 'RO', amount: '80.00' }),
+      charge({ id: '2', folioId: '02', concept: 'CTAX', amount: '4.50' }),
       charge({
         id: '3',
-        folioId: '01',
+        folioId: '02',
         concept: 'PPWO',
         amount: '-10.00',
         description: 'Anzahlung',
       }),
     ]);
-    const result = computeExpectedVccChargeAmount(ctripDecision(), folio, '01');
+    const result = computeExpectedVccChargeAmount(ctripDecision(), folio, '02');
     assert.deepEqual(result, { amount: 84.5, currency: 'CHF' });
   });
 });

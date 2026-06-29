@@ -175,7 +175,7 @@ export async function releaseEmmaFolioEditSession(
   session: EmmaFolioEditSession,
   debug?: EmmaSyncDebug,
 ): Promise<void> {
-  try {
+  const unlock = async (forceLock: boolean) => {
     const csrf = await emmaHttpFetchCsrfToken(
       jar,
       baseUrl,
@@ -188,13 +188,25 @@ export async function releaseEmmaFolioEditSession(
       session.sapClient,
       csrf,
       session,
-      { lock: false, unlock: true },
+      { lock: false, unlock: true, forceLock },
       debug,
     );
+  };
+
+  try {
+    await unlock(false);
     log.log(`[EMMA] folio edit session released for ${session.reservationId}`);
-  } catch (err) {
-    log.warn(
-      `[EMMA] failed to release folio lock for ${session.reservationId}: ${(err as Error).message}`,
-    );
+  } catch (firstErr) {
+    try {
+      await unlock(true);
+      log.log(
+        `[EMMA] folio edit session released for ${session.reservationId} (force unlock)`,
+      );
+    } catch (err) {
+      log.warn(
+        `[EMMA] failed to release folio lock for ${session.reservationId}: ${(err as Error).message}` +
+          (firstErr instanceof Error ? ` (first: ${firstErr.message})` : ''),
+      );
+    }
   }
 }
