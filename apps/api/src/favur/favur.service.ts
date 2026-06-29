@@ -354,13 +354,17 @@ export class FavurService {
       );
     }
 
-    if (isDomMode(config.baseUrl)) {
-      return this.syncMirusMode(config, triggeredBy);
-    }
+    return this.syncMirusMode(config, triggeredBy);
+  }
 
+  /** @deprecated Legacy Favur extension capture replay — kept for reference only. */
+  private async syncLegacyCaptureMode(
+    config: FavurIntegration,
+    triggeredBy: 'manual' | 'cron',
+  ): Promise<FavurConfigDto> {
     if (!config.activeCaptureId || !config.activeUrl || !config.activeHeaders || !config.activeCookies) {
       throw new BadRequestException(
-        'No active capture from the extension yet. Install the browser extension and log into the shift plan source (neo.mirus.ch or web.favur.ch).',
+        'No active capture from the extension yet.',
       );
     }
     if (config.syncInProgress) return this.toDto(config);
@@ -443,7 +447,7 @@ export class FavurService {
     const password = this.cipher.decryptSafe(config.mirusPasswordEnc);
     if (!username || !password) {
       const msg =
-        'Mirus login not configured. Set username and password in admin → Integrations.';
+        'Mirus login not configured. Set username and password in Admin → Integrationen.';
       if (triggeredBy === 'manual') throw new BadRequestException(msg);
       await this.markFailed(msg);
       return this.toDto(await this.ensureRow());

@@ -114,7 +114,7 @@ export function RosterView() {
         <div>
           <h1 className="text-2xl font-semibold text-ink">{t('title')}</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Wer arbeitet wann. Wird alle 15 Minuten von Favur synchronisiert.
+            Wer arbeitet wann. Wird alle 15 Minuten von Mirus NEO synchronisiert.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -162,8 +162,8 @@ export function RosterView() {
         <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center">
           <p className="text-base font-medium text-ink">{t('noShifts')}</p>
           <p className="mt-1 text-sm text-ink-muted">
-            Sobald Favur synchronisiert ist und Mitarbeiter zugeordnet sind, erscheinen
-            sie hier. Admins können das unter „Integrationen → Favur" einrichten.
+            Sobald Mirus synchronisiert ist und Mitarbeiter zugeordnet sind, erscheinen
+            sie hier. Admins können das unter „Integrationen" einrichten.
           </p>
         </div>
       )}
