@@ -31,6 +31,7 @@ const config: Config = {
       borderRadius: {
         card: '12px',
         btn: '10px',
+        panel: '20px',
       },
       boxShadow: {
         card: '0 1px 2px rgba(26, 35, 50, 0.04), 0 4px 12px rgba(26, 35, 50, 0.04)',

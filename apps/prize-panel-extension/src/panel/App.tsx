@@ -26,7 +26,7 @@ function IconButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-muted transition hover:bg-surface-muted hover:text-ink"
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sidebar-muted transition hover:bg-sidebar-hover hover:text-white"
       title={label}
       aria-label={label}
     >
@@ -47,11 +47,11 @@ function PanelHeader({
   const { user } = useAuth();
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-1.5 border-b border-border bg-surface px-2 py-1.5">
+    <header className="flex shrink-0 items-center justify-between gap-1.5 border-b border-sidebar-border bg-sidebar px-2.5 py-2">
       <div className="min-w-0 flex-1">
-        <BrandLogo compact />
+        <BrandLogo compact onDark />
         {user && (
-          <p className="mt-0.5 truncate text-[10px] text-ink-muted" title={user.email}>
+          <p className="mt-0.5 truncate text-[10px] text-sidebar-muted" title={user.email}>
             {user.name}
           </p>
         )}
@@ -97,9 +97,7 @@ function PanelBody() {
   if (!canReadHandover) {
     return (
       <div className="p-3">
-        <p className="text-xs text-ink-muted">
-          Keine Berechtigung für die Schichtübergabe.
-        </p>
+        <p className="text-xs text-ink-muted">Keine Berechtigung für die Schichtübergabe.</p>
       </div>
     );
   }
@@ -108,21 +106,28 @@ function PanelBody() {
 }
 
 function AppInner() {
-  const { logout } = useAuth();
+  const { logout, user, loading } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const isLogin = !loading && !user;
 
   function collapsePanel() {
     window.parent.postMessage({ type: PANEL_MESSAGE.toggle }, '*');
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface text-[13px]">
+    <div className="flex h-full flex-col overflow-hidden bg-sidebar text-[13px]">
       <PanelHeader
         onSettings={() => setSettingsOpen(true)}
         onCollapse={collapsePanel}
         onLogout={logout}
       />
-      <main className="flex-1 overflow-y-auto">
+      <main
+        className={
+          isLogin
+            ? 'min-h-0 flex-1 overflow-y-auto bg-sidebar'
+            : 'min-h-0 flex-1 overflow-y-auto rounded-bl-[18px] bg-surface'
+        }
+      >
         <PanelBody />
       </main>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />

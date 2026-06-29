@@ -55,16 +55,18 @@ export function LoginForm() {
   }
 
   const field =
-    'mt-1 w-full min-h-[34px] rounded-md border border-border bg-surface-muted/60 px-2.5 py-1.5 text-xs text-ink transition placeholder:text-ink-muted/45 focus:border-ink/20 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-ink/8';
+    'mt-1 w-full min-h-[34px] rounded-md border border-sidebar-border bg-white/95 px-2.5 py-1.5 text-xs text-ink transition placeholder:text-ink-muted/45 focus:border-action/40 focus:outline-none focus:ring-1 focus:ring-action/30';
 
   return (
-    <div className="flex flex-1 flex-col px-3 py-4">
-      <BrandLogo className="mb-4" />
-      <h1 className="text-sm font-semibold text-ink">{strings.signIn}</h1>
+    <div className="flex flex-1 flex-col bg-sidebar px-3 py-4">
+      <div className="mb-3 rounded-lg border border-sidebar-border bg-sidebar-hover/40 px-2.5 py-2">
+        <BrandLogo onDark />
+      </div>
+      <h1 className="text-sm font-semibold text-white">{strings.signIn}</h1>
 
       <form className="mt-3 space-y-2.5" onSubmit={onSubmit}>
         <div>
-          <label htmlFor="panel-email" className="block text-[11px] font-medium text-ink-muted">
+          <label htmlFor="panel-email" className="block text-[11px] font-medium text-sidebar-muted">
             {strings.email}
           </label>
           <input
@@ -78,7 +80,7 @@ export function LoginForm() {
           />
         </div>
         <div>
-          <label htmlFor="panel-password" className="block text-[11px] font-medium text-ink-muted">
+          <label htmlFor="panel-password" className="block text-[11px] font-medium text-sidebar-muted">
             {strings.password}
           </label>
           <input
@@ -92,7 +94,7 @@ export function LoginForm() {
           />
         </div>
 
-        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-muted">
+        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-sidebar-muted">
           <input
             type="checkbox"
             className="h-3.5 w-3.5 rounded border-border accent-ink"
@@ -108,7 +110,7 @@ export function LoginForm() {
           </p>
         )}
 
-        <Button type="submit" variant="primary" fullWidth disabled={pending}>
+        <Button type="submit" variant="action" fullWidth disabled={pending}>
           {pending ? strings.signingIn : strings.signIn}
         </Button>
       </form>

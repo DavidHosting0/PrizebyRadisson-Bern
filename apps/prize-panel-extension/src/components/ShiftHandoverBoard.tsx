@@ -129,7 +129,7 @@ export function ShiftHandoverBoard() {
         </div>
       )}
 
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t.title}</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-action">{t.title}</h2>
 
       <Card className={clsx('border', shiftAccent(data.activeShift))} padding>
         <div className="flex items-start justify-between gap-2">
@@ -199,7 +199,7 @@ export function ShiftHandoverBoard() {
 
       <Button
         type="button"
-        variant="primary"
+        variant="action"
         fullWidth
         className="min-h-[32px]"
         disabled={!essentialComplete}
@@ -262,7 +262,7 @@ export function ShiftHandoverBoard() {
               </Button>
               <Button
                 type="button"
-                variant="primary"
+                variant="action"
                 className="min-h-[30px] px-2.5"
                 disabled={!confirmMatches || !essentialComplete || handover.isPending}
                 onClick={() => handover.mutate(confirmName.trim())}
