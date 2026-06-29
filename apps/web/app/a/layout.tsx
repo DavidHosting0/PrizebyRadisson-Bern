@@ -36,6 +36,7 @@ const ADMIN_NAV_GROUPS = [
     labelKey: 'integrations',
     items: [
       { href: '/a/integrations', labelKey: 'integrations' },
+      { href: '/a/arrival-check', labelKey: 'arrivalCheck' },
       { href: '/a/emma', labelKey: 'emma' },
       { href: '/a/puzzle', labelKey: 'puzzle' },
       { href: '/a/ai', labelKey: 'ai' },
@@ -86,6 +87,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     reservationStats: tAdmin('reservationStats'),
     activityLog: 'Aktivitätsprotokoll',
     integrations: tAdmin('integrations'),
+    arrivalCheck: 'Arrival Check',
     emma: 'EMMA',
     puzzle: 'Puzzle',
     ai: 'AI',

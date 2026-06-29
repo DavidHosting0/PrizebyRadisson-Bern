@@ -21,7 +21,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/panel/index.html", "assets/*"],
+      "resources": ["src/panel/index.html", "assets/*", "PrizeByRadisson.png"],
       "matches": ["<all_urls>"]
     }
   ],

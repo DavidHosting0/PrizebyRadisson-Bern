@@ -14,12 +14,9 @@ import {
 
 const HOST_ID = 'prize-panel-host';
 
-function chevronSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>`;
-}
-
-function logoSvg() {
-  return `<span style="font-size:11px;font-weight:700;letter-spacing:0.04em;color:white">PB</span>`;
+function logoImgHtml() {
+  const url = chrome.runtime.getURL('PrizeByRadisson.png');
+  return `<img src="${url}" alt="Prize by Radisson Bern" style="width:28px;height:auto;max-height:34px;object-fit:contain;filter:brightness(0) invert(1);pointer-events:none" />`;
 }
 
 function applyCollapsed(shell: HTMLElement, tab: HTMLButtonElement, collapsed: boolean) {
@@ -30,7 +27,7 @@ function applyCollapsed(shell: HTMLElement, tab: HTMLButtonElement, collapsed: b
     shell.style.opacity = '0';
     shell.style.pointerEvents = 'none';
     tab.style.display = 'flex';
-    tab.innerHTML = chevronSvg();
+    tab.innerHTML = logoImgHtml();
     tab.title = 'PrizeBern Panel öffnen';
     tab.setAttribute('aria-label', 'PrizeBern Panel öffnen');
     tab.setAttribute('aria-expanded', 'false');
@@ -134,7 +131,7 @@ function injectPanel() {
     transition: 'filter 150ms ease, transform 150ms ease',
     pointerEvents: 'auto',
   });
-  tab.innerHTML = logoSvg();
+  tab.innerHTML = logoImgHtml();
   tab.addEventListener('mouseenter', () => {
     tab.style.filter = 'brightness(1.12)';
   });

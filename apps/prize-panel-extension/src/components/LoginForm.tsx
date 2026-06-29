@@ -59,9 +59,7 @@ export function LoginForm() {
 
   return (
     <div className="flex flex-1 flex-col bg-sidebar px-3 py-4">
-      <div className="mb-3 rounded-lg border border-sidebar-border bg-sidebar-hover/40 px-2.5 py-2">
-        <BrandLogo onDark />
-      </div>
+      <BrandLogo className="mb-3" onDark />
       <h1 className="text-sm font-semibold text-white">{strings.signIn}</h1>
 
       <form className="mt-3 space-y-2.5" onSubmit={onSubmit}>
