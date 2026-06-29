@@ -8,7 +8,7 @@
   "scripts": {
     "dev:api": "npm run start:dev -w @housekeeping/api",
     "dev:web": "npm run dev -w @housekeeping/web",
-    "build": "npm run build -w @housekeeping/shared && npm run build -w @housekeeping/api && npm run build -w @housekeeping/web",
+    "build": "npm run build -w @housekeeping/shared && npm run build -w @housekeeping/api && npm run build -w @housekeeping/prize-panel-extension && node scripts/package-prize-panel-extension.mjs && npm run build -w @housekeeping/web",
     "build:extension": "npm run build -w @housekeeping/shared && npm run build -w @housekeeping/prize-panel-extension && node scripts/package-prize-panel-extension.mjs",
     "dev:extension": "npm run dev -w @housekeeping/prize-panel-extension",
     "db:migrate": "npm run prisma:migrate -w @housekeeping/api",
@@ -20,6 +20,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "archiver": "^7.0.1",
     "sharp": "^0.34.5"
   }
 }

@@ -29,6 +29,7 @@ import { PushPermissionBanner } from '@/components/notifications/PushPermissionB
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
+import { SidebarSettingsButton } from '@/components/nav/SidebarSettingsButton';
 
 /** Mobile supervisor routes live under `/s/m/` — not `/s/monitor-map` etc. */
 function isSupervisorMobilePath(path: string) {
@@ -50,7 +51,6 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const t = useTranslations('common');
-  const tProfile = useTranslations('profile');
   const tCmd = useTranslations('commandPalette');
   const nav = filterNavByPermission(user, baseNav);
   const sidebarGroups = useSidebarGroups(SUPERVISOR_NAV_GROUPS, nav, SUPERVISOR_NAV_ICONS);
@@ -140,20 +140,16 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
         header={<BrandLogo className="brightness-0 invert" />}
         footer={
           <div className="space-y-3">
-            <NotificationBell variant="onDark" />
+            <div className="flex items-center justify-between">
+              <SidebarSettingsButton onClick={() => setProfileOpen(true)} />
+              <NotificationBell variant="onDark" />
+            </div>
             <div>
               <p className="truncate text-sm font-medium text-white">
                 {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
               </p>
               <p className="truncate text-xs text-sidebar-muted">{user.email}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              className="text-xs font-medium text-sidebar-muted transition-colors hover:text-white"
-            >
-              {tProfile('openProfile')}
-            </button>
             <button
               type="button"
               onClick={() => {

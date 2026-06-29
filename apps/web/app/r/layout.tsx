@@ -39,6 +39,7 @@ import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { subscribeCommandBus } from '@/lib/command-bus';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
+import { SidebarSettingsButton } from '@/components/nav/SidebarSettingsButton';
 
 /** Mobile reception routes live under `/r/m/` — not `/r/monitor-map` etc. */
 function isReceptionMobilePath(path: string) {
@@ -50,7 +51,6 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const t = useTranslations('common');
-  const tProfile = useTranslations('profile');
   const tCmd = useTranslations('commandPalette');
   const allowedNav = filterNavByPermission(user, RECEPTION_NAV);
   const { backupModeActive } = useEmmaIntegrationStatus(!!user);
@@ -186,6 +186,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
         footer={
           <div className="space-y-3">
             <div className="flex items-center justify-between">
+              <SidebarSettingsButton onClick={() => setProfileOpen(true)} />
               <NotificationBell variant="onDark" />
             </div>
             <div>
@@ -194,13 +195,6 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
               </p>
               <p className="truncate text-xs text-sidebar-muted">{user.email}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              className="text-xs font-medium text-sidebar-muted transition-colors hover:text-white"
-            >
-              {tProfile('openProfile')}
-            </button>
             <button
               type="button"
               onClick={() => {

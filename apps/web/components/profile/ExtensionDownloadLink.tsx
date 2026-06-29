@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { extensionDownloadUrl } from '@/lib/extension-download';
 
 type Props = {
   className?: string;
@@ -13,7 +14,7 @@ export function ExtensionDownloadLink({ className = '' }: Props) {
   return (
     <div className={className}>
       <a
-        href="/downloads/prize-panel-extension.zip"
+        href={extensionDownloadUrl()}
         download="prize-panel-extension.zip"
         className="inline-flex items-center gap-2 text-sm font-medium text-action transition hover:text-action/80"
       >

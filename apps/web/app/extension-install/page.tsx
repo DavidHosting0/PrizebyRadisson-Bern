@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { extensionDownloadUrl } from '@/lib/extension-download';
 
 export const metadata = {
   title: 'Chrome Extension installieren · Housekeeping',
@@ -20,7 +21,7 @@ export default function ExtensionInstallPage() {
           Lade die ZIP-Datei herunter (auch in deinem Profil unter „Chrome Extension herunterladen“).
         </p>
         <a
-          href="/downloads/prize-panel-extension.zip"
+          href={extensionDownloadUrl()}
           download="prize-panel-extension.zip"
           className="inline-flex min-h-[44px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white transition hover:bg-action/90"
         >

@@ -14,8 +14,14 @@ const outDir = path.join(root, 'apps', 'web', 'public', 'downloads');
 const outFile = path.join(outDir, 'prize-panel-extension.zip');
 
 if (!fs.existsSync(distDir)) {
-  console.error('Extension dist missing. Run: npm run build -w @housekeeping/prize-panel-extension');
-  process.exit(1);
+  if (fs.existsSync(outFile)) {
+    console.log(`Extension dist missing; keeping existing ${outFile}`);
+    process.exit(0);
+  }
+  console.warn(
+    'Extension dist missing and no zip present. Run: npm run build -w @housekeeping/prize-panel-extension',
+  );
+  process.exit(0);
 }
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -35,8 +41,22 @@ const result = isWin
   : spawnSync('zip', ['-r', outFile, '.'], { cwd: distDir, stdio: 'inherit' });
 
 if (result.status !== 0) {
-  console.error('Failed to create extension zip');
-  process.exit(result.status ?? 1);
+  if (isWin) {
+    console.error('Failed to create extension zip');
+    process.exit(result.status ?? 1);
+  }
+  // Fallback when `zip` CLI is missing (common on minimal Linux images).
+  console.warn('`zip` command failed; trying node archiver…');
+  const archiverResult = spawnSync(
+    process.execPath,
+    [path.join(__dirname, 'package-prize-panel-extension-archiver.mjs')],
+    { stdio: 'inherit', cwd: root },
+  );
+  if (archiverResult.status !== 0) {
+    console.error('Failed to create extension zip (zip CLI and archiver)');
+    process.exit(archiverResult.status ?? 1);
+  }
+  process.exit(0);
 }
 
 console.log(`Created ${outFile}`);
