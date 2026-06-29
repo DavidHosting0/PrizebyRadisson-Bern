@@ -253,6 +253,20 @@ export function IconFrontOfficeBackup({ className }: { className?: string }) {
   );
 }
 
+export function IconClipboard({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export type NavIcon = ComponentType<{ className?: string }>;
 
 export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
@@ -268,6 +282,7 @@ export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
   '/r/lost': IconPackage,
   '/r/damages': IconDamage,
   '/r/guides': IconGuide,
+  '/r/schichtuebergabe': IconClipboard,
   '/r/schichtplan': IconCalendar,
   '/r/puzzle': IconPuzzle,
   '/r/monitor-map': IconMonitor,

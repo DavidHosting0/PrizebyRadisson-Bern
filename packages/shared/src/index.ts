@@ -15,6 +15,8 @@ export enum DerivedRoomStatus {
 }
 
 export * from './folio-charges';
+export * from './outstanding-balance';
+export * from './night-audit-grace';
 export * from './emma-folio-move';
 export * from './guest-stay-type';
 export * from './room-layout';
@@ -28,6 +30,7 @@ export * from './departures';
 export * from './locale';
 export * from './room-management';
 export * from './front-office-backup';
+export * from './shift-handover';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',

@@ -145,6 +145,22 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     ],
   },
   {
+    id: 'shift-handover',
+    label: 'Shift handover',
+    entries: [
+      {
+        code: PermissionCode.SHIFT_HANDOVER_READ,
+        title: 'Use shift handover',
+        description: 'Open the shift handover checklist, tick tasks, and hand over to the next shift.',
+      },
+      {
+        code: PermissionCode.SHIFT_HANDOVER_WRITE,
+        title: 'Manage shift handover templates',
+        description: 'Edit checklist tasks for night, morning, and late reception shifts.',
+      },
+    ],
+  },
+  {
     id: 'reservations',
     label: 'Reservations',
     entries: [

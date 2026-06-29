@@ -72,6 +72,14 @@ enum PermissionCode {
   GUIDE_READ
   GUIDE_WRITE
   ROOM_MANAGEMENT_READ
+  SHIFT_HANDOVER_READ
+  SHIFT_HANDOVER_WRITE
+}
+
+enum ReceptionHandoverShift {
+  NIGHT
+  MORNING
+  LATE
 }
 
 enum MonitorMapFeedKind {
@@ -1033,6 +1041,38 @@ model MonitorMapPoliceItem {
 
   @@unique([sourceId, externalId])
   @@index([publishedAt])
+}
+
+model ShiftHandoverTemplateTask {
+  id        String                 @id @default(cuid())
+  shift     ReceptionHandoverShift
+  label     String
+  code      String
+  sortOrder Int                    @default(0)
+
+  @@unique([shift, code])
+  @@index([shift, sortOrder])
+}
+
+model ShiftHandoverState {
+  id                   String                 @id @default("singleton")
+  activeShift          ReceptionHandoverShift @default(NIGHT)
+  completions          Json                   @default("{}")
+  lastHandoverAt       DateTime?
+  lastHandoverByUserId String?
+  updatedAt            DateTime               @updatedAt
+}
+
+model ShiftHandoverLog {
+  id                 String                 @id @default(cuid())
+  fromShift          ReceptionHandoverShift
+  toShift            ReceptionHandoverShift
+  handedOverByUserId String
+  incompleteCount    Int
+  snapshot           Json
+  createdAt          DateTime               @default(now())
+
+  @@index([createdAt])
 }
 
 model Guide {

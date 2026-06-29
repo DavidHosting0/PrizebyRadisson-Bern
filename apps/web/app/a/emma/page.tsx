@@ -219,7 +219,9 @@ export default function AdminEmmaCredentialsPage() {
             description={
               backupMode?.manual
                 ? 'Rezeption sieht die Kategorie „Front Office“ und das Panik-Banner.'
-                : backupMode?.active
+                : backupMode?.nightAuditGrace
+                  ? 'Night Audit (02–07 Uhr): EMMA kurz offline — Backup wird erst nach 30 Min. oder ab 07:00 aktiviert.'
+                  : backupMode?.active
                   ? `Backup aktiv (${backupMode.reasons.join(', ')}) — ohne manuellen Schalter.`
                   : 'Backup nur bei EMMA-Ausfall (Push-Fehler oder Reservierungs-Sync).'
             }

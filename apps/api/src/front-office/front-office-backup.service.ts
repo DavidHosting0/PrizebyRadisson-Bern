@@ -1,7 +1,11 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { User, UserRole } from '@prisma/client';
 import type { FrontOfficeBackupOverview } from '@housekeeping/shared';
-import { formatHotelDateOnly } from '@housekeeping/shared';
+import {
+  formatHotelDateOnly,
+  outstandingBalanceFetchedAt,
+  resolveOutstandingBalance,
+} from '@housekeeping/shared';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmmaBackupModeService } from '../emma/emma-backup-mode.service';
@@ -9,10 +13,6 @@ import { readEmmaMetadata, normalizeEmmaRoomNumber } from '../emma/emma-room-sta
 import { decryptSensitivePayload } from '../reservations/reservation-sensitive';
 import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
-import {
-  balanceFetchedAt,
-  resolveReservationBalance,
-} from '../reservations/reservation-balance';
 import { RoomStatusService } from '../rooms/room-status.service';
 import { compareRoomNumbers, floorFromRoomNumber } from '../rooms/room-layout';
 
@@ -88,7 +88,11 @@ export class FrontOfficeBackupService {
       const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
       const folio = decryptFolioBundle(this.cipher, row.folioEnc);
       const detail = decryptDetailBundle(this.cipher, row.detailEnc);
-      const resolved = resolveReservationBalance({ sensitive: s, folio, detail });
+      const resolved = resolveOutstandingBalance({
+        sensitiveBalance: s?.balance,
+        folio,
+        detail,
+      });
       const roomNumber = row.roomId?.trim()
         ? normalizeEmmaRoomNumber(row.roomId.trim())
         : null;
@@ -105,7 +109,7 @@ export class FrontOfficeBackupService {
         checkInQueue: row.checkInQueue,
         inTodayArrivals: row.inTodayArrivals,
         balance: resolved.balance,
-        balanceFetchedAt: balanceFetchedAt({
+        balanceFetchedAt: outstandingBalanceFetchedAt({
           source: resolved.source,
           folioFetchedAt: row.folioFetchedAt,
           detailFetchedAt: row.detailFetchedAt,

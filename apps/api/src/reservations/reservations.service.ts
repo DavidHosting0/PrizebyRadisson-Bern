@@ -29,7 +29,10 @@ import {
   decryptFolioBundle,
   encryptFolioBundle,
 } from './reservation-folio-bundle';
-import { resolveReservationBalance } from './reservation-balance';
+import {
+  resolveOutstandingBalance,
+  outstandingBalanceForStorage,
+} from './reservation-balance';
 
 @Injectable()
 export class ReservationsService {
@@ -444,7 +447,11 @@ export class ReservationsService {
 
     const folio = opts.folio ?? decryptFolioBundle(this.cipher, row.folioEnc);
     const detail = opts.detail ?? decryptDetailBundle(this.cipher, row.detailEnc);
-    const { balance } = resolveReservationBalance({ sensitive, folio, detail });
+    const balance = outstandingBalanceForStorage({
+      sensitiveBalance: sensitive.balance,
+      folio,
+      detail,
+    });
     if (!balance || balance === sensitive.balance) return;
 
     await this.prisma.reservationSnapshot.update({
@@ -817,8 +824,8 @@ export class ReservationsService {
     const emmaDetail = decryptDetailBundle(this.cipher, row.detailEnc);
     const emmaFolio = decryptFolioBundle(this.cipher, row.folioEnc);
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
-    const resolvedBalance = resolveReservationBalance({
-      sensitive: s,
+    const resolvedBalance = resolveOutstandingBalance({
+      sensitiveBalance: s?.balance,
       folio: emmaFolio,
       detail: emmaDetail,
     }).balance;

@@ -5,6 +5,8 @@ export type EmmaBackupModeState = {
   reasons: EmmaBackupModeReason[];
   since: string | null;
   manual: boolean;
+  /** Automatic failures exist but are tolerated (night audit 02:00–07:00, <30 min). */
+  nightAuditGrace?: boolean;
 };
 
 export type EmmaPushAlertState = {

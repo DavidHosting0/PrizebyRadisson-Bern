@@ -7,6 +7,7 @@ import {
 } from '../src/rooms/room-layout';
 import { ensureSystemRoles } from '../src/permissions/ensure-system-roles';
 import { BERN_TICKET_GUIDE_SLUG, bernTicketGuideMarkdown, bernTicketGuideSummary } from './seed-guides';
+import { seedShiftHandover } from './seed-shift-handover';
 
 const prisma = new PrismaClient();
 
@@ -376,6 +377,8 @@ async function main() {
       updatedByUserId: guideAuthor.id,
     },
   });
+
+  await seedShiftHandover(prisma);
 
   console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
 }

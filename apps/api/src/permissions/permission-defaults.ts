@@ -46,6 +46,8 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.GUIDE_READ,
   PermissionCode.GUIDE_WRITE,
   PermissionCode.ROOM_MANAGEMENT_READ,
+  PermissionCode.SHIFT_HANDOVER_READ,
+  PermissionCode.SHIFT_HANDOVER_WRITE,
 ];
 
 export function addCleanerBase(s: Set<PermissionCode>) {
@@ -118,6 +120,7 @@ export function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.ARRIVAL_CHECK);
   s.add(PermissionCode.GUIDE_READ);
   s.add(PermissionCode.ROOM_MANAGEMENT_READ);
+  s.add(PermissionCode.SHIFT_HANDOVER_READ);
   return s;
 }
 

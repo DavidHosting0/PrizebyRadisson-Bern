@@ -60,6 +60,8 @@ export const RECEPTION_NAV: NavItem[] = [
 
   { href: '/r/guides', labelKey: 'guides', permission: 'GUIDE_READ' },
 
+  { href: '/r/schichtuebergabe', labelKey: 'shiftHandover', permission: 'SHIFT_HANDOVER_READ' },
+
   { href: '/r/schichtplan', labelKey: 'schichtplan', permission: 'SHIFT_READ' },
 
   { href: '/r/puzzle', labelKey: 'puzzle', permission: 'SETTINGS_READ' },

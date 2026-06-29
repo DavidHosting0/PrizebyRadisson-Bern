@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { EmmaBackupModeReason, EmmaBackupModeState } from '@housekeeping/shared';
+import type { EmmaBackupModeState } from '@housekeeping/shared';
+import { resolveBackupModeWithNightAudit } from '@housekeeping/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmmaIntegrationAlertService } from './emma-integration-alert.service';
 
@@ -63,43 +64,34 @@ export class EmmaBackupModeService {
     return next;
   }
 
-  async getState(): Promise<EmmaBackupModeState> {
+  async getState(now = new Date()): Promise<EmmaBackupModeState> {
     const [pushAlert, manual, lastSyncRun] = await Promise.all([
       this.integrationAlert.getState(),
       this.getManualState(),
       this.prisma.reservationSyncRun.findFirst({ orderBy: { startedAt: 'desc' } }),
     ]);
 
-    const reasons: EmmaBackupModeReason[] = [];
-    const sinceCandidates: string[] = [];
+    const resolved = resolveBackupModeWithNightAudit({
+      pushActive: pushAlert.active,
+      pushSince: pushAlert.since,
+      reservationSyncError: lastSyncRun?.status === 'error',
+      reservationSyncErrorSince: lastSyncRun?.finishedAt?.toISOString() ?? null,
+      manual: manual.manual === true,
+      now,
+    });
 
-    if (pushAlert.active) {
-      reasons.push('push');
-      if (pushAlert.since) sinceCandidates.push(pushAlert.since);
-    }
-
-    if (lastSyncRun?.status === 'error') {
-      reasons.push('reservation_sync');
-      if (lastSyncRun.finishedAt) {
-        sinceCandidates.push(lastSyncRun.finishedAt.toISOString());
-      }
-    }
-
-    if (manual.manual) {
-      reasons.push('manual');
-      if (manual.setAt) sinceCandidates.push(manual.setAt);
-    }
-
-    const since =
-      sinceCandidates.length > 0
-        ? sinceCandidates.sort((a, b) => a.localeCompare(b))[0]!
-        : null;
+    const sinceCandidates = [...(resolved.since ? [resolved.since] : [])];
+    if (manual.manual && manual.setAt) sinceCandidates.push(manual.setAt);
 
     return {
-      active: reasons.length > 0,
-      reasons,
-      since,
+      active: resolved.active,
+      reasons: resolved.reasons,
+      since:
+        sinceCandidates.length > 0
+          ? sinceCandidates.sort((a, b) => a.localeCompare(b))[0]!
+          : null,
       manual: manual.manual === true,
+      nightAuditGrace: resolved.nightAuditGrace || undefined,
     };
   }
 

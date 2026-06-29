@@ -22,6 +22,7 @@ const ADMIN_NAV_GROUPS = [
     items: [
       { href: '/a/floor-plans', labelKey: 'floorPlans' },
       { href: '/a/guides', labelKey: 'guides' },
+      { href: '/a/schichtuebergabe', labelKey: 'shiftHandover' },
     ],
   },
   {
@@ -78,6 +79,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     roles: tAdmin('roles'),
     floorPlans: 'Floor plans',
     guides: 'Guides',
+    shiftHandover: 'Schichtübergabe',
     reservationStats: tAdmin('reservationStats'),
     integrations: tAdmin('integrations'),
     emma: 'EMMA',

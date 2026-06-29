@@ -46,6 +46,7 @@ export function useEmmaIntegrationStatus(enabled = true) {
     backupModeActive: backupMode?.active ?? false,
     backupModeReasons: backupMode?.reasons ?? [],
     backupModeSince: backupMode?.since ?? null,
+    nightAuditGrace: backupMode?.nightAuditGrace ?? false,
     manualBackupMode: backupMode?.manual ?? false,
     pushAlert: query.data?.pushAlert,
     message: query.data?.message ?? 'EMMA DOWN — BACKUP SYSTEM',

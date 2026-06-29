@@ -178,6 +178,10 @@ export function FrontOfficeBackupView({ data }: { data: FrontOfficeBackupOvervie
       ) : null}
 
       {tab === 'pending' ? (
+        <p className="text-xs text-ink-muted print:hidden">{t('balanceHint')}</p>
+      ) : null}
+
+      {tab === 'pending' ? (
         <ReservationTable
           rows={data.pendingCheckIn}
           showBalance

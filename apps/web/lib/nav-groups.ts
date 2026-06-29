@@ -100,7 +100,7 @@ export const RECEPTION_NAV_GROUPS: NavGroupDef[] = [
 
     labelKey: 'tools',
 
-    hrefs: ['/r/guides', '/r/schichtplan', '/r/puzzle', '/r/monitor-map'],
+    hrefs: ['/r/guides', '/r/schichtuebergabe', '/r/schichtplan', '/r/puzzle', '/r/monitor-map'],
 
   },
 

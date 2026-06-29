@@ -35,6 +35,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PushModule } from './push/push.module';
 import { RoomManagementModule } from './room-management/room-management.module';
 import { FrontOfficeModule } from './front-office/front-office.module';
+import { ShiftHandoverModule } from './shift-handover/shift-handover.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -78,6 +79,7 @@ import configuration from './config/configuration';
     PushModule,
     RoomManagementModule,
     FrontOfficeModule,
+    ShiftHandoverModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
