@@ -17,6 +17,11 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       { code: PermissionCode.SETTINGS_READ, title: 'View settings', description: 'Read hotel settings.' },
       { code: PermissionCode.SETTINGS_WRITE, title: 'Manage settings', description: 'Edit hotel settings.' },
       { code: PermissionCode.ANALYTICS_READ, title: 'View performance', description: 'Open analytics dashboards.' },
+      {
+        code: PermissionCode.ACTIVITY_LOG_READ,
+        title: 'View activity log',
+        description: 'Browse the audit trail of actions across the app.',
+      },
     ],
   },
   {

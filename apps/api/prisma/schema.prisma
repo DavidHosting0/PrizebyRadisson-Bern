@@ -74,6 +74,36 @@ enum PermissionCode {
   ROOM_MANAGEMENT_READ
   SHIFT_HANDOVER_READ
   SHIFT_HANDOVER_WRITE
+  ACTIVITY_LOG_READ
+}
+
+enum ActivityLogCategory {
+  AUTH
+  USER
+  ROOM
+  CHECKLIST
+  PHOTO
+  SERVICE_REQUEST
+  LOST_FOUND
+  DAMAGE
+  ASSIGNMENT
+  INSPECTION
+  SETTINGS
+  ROLE
+  FLOOR_PLAN
+  TEAM_CHAT
+  SHIFT
+  RESERVATION
+  EMMA
+  ARRIVAL_CHECK
+  GUIDE
+  SHIFT_HANDOVER
+  MONITOR_MAP
+  ROOM_MANAGEMENT
+  INTEGRATION
+  NOTIFICATION
+  SYSTEM
+  OTHER
 }
 
 enum ReceptionHandoverShift {
@@ -313,6 +343,7 @@ model User {
   guidesCreated            Guide[] @relation("GuideCreatedBy")
   guidesUpdated            Guide[] @relation("GuideUpdatedBy")
   roomHousekeepingEvents   RoomHousekeepingEvent[]
+  activityLogs             ActivityLog[]
 }
 
 /**
@@ -1094,4 +1125,33 @@ model Guide {
 
   @@index([published, sortOrder])
   @@index([category])
+}
+
+model ActivityLog {
+  id           String              @id @default(cuid())
+  createdAt    DateTime            @default(now())
+  action       String
+  label        String
+  category     ActivityLogCategory
+  actorUserId  String?
+  actor        User?               @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorEmail   String?
+  actorName    String?
+  method       String
+  path         String
+  resourceType String?
+  resourceId   String?
+  statusCode   Int?
+  success      Boolean             @default(true)
+  errorMessage String?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  durationMs   Int?
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([category])
+  @@index([resourceType, resourceId])
 }

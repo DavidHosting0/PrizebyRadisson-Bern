@@ -48,6 +48,7 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.ROOM_MANAGEMENT_READ,
   PermissionCode.SHIFT_HANDOVER_READ,
   PermissionCode.SHIFT_HANDOVER_WRITE,
+  PermissionCode.ACTIVITY_LOG_READ,
 ];
 
 export function addCleanerBase(s: Set<PermissionCode>) {

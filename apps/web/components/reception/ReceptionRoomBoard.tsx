@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import clsx from 'clsx';
 import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
@@ -12,6 +13,7 @@ import {
   RoomOccupancyBadges,
   RoomOccupancyGuestLine,
 } from '@/components/rooms/RoomOccupancyDisplay';
+import { roomTileClass } from '@/components/rooms/roomTileStyles';
 import type { RoomOccupancy } from '@housekeeping/shared';
 
 export type RoomBoardRow = {
@@ -19,7 +21,6 @@ export type RoomBoardRow = {
   roomNumber: string;
   floor: number | null;
   derivedStatus: string;
-  checklist: { tasks: { status: string }[] } | null;
   occupancy?: RoomOccupancy | null;
 };
 
@@ -122,42 +123,44 @@ export function ReceptionRoomBoard({ compact }: Props) {
   }, [filtered, groupBy]);
 
   function RoomTile({ r }: { r: RoomBoardRow }) {
-    const total = r.checklist?.tasks.length ?? 0;
-    const done = r.checklist?.tasks.filter((t) => t.status === 'COMPLETED').length ?? 0;
-    const pct = total ? Math.round((done / total) * 100) : 0;
     const hk = assignByRoom[r.id];
     const urgent = urgentByRoom.has(r.id);
+    const onColor = r.derivedStatus !== 'IN_PROGRESS';
 
     return (
       <button
         type="button"
         onClick={() => openRoom(r.id)}
-        className={`w-full rounded-card border bg-surface p-4 text-left shadow-card transition-all hover:border-ink/20 hover:shadow-lift ${
-          urgent ? 'border-danger/40 ring-1 ring-danger/15' : 'border-border'
-        } ${compact ? 'p-3' : ''}`}
+        className={clsx(
+          'w-full text-left transition-all hover:shadow-lift',
+          roomTileClass(r.derivedStatus),
+          urgent && 'ring-2 ring-danger ring-offset-2',
+          compact ? 'p-3' : 'p-4',
+        )}
       >
         <div className="flex items-start justify-between gap-2">
-          <span className={`font-semibold text-ink ${compact ? 'text-lg' : 'text-2xl'}`}>{r.roomNumber}</span>
-          <StatusBadge status={r.derivedStatus} />
+          <span
+            className={clsx(
+              'font-semibold tabular-nums',
+              onColor ? 'text-white' : 'text-ink',
+              compact ? 'text-lg' : 'text-2xl',
+            )}
+          >
+            {r.roomNumber}
+          </span>
+          <StatusBadge status={r.derivedStatus} variant={onColor ? 'onColor' : 'default'} />
         </div>
-        <RoomOccupancyGuestLine occupancy={r.occupancy} />
-        <RoomOccupancyBadges occupancy={r.occupancy} />
-        {r.floor != null && <p className="mt-1 text-xs text-ink-muted">Floor {r.floor}</p>}
-        <div className="mt-3">
-          <div className="flex justify-between text-[11px] text-ink-muted">
-            <span>Progress</span>
-            <span>
-              {done}/{total}
-            </span>
-          </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-muted">
-            <div className="h-full rounded-full bg-success" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
+        <RoomOccupancyGuestLine occupancy={r.occupancy} onColor={onColor} />
+        <RoomOccupancyBadges occupancy={r.occupancy} onColor={onColor} />
+        {r.floor != null && (
+          <p className={clsx('mt-1 text-xs', onColor ? 'text-white/80' : 'text-ink-muted')}>
+            Floor {r.floor}
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-ink-muted">HK: {hk ?? '—'}</span>
+          <span className={onColor ? 'text-white/85' : 'text-ink-muted'}>HK: {hk ?? '—'}</span>
           {urgent && (
-            <span className="rounded-full bg-danger-muted px-2 py-0.5 font-medium text-danger">Urgent</span>
+            <span className="rounded-full bg-danger px-2 py-0.5 font-medium text-white">Urgent</span>
           )}
         </div>
       </button>
@@ -266,16 +269,12 @@ export function ReceptionRoomBoard({ compact }: Props) {
                 <th className="px-4 py-3 font-semibold">Floor</th>
                 <th className="px-4 py-3 font-semibold">Guest</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Progress</th>
                 <th className="px-4 py-3 font-semibold">Housekeeper</th>
                 <th className="px-4 py-3 font-semibold">Flags</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => {
-                const total = r.checklist?.tasks.length ?? 0;
-                const done = r.checklist?.tasks.filter((t) => t.status === 'COMPLETED').length ?? 0;
-                const pct = total ? Math.round((done / total) * 100) : 0;
                 const urgent = urgentByRoom.has(r.id);
                 return (
                   <tr
@@ -291,9 +290,6 @@ export function ReceptionRoomBoard({ compact }: Props) {
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={r.derivedStatus} />
-                    </td>
-                    <td className="px-4 py-3 text-ink-muted">
-                      {done}/{total} ({pct}%)
                     </td>
                     <td className="px-4 py-3 text-ink-muted">{assignByRoom[r.id] ?? '—'}</td>
                     <td className="px-4 py-3">

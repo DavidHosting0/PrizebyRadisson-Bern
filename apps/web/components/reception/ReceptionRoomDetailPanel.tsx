@@ -12,7 +12,6 @@ import {
 import { RoomOccupancySection } from '@/components/rooms/RoomOccupancyDisplay';
 import type { RoomOccupancy } from '@housekeeping/shared';
 
-type Task = { id: string; label: string; status: string };
 type RoomDetail = {
   id: string;
   roomNumber: string;
@@ -22,7 +21,6 @@ type RoomDetail = {
   outOfOrder: boolean;
   oooReason: string | null;
   oooUntil: string | null;
-  checklist: { tasks: Task[] } | null;
   lastCleaningPhoto?: LastCleaningPhotoDto;
   lastCleaning?: LastCleaningDto;
   occupancy?: RoomOccupancy | null;
@@ -57,11 +55,6 @@ export function ReceptionRoomDetailPanel({
   const assign = roomId ? assignments.find((a) => a.roomId === roomId) : undefined;
 
   if (!open || !roomId) return null;
-
-  const tasks = room?.checklist?.tasks ?? [];
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === 'COMPLETED').length;
-  const pct = total ? Math.round((done / total) * 100) : 0;
 
   return (
     <>
@@ -109,15 +102,6 @@ export function ReceptionRoomDetailPanel({
               />
               <RoomOccupancySection occupancy={room.occupancy} />
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Cleaning progress</h3>
-                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-surface-muted">
-                  <div className="h-full rounded-full bg-success transition-all" style={{ width: `${pct}%` }} />
-                </div>
-                <p className="mt-1 text-sm text-ink-muted">
-                  {done}/{total} tasks · {pct}%
-                </p>
-              </section>
-              <section>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Assigned to</h3>
                 <p className="mt-2 text-sm font-medium text-ink">
                   {assign
@@ -131,17 +115,6 @@ export function ReceptionRoomDetailPanel({
                   <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{room.notes}</p>
                 </section>
               )}
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Checklist</h3>
-                <ul className="mt-2 space-y-1 text-sm text-ink">
-                  {tasks.map((t) => (
-                    <li key={t.id} className="flex justify-between gap-2 border-b border-border/60 py-1.5">
-                      <span>{t.label}</span>
-                      <span className="text-ink-muted">{t.status.replace(/_/g, ' ')}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
             </div>
           )}
         </div>

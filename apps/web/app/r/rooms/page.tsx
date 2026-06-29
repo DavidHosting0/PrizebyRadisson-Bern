@@ -7,7 +7,7 @@ export default function ReceptionRoomsPage() {
     <div className="space-y-6 p-4 md:p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Rooms</h1>
-        <p className="mt-1 text-sm text-ink-muted">Live status, assignments, and cleaning progress.</p>
+        <p className="mt-1 text-sm text-ink-muted">Live status and housekeeper assignments.</p>
       </div>
       <ReceptionRoomBoard />
     </div>

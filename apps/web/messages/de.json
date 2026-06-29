@@ -310,7 +310,20 @@
   "profile": {
     "title": "Dein Profil",
     "changePhoto": "Profilfoto ändern",
-    "updatePhoto": "Profilfoto aktualisieren"
+    "updatePhoto": "Profilfoto aktualisieren",
+    "close": "Schliessen",
+    "yourProfile": "Dein Profil",
+    "savePhoto": "Foto speichern",
+    "choosePhoto": "Foto wählen",
+    "saving": "Speichern…",
+    "removePhoto": "Foto entfernen",
+    "removing": "Entfernen…",
+    "cancel": "Abbrechen",
+    "newPhotoSelected": "Neues Foto ausgewählt — Speichern zum Hochladen.",
+    "downloadExtension": "Chrome Extension herunterladen",
+    "downloadExtensionHint": "PrizeBern Panel für Chrome —",
+    "installInstructions": "Installationsanleitung",
+    "openProfile": "Profil & Einstellungen"
   },
   "housekeeper": {
     "roomsTitle": "Deine Zimmer",

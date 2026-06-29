@@ -4,11 +4,11 @@ import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
 
 const style: Record<string, string> = {
-  OUT_OF_ORDER: 'bg-warning-muted text-warning',
-  DIRTY: 'bg-surface-muted text-ink-muted',
-  IN_PROGRESS: 'bg-warning-muted/80 text-ink',
-  CLEAN: 'bg-success-muted text-success',
-  INSPECTED: 'bg-surface-muted text-ink',
+  DIRTY: 'border border-red-900/25 bg-red-600/15 text-red-900',
+  CLEAN: 'border border-orange-900/20 bg-orange-500/15 text-orange-950',
+  INSPECTED: 'border border-emerald-900/25 bg-emerald-600/15 text-emerald-900',
+  IN_PROGRESS: 'border border-amber-800/30 bg-amber-400/25 text-amber-950',
+  OUT_OF_ORDER: 'border border-violet-950/30 bg-violet-600/15 text-violet-900',
 };
 
 const STATUS_KEYS = [

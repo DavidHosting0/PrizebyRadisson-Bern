@@ -310,7 +310,20 @@
   "profile": {
     "title": "Your profile",
     "changePhoto": "Change profile photo",
-    "updatePhoto": "Update profile photo"
+    "updatePhoto": "Update profile photo",
+    "close": "Close",
+    "yourProfile": "Your profile",
+    "savePhoto": "Save photo",
+    "choosePhoto": "Choose a photo",
+    "saving": "Saving…",
+    "removePhoto": "Remove photo",
+    "removing": "Removing…",
+    "cancel": "Cancel",
+    "newPhotoSelected": "New photo selected — tap Save to upload.",
+    "downloadExtension": "Download Chrome extension",
+    "downloadExtensionHint": "PrizeBern Panel for Chrome —",
+    "installInstructions": "installation guide",
+    "openProfile": "Profile & settings"
   },
   "housekeeper": {
     "roomsTitle": "Your rooms",

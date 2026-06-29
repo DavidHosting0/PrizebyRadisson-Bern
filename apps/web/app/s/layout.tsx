@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/auth-context';
@@ -28,6 +28,7 @@ import { NotificationsRuntime } from '@/components/notifications/NotificationsRu
 import { PushPermissionBanner } from '@/components/notifications/PushPermissionBanner';
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
+import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 
 /** Mobile supervisor routes live under `/s/m/` — not `/s/monitor-map` etc. */
 function isSupervisorMobilePath(path: string) {
@@ -49,10 +50,12 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const t = useTranslations('common');
+  const tProfile = useTranslations('profile');
   const tCmd = useTranslations('commandPalette');
   const nav = filterNavByPermission(user, baseNav);
   const sidebarGroups = useSidebarGroups(SUPERVISOR_NAV_GROUPS, nav, SUPERVISOR_NAV_ICONS);
   const { mobileUi, hydrated, enterMobile } = useSupervisorMobileMode();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     if (!hydrated || !user) return;
@@ -146,6 +149,13 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
             </div>
             <button
               type="button"
+              onClick={() => setProfileOpen(true)}
+              className="text-xs font-medium text-sidebar-muted transition-colors hover:text-white"
+            >
+              {tProfile('openProfile')}
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 logout();
                 router.replace('/login');
@@ -192,6 +202,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <ProfilePhotoSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );
 }

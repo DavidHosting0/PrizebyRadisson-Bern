@@ -27,7 +27,10 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     labelKey: 'analytics',
-    items: [{ href: '/a/reservations-stats', labelKey: 'reservationStats' }],
+    items: [
+      { href: '/a/reservations-stats', labelKey: 'reservationStats' },
+      { href: '/a/activity-log', labelKey: 'activityLog' },
+    ],
   },
   {
     labelKey: 'integrations',
@@ -81,6 +84,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     guides: 'Guides',
     shiftHandover: 'Schichtübergabe',
     reservationStats: tAdmin('reservationStats'),
+    activityLog: 'Aktivitätsprotokoll',
     integrations: tAdmin('integrations'),
     emma: 'EMMA',
     puzzle: 'Puzzle',
