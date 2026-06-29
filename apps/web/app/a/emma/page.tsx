@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -623,6 +624,19 @@ export default function AdminEmmaCredentialsPage() {
             <p className="mt-1 break-words">{(syncReservationsMut.error as Error).message}</p>
           </div>
         )}
+
+        <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 text-sm text-indigo-950">
+          <p className="font-semibold">Anreise-Check Vorschau</p>
+          <p className="mt-1 text-indigo-900/80">
+            Den Lauf-Bildschirm (Fortschritt, manuelle Fälle, VCC) ohne echten EMMA-Lauf testen.
+          </p>
+          <Link
+            href="/a/arrival-check"
+            className="mt-3 inline-flex rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-900 hover:bg-indigo-50"
+          >
+            Vorschau öffnen →
+          </Link>
+        </div>
       </section>
     </div>
   );

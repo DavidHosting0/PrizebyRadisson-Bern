@@ -72,8 +72,9 @@ export default function AdminArrivalCheckPreviewPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Arrival Check Preview</h1>
         <p className="mt-1 max-w-2xl text-sm text-ink-muted">
           Simulate the reception arrival-check run screen without waiting for real arrivals or
-          starting an EMMA run. Use this to review layout, progress states, and manual-intervention
-          flows.
+          starting an EMMA run. Admin only — open via{' '}
+          <span className="font-mono text-xs text-ink">/a/arrival-check</span> or the nav link{' '}
+          <strong className="font-medium text-ink">Analytics → Anreise-Check Vorschau</strong>.
         </p>
       </div>
 

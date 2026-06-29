@@ -8,14 +8,16 @@ import { IconSearch } from '@/components/nav/nav-icons';
 export function CommandPaletteTrigger({
   className,
   label,
+  onDark,
 }: {
   className?: string;
   label?: string;
+  onDark?: boolean;
 }) {
   return (
     <Button
       type="button"
-      variant="ghost"
+      variant={onDark ? 'ghostOnDark' : 'ghost'}
       className={className}
       onClick={() => emitCommandBus({ type: 'palette:open' })}
       aria-label={label}

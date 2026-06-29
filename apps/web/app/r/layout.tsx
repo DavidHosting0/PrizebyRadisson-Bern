@@ -20,6 +20,7 @@ import { useSidebarGroups } from '@/lib/use-sidebar-groups';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { AppSidebar } from '@/components/nav/AppSidebar';
+import { APP_TOP_BAR_CLASS } from '@/components/nav/app-top-bar';
 import { RECEPTION_NAV_ICONS } from '@/components/nav/nav-icons';
 import { ReceptionUiProvider, useReceptionUi } from '@/app/r/reception-context';
 import { NewRequestModal } from '@/components/reception/NewRequestModal';
@@ -215,21 +216,26 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
           path === '/r/chat' ? 'h-full overflow-hidden' : 'md:overflow-hidden',
         )}
       >
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface/95 px-5 shadow-card backdrop-blur-sm md:px-8">
-          <BrandLogo compact className="shrink-0 md:hidden" />
+        <header
+          className={clsx(
+            'sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 px-5 md:px-8',
+            APP_TOP_BAR_CLASS,
+          )}
+        >
+          <BrandLogo compact className="shrink-0 brightness-0 invert md:hidden" />
           <div className="hidden min-w-0 flex-1 items-baseline gap-3 sm:flex">
-            <p className="truncate text-lg font-semibold tracking-tight text-ink">{hotelTitle}</p>
-            <span className="shrink-0 rounded-full bg-surface-muted px-2.5 py-0.5 text-[11px] font-medium text-ink-muted">
+            <p className="truncate text-lg font-semibold tracking-tight text-white">{hotelTitle}</p>
+            <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-sidebar-muted">
               {t('beta')}
             </span>
           </div>
           <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
-            <CommandPaletteTrigger className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
-            <LanguageSwitcher compact />
+            <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
+            <LanguageSwitcher compact onDark />
             <div className="md:hidden">
-              <NotificationBell />
+              <NotificationBell variant="onDark" />
             </div>
-            <Button type="button" variant="ghost" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
+            <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
               {t('mobileView')}
             </Button>
             {canCreateRequest && (

@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'action';
+type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'ghostOnDark' | 'action';
 
 const styles: Record<Variant, string> = {
   primary:
@@ -12,6 +12,8 @@ const styles: Record<Variant, string> = {
     'bg-surface text-ink border border-border shadow-card hover:bg-surface-muted active:bg-surface-muted/80',
   danger: 'bg-danger-muted text-danger border border-danger/20 hover:bg-danger/10',
   ghost: 'text-ink-muted border border-transparent hover:bg-surface-muted/80 hover:border-border',
+  ghostOnDark:
+    'text-sidebar-muted border border-transparent hover:bg-sidebar-hover hover:text-white',
 };
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {

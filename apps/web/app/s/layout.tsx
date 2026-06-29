@@ -20,6 +20,7 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { AppSidebar } from '@/components/nav/AppSidebar';
+import { APP_TOP_BAR_CLASS } from '@/components/nav/app-top-bar';
 import { SUPERVISOR_NAV_ICONS } from '@/components/nav/nav-icons';
 import { SupervisorMobileModeProvider, useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { SupervisorMobileShell } from '@/components/supervisor/SupervisorMobileShell';
@@ -170,21 +171,31 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
           path === '/s/chat' ? 'h-full overflow-hidden' : 'md:overflow-hidden',
         )}
       >
-        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface/95 px-5 py-3 shadow-card backdrop-blur-sm md:hidden">
-          <BrandLogo compact />
+        <header
+          className={clsx(
+            'flex items-center justify-between gap-3 px-5 py-3 md:hidden',
+            APP_TOP_BAR_CLASS,
+          )}
+        >
+          <BrandLogo compact className="brightness-0 invert" />
           <div className="flex items-center gap-2">
-            <CommandPaletteTrigger className="min-h-[36px] gap-2 px-2 text-xs" />
-            <LanguageSwitcher compact />
-            <NotificationBell />
-            <Button type="button" variant="ghost" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
+            <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-2 text-xs" />
+            <LanguageSwitcher compact onDark />
+            <NotificationBell variant="onDark" />
+            <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
               {t('mobileView')}
             </Button>
           </div>
         </header>
-        <header className="hidden items-center justify-end gap-2 border-b border-border bg-surface/95 px-8 py-3 shadow-card backdrop-blur-sm md:flex">
-          <CommandPaletteTrigger className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
-          <LanguageSwitcher compact />
-          <Button type="button" variant="ghost" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
+        <header
+          className={clsx(
+            'hidden items-center justify-end gap-2 px-8 py-3 md:flex',
+            APP_TOP_BAR_CLASS,
+          )}
+        >
+          <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
+          <LanguageSwitcher compact onDark />
+          <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
             {t('mobileView')}
           </Button>
         </header>

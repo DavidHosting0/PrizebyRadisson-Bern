@@ -5,7 +5,13 @@ import { useTranslations } from 'next-intl';
 import { type SupportedLocale } from '@housekeeping/shared';
 import { useLocale } from '@/lib/locale-context';
 
-export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
+export function LanguageSwitcher({
+  compact = false,
+  onDark = false,
+}: {
+  compact?: boolean;
+  onDark?: boolean;
+}) {
   const { locale, setLocale } = useLocale();
   const t = useTranslations('common');
 
@@ -16,7 +22,11 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
 
   return (
     <div
-      className={clsx('flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5', compact && 'text-xs')}
+      className={clsx(
+        'flex items-center gap-0.5 rounded-lg border p-0.5',
+        compact && 'text-xs',
+        onDark ? 'border-sidebar-border bg-white/5' : 'border-border bg-surface',
+      )}
       role="group"
       aria-label={t('language')}
     >
@@ -28,8 +38,12 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
           className={clsx(
             'min-h-[28px] rounded-md px-2 py-1 font-medium transition-colors',
             locale === opt.value
-              ? 'bg-ink text-surface'
-              : 'text-ink-muted hover:text-ink',
+              ? onDark
+                ? 'bg-white/15 text-white'
+                : 'bg-ink text-surface'
+              : onDark
+                ? 'text-sidebar-muted hover:text-white'
+                : 'text-ink-muted hover:text-ink',
           )}
           aria-pressed={locale === opt.value}
         >
