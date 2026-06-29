@@ -119,6 +119,7 @@ const RULES: RouteRule[] = [
   { method: 'POST', pattern: /^\/arrival-check\/sync$/, action: 'arrival_check.sync', label: 'Arrival-Check Sync', category: ActivityLogCategory.ARRIVAL_CHECK },
   { method: 'POST', pattern: /^\/arrival-check\/runs$/, action: 'arrival_check.run.create', label: 'Arrival-Check Run gestartet', category: ActivityLogCategory.ARRIVAL_CHECK },
   { method: 'POST', pattern: /^\/arrival-check\/runs\/([^/]+)\/execute$/, action: 'arrival_check.run.execute', label: 'Arrival-Check ausgeführt', category: ActivityLogCategory.ARRIVAL_CHECK, resourceType: 'arrival_check_run', resourceIndex: 1 },
+  { method: 'POST', pattern: /^\/arrival-check\/runs\/([^/]+)\/retry-failed$/, action: 'arrival_check.run.retry_failed', label: 'Fehlgeschlagene Reservierungen wiederholt', category: ActivityLogCategory.ARRIVAL_CHECK, resourceType: 'arrival_check_run', resourceIndex: 1 },
   { method: 'POST', pattern: /^\/arrival-check\/runs\/([^/]+)\/cancel$/, action: 'arrival_check.run.cancel', label: 'Arrival-Check abgebrochen', category: ActivityLogCategory.ARRIVAL_CHECK, resourceType: 'arrival_check_run', resourceIndex: 1 },
 
   // Departures

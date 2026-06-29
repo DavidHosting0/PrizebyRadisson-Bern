@@ -23,6 +23,9 @@ type Props = {
   onCancel?: () => void;
   cancelPending?: boolean;
   cancelError?: string | null;
+  onRetryFailed?: () => void;
+  retryFailedPending?: boolean;
+  retryFailedError?: string | null;
 };
 
 function StatusDot({ status }: { status: ArrivalCheckRunItem['status'] }) {
@@ -144,6 +147,9 @@ export function ArrivalCheckRunView({
   onCancel,
   cancelPending,
   cancelError,
+  onRetryFailed,
+  retryFailedPending,
+  retryFailedError,
 }: Props) {
   const active = isRunActive(run);
   const finished = isRunFinished(run);
@@ -225,6 +231,7 @@ export function ArrivalCheckRunView({
           <StatChip label="Erledigt" value={run.completedCount} tone="success" />
           <StatChip label="VCC" value={run.paidCount} tone="success" />
           <StatChip label="Manuell" value={run.manualCount} tone="warning" />
+          <StatChip label="Fehler" value={run.failedCount} tone="danger" />
           <StatChip label="Abgelehnt" value={run.declinedCount} tone="danger" />
           <StatChip label="Übersprungen" value={run.skippedCount} tone="muted" />
           {active && <StatChip label="Ausstehend" value={run.pendingCount} tone="neutral" />}
@@ -344,6 +351,23 @@ export function ArrivalCheckRunView({
               </ul>
             </div>
           )}
+
+          {finished && run.failedCount > 0 && onRetryFailed && !preview && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-4 text-center">
+              <p className="text-sm text-rose-900">
+                {run.failedCount} Reservierung{run.failedCount === 1 ? '' : 'en'} mit technischem
+                Fehler — nach Prüfung erneut versuchen.
+              </p>
+              <button
+                type="button"
+                onClick={onRetryFailed}
+                disabled={retryFailedPending}
+                className="mt-3 rounded-lg border border-rose-300 bg-surface px-4 py-2 text-sm font-semibold text-rose-950 hover:bg-rose-50 disabled:opacity-50"
+              >
+                {retryFailedPending ? 'Wird wiederholt…' : 'Fehlgeschlagene wiederholen'}
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -358,6 +382,10 @@ export function ArrivalCheckRunView({
 
       {cancelError && (
         <p className="text-sm text-rose-700">{cancelError}</p>
+      )}
+
+      {retryFailedError && (
+        <p className="text-sm text-rose-700">{retryFailedError}</p>
       )}
     </div>
   );

@@ -59,6 +59,13 @@ export class ArrivalCheckController {
     return this.arrivalCheck.executeRun(id);
   }
 
+  @Post('runs/:id/retry-failed')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.ARRIVAL_CHECK)
+  retryFailed(@Param('id') id: string) {
+    return this.arrivalCheck.retryFailedItems(id);
+  }
+
   @Post('runs/:id/cancel')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PermissionCode.ARRIVAL_CHECK)

@@ -299,6 +299,28 @@ export class ArrivalCheckService implements OnModuleInit {
     return reset;
   }
 
+  /**
+   * Items the automatic worker may pick without an explicit user retry.
+   * NEEDS_MANUAL and FAILED are terminal until a human acts (retry-failed or new run).
+   */
+  private isQueuedForAutoProcess(item: {
+    status: ArrivalCheckRunItem['status'];
+    paymentStatus: string | null;
+  }): boolean {
+    return item.status === 'PENDING' && item.paymentStatus !== 'DECLINED';
+  }
+
+  /** True when a RUNNING run still has queue work for the auto-worker. */
+  private runHasAutoWork(
+    items: { status: ArrivalCheckRunItem['status']; paymentStatus: string | null }[],
+  ): boolean {
+    return items.some(
+      (i) =>
+        this.isQueuedForAutoProcess(i) ||
+        (i.status === 'IN_PROGRESS' && i.paymentStatus !== 'PLANNED'),
+    );
+  }
+
   /** If a RUNNING run has no in-memory worker, kick executeRun (e.g. after API restart). */
   private scheduleResumeIfInterrupted(runId: string): void {
     if (this.executingRunId) return;
@@ -318,15 +340,7 @@ export class ArrivalCheckService implements OnModuleInit {
       if (!run || run.status !== 'RUNNING') return;
       if (this.executingRunId) return;
 
-      const hasWork = run.items.some(
-        (i) =>
-          i.status === 'PENDING' ||
-          i.status === 'IN_PROGRESS' ||
-          ((i.status === 'FAILED' || i.status === 'NEEDS_MANUAL') &&
-            i.paymentStatus !== 'DECLINED' &&
-            i.paymentStatus !== 'PLANNED'),
-      );
-      if (!hasWork) {
+      if (!this.runHasAutoWork(run.items)) {
         await this.refreshRunStatus(runId);
         return;
       }
@@ -393,11 +407,7 @@ export class ArrivalCheckService implements OnModuleInit {
           where: { runId },
           orderBy: { reservationId: 'asc' },
         });
-        const item = items.find(
-          (i) =>
-            (i.status === 'PENDING' || i.status === 'FAILED' || i.status === 'NEEDS_MANUAL') &&
-            i.paymentStatus !== 'DECLINED',
-        );
+        const item = items.find((i) => this.isQueuedForAutoProcess(i));
         if (!item) break;
 
         if (item.paymentStatus === 'PLANNED') {
@@ -431,6 +441,65 @@ export class ArrivalCheckService implements OnModuleInit {
     } finally {
       this.executingRunId = null;
     }
+  }
+
+  /**
+   * Reset FAILED items to PENDING and re-run them. NEEDS_MANUAL is never retried
+   * automatically — fix EMMA manually or start a new run with force-rerun.
+   */
+  async retryFailedItems(runId: string): Promise<ArrivalCheckRunDetail> {
+    const run = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id: runId },
+      select: { id: true, status: true },
+    });
+    if (!run) throw new NotFoundException('Anreise-Check-Lauf nicht gefunden.');
+    if (run.status === 'CANCELLED') {
+      throw new BadRequestException('Abgebrochener Lauf kann nicht wiederholt werden.');
+    }
+
+    const retryable = await this.prisma.arrivalCheckRunItem.findMany({
+      where: {
+        runId,
+        status: 'FAILED',
+        paymentStatus: { notIn: ['DECLINED', 'PLANNED'] },
+      },
+      select: { id: true },
+    });
+    if (retryable.length === 0) {
+      throw new BadRequestException(
+        'Keine fehlgeschlagenen Reservierungen zum Wiederholen (DECLINED/PLANNED ausgeschlossen).',
+      );
+    }
+
+    await this.prisma.arrivalCheckRunItem.updateMany({
+      where: { id: { in: retryable.map((i) => i.id) } },
+      data: {
+        status: 'PENDING',
+        currentStep: null,
+        error: null,
+        manualReason: null,
+        statusMessage: null,
+        startedAt: null,
+        finishedAt: null,
+        movesPlanned: 0,
+        movesDone: 0,
+        paymentStatus: null,
+        paymentAmount: null,
+        paymentExpectedAmount: null,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentError: null,
+      },
+    });
+
+    if (run.status !== 'RUNNING') {
+      await this.prisma.arrivalCheckRun.update({
+        where: { id: runId },
+        data: { status: 'RUNNING', finishedAt: null },
+      });
+    }
+
+    return this.executeRun(runId);
   }
 
   /** getRun without triggering another auto-resume (used from executeRun tail). */

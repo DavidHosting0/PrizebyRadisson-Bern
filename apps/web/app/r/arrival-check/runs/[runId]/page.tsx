@@ -26,6 +26,17 @@ export default function ArrivalCheckRunPage() {
     },
   });
 
+  const retryFailedMut = useMutation({
+    mutationFn: () =>
+      api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}/retry-failed`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arrival-check', 'run', runId], data);
+    },
+  });
+
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace('/login');
@@ -89,6 +100,11 @@ export default function ArrivalCheckRunPage() {
         onCancel={() => cancelMut.mutate()}
         cancelPending={cancelMut.isPending}
         cancelError={cancelMut.isError ? (cancelMut.error as Error).message : null}
+        onRetryFailed={() => retryFailedMut.mutate()}
+        retryFailedPending={retryFailedMut.isPending}
+        retryFailedError={
+          retryFailedMut.isError ? (retryFailedMut.error as Error).message : null
+        }
       />
     </div>
   );
