@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsOptional, IsString, Min, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Min, MinLength, ValidateNested } from 'class-validator';
 
 export class PutShiftHandoverTemplateTaskDto {
   @IsOptional()
@@ -17,6 +17,10 @@ export class PutShiftHandoverTemplateTaskDto {
   @IsInt()
   @Min(0)
   sortOrder!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  essential?: boolean;
 }
 
 export class PutShiftHandoverTemplateDto {

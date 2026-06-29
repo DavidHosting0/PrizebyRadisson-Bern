@@ -19,6 +19,7 @@ type DraftTask = {
   id?: string;
   label: string;
   sortOrder: number;
+  essential: boolean;
 };
 
 function reorder<T>(list: T[], from: number, to: number): T[] {
@@ -37,6 +38,15 @@ function parseApiError(raw: string): string {
     /* plain text */
   }
   return raw || 'Request failed';
+}
+
+function serializeDraft(tasks: DraftTask[]) {
+  return tasks.map((t, i) => ({
+    id: t.id ?? null,
+    label: t.label,
+    sortOrder: i,
+    essential: t.essential,
+  }));
 }
 
 export default function AdminShiftHandoverPage() {
@@ -60,7 +70,12 @@ export default function AdminShiftHandoverPage() {
 
   useEffect(() => {
     if (!current) return;
-    const next = current.tasks.map((t) => ({ id: t.id, label: t.label, sortOrder: t.sortOrder }));
+    const next = current.tasks.map((t) => ({
+      id: t.id,
+      label: t.label,
+      sortOrder: t.sortOrder,
+      essential: t.essential,
+    }));
     setDraft(next);
     setSavedDraft(next);
   }, [shift, current?.tasks.length, current?.tasks.map((t) => t.id).join(',')]);
@@ -71,8 +86,7 @@ export default function AdminShiftHandoverPage() {
   );
 
   const dirty =
-    JSON.stringify(sortedDraft.map((t, i) => ({ id: t.id ?? null, label: t.label, sortOrder: i }))) !==
-    JSON.stringify(savedDraft.map((t, i) => ({ id: t.id ?? null, label: t.label, sortOrder: i })));
+    JSON.stringify(serializeDraft(sortedDraft)) !== JSON.stringify(serializeDraft(savedDraft));
 
   const save = useMutation({
     mutationFn: (tasks: DraftTask[]) => {
@@ -81,6 +95,7 @@ export default function AdminShiftHandoverPage() {
           id: t.id,
           label: t.label,
           sortOrder: i,
+          essential: t.essential,
         })),
       };
       return api<ShiftHandoverTemplateDto>(`/shift-handover/templates/${shift}`, {
@@ -91,7 +106,12 @@ export default function AdminShiftHandoverPage() {
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['shift-handover', 'templates'] });
       qc.invalidateQueries({ queryKey: ['shift-handover'] });
-      const next = result.tasks.map((t) => ({ id: t.id, label: t.label, sortOrder: t.sortOrder }));
+      const next = result.tasks.map((t) => ({
+        id: t.id,
+        label: t.label,
+        sortOrder: t.sortOrder,
+        essential: t.essential,
+      }));
       setDraft(next);
       setSavedDraft(next);
       toast.push('Gespeichert', 'success');
@@ -108,7 +128,10 @@ export default function AdminShiftHandoverPage() {
   };
 
   const addTask = () => {
-    setDraft([...sortedDraft, { label: 'Neue Aufgabe', sortOrder: sortedDraft.length }]);
+    setDraft([
+      ...sortedDraft,
+      { label: 'Neue Aufgabe', sortOrder: sortedDraft.length, essential: false },
+    ]);
   };
 
   const removeAt = (index: number) => {
@@ -117,11 +140,11 @@ export default function AdminShiftHandoverPage() {
     setDraft(ordered.map((t, i) => ({ ...t, sortOrder: i })));
   };
 
-  const updateAt = (index: number, label: string) => {
+  const updateAt = (index: number, patch: Partial<Pick<DraftTask, 'label' | 'essential'>>) => {
     const ordered = [...sortedDraft];
     const row = ordered[index];
     if (!row) return;
-    ordered[index] = { ...row, label };
+    ordered[index] = { ...row, ...patch };
     setDraft(ordered);
   };
 
@@ -139,7 +162,8 @@ export default function AdminShiftHandoverPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Schichtübergabe</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Checklisten für Nacht-, Früh- und Spätschicht bearbeiten. Änderungen gelten sofort für die Rezeption.
+          Checklisten für Nacht-, Früh- und Spätschicht bearbeiten. Pflichtaufgaben blockieren die
+          Übergabe an die nächste Schicht.
         </p>
       </div>
 
@@ -190,8 +214,17 @@ export default function AdminShiftHandoverPage() {
                   <input
                     className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
                     value={t.label}
-                    onChange={(e) => updateAt(index, e.target.value)}
+                    onChange={(e) => updateAt(index, { label: e.target.value })}
                   />
+                </label>
+                <label className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 rounded border-border accent-brand"
+                    checked={t.essential}
+                    onChange={(e) => updateAt(index, { essential: e.target.checked })}
+                  />
+                  <span className="text-sm text-ink">Pflicht für Schichtübergabe</span>
                 </label>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button

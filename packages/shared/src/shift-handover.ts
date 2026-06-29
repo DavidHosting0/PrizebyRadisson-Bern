@@ -19,6 +19,7 @@ export type ShiftHandoverTaskDto = {
   label: string;
   code: string;
   sortOrder: number;
+  essential: boolean;
   completed: boolean;
   completedAt: string | null;
   completedBy: { id: string; name: string } | null;
@@ -32,6 +33,8 @@ export type ShiftHandoverStateDto = {
   tasks: ShiftHandoverTaskDto[];
   completedCount: number;
   totalCount: number;
+  essentialCompletedCount: number;
+  essentialTotalCount: number;
   lastHandoverAt: string | null;
   lastHandoverBy: { id: string; name: string } | null;
 };
@@ -41,6 +44,7 @@ export type ShiftHandoverTemplateTaskDto = {
   label: string;
   code: string;
   sortOrder: number;
+  essential: boolean;
 };
 
 export type ShiftHandoverTemplateDto = {
@@ -72,6 +76,7 @@ export type PutShiftHandoverTemplatePayload = {
     label: string;
     code?: string;
     sortOrder: number;
+    essential?: boolean;
   }>;
 };
 

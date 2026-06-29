@@ -1049,6 +1049,7 @@ model ShiftHandoverTemplateTask {
   label     String
   code      String
   sortOrder Int                    @default(0)
+  essential Boolean                @default(false)
 
   @@unique([shift, code])
   @@index([shift, sortOrder])

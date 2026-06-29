@@ -109,6 +109,7 @@ export class ShiftHandoverService {
         label: t.label,
         code: t.code,
         sortOrder: t.sortOrder,
+        essential: t.essential,
         completed,
         completedAt: entry?.completedAt ?? null,
         completedBy: completedById ? users.get(completedById) ?? null : null,
@@ -116,6 +117,8 @@ export class ShiftHandoverService {
     });
 
     const completedCount = tasks.filter((t) => t.completed).length;
+    const essentialTasks = tasks.filter((t) => t.essential);
+    const essentialCompletedCount = essentialTasks.filter((t) => t.completed).length;
     const activeShift = state.activeShift as ShiftType;
     const nextShift = nextHandoverShift(activeShift);
 
@@ -127,6 +130,8 @@ export class ShiftHandoverService {
       tasks,
       completedCount,
       totalCount: tasks.length,
+      essentialCompletedCount,
+      essentialTotalCount: essentialTasks.length,
       lastHandoverAt: state.lastHandoverAt?.toISOString() ?? null,
       lastHandoverBy: state.lastHandoverByUserId
         ? users.get(state.lastHandoverByUserId) ?? null
@@ -192,11 +197,20 @@ export class ShiftHandoverService {
         label: t.label,
         code: t.code,
         sortOrder: t.sortOrder,
+        essential: t.essential,
         completed: !!entry?.completed,
         completedAt: entry?.completedAt ?? null,
         completedByUserId: entry?.completedByUserId ?? null,
       };
     });
+
+    const incompleteEssential = snapshot.filter((t) => t.essential && !t.completed);
+    if (incompleteEssential.length > 0) {
+      const labels = incompleteEssential.map((t) => t.label).join('; ');
+      throw new BadRequestException(
+        `Schichtübergabe blockiert: ${incompleteEssential.length} Pflichtaufgabe(n) offen — ${labels}`,
+      );
+    }
 
     const incompleteCount = snapshot.filter((t) => !t.completed).length;
     const now = new Date();
@@ -244,6 +258,7 @@ export class ShiftHandoverService {
           label: t.label,
           code: t.code,
           sortOrder: t.sortOrder,
+          essential: t.essential,
         })),
     }));
   }
@@ -273,11 +288,22 @@ export class ShiftHandoverService {
           keepIds.add(t.id);
           await tx.shiftHandoverTemplateTask.update({
             where: { id: t.id },
-            data: { label: t.label, code: t.code, sortOrder: t.sortOrder },
+            data: {
+              label: t.label,
+              code: t.code,
+              sortOrder: t.sortOrder,
+              essential: t.essential ?? false,
+            },
           });
         } else {
           const created = await tx.shiftHandoverTemplateTask.create({
-            data: { shift, label: t.label, code: t.code, sortOrder: t.sortOrder },
+            data: {
+              shift,
+              label: t.label,
+              code: t.code,
+              sortOrder: t.sortOrder,
+              essential: t.essential ?? false,
+            },
           });
           keepIds.add(created.id);
         }
@@ -303,6 +329,7 @@ export class ShiftHandoverService {
         label: t.label,
         code: t.code,
         sortOrder: t.sortOrder,
+        essential: t.essential,
       })),
     };
   }

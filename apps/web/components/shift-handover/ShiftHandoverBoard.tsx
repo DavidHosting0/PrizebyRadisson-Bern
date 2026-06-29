@@ -68,10 +68,18 @@ export function ShiftHandoverBoard() {
     onError: (err: Error) => toast.push(parseApiError(err.message), 'warning'),
   });
 
-  const incompleteCount = useMemo(
-    () => (data ? data.totalCount - data.completedCount : 0),
+  const incompleteOptionalCount = useMemo(
+    () => (data ? data.tasks.filter((task) => !task.essential && !task.completed).length : 0),
     [data],
   );
+
+  const incompleteEssentialCount = useMemo(
+    () =>
+      data ? data.essentialTotalCount - data.essentialCompletedCount : 0,
+    [data],
+  );
+
+  const essentialComplete = incompleteEssentialCount === 0;
 
   const confirmMatches = useMemo(() => {
     if (!data) return false;
@@ -108,9 +116,17 @@ export function ShiftHandoverBoard() {
           </div>
           <div className="text-right">
             <p className="text-3xl font-bold tabular-nums">
-              {data.completedCount} / {data.totalCount}
+              {data.essentialCompletedCount} / {data.essentialTotalCount}
             </p>
-            <p className="text-sm opacity-80">{t('completed')}</p>
+            <p className="text-sm opacity-80">
+              {t('essentialCompleted', {
+                done: data.essentialCompletedCount,
+                total: data.essentialTotalCount,
+              })}
+            </p>
+            <p className="mt-1 text-xs opacity-75 tabular-nums">
+              {data.completedCount} / {data.totalCount} {t('completed')}
+            </p>
           </div>
         </div>
         {data.lastHandoverAt && data.lastHandoverBy && (
@@ -131,7 +147,9 @@ export function ShiftHandoverBoard() {
                 'flex min-h-[52px] cursor-pointer items-start gap-3 rounded-card border px-4 py-3 transition-colors',
                 task.completed
                   ? 'border-success/30 bg-success/5'
-                  : 'border-border bg-surface hover:bg-surface-muted/50',
+                  : task.essential
+                    ? 'border-brand/40 bg-brand/5 hover:bg-brand/10'
+                    : 'border-border bg-surface hover:bg-surface-muted/50',
               )}
             >
               <input
@@ -143,8 +161,15 @@ export function ShiftHandoverBoard() {
                   toggleTask.mutate({ taskId: task.id, completed: e.target.checked })
                 }
               />
-              <span className={clsx('flex-1 text-sm', task.completed && 'text-ink-muted line-through')}>
-                {task.label}
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className={clsx('text-sm', task.completed && 'text-ink-muted line-through')}>
+                  {task.label}
+                </span>
+                {task.essential && !task.completed && (
+                  <span className="w-fit rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
+                    {t('essentialBadge')}
+                  </span>
+                )}
               </span>
               {task.completed && task.completedBy && (
                 <span className="shrink-0 text-xs text-ink-muted">{task.completedBy.name}</span>
@@ -163,6 +188,7 @@ export function ShiftHandoverBoard() {
           type="button"
           variant="primary"
           className="min-h-[52px] w-full text-base"
+          disabled={!essentialComplete}
           onClick={() => {
             setConfirmName('');
             setHandoverOpen(true);
@@ -188,9 +214,15 @@ export function ShiftHandoverBoard() {
               {t('handoverDescription', { from: data.activeShiftLabel, to: data.nextShiftLabel })}
             </p>
 
-            {incompleteCount > 0 && (
+            {incompleteEssentialCount > 0 && (
+              <p className="mt-3 rounded-btn border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                {t('incompleteEssentialWarning', { count: incompleteEssentialCount })}
+              </p>
+            )}
+
+            {incompleteOptionalCount > 0 && essentialComplete && (
               <p className="mt-3 rounded-btn border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                {t('incompleteWarning', { count: incompleteCount })}
+                {t('incompleteWarning', { count: incompleteOptionalCount })}
               </p>
             )}
 
@@ -221,7 +253,7 @@ export function ShiftHandoverBoard() {
                 type="button"
                 variant="primary"
                 className="min-h-[44px]"
-                disabled={!confirmMatches || handover.isPending}
+                disabled={!confirmMatches || !essentialComplete || handover.isPending}
                 onClick={() => handover.mutate(confirmName.trim())}
               >
                 {handover.isPending ? t('handoverPending') : t('handoverConfirm')}
