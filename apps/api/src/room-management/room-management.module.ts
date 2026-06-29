@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CryptoModule } from '../common/crypto/crypto.module';
 import { DamageReportsModule } from '../damage-reports/damage-reports.module';
 import { LostFoundModule } from '../lost-found/lost-found.module';
@@ -9,7 +9,13 @@ import { RoomGuestStayService } from './room-guest-stay.service';
 import { RoomManagementService } from './room-management.service';
 
 @Module({
-  imports: [RoomsModule, PhotosModule, DamageReportsModule, LostFoundModule, CryptoModule],
+  imports: [
+    forwardRef(() => RoomsModule),
+    forwardRef(() => PhotosModule),
+    DamageReportsModule,
+    LostFoundModule,
+    CryptoModule,
+  ],
   controllers: [RoomManagementController],
   providers: [RoomManagementService, RoomGuestStayService],
   exports: [RoomGuestStayService],

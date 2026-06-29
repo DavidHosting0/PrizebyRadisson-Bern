@@ -5,7 +5,7 @@ import { RoomsModule } from '../rooms/rooms.module';
 import { EmmaModule } from '../emma/emma.module';
 
 @Module({
-  imports: [RoomsModule, forwardRef(() => EmmaModule)],
+  imports: [forwardRef(() => RoomsModule), forwardRef(() => EmmaModule)],
   controllers: [PhotosController],
   providers: [PhotosService],
   exports: [PhotosService],

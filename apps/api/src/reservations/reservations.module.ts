@@ -8,7 +8,7 @@ import { ReservationsService } from './reservations.service';
 import { ReservationsScheduler } from './reservations.scheduler';
 
 @Module({
-  imports: [forwardRef(() => EmmaModule), CryptoModule, RoomManagementModule],
+  imports: [forwardRef(() => EmmaModule), CryptoModule, forwardRef(() => RoomManagementModule)],
   controllers: [ReservationsController],
   providers: [ReservationsService, ReservationsAnalyticsService, ReservationsScheduler],
   exports: [ReservationsService],
