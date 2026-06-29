@@ -65,4 +65,8 @@ export class RealtimeGateway implements OnGatewayConnection {
   emitDamageReport(event: string, payload: unknown) {
     this.server?.emit(event, payload);
   }
+
+  emitEmmaIntegrationAlert(payload: unknown) {
+    this.server?.emit('emma.integration_alert', payload);
+  }
 }

@@ -12,10 +12,6 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { EmmaService } from './emma.service';
-
-/**
- * EMMA: HTTP session (Admin) + room-status sync (API, cron every 5 min, debounced after room actions).
- */
 @Controller('emma')
 export class EmmaController {
   constructor(private readonly emma: EmmaService) {}
@@ -70,5 +66,12 @@ export class EmmaController {
     @Body() body: { hotelId?: string; forceAttempt?: boolean } | undefined,
   ) {
     return this.emma.syncRoomStatuses(body ?? {});
+  }
+
+  @Get('integration-status')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  integrationStatus() {
+    return this.emma.getIntegrationStatus();
   }
 }

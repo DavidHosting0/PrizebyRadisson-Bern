@@ -25,9 +25,12 @@ import {
   floorRoomDetailsBatchPath,
   roomDetailBatchPath,
   roomDetailCountBatchPath,
+  roomsWithRackDaysBatchPath,
+  roomsWithRackDaysCountBatchPath,
   roomStatusCountBatchPath,
   roomStatusListBatchPath,
 } from './emma-odata-client';
+import { parseEmmaDateOnly, todayIsoDate } from '../reservations/reservation-sensitive';
 
 /** Normalized EMMA row for one physical room. */
 export type EmmaRoomStatusSnapshot = {
@@ -82,12 +85,65 @@ function isTruthyFlag(v: unknown): boolean {
   return false;
 }
 
+export function extractExpandedResults(
+  row: Record<string, unknown>,
+  key: string,
+): Record<string, unknown>[] {
+  const nav = row[key];
+  if (!nav || typeof nav !== 'object' || Array.isArray(nav)) return [];
+  const results = (nav as { results?: unknown[] }).results;
+  if (!Array.isArray(results)) return [];
+  return results.filter((r): r is Record<string, unknown> => r != null && typeof r === 'object');
+}
+
+export function isOoRackStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const s = status.trim().toUpperCase();
+  return s === 'OO' || s === 'OOO' || s === 'OOS' || /^O(OO|OS)?$/.test(s);
+}
+
+function dateOnlyToIso(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** True when a rack-day incident covers the given hotel calendar day (YYYY-MM-DD). */
+export function isRackDayActiveOnDate(
+  rackDay: Record<string, unknown>,
+  todayIso: string,
+): boolean {
+  const arrival = parseEmmaDateOnly(pickField(rackDay, ['ArrivalDate']));
+  const departure = parseEmmaDateOnly(pickField(rackDay, ['DepartureDate']));
+  if (arrival && departure) {
+    const from = dateOnlyToIso(arrival);
+    const to = dateOnlyToIso(departure);
+    return todayIso >= from && todayIso <= to;
+  }
+  const day = pickString(rackDay, ['Day']);
+  if (day?.length === 8) {
+    const dayIso = `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`;
+    return dayIso === todayIso;
+  }
+  return false;
+}
+
+export function roomHasActiveOutOfOrderRackDay(
+  roomRow: Record<string, unknown>,
+  todayIso = todayIsoDate(),
+): boolean {
+  for (const rackDay of extractExpandedResults(roomRow, 'RoomRackDays')) {
+    const status = pickString(rackDay, ['Status', 'RoomStatus', 'RackStatus']);
+    if (isOoRackStatus(status) && isRackDayActiveOnDate(rackDay, todayIso)) return true;
+  }
+  return false;
+}
+
 function detectOutOfOrder(row: Record<string, unknown>, statusCode: string | null): boolean {
   if (
     isTruthyFlag(pickField(row, ['OutOfOrder', 'Ooo', 'IsOutOfOrder', 'RoomOutOfOrder', 'OutOfService']))
   ) {
     return true;
   }
+  if (roomHasActiveOutOfOrderRackDay(row)) return true;
   const text = [
     pickString(row, ['StatusText', 'RoomStatusText', 'HkStatusText', 'Description']),
     pickString(row, ['Remark', 'Comments']),
@@ -95,7 +151,7 @@ function detectOutOfOrder(row: Record<string, unknown>, statusCode: string | nul
     .filter(Boolean)
     .join(' ');
   if (/out\s*of\s*order|ooo|außer\s*betrieb/i.test(text)) return true;
-  if (statusCode && /^O(OO)?$/i.test(statusCode)) return true;
+  if (statusCode && /^O(OO|OS)?$/i.test(statusCode)) return true;
   return false;
 }
 
@@ -338,6 +394,74 @@ async function fetchAllRoomDetailRowsHttp(
   return all;
 }
 
+/** EMMA stores OOO on Rooms/RoomRackDays (Status=OO), not on RoomDetail housekeeping codes. */
+async function fetchOutOfOrderRoomNumbersFromRackDaysHttp(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  hotelId: string,
+  sapClient: string,
+  csrfToken: string,
+  pageSize = 999,
+  debug?: EmmaSyncDebug,
+): Promise<Set<string>> {
+  const today = todayIsoDate();
+  const ooo = new Set<string>();
+  debug?.log(`[EMMA debug] fetch RoomRackDays OOO hotel=${hotelId} today=${today}`);
+
+  const countParts: ODataBatchPartSpec[] = [
+    { path: roomsWithRackDaysCountBatchPath(hotelId, sapClient), accept: 'plain' },
+  ];
+  const countText = await postEmmaBatch(
+    jar,
+    baseUrl,
+    sapClient,
+    csrfToken,
+    'rooms.rackDays.count',
+    countParts,
+    debug,
+  );
+  const total = parseODataCount(parseODataBatchResponse(countText)[0]?.body ?? '') ?? pageSize;
+  debug?.log(`[EMMA debug] Rooms $count=${total}`);
+
+  for (let skip = 0; skip < total; skip += pageSize) {
+    const pageParts: ODataBatchPartSpec[] = [
+      { path: roomsWithRackDaysBatchPath(hotelId, sapClient, skip, pageSize) },
+    ];
+    const batchText = await postEmmaBatch(
+      jar,
+      baseUrl,
+      sapClient,
+      csrfToken,
+      `rooms.rackDays.page.${skip}`,
+      pageParts,
+      debug,
+    );
+    const rows = parseODataResultsJson(parseODataBatchResponse(batchText)[0]?.body ?? '');
+    debug?.log(`[EMMA debug] Rooms/RoomRackDays skip=${skip}: ${rows.length} Zeilen`);
+    for (const row of rows) {
+      const emmaRoomId = pickString(row, ['Room', 'RoomId', 'RoomNumber']);
+      if (!emmaRoomId) continue;
+      if (!roomHasActiveOutOfOrderRackDay(row, today)) continue;
+      const roomNumber = normalizeEmmaRoomNumber(emmaRoomId);
+      ooo.add(roomNumber);
+      debug?.log(`[EMMA debug] RoomRackDays OOO: room=${roomNumber} emmaId=${emmaRoomId}`);
+    }
+  }
+
+  debug?.log(`[EMMA debug] RoomRackDays OOO gesamt: ${ooo.size} Zimmer`);
+  return ooo;
+}
+
+export function applyRackDaysOutOfOrder(
+  snapshots: EmmaRoomStatusSnapshot[],
+  oooRooms: Set<string>,
+): EmmaRoomStatusSnapshot[] {
+  if (oooRooms.size === 0) return snapshots;
+  return snapshots.map((snap) =>
+    oooRooms.has(snap.roomNumber) ? { ...snap, outOfOrder: true } : snap,
+  );
+}
+
 function snapshotsFromRows(
   detailRows: Record<string, unknown>[],
   statusRows: Record<string, unknown>[],
@@ -420,7 +544,24 @@ export async function fetchEmmaRoomStatusSnapshotsHttp(
     debug,
   );
   debug?.log(`[EMMA debug] detailRows gesamt: ${detailRows.length}`);
-  return snapshotsFromRows(detailRows, statusRows, debug);
+  let snapshots = snapshotsFromRows(detailRows, statusRows, debug);
+  try {
+    const oooRooms = await fetchOutOfOrderRoomNumbersFromRackDaysHttp(
+      jar,
+      baseUrl,
+      hotelId,
+      sapClient,
+      csrf,
+      pageSize,
+      debug,
+    );
+    snapshots = applyRackDaysOutOfOrder(snapshots, oooRooms);
+  } catch (err) {
+    debug?.warn(
+      `[EMMA debug] Rooms/RoomRackDays OOO fehlgeschlagen (optional): ${(err as Error).message}`,
+    );
+  }
+  return snapshots;
 }
 
 /** Map EMMA housekeeping code/label → PrizeBern board status (source of truth after sync). */

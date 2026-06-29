@@ -29,6 +29,12 @@ export default () => ({
     viewSyncMinIntervalMs: parseInt(process.env.EMMA_VIEW_SYNC_MIN_INTERVAL_MS ?? '90000', 10),
     /** `true` / `1` / `verbose` — ausführliche $batch- und Parsing-Logs. */
     debug: process.env.EMMA_DEBUG,
+    /** Push local clean/inspected status to EMMA (default enabled). */
+    roomStatusPush: process.env.EMMA_ROOM_STATUS_PUSH ?? 'true',
+    /** Only push actions on or after this ISO timestamp (cutover / no backfill). */
+    roomStatusPushSince: process.env.EMMA_ROOM_STATUS_PUSH_SINCE ?? '2026-06-29T00:00:00Z',
+    /** Cron for retrying failed EMMA room-status pushes. */
+    pushRetryCron: process.env.EMMA_PUSH_RETRY_CRON ?? '0 */30 * * * *',
     reservationAutoSync: process.env.EMMA_RESERVATION_AUTO_SYNC !== 'false',
     reservationSyncCron: process.env.EMMA_RESERVATION_SYNC_CRON ?? '0 */3 * * * *',
     reservationRetentionDays: parseInt(process.env.EMMA_RESERVATION_RETENTION_DAYS ?? '730', 10),

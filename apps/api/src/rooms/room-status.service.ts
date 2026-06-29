@@ -30,7 +30,19 @@ export class RoomStatusService {
     inspections: Pick<RoomInspection, 'passed' | 'inspectedAt'>[],
     emma?: EmmaStatusForDerive | null,
   ): DerivedRoomStatus {
-    if (emma?.syncedAt) {
+    const sorted = [...inspections].sort(
+      (a, b) => b.inspectedAt.getTime() - a.inspectedAt.getTime(),
+    );
+    const latestPassed = sorted.find((i) => i.passed);
+    const localActivityAt = Math.max(
+      room.cleaningDeclaredAt?.getTime() ?? 0,
+      latestPassed?.inspectedAt.getTime() ?? 0,
+    );
+    const emmaSyncedAt = emma?.syncedAt ? new Date(emma.syncedAt).getTime() : 0;
+    const localNewerThanEmma = emmaSyncedAt > 0 && localActivityAt > emmaSyncedAt;
+
+    if (emma?.syncedAt && !localNewerThanEmma) {
+      if (emma.outOfOrder || room.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;
       if (emma.derivedStatus) return emma.derivedStatus;
       const fromEmma = mapEmmaToDerivedStatus({
         statusCode: emma.statusCode,
@@ -39,15 +51,11 @@ export class RoomStatusService {
       });
       if (fromEmma) return fromEmma;
       if (emma.outOfOrder || room.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;
-      // EMMA ist führend nach Sync — keine lokale Checkliste/Inspection anzeigen.
       return DerivedRoomStatus.DIRTY;
     }
 
     if (room.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;
 
-    const sorted = [...inspections].sort(
-      (a, b) => b.inspectedAt.getTime() - a.inspectedAt.getTime(),
-    );
     const latest = sorted[0];
     if (latest?.passed) return DerivedRoomStatus.INSPECTED;
     if (room.cleaningDeclaredAt) return DerivedRoomStatus.CLEAN;

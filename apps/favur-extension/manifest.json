@@ -1,15 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "PrizeBern Favur Sync",
-  "version": "1.0.0",
-  "description": "Captures Favur shift API requests in your browser and forwards them (with cookies) to the PrizeBern hotel housekeeping backend, so the schichtplan auto-syncs.",
+  "name": "PrizeBern Schichtplan Sync",
+  "version": "1.1.0",
+  "description": "Synchronisiert Schichtpläne von Mirus NEO (neo.mirus.ch) oder Favur (web.favur.ch) mit dem PrizeBern Housekeeping-Backend.",
   "permissions": [
     "storage",
-    "cookies"
+    "cookies",
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "https://web.favur.ch/*",
     "https://*.favur.ch/*",
+    "https://neo.mirus.ch/*",
+    "https://*.mirus.ch/*",
     "https://prizebern.com/*"
   ],
   "optional_host_permissions": [
@@ -26,16 +30,27 @@
       "js": ["content-script.js"],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": ["https://neo.mirus.ch/*", "https://*.mirus.ch/*"],
+      "js": ["mirus-dom-scraper.js"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
     {
       "resources": ["injected.js"],
-      "matches": ["https://web.favur.ch/*", "https://*.favur.ch/*"]
+      "matches": [
+        "https://web.favur.ch/*",
+        "https://*.favur.ch/*",
+        "https://neo.mirus.ch/*",
+        "https://*.mirus.ch/*"
+      ]
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "PrizeBern Favur Sync"
+    "default_title": "PrizeBern Schichtplan Sync"
   }
 }

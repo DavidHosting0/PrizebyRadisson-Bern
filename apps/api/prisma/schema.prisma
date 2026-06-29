@@ -428,9 +428,28 @@ model Room {
   assignments      RoomAssignment[]
   inspections      RoomInspection[]
   housekeepingEvents RoomHousekeepingEvent[]
+  emmaStatusPushOutbox EmmaRoomStatusPushOutbox[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Failed EMMA room-status pushes — retried every 30 minutes until success.
+model EmmaRoomStatusPushOutbox {
+  id          String    @id @default(cuid())
+  roomId      String
+  room        Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  targetCode  String
+  source      String
+  actionAt    DateTime
+  attempts    Int       @default(0)
+  lastError   String?
+  nextRetryAt DateTime
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@index([resolvedAt, nextRetryAt])
+  @@index([roomId])
 }
 
 model RoomHousekeepingEvent {
@@ -627,7 +646,7 @@ model Shift {
 model FavurIntegration {
   id                 String    @id @default("default")
   enabled            Boolean   @default(false)
-  baseUrl            String    @default("https://web.favur.ch")
+  baseUrl            String    @default("https://neo.mirus.ch")
 
   /// Shared secret the extension uses to authenticate when posting captures.
   apiKey             String?   @unique
@@ -657,6 +676,13 @@ model FavurIntegration {
 
   /// Sync window in days, looking forward from "today".
   windowDays         Int       @default(14)
+
+  /// Mirus NEO server-side login (neo.mirus.ch) — no browser extension required.
+  mirusUsername        String?
+  mirusPasswordEnc     String?
+  mirusSessionEnc      String?
+  mirusSessionSavedAt  DateTime?
+
   lastSyncAt         DateTime?
   lastSyncStatus     String?
   lastSyncError      String?

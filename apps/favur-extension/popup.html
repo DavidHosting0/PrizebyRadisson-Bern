@@ -2,7 +2,7 @@
 <html lang="de">
   <head>
     <meta charset="utf-8" />
-    <title>PrizeBern Favur Sync</title>
+    <title>PrizeBern Schichtplan Sync</title>
     <style>
       :root {
         color-scheme: light;
@@ -35,7 +35,7 @@
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
-      input[type='text'], input[type='password'] {
+      input[type='text'], input[type='password'], input[type='number'] {
         width: 100%;
         padding: 7px 9px;
         border: 1px solid #d1d1d6;
@@ -48,6 +48,7 @@
         display: flex;
         gap: 8px;
         align-items: center;
+        flex-wrap: wrap;
       }
       button {
         appearance: none;
@@ -104,9 +105,9 @@
     </style>
   </head>
   <body>
-    <h1>PrizeBern Favur Sync</h1>
+    <h1>PrizeBern Schichtplan Sync</h1>
     <div class="sub">
-      Schickt jeden Favur-API-Call (mit Cookies) an dein PrizeBern-Backend.
+      Mirus NEO (neo.mirus.ch) oder legacy Favur → PrizeBern Backend.
     </div>
 
     <label for="apiBase">Backend-URL</label>
@@ -115,10 +116,17 @@
     <label for="apiKey">API-Key</label>
     <input type="password" id="apiKey" placeholder="aus Admin → Integrations" />
 
+    <label for="windowDays">Sync-Fenster (Tage, Datums-Loop)</label>
+    <input type="number" id="windowDays" min="1" max="60" value="14" />
+
     <div class="row" style="margin-top: 12px;">
       <button id="save" class="btn-primary">Speichern</button>
       <button id="test" class="btn-secondary">Testen</button>
       <button id="toggle" class="btn-toggle on">An</button>
+    </div>
+
+    <div class="row" style="margin-top: 8px;">
+      <button id="dateLoop" class="btn-secondary" style="width:100%;">Mirus: Jetzt 14-Tage-Import</button>
     </div>
 
     <div id="toast" class="toast" style="display:none"></div>
@@ -127,13 +135,14 @@
       <div class="line"><span class="label">Letzter Upload</span><span class="val" id="lastUploadAt">–</span></div>
       <div class="line"><span class="label">Status</span><span class="val" id="lastUploadStatus">–</span></div>
       <div class="line"><span class="label">URL</span><span class="val" id="lastUploadUrl">–</span></div>
+      <div class="line"><span class="label">DOM-Schichten</span><span class="val" id="lastDomImportCount">–</span></div>
       <div class="line"><span class="label">Erfolge</span><span class="val" id="uploadCount">0</span></div>
       <div class="line"><span class="label">Fehler</span><span class="val" id="errorCount">0</span></div>
     </div>
 
     <div class="footer">
-      Logge dich auf <strong>web.favur.ch</strong> ein und navigiere auf den Schichtplan.
-      Die Extension sendet alle relevanten Calls automatisch.
+      Auf <strong>neo.mirus.ch</strong> einloggen und den Schichtplan öffnen.
+      Hintergrund-Sync alle 15 Min. (Chrome muss laufen).
     </div>
 
     <script src="popup.js"></script>

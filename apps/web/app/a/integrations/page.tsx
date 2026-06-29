@@ -30,6 +30,9 @@ type FavurConfig = {
   lastSyncError: string | null;
   lastSyncCount: number;
   syncInProgress: boolean;
+  domMode: boolean;
+  mirusUsername: string | null;
+  hasMirusPassword: boolean;
 };
 
 type LocalUserRef = {
@@ -111,7 +114,7 @@ export default function FavurIntegrationPage() {
   });
 
   const updateMut = useMutation({
-    mutationFn: (body: Partial<FavurConfig>) =>
+    mutationFn: (body: Partial<FavurConfig> & { mirusPassword?: string }) =>
       api<FavurConfig>('/favur/config', {
         method: 'PUT',
         body: JSON.stringify(body),
@@ -167,7 +170,7 @@ export default function FavurIntegrationPage() {
   const config = configQuery.data;
 
   const [enabled, setEnabled] = useState(false);
-  const [baseUrl, setBaseUrl] = useState('https://web.favur.ch');
+  const [baseUrl, setBaseUrl] = useState('https://neo.mirus.ch');
   const [windowDays, setWindowDays] = useState(14);
   const [shiftsJsonPath, setShiftsJsonPath] = useState('');
   const [fieldShiftId, setFieldShiftId] = useState('id');
@@ -176,6 +179,8 @@ export default function FavurIntegrationPage() {
   const [fieldStartsAt, setFieldStartsAt] = useState('startsAt');
   const [fieldEndsAt, setFieldEndsAt] = useState('endsAt');
   const [fieldLabel, setFieldLabel] = useState('');
+  const [mirusUsername, setMirusUsername] = useState('');
+  const [mirusPassword, setMirusPassword] = useState('');
   const [hydrated, setHydrated] = useState(false);
 
   const [shownApiKey, setShownApiKey] = useState<string | null>(null);
@@ -193,6 +198,7 @@ export default function FavurIntegrationPage() {
     setFieldStartsAt(config.fieldStartsAt);
     setFieldEndsAt(config.fieldEndsAt);
     setFieldLabel(config.fieldLabel ?? '');
+    setMirusUsername(config.mirusUsername ?? '');
     setHydrated(true);
   }, [config, hydrated]);
 
@@ -216,11 +222,12 @@ export default function FavurIntegrationPage() {
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-ink">Favur</h2>
+            <h2 className="text-lg font-semibold text-ink">Schichtplan (Mirus NEO / Favur)</h2>
             <p className="text-sm text-ink-muted">
-              Schichten werden alle 15 Minuten von web.favur.ch importiert. Die
-              Browser-Extension fängt Favurs API-Calls inkl. Cookies ab und schickt
-              sie hierher.
+              Schichten werden alle 15 Minuten automatisch importiert. Für{' '}
+              <strong>Mirus NEO</strong> loggt sich der Server mit Benutzername/Passwort ein
+              und holt die Daten per HTTP (Swagger-API, sonst Playwright). Legacy{' '}
+              <strong>Favur</strong> nutzt optional die Browser-Extension.
             </p>
           </div>
           <SyncStatusBadge config={config} />
@@ -228,7 +235,16 @@ export default function FavurIntegrationPage() {
 
         {/* setup steps */}
         <ol className="mt-5 space-y-3 text-sm text-ink">
-          <Step n={1} title="API-Key erzeugen">
+          <Step n={1} title="Mirus NEO Zugangsdaten">
+            <p className="text-ink-muted">
+              Unten Benutzername und Passwort von{' '}
+              <code className="rounded bg-surface-muted px-1 py-0.5">neo.mirus.ch</code>{' '}
+              eintragen und speichern. Der Server meldet sich alle 15 Minuten automatisch an
+              und synchronisiert den Schichtplan — keine Browser-Extension nötig.
+            </p>
+          </Step>
+
+          <Step n={2} title="API-Key (optional, nur legacy Extension)">
             <p className="text-ink-muted">
               Der Schlüssel wird einmalig angezeigt — kopieren und in der Extension
               einfügen.
@@ -271,7 +287,7 @@ export default function FavurIntegrationPage() {
             )}
           </Step>
 
-          <Step n={2} title="Extension installieren">
+          <Step n={3} title="Extension installieren (optional, legacy Favur)">
             <p className="text-ink-muted">
               Im Repo unter <code className="rounded bg-surface-muted px-1 py-0.5">apps/favur-extension</code>.
               Chrome/Edge öffnen → <code className="rounded bg-surface-muted px-1 py-0.5">chrome://extensions</code> →
@@ -280,7 +296,7 @@ export default function FavurIntegrationPage() {
             </p>
           </Step>
 
-          <Step n={3} title="Extension konfigurieren">
+          <Step n={4} title="Extension konfigurieren (optional)">
             <p className="text-ink-muted">
               Klick auf das Extension-Icon in der Browser-Toolbar. Backend-URL eintragen
               (<code className="rounded bg-surface-muted px-1 py-0.5">https://prizebern.com/api/v1</code>),
@@ -288,11 +304,10 @@ export default function FavurIntegrationPage() {
             </p>
           </Step>
 
-          <Step n={4} title="Bei Favur einloggen">
+          <Step n={5} title="Legacy Favur (optional)">
             <p className="text-ink-muted">
-              In demselben Browser auf <code className="rounded bg-surface-muted px-1 py-0.5">web.favur.ch</code> einloggen
-              (Telefon + SMS). „stay logged in" anhaken. Auf den Schichtplan navigieren — die
-              Extension fängt die Calls automatisch ab und sie erscheinen unten als Captures.
+              Falls ihr noch <code className="rounded bg-surface-muted px-1 py-0.5">web.favur.ch</code>{' '}
+              nutzt: Extension installieren, einloggen, Schichtplan öffnen.
             </p>
           </Step>
         </ol>
@@ -313,7 +328,10 @@ export default function FavurIntegrationPage() {
               fieldStartsAt,
               fieldEndsAt,
               fieldLabel: fieldLabel.trim() || null,
+              mirusUsername: mirusUsername.trim() || undefined,
+              mirusPassword: mirusPassword.trim() || undefined,
             });
+            if (mirusPassword.trim()) setMirusPassword('');
           }}
         >
           <label className="md:col-span-2 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
@@ -331,7 +349,38 @@ export default function FavurIntegrationPage() {
           <Field label="Basis-URL"><input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" /></Field>
           <Field label="Sync-Fenster (Tage)"><input type="number" min={1} max={60} value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" /></Field>
 
-          {config?.activeUrl && /\/graphql/.test(config.activeUrl) ? (
+          {config?.domMode && (
+            <>
+              <Field label="Mirus Benutzername">
+                <input
+                  type="text"
+                  autoComplete="username"
+                  value={mirusUsername}
+                  onChange={(e) => setMirusUsername(e.target.value)}
+                  placeholder="neo.mirus.ch Login"
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                />
+              </Field>
+              <Field label="Mirus Passwort">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={mirusPassword}
+                  onChange={(e) => setMirusPassword(e.target.value)}
+                  placeholder={config?.hasMirusPassword ? '•••••••• (leer = unverändert)' : 'Passwort'}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                />
+              </Field>
+            </>
+          )}
+
+          {config?.domMode ? (
+            <div className="md:col-span-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+              <strong>Mirus NEO (Server-Sync).</strong> Der Backend-Server loggt sich mit den
+              Zugangsdaten oben ein, ruft die Swagger-API ab (falls Schicht-Endpunkte vorhanden)
+              und holt sonst die Schichtseiten per Headless-Browser. Cron alle 15 Minuten.
+            </div>
+          ) : config?.activeUrl && /\/graphql/.test(config.activeUrl) ? (
             <div className="md:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
               <strong>Favur GraphQL teamplan erkannt.</strong> Der eingebaute Parser
               kümmert sich um die genestete Struktur (tenants → costCenters → persons →
@@ -364,7 +413,7 @@ export default function FavurIntegrationPage() {
             <button
               type="button"
               onClick={() => syncMut.mutate()}
-              disabled={syncMut.isPending || !config?.enabled || !config?.hasActiveCapture || config?.syncInProgress}
+              disabled={syncMut.isPending || !config?.enabled || config?.syncInProgress || (!config?.domMode && !config?.hasActiveCapture) || (config?.domMode && !config?.hasMirusPassword && !mirusPassword.trim())}
               className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
             >
               {syncMut.isPending || config?.syncInProgress ? 'Synchronisiert…' : 'Jetzt synchronisieren'}
@@ -381,9 +430,9 @@ export default function FavurIntegrationPage() {
           <div>
             <h2 className="text-lg font-semibold text-ink">Captures von der Extension</h2>
             <p className="text-sm text-ink-muted">
-              Jeder API-Call den die Extension auf web.favur.ch beobachtet. Der Backend
-              promoted automatisch den ersten Treffer der wie ein Schicht-Array aussieht zu
-              „aktiv". Du kannst manuell wechseln.
+              {config?.domMode
+                ? 'Legacy Favur API-Captures (optional). Mirus NEO nutzt DOM-Import statt Captures.'
+                : 'Jeder API-Call den die Extension auf web.favur.ch beobachtet. Der Backend promoted automatisch den ersten Treffer der wie ein Schicht-Array aussieht zu „aktiv". Du kannst manuell wechseln.'}
             </p>
           </div>
         </div>
@@ -392,8 +441,9 @@ export default function FavurIntegrationPage() {
           <p className="mt-4 text-sm text-ink-muted">Lädt…</p>
         ) : (capturesQuery.data?.length ?? 0) === 0 ? (
           <p className="mt-4 text-sm text-ink-muted">
-            Noch keine Captures. Logge dich auf web.favur.ch ein und navigiere auf den
-            Schichtplan — Calls erscheinen automatisch hier (kann ein paar Sekunden dauern).
+            {config?.domMode
+              ? 'Noch keine Favur-Captures (normal bei Mirus NEO). Öffne neo.mirus.ch → Schichtplan; DOM-Imports aktualisieren den Sync-Status oben.'
+              : 'Noch keine Captures. Logge dich auf web.favur.ch ein und navigiere auf den Schichtplan — Calls erscheinen automatisch hier (kann ein paar Sekunden dauern).'}
           </p>
         ) : (
           <ul className="mt-4 divide-y divide-border">
@@ -432,14 +482,14 @@ export default function FavurIntegrationPage() {
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
         <h2 className="text-lg font-semibold text-ink">Mitarbeiter zuordnen</h2>
         <p className="text-sm text-ink-muted">
-          Jeder Favur-Mitarbeiter, der in einer Sync-Antwort auftaucht, landet hier.
+          Jeder Mitarbeiter aus dem Schichtplan-Import landet hier.
           Erst nach dem Mapping erscheinen seine Schichten im Schichtplan.
         </p>
         {usersQuery.isLoading ? (
           <p className="mt-4 text-sm text-ink-muted">Lädt…</p>
         ) : (usersQuery.data?.length ?? 0) === 0 ? (
           <p className="mt-4 text-sm text-ink-muted">
-            Noch keine Favur-Mitarbeiter gesehen. Sobald der erste Sync erfolgreich war,
+            Noch keine externen Mitarbeiter gesehen. Sobald der erste Import erfolgreich war,
             erscheinen sie hier.
           </p>
         ) : (
@@ -448,7 +498,7 @@ export default function FavurIntegrationPage() {
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-ink">{row.favurDisplayName || row.favurUserId}</p>
-                  <p className="truncate text-xs text-ink-muted">Favur-ID: {row.favurUserId} · zuletzt {formatDateTime(row.lastSeenAt)}</p>
+                  <p className="truncate text-xs text-ink-muted">Externe ID: {row.favurUserId} · zuletzt {formatDateTime(row.lastSeenAt)}</p>
                 </div>
                 {row.user && (
                   <div className="flex items-center gap-2">
@@ -513,9 +563,13 @@ function SyncStatusBadge({ config }: { config: FavurConfig | undefined }) {
       ? `OK · ${config.lastSyncCount} Schichten`
       : config.lastSyncStatus === 'error'
         ? 'Fehler'
-        : config.hasActiveCapture
-          ? 'Bereit'
-          : 'Wartet auf Capture';
+        : config.domMode
+          ? config.hasMirusPassword
+            ? 'Bereit (Server-Login)'
+            : 'Mirus-Zugang fehlt'
+          : config.hasActiveCapture
+            ? 'Bereit'
+            : 'Wartet auf Capture';
   return (
     <div className="text-right">
       <span className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>{label}</span>

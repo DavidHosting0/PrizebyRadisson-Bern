@@ -5,6 +5,7 @@ import {
   Logger,
   forwardRef,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   SettingsService,
   type EmmaLoginStored,
@@ -38,6 +39,16 @@ import {
   type EmmaVccPaymentOutcome,
 } from './emma-folio-payment';
 import { EmmaMutationLock } from './emma-mutation-lock';
+import {
+  emmaCodeToDerivedStatus,
+  formatEmmaRoomId,
+  mapDerivedStatusToEmmaCode,
+  pushEmmaRoomStatusHttp,
+  type EmmaRoomStatusPushTarget,
+} from './emma-room-status-push';
+import { readEmmaMetadata } from './emma-room-status-sync';
+import { EmmaIntegrationAlertService } from './emma-integration-alert.service';
+import { EmmaPushOutboxService } from './emma-push-outbox.service';
 import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
 
@@ -46,6 +57,19 @@ import { todayIsoDate } from '../reservations/reservation-sensitive';
  * Folio / reservation flows will be reimplemented without a browser.
  */
 export type EmmaRoomSyncTriggerKind = 'cron' | 'action' | 'view';
+
+export type EmmaRoomStatusPushResult = {
+  ok: boolean;
+  skipped?: 'disabled' | 'before_cutover' | 'already_synced' | 'no_code';
+  error?: string;
+};
+
+export type EmmaRoomStatusPushOpts = {
+  actionAt: Date;
+  source: string;
+  /** Retry from outbox — still respects cutover via stored actionAt. */
+  fromOutbox?: boolean;
+};
 
 @Injectable()
 export class EmmaService {
@@ -61,8 +85,12 @@ export class EmmaService {
     private readonly settings: SettingsService,
     private readonly prisma: PrismaService,
     private readonly cipher: SecretCipherService,
+    private readonly config: ConfigService,
+    private readonly integrationAlert: EmmaIntegrationAlertService,
     @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
+    @Inject(forwardRef(() => EmmaPushOutboxService))
+    private readonly pushOutbox: EmmaPushOutboxService,
     private readonly realtime: RealtimeGateway,
   ) {}
 
@@ -364,6 +392,165 @@ export class EmmaService {
       `[EMMA] syncRoomStatuses OK in ${Date.now() - startedAt}ms: ${result.matched}/${result.emmaRooms} matched, ${result.updated} updated`,
     );
     return result;
+  }
+
+  async getIntegrationStatus() {
+    const alert = await this.integrationAlert.getState();
+    return {
+      pushAlert: alert,
+      message: alert.active
+        ? 'EMMA SYNC DOWN, EMMA IS NOT REACHABLE. ACTION REQUIRED'
+        : null,
+    };
+  }
+
+  /**
+   * Push housekeeping status to EMMA (MERGE RoomDetail). Only for live actions after cutover.
+   */
+  async pushRoomStatus(
+    roomId: string,
+    target: EmmaRoomStatusPushTarget,
+    opts: EmmaRoomStatusPushOpts,
+  ): Promise<EmmaRoomStatusPushResult> {
+    if (this.config.get<string>('emma.roomStatusPush') === 'false') {
+      return { ok: true, skipped: 'disabled' };
+    }
+
+    const pushSinceRaw = this.config.get<string>('emma.roomStatusPushSince');
+    const pushSince = pushSinceRaw ? new Date(pushSinceRaw) : null;
+    if (pushSince && !Number.isNaN(pushSince.getTime()) && opts.actionAt < pushSince) {
+      return { ok: true, skipped: 'before_cutover' };
+    }
+
+    const code = mapDerivedStatusToEmmaCode(target);
+    if (!code) return { ok: true, skipped: 'no_code' };
+
+    try {
+      if (!(await this.isIntegrationActive())) {
+        throw new Error('EMMA integration inactive');
+      }
+
+      const room = await this.prisma.room.findUnique({
+        where: { id: roomId },
+        select: { id: true, roomNumber: true, metadata: true },
+      });
+      if (!room) throw new Error('Room not found');
+
+      const emmaMeta = readEmmaMetadata(room.metadata);
+      const emmaRoomId = formatEmmaRoomId(room.roomNumber, emmaMeta?.roomId);
+      if (emmaMeta?.statusCode === code) {
+        return { ok: true, skipped: 'already_synced' };
+      }
+
+      const creds = await this.settings.getEmmaLoginSecrets();
+      this.assertCredentialsComplete(creds);
+
+      const hotelId =
+        creds.hotelId?.trim() ||
+        process.env.EMMA_HOTEL_ID?.trim() ||
+        EMMA_DEFAULT_HOTEL_ID;
+      const sapClient =
+        creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+      const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+
+      await this.mutationLock.run(async () => {
+        let jar = await this.loadEmmaHttpJar();
+        const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+        if (!probe.ok) {
+          this.log.warn(`[EMMA push] session expired (${probe.reason}) — refresh`);
+          await this.refreshHttpSession();
+          jar = await this.loadEmmaHttpJar();
+        }
+        const emmaDebug = createEmmaSyncDebug(this.log);
+        await pushEmmaRoomStatusHttp(
+          jar,
+          baseUrl,
+          hotelId,
+          sapClient,
+          emmaRoomId,
+          code,
+          emmaDebug,
+        );
+      });
+
+      const syncedAt = new Date().toISOString();
+      const prevMeta =
+        room.metadata && typeof room.metadata === 'object' && !Array.isArray(room.metadata)
+          ? (room.metadata as Record<string, unknown>)
+          : {};
+      const prevEmma = emmaMeta ?? {
+        roomId: emmaRoomId,
+        statusCode: null,
+        statusLabel: null,
+        derivedStatus: null,
+        outOfOrder: false,
+        floorId: null,
+        buildingId: '01',
+        syncedAt: '',
+      };
+      const nextEmma = {
+        ...prevEmma,
+        roomId: emmaRoomId,
+        statusCode: code,
+        derivedStatus: emmaCodeToDerivedStatus(code),
+        syncedAt,
+      };
+      const nextMeta = {
+        ...prevMeta,
+        emma: nextEmma,
+        emmaPush: {
+          lastPushAt: syncedAt,
+          lastPushCode: code,
+          lastPushOk: true,
+          source: opts.source,
+        },
+      };
+      await this.prisma.room.update({
+        where: { id: roomId },
+        data: { metadata: nextMeta as Prisma.InputJsonValue },
+      });
+
+      try {
+        const dto = await this.rooms.findOne(roomId);
+        this.realtime.emitRoomStatus(dto);
+      } catch {
+        /* room removed */
+      }
+
+      await this.integrationAlert.syncFromOutbox();
+      this.emitIntegrationAlert();
+
+      this.log.log(`[EMMA push] OK room=${room.roomNumber} → ${code} (${opts.source})`);
+      return { ok: true };
+    } catch (err) {
+      const error = (err as Error).message;
+      this.log.warn(`[EMMA push] failed room=${roomId} (${opts.source}): ${error}`);
+      if (!opts.fromOutbox) {
+        try {
+          await this.pushOutbox.enqueue(roomId, code, opts.source, opts.actionAt, error);
+          this.emitIntegrationAlert();
+        } catch (enqueueErr) {
+          this.log.warn(`[EMMA push] outbox enqueue failed: ${(enqueueErr as Error).message}`);
+        }
+      }
+      return { ok: false, error };
+    }
+  }
+
+  private emitIntegrationAlert(): void {
+    void this.integrationAlert.getState().then((state) => {
+      this.realtime.emitEmmaIntegrationAlert({
+        pushAlert: state,
+        message: state.active
+          ? 'EMMA SYNC DOWN, EMMA IS NOT REACHABLE. ACTION REQUIRED'
+          : null,
+      });
+    });
+  }
+
+  async retryFailedRoomStatusPushes(): Promise<void> {
+    if (this.config.get<string>('emma.roomStatusPush') === 'false') return;
+    await this.pushOutbox.processDue();
   }
 
   /** Fetch reservation rows from EMMA Check-In OData (no DB write). */

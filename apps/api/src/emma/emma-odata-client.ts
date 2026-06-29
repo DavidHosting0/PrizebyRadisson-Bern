@@ -156,6 +156,84 @@ export function buildODataChangesetBatchBody(
   };
 }
 
+export type ODataBatchMergePartSpec = {
+  /** Entity path including query string, e.g. RoomDetail(HotelId='CHBRNPR',RoomId='0009')?sap-client=100 */
+  entityPath: string;
+  body: string;
+};
+
+/** Build OData $batch body with a changeset MERGE (EMMA room-status HAR). */
+export function buildODataChangesetMergeBatchBody(
+  merges: ODataBatchMergePartSpec[],
+  csrfToken: string,
+): { boundary: string; body: string; contentType: string } {
+  const batchBoundary = createBatchBoundary();
+  const changesetBoundary = createChangesetBoundary();
+
+  let body = '\r\n';
+  body += `--${batchBoundary}\r\n`;
+  body += `Content-Type: multipart/mixed; boundary=${changesetBoundary}\r\n\r\n`;
+
+  for (let i = 0; i < merges.length; i++) {
+    const merge = merges[i];
+    const contentId = `id-${Date.now()}-${1000 + i}`;
+    body += `--${changesetBoundary}\r\n`;
+    body += 'Content-Type: application/http\r\n';
+    body += 'Content-Transfer-Encoding: binary\r\n\r\n';
+    body += `MERGE ${merge.entityPath} HTTP/1.1\r\n`;
+    body += 'show-status: N\r\n';
+    body += 'sap-contextid-accept: header\r\n';
+    body += 'Accept: application/json\r\n';
+    body += `x-csrf-token: ${csrfToken}\r\n`;
+    body += 'Accept-Language: en\r\n';
+    body += 'DataServiceVersion: 2.0\r\n';
+    body += 'MaxDataServiceVersion: 2.0\r\n';
+    body += 'X-Requested-With: XMLHttpRequest\r\n';
+    body += 'Content-Type: application/json\r\n';
+    body += `Content-ID: ${contentId}\r\n\r\n`;
+    body += merge.body;
+    body += '\r\n';
+  }
+
+  body += `--${changesetBoundary}--\r\n\r\n`;
+  body += `--${batchBoundary}--\r\n`;
+  return {
+    boundary: batchBoundary,
+    body,
+    contentType: `multipart/mixed;boundary=${batchBoundary}`,
+  };
+}
+
+export function roomDetailEntityKey(hotelId: string, emmaRoomId: string): string {
+  const q = emmaODataStringLiteral;
+  return `RoomDetail(HotelId=${q(hotelId)},RoomId=${q(emmaRoomId)})`;
+}
+
+export function roomDetailMergePath(
+  hotelId: string,
+  emmaRoomId: string,
+  sapClient: string,
+): string {
+  return `${roomDetailEntityKey(hotelId, emmaRoomId)}?sap-client=${sapClient}`;
+}
+
+export function buildRoomStatusMergeJson(
+  odataBaseUrl: string,
+  hotelId: string,
+  emmaRoomId: string,
+  statusCode: string,
+): string {
+  const entityKey = roomDetailEntityKey(hotelId, emmaRoomId);
+  const uri = `${odataBaseUrl}/sap/opu/odata/sap/${EMMA_ODATA_RSRVS_SRV}/${entityKey}`;
+  return JSON.stringify({
+    __metadata: {
+      uri,
+      type: `${EMMA_ODATA_RSRVS_SRV}.RoomDetail`,
+    },
+    RoomStatus: statusCode,
+  });
+}
+
 export function validateMoveChargePath(input: {
   sapClient: string;
   hotelId: string;
@@ -564,6 +642,22 @@ export function roomDetailBatchPath(
 export function roomDetailCountBatchPath(hotelId: string, sapClient: string): string {
   const filter = encodeODataFilter(`HotelId eq '${hotelId}'`);
   return `RoomDetail/$count?sap-client=${sapClient}&$filter=${filter}`;
+}
+
+/** Rooms entity with rack-day incidents (OOO lives in RoomRackDays.Status, not RoomDetail). */
+export function roomsWithRackDaysBatchPath(
+  hotelId: string,
+  sapClient: string,
+  skip: number,
+  top: number,
+): string {
+  const filter = encodeODataFilter(`HotelId eq '${hotelId}'`);
+  return `Rooms?sap-client=${sapClient}&$expand=RoomRackDays&$filter=${filter}&$skip=${skip}&$top=${top}`;
+}
+
+export function roomsWithRackDaysCountBatchPath(hotelId: string, sapClient: string): string {
+  const filter = encodeODataFilter(`HotelId eq '${hotelId}'`);
+  return `Rooms/$count?sap-client=${sapClient}&$filter=${filter}`;
 }
 
 export function buildingsFloorsCountBatchPath(

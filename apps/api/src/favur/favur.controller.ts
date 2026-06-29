@@ -17,6 +17,7 @@ import { FavurService } from './favur.service';
 import { FavurApiKeyGuard } from './favur-api-key.guard';
 import {
   ImportCaptureDto,
+  ImportDomShiftsDto,
   MapFavurUserDto,
   UpdateFavurConfigDto,
 } from './dto/favur.dto';
@@ -102,5 +103,14 @@ export class FavurController {
   @HttpCode(HttpStatus.OK)
   importCapture(@Body() dto: ImportCaptureDto) {
     return this.favur.importCapture(dto);
+  }
+
+  /** Mirus NEO DOM scrape — extension posts parsed shift rows. */
+  @Post('import-dom')
+  @Public()
+  @UseGuards(FavurApiKeyGuard)
+  @HttpCode(HttpStatus.OK)
+  importDomShifts(@Body() dto: ImportDomShiftsDto) {
+    return this.favur.importDomShifts(dto);
   }
 }

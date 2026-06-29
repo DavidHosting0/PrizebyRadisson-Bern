@@ -17,10 +17,15 @@ export class FavurScheduler {
   async runScheduledSync() {
     try {
       const config = await this.favur.getConfig();
-      if (!config.enabled || !config.hasActiveCapture) return;
+      if (!config.enabled) return;
+      if (config.domMode) {
+        await this.favur.syncNow('cron');
+        return;
+      }
+      if (!config.hasActiveCapture) return;
       await this.favur.syncNow('cron');
     } catch (err) {
-      this.logger.warn(`Scheduled Favur sync failed: ${(err as Error).message}`);
+      this.logger.warn(`Scheduled shift sync failed: ${(err as Error).message}`);
     }
   }
 }

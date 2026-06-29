@@ -9,13 +9,15 @@ import { Prisma, type FavurIntegration, type FavurUserMap } from '@prisma/client
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
-import { ImportCaptureDto, UpdateFavurConfigDto } from './dto/favur.dto';
+import { ImportCaptureDto, ImportDomShiftsDto, UpdateFavurConfigDto } from './dto/favur.dto';
 import {
   FavurScraperService,
   type ActiveTemplate,
   type FavurShift,
   type ParseConfig,
 } from './favur-scraper.service';
+import { syncMirusShifts } from './mirus-shift-sync';
+import type { MirusSessionStored } from './mirus-http-auth';
 
 const SINGLETON_ID = 'default';
 
@@ -43,6 +45,10 @@ export type FavurConfigDto = {
   lastSyncError: string | null;
   lastSyncCount: number;
   syncInProgress: boolean;
+  /** True when baseUrl points at Mirus NEO (server login sync). */
+  domMode: boolean;
+  mirusUsername: string | null;
+  hasMirusPassword: boolean;
 };
 
 @Injectable()
@@ -76,6 +82,14 @@ export class FavurService {
     if (dto.fieldStartsAt !== undefined) data.fieldStartsAt = dto.fieldStartsAt;
     if (dto.fieldEndsAt !== undefined) data.fieldEndsAt = dto.fieldEndsAt;
     if (dto.fieldLabel !== undefined) data.fieldLabel = dto.fieldLabel ?? null;
+    if (dto.mirusUsername !== undefined) {
+      data.mirusUsername = dto.mirusUsername.trim() || null;
+    }
+    if (dto.mirusPassword !== undefined && dto.mirusPassword.length > 0) {
+      data.mirusPasswordEnc = this.cipher.encrypt(dto.mirusPassword);
+      data.mirusSessionEnc = null;
+      data.mirusSessionSavedAt = null;
+    }
     const row = await this.prisma.favurIntegration.update({
       where: { id: SINGLETON_ID },
       data,
@@ -160,6 +174,60 @@ export class FavurService {
     }
 
     return { captureId: capture.id, activated: shouldActivate };
+  }
+
+  /**
+   * Mirus NEO: extension posts pre-parsed shift rows scraped from the DOM.
+   * No HTTP replay — data is persisted directly.
+   */
+  async importDomShifts(dto: ImportDomShiftsDto): Promise<{
+    persisted: number;
+    received: number;
+  }> {
+    const config = await this.ensureRow();
+    const from = dto.fromDate
+      ? startOfDay(parseIsoDate(dto.fromDate))
+      : dto.date
+        ? startOfDay(parseIsoDate(dto.date))
+        : startOfDay(new Date());
+    const to = dto.toDate
+      ? addDays(startOfDay(parseIsoDate(dto.toDate)), 1)
+      : addDays(from, config.windowDays);
+
+    const shifts: FavurShift[] = [];
+    for (const row of dto.shifts ?? []) {
+      const startsAt = new Date(row.startsAt);
+      const endsAt = new Date(row.endsAt);
+      if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) continue;
+      const userId = row.favurUserId?.trim() || row.displayName?.trim();
+      const displayName = row.displayName?.trim() || userId;
+      if (!userId) continue;
+      shifts.push({
+        favurUserId: userId,
+        favurDisplayName: displayName,
+        startsAt,
+        endsAt,
+        sourceId: row.sourceId?.trim() || `${userId}-${startsAt.toISOString()}`,
+        label: row.label ?? null,
+      });
+    }
+
+    this.logger.log(
+      `Mirus DOM import (${dto.trigger ?? 'unknown'}): ${shifts.length} shifts received`,
+    );
+
+    const persisted = await this.persistShifts(shifts, from, to);
+    await this.prisma.favurIntegration.update({
+      where: { id: SINGLETON_ID },
+      data: {
+        lastSyncAt: new Date(),
+        lastSyncStatus: 'ok',
+        lastSyncError: null,
+        lastSyncCount: persisted,
+      },
+    });
+
+    return { persisted, received: dto.shifts?.length ?? 0 };
   }
 
   async listCaptures() {
@@ -282,12 +350,17 @@ export class FavurService {
     const config = await this.ensureRow();
     if (!config.enabled) {
       throw new BadRequestException(
-        'Favur sync is disabled. Toggle it on in admin → integrations.',
+        'Shift sync is disabled. Toggle it on in admin → integrations.',
       );
     }
+
+    if (isDomMode(config.baseUrl)) {
+      return this.syncMirusMode(config, triggeredBy);
+    }
+
     if (!config.activeCaptureId || !config.activeUrl || !config.activeHeaders || !config.activeCookies) {
       throw new BadRequestException(
-        'No active capture from the extension yet. Install the Favur extension and log into web.favur.ch.',
+        'No active capture from the extension yet. Install the browser extension and log into the shift plan source (neo.mirus.ch or web.favur.ch).',
       );
     }
     if (config.syncInProgress) return this.toDto(config);
@@ -351,6 +424,80 @@ export class FavurService {
         },
       });
       this.logger.log(`Favur sync ok: ${persisted} shifts persisted`);
+    } finally {
+      await this.prisma.favurIntegration.update({
+        where: { id: SINGLETON_ID },
+        data: { syncInProgress: false },
+      });
+    }
+
+    return this.toDto(await this.ensureRow());
+  }
+
+  /** Mirus NEO: server logs in and fetches shifts (HTTP API + Playwright fallback). */
+  private async syncMirusMode(
+    config: FavurIntegration,
+    triggeredBy: 'manual' | 'cron',
+  ): Promise<FavurConfigDto> {
+    const username = config.mirusUsername?.trim();
+    const password = this.cipher.decryptSafe(config.mirusPasswordEnc);
+    if (!username || !password) {
+      const msg =
+        'Mirus login not configured. Set username and password in admin → Integrations.';
+      if (triggeredBy === 'manual') throw new BadRequestException(msg);
+      await this.markFailed(msg);
+      return this.toDto(await this.ensureRow());
+    }
+
+    if (config.syncInProgress) return this.toDto(config);
+
+    const claim = await this.prisma.favurIntegration.updateMany({
+      where: { id: SINGLETON_ID, syncInProgress: false },
+      data: { syncInProgress: true },
+    });
+    if (claim.count === 0) return this.toDto(await this.ensureRow());
+
+    try {
+      const from = startOfDay(new Date());
+      const to = addDays(from, config.windowDays);
+      let session: MirusSessionStored | null = null;
+      if (config.mirusSessionEnc) {
+        const plain = this.cipher.decryptSafe(config.mirusSessionEnc);
+        if (plain) {
+          try {
+            session = JSON.parse(plain) as MirusSessionStored;
+          } catch {
+            session = null;
+          }
+        }
+      }
+
+      this.logger.log(`Mirus sync starting (${triggeredBy})`);
+      const result = await syncMirusShifts({
+        baseUrl: config.baseUrl,
+        username,
+        password,
+        windowDays: config.windowDays,
+        session,
+      });
+
+      const persisted = await this.persistShifts(result.shifts, from, to);
+      await this.prisma.favurIntegration.update({
+        where: { id: SINGLETON_ID },
+        data: {
+          mirusSessionEnc: this.cipher.encrypt(JSON.stringify(result.session)),
+          mirusSessionSavedAt: new Date(),
+          lastSyncAt: new Date(),
+          lastSyncStatus: 'ok',
+          lastSyncError: null,
+          lastSyncCount: persisted,
+        },
+      });
+      this.logger.log(`Mirus sync ok: ${persisted} shifts persisted`);
+    } catch (err) {
+      const msg = (err as Error).message;
+      this.logger.warn(`Mirus sync failed: ${msg}`);
+      await this.markFailed(msg);
     } finally {
       await this.prisma.favurIntegration.update({
         where: { id: SINGLETON_ID },
@@ -452,6 +599,9 @@ export class FavurService {
       lastSyncError: row.lastSyncError,
       lastSyncCount: row.lastSyncCount,
       syncInProgress: row.syncInProgress,
+      domMode: isDomMode(row.baseUrl),
+      mirusUsername: row.mirusUsername,
+      hasMirusPassword: !!row.mirusPasswordEnc,
     };
   }
 
@@ -502,6 +652,14 @@ function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
+}
+function parseIsoDate(s: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return new Date(s);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+function isDomMode(baseUrl: string): boolean {
+  return /mirus\.ch/i.test(baseUrl);
 }
 function isOlderThan(d: Date | null, hours: number): boolean {
   if (!d) return true;

@@ -20,4 +20,13 @@ export class EmmaScheduler {
       this.logger.warn(`Scheduled EMMA room sync failed: ${(err as Error).message}`);
     }
   }
+
+  @Cron(process.env.EMMA_PUSH_RETRY_CRON ?? '0 */30 * * * *')
+  async retryFailedRoomStatusPushes() {
+    try {
+      await this.emma.retryFailedRoomStatusPushes();
+    } catch (err) {
+      this.logger.warn(`EMMA push outbox retry failed: ${(err as Error).message}`);
+    }
+  }
 }

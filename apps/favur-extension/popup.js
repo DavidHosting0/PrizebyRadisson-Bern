@@ -29,9 +29,12 @@ async function refresh() {
   if (!settings) return;
   $('apiBase').value = settings.apiBase ?? '';
   $('apiKey').value = settings.apiKey ?? '';
+  $('windowDays').value = String(settings.windowDays ?? 14);
   $('lastUploadAt').textContent = fmtTime(settings.lastUploadAt);
   $('lastUploadStatus').textContent = settings.lastUploadStatus ?? '–';
   $('lastUploadUrl').textContent = settings.lastUploadUrl ?? '–';
+  $('lastDomImportCount').textContent =
+    settings.lastDomImportCount != null ? String(settings.lastDomImportCount) : '–';
   $('uploadCount').textContent = String(settings.uploadCount ?? 0);
   $('errorCount').textContent = String(settings.errorCount ?? 0);
   applyEnabledUi(settings.enabled !== false);
@@ -49,6 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('save').addEventListener('click', async () => {
     const apiBase = $('apiBase').value.trim();
     const apiKey = $('apiKey').value.trim();
+    const windowDays = Math.min(60, Math.max(1, Number($('windowDays').value) || 14));
     if (!apiBase) {
       showToast('Backend-URL fehlt.', 'error');
       return;
@@ -71,7 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     chrome.runtime.sendMessage(
-      { type: 'SET_SETTINGS', patch: { apiBase, apiKey } },
+      { type: 'SET_SETTINGS', patch: { apiBase, apiKey, windowDays } },
       (r) => {
         if (r?.ok) {
           showToast('Gespeichert.', 'success');
@@ -104,5 +108,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         showToast(next ? 'Capture aktiviert.' : 'Capture pausiert.', 'success');
       },
     );
+  });
+
+  $('dateLoop').addEventListener('click', () => {
+    showToast('Datums-Loop gestartet… (kann einige Minuten dauern)', 'success');
+    chrome.runtime.sendMessage({ type: 'RUN_DATE_LOOP' }, (r) => {
+      if (r?.ok) showToast(`Import OK (${r.count ?? '?'} Schichten).`, 'success');
+      else if (r?.error) showToast(r.error, 'error');
+      else if (r?.reason) showToast(r.reason, 'error');
+      refresh();
+    });
   });
 });

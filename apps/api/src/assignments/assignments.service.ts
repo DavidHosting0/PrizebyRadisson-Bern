@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -33,15 +34,35 @@ export class AssignmentsService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
+    this.releaseInactiveHousekeeperAssignments().catch((e) =>
+      this.logger.warn(`Failed to release inactive housekeeper assignments: ${(e as Error).message}`),
+    );
     const intervalMs = parseInt(process.env.AUTO_ASSIGN_INTERVAL_MS ?? '60000', 10);
     setInterval(() => {
       this.runAutoAssignment().catch((e) => this.logger.error(e));
     }, intervalMs);
   }
 
+  /** Drop stale assignments left on deactivated housekeeper accounts. */
+  private async releaseInactiveHousekeeperAssignments() {
+    const result = await this.prisma.roomAssignment.updateMany({
+      where: {
+        status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] },
+        housekeeper: { isActive: false },
+      },
+      data: { status: AssignmentStatus.CANCELLED },
+    });
+    if (result.count > 0) {
+      this.logger.log(`Released ${result.count} assignment(s) from inactive housekeepers`);
+    }
+  }
+
   async list() {
     return this.prisma.roomAssignment.findMany({
-      where: { status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
+      where: {
+        status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] },
+        housekeeper: { isActive: true },
+      },
       include: {
         room: { select: { id: true, roomNumber: true, floor: true } },
         housekeeper: { select: userPublicSelect },
@@ -53,6 +74,13 @@ export class AssignmentsService implements OnModuleInit {
   async manualAssign(roomId: string, housekeeperUserId: string, assigner: User) {
     if (assigner.role !== UserRole.SUPERVISOR && assigner.role !== UserRole.ADMIN) {
       throw new ForbiddenException();
+    }
+    const housekeeper = await this.prisma.user.findFirst({
+      where: { id: housekeeperUserId, role: UserRole.HOUSEKEEPER, isActive: true },
+      select: { id: true },
+    });
+    if (!housekeeper) {
+      throw new BadRequestException('Housekeeper not found or inactive');
     }
     await this.prisma.roomAssignment.updateMany({
       where: { roomId, status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },

@@ -29,6 +29,7 @@ import { useReceptionRealtime } from '@/lib/hooks/useReceptionRealtime';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NotificationsRuntime } from '@/components/notifications/NotificationsRuntime';
 import { PushPermissionBanner } from '@/components/notifications/PushPermissionBanner';
+import { EmmaSyncAlertBanner } from '@/components/emma/EmmaSyncAlertBanner';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
@@ -140,6 +141,7 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   if (mobileUi) {
     return (
       <>
+        <EmmaSyncAlertBanner />
         <ReceptionMobileShell userName={user.name} titlePrefix={user.titlePrefix}>
           {children}
         </ReceptionMobileShell>
@@ -154,13 +156,14 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={clsx(
-        'flex flex-col bg-surface-muted md:flex-row',
+        'flex flex-col bg-surface-muted md:h-dvh md:flex-row md:overflow-hidden',
         path === '/r/chat' ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
       <AppSidebar
         groups={sidebarGroups}
         path={path}
+        className="md:sticky md:top-0 md:h-dvh md:self-start"
         header={<BrandLogo className="brightness-0 invert" />}
         footer={
           <div className="space-y-3">
@@ -189,8 +192,8 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
       <div
         className={clsx(
-          'flex min-h-0 min-w-0 flex-1 flex-col',
-          path === '/r/chat' ? 'h-full overflow-hidden' : 'md:min-h-screen',
+          'flex min-h-0 min-w-0 flex-1 flex-col md:h-dvh',
+          path === '/r/chat' ? 'h-full overflow-hidden' : 'md:overflow-hidden',
         )}
       >
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface/95 px-5 shadow-card backdrop-blur-sm md:px-8">
@@ -220,13 +223,14 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
         <NotificationsRuntime />
         <PushPermissionBanner />
+        <EmmaSyncAlertBanner />
 
         <main
           className={clsx(
-            'min-w-0 flex-1',
+            'min-h-0 min-w-0 flex-1',
             path === '/r/chat'
-              ? 'flex h-full min-h-0 flex-col overflow-hidden'
-              : 'overflow-auto pb-20 md:pb-8',
+              ? 'flex h-full flex-col overflow-hidden'
+              : 'overflow-y-auto pb-20 md:pb-8',
           )}
         >
           {children}

@@ -54,6 +54,15 @@ export class UpdateFavurConfigDto {
   @IsOptional()
   @IsString()
   fieldLabel?: string | null;
+
+  @IsOptional()
+  @IsString()
+  mirusUsername?: string;
+
+  /** Leave empty to keep existing password. */
+  @IsOptional()
+  @IsString()
+  mirusPassword?: string;
 }
 
 export class MapFavurUserDto {
@@ -104,4 +113,67 @@ export class ImportCaptureDto {
   @IsOptional()
   @IsString()
   capturedFrom?: string;
+}
+
+class DomShiftDto {
+  @IsString()
+  favurUserId!: string;
+
+  @IsString()
+  displayName!: string;
+
+  @IsString()
+  startsAt!: string;
+
+  @IsString()
+  endsAt!: string;
+
+  @IsOptional()
+  @IsString()
+  sourceId?: string;
+
+  @IsOptional()
+  @IsString()
+  label?: string | null;
+}
+
+/**
+ * Browser extension POSTs pre-parsed shift rows from Mirus NEO DOM scraping
+ * to /favur/import-dom (no HTTP replay).
+ */
+export class ImportDomShiftsDto {
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  fromDate?: string;
+
+  @IsOptional()
+  @IsString()
+  toDate?: string;
+
+  @IsOptional()
+  @IsString()
+  pageUrl?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DomShiftDto)
+  shifts!: DomShiftDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CookieDto)
+  cookies?: CookieDto[];
+
+  @IsOptional()
+  @IsString()
+  capturedFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  trigger?: string;
 }

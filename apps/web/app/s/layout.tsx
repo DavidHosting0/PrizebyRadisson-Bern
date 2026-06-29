@@ -125,7 +125,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={clsx(
-        'flex flex-col bg-surface-muted md:flex-row',
+        'flex flex-col bg-surface-muted md:h-dvh md:flex-row md:overflow-hidden',
         path === '/s/chat' ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
@@ -133,6 +133,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
       <AppSidebar
         groups={sidebarGroups}
         path={path}
+        className="md:sticky md:top-0 md:h-dvh md:self-start"
         header={<BrandLogo className="brightness-0 invert" />}
         footer={
           <div className="space-y-3">
@@ -159,8 +160,8 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
 
       <div
         className={clsx(
-          'flex min-h-0 min-w-0 flex-1 flex-col',
-          path === '/s/chat' ? 'h-full overflow-hidden' : 'md:min-h-screen',
+          'flex min-h-0 min-w-0 flex-1 flex-col md:h-dvh',
+          path === '/s/chat' ? 'h-full overflow-hidden' : 'md:overflow-hidden',
         )}
       >
         <header className="flex items-center justify-between gap-3 border-b border-border bg-surface/95 px-5 py-3 shadow-card backdrop-blur-sm md:hidden">
@@ -184,8 +185,8 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
         <PushPermissionBanner />
         <main
           className={clsx(
-            'flex-1',
-            path === '/s/chat' ? 'flex h-full min-h-0 flex-col overflow-hidden' : 'overflow-auto',
+            'min-h-0 min-w-0 flex-1',
+            path === '/s/chat' ? 'flex h-full flex-col overflow-hidden' : 'overflow-y-auto',
           )}
         >
           {children}

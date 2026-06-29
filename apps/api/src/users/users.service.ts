@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, AssignmentStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { defaultSystemRoleId } from '../permissions/ensure-system-roles';
@@ -198,6 +198,15 @@ export class UsersService {
     await this.prisma.$transaction(async (tx) => {
       if (Object.keys(data).length > 0) {
         await tx.user.update({ where: { id }, data });
+      }
+      if (dto.isActive === false && user.isActive) {
+        await tx.roomAssignment.updateMany({
+          where: {
+            housekeeperUserId: id,
+            status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] },
+          },
+          data: { status: AssignmentStatus.CANCELLED },
+        });
       }
       if (dto.permissionGrants !== undefined) {
         await tx.userPermissionGrant.deleteMany({ where: { userId: id } });

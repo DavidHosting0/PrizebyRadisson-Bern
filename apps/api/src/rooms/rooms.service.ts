@@ -229,10 +229,11 @@ export class RoomsService {
     });
     if (!a) throw new ForbiddenException('Not assigned to this room');
 
+    const cleaningDeclaredAt = new Date();
     await this.prisma.$transaction([
       this.prisma.room.update({
         where: { id: roomId },
-        data: { cleaningDeclaredAt: new Date() },
+        data: { cleaningDeclaredAt },
       }),
       this.prisma.roomHousekeepingEvent.create({
         data: {
@@ -243,9 +244,13 @@ export class RoomsService {
       }),
     ]);
 
+    await this.emma?.pushRoomStatus(roomId, 'CLEAN', {
+      actionAt: cleaningDeclaredAt,
+      source: 'rooms.markHousekeepingClean',
+    });
+
     const out = await this.findOne(roomId, user);
     this.realtime.emitRoomStatus(out);
-    this.emmaAfterRoomActivity('rooms.markHousekeepingClean');
     return out;
   }
 

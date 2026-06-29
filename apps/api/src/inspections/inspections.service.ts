@@ -31,9 +31,14 @@ export class InspectionsService {
         passed: dto.passed ?? true,
       },
     });
+    if (row.passed) {
+      await this.emma?.pushRoomStatus(dto.roomId, 'INSPECTED', {
+        actionAt: row.inspectedAt,
+        source: 'inspections.create',
+      });
+    }
     const room = await this.rooms.findOne(dto.roomId);
     this.realtime.emitRoomStatus(room);
-    this.emma?.scheduleRoomStatusSync('inspections.create');
     return { inspection: row, room };
   }
 }

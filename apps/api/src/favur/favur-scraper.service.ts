@@ -90,7 +90,7 @@ export class FavurScraperService {
       });
       if (res.status === 401 || res.status === 403) {
         throw new Error(
-          `Favur returned ${res.status} – session expired in your browser. Open web.favur.ch and log in again so the extension picks up fresh cookies.`,
+          `Favur returned ${res.status} – session expired in your browser. Open the shift plan site and log in again so the extension picks up fresh cookies.`,
         );
       }
       if (!res.ok) {
@@ -134,7 +134,7 @@ export class FavurScraperService {
     });
     if (res.status === 401 || res.status === 403) {
       throw new Error(
-        `Favur returned ${res.status} – session expired, log in to web.favur.ch again.`,
+        `Favur returned ${res.status} – session expired, log in to the shift plan site again.`,
       );
     }
     if (!res.ok) {
@@ -153,8 +153,14 @@ export class FavurScraperService {
     if (template.cookies) out['Cookie'] = template.cookies;
     // Favur's API checks Origin — and the browser auto-sets it, so it isn't in
     // the captured init.headers. Force it here.
-    if (!hasHeader(out, 'origin')) out['Origin'] = 'https://web.favur.ch';
-    if (!hasHeader(out, 'referer')) out['Referer'] = 'https://web.favur.ch/';
+    if (!hasHeader(out, 'origin')) {
+      const origin = inferOrigin(template.url);
+      if (origin) out['Origin'] = origin;
+    }
+    if (!hasHeader(out, 'referer')) {
+      const referer = inferReferer(template.url);
+      if (referer) out['Referer'] = referer;
+    }
     if (forceJson && !hasHeader(out, 'content-type')) {
       out['Content-Type'] = 'application/json';
     }
@@ -465,4 +471,22 @@ function stripBadHeaders(headers: Record<string, string>): Record<string, string
 function hasHeader(headers: Record<string, string>, name: string): boolean {
   const lower = name.toLowerCase();
   return Object.keys(headers).some((k) => k.toLowerCase() === lower);
+}
+
+function inferOrigin(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.origin;
+  } catch {
+    return 'https://web.favur.ch';
+  }
+}
+
+function inferReferer(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return `${u.origin}/`;
+  } catch {
+    return 'https://web.favur.ch/';
+  }
 }

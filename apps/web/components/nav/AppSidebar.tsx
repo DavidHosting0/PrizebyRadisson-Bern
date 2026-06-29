@@ -38,7 +38,7 @@ export function AppSidebar({
         {header}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-2 py-4">
+      <nav className="sidebar-scroll flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-2 py-4">
         {groups.map((group) => (
           <section key={group.id}>
             {!collapsed && (

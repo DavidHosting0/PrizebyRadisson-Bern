@@ -62,7 +62,10 @@ export class DeparturesService {
         floor: true,
         outOfOrder: true,
         assignments: {
-          where: { status: AssignmentStatus.ACTIVE },
+          where: {
+            status: AssignmentStatus.ACTIVE,
+            housekeeper: { isActive: true },
+          },
           take: 1,
           select: {
             housekeeper: { select: userPublicSelect },
