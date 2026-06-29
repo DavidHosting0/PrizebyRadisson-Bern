@@ -7,6 +7,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmmaBackupModeService } from '../emma/emma-backup-mode.service';
 import { readEmmaMetadata, normalizeEmmaRoomNumber } from '../emma/emma-room-status-sync';
 import { decryptSensitivePayload } from '../reservations/reservation-sensitive';
+import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
+import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
+import {
+  balanceFetchedAt,
+  resolveReservationBalance,
+} from '../reservations/reservation-balance';
 import { RoomStatusService } from '../rooms/room-status.service';
 import { compareRoomNumbers, floorFromRoomNumber } from '../rooms/room-layout';
 
@@ -80,6 +86,9 @@ export class FrontOfficeBackupService {
 
     const toReservationRow = (row: (typeof snapshots)[number]) => {
       const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
+      const folio = decryptFolioBundle(this.cipher, row.folioEnc);
+      const detail = decryptDetailBundle(this.cipher, row.detailEnc);
+      const resolved = resolveReservationBalance({ sensitive: s, folio, detail });
       const roomNumber = row.roomId?.trim()
         ? normalizeEmmaRoomNumber(row.roomId.trim())
         : null;
@@ -95,7 +104,13 @@ export class FrontOfficeBackupService {
         checkOut: row.checkOut,
         checkInQueue: row.checkInQueue,
         inTodayArrivals: row.inTodayArrivals,
-        balance: s?.balance ?? null,
+        balance: resolved.balance,
+        balanceFetchedAt: balanceFetchedAt({
+          source: resolved.source,
+          folioFetchedAt: row.folioFetchedAt,
+          detailFetchedAt: row.detailFetchedAt,
+          syncedAt: row.syncedAt,
+        }),
         syncedAt: row.syncedAt.toISOString(),
       };
     };

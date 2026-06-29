@@ -68,7 +68,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
       <section className="relative hidden flex-col justify-between bg-[#ECECEC] px-12 py-12 lg:flex lg:w-[42%] xl:w-[38%]">
-        <BrandLogo />
+        <BrandLogo link={false} />
         <div>
           <h2 className="max-w-md text-3xl font-semibold leading-tight tracking-tight text-ink xl:text-4xl">
             {t('title')}
@@ -83,7 +83,7 @@ export default function LoginPage() {
       <section className="flex flex-1 flex-col justify-center bg-surface px-6 py-12 sm:px-10 lg:px-16">
         <div className="mx-auto w-full max-w-[400px]">
           <div className="mb-10 flex justify-center lg:hidden">
-            <BrandLogo />
+            <BrandLogo link={false} />
           </div>
 
           <p className="mb-6 text-center text-3xl font-bold tracking-tight text-ink sm:text-4xl lg:mb-8 lg:text-left">

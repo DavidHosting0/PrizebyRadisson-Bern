@@ -255,7 +255,9 @@ function ReservationTable({
               {showBalance ? (
                 <Td className="font-semibold tabular-nums text-rose-700">{row.balance ?? '—'}</Td>
               ) : null}
-              <Td className="text-ink-muted">{formatAge(row.syncedAt, locale)}</Td>
+              <Td className="text-ink-muted">
+                {formatAge(showBalance ? row.balanceFetchedAt : row.syncedAt, locale)}
+              </Td>
             </tr>
           ))}
         </tbody>

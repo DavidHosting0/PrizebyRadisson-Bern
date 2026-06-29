@@ -55,6 +55,8 @@ export type FrontOfficeBackupReservationRow = {
   checkInQueue: boolean;
   inTodayArrivals: boolean;
   balance: string | null;
+  /** When the balance figure was last refreshed (folio/detail fetch or list sync). */
+  balanceFetchedAt: string;
   syncedAt: string;
 };
 

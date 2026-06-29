@@ -191,6 +191,7 @@ async function main() {
     });
   }
 
+  const retiredRooms = new Set<string>(RETIRED_HOTEL_ROOM_NUMBERS);
   const retired = [...RETIRED_HOTEL_ROOM_NUMBERS];
   const removed = await prisma.room.deleteMany({
     where: { roomNumber: { in: retired } },
@@ -208,7 +209,7 @@ async function main() {
           typeof el === 'object' &&
           (el as { kind?: string }).kind === 'room' &&
           typeof (el as { roomNumber?: string }).roomNumber === 'string' &&
-          retired.includes((el as { roomNumber: string }).roomNumber)
+          retiredRooms.has((el as { roomNumber: string }).roomNumber)
         ),
     );
     if (filtered.length !== layout.length) {

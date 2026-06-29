@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nest
 import { Prisma } from '@prisma/client';
 import type {
   ReservationDetail,
+  ReservationEmmaDetailBundle,
+  ReservationEmmaFolioBundle,
   ReservationListItem,
   ReservationOverview,
   ReservationSyncStatus,
@@ -15,6 +17,7 @@ import type { EmmaReservationSyncResult, ReservationUpsertRow } from '../emma/em
 import { RoomGuestStayService } from '../room-management/room-guest-stay.service';
 import {
   decryptSensitivePayload,
+  encryptSensitivePayload,
   todayIsoDate,
   dateOnlyFromIso,
 } from './reservation-sensitive';
@@ -26,6 +29,7 @@ import {
   decryptFolioBundle,
   encryptFolioBundle,
 } from './reservation-folio-bundle';
+import { resolveReservationBalance } from './reservation-balance';
 
 @Injectable()
 export class ReservationsService {
@@ -329,6 +333,7 @@ export class ReservationsService {
     }
 
     this.log.log(`[Reservations] EMMA detail stored for ${reservationId}`);
+    await this.persistBalanceOnSnapshot(hid, reservationId, { detail: bundle });
     return this.findOne(reservationId, hid);
   }
 
@@ -370,6 +375,7 @@ export class ReservationsService {
     this.log.log(
       `[Reservations] EMMA folio stored for ${reservationId} (${bundle.charges.length} charges)`,
     );
+    await this.persistBalanceOnSnapshot(hid, reservationId, { folio: bundle });
     return this.findOne(reservationId, hid);
   }
 
@@ -414,6 +420,39 @@ export class ReservationsService {
       sensitiveEnc: upsert.sensitiveEnc,
       syncedAt: upsert.syncedAt,
     };
+  }
+
+  /**
+   * After arrival-check detail/folio fetches, merge the authoritative outstanding
+   * balance into sensitiveEnc so list views and backup reports stay aligned.
+   */
+  private async persistBalanceOnSnapshot(
+    hotelId: string,
+    reservationId: string,
+    opts: {
+      folio?: ReservationEmmaFolioBundle;
+      detail?: ReservationEmmaDetailBundle;
+    },
+  ): Promise<void> {
+    const row = await this.prisma.reservationSnapshot.findUnique({
+      where: { hotelId_reservationId: { hotelId, reservationId } },
+    });
+    if (!row) return;
+
+    const sensitive = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
+    if (!sensitive) return;
+
+    const folio = opts.folio ?? decryptFolioBundle(this.cipher, row.folioEnc);
+    const detail = opts.detail ?? decryptDetailBundle(this.cipher, row.detailEnc);
+    const { balance } = resolveReservationBalance({ sensitive, folio, detail });
+    if (!balance || balance === sensitive.balance) return;
+
+    await this.prisma.reservationSnapshot.update({
+      where: { id: row.id },
+      data: {
+        sensitiveEnc: encryptSensitivePayload(this.cipher, { ...sensitive, balance }),
+      },
+    });
   }
 
   async overview(hotelId?: string): Promise<ReservationOverview> {
@@ -778,6 +817,11 @@ export class ReservationsService {
     const emmaDetail = decryptDetailBundle(this.cipher, row.detailEnc);
     const emmaFolio = decryptFolioBundle(this.cipher, row.folioEnc);
     const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
+    const resolvedBalance = resolveReservationBalance({
+      sensitive: s,
+      folio: emmaFolio,
+      detail: emmaDetail,
+    }).balance;
     if (!s) {
       return {
         ...list,
@@ -790,7 +834,7 @@ export class ReservationsService {
         rateCode: null,
         sourceCode: null,
         marketCode: null,
-        balance: null,
+        balance: resolvedBalance,
         comments: null,
         draftStatus: null,
         draftLockedBy: null,
@@ -822,7 +866,7 @@ export class ReservationsService {
       rateCode: s.rateCode,
       sourceCode: s.sourceCode,
       marketCode: s.marketCode,
-      balance: s.balance,
+      balance: resolvedBalance,
       comments: s.comments,
       draftStatus: s.draftStatus,
       draftLockedBy: s.draftLockedBy,

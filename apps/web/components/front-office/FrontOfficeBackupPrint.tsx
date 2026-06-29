@@ -123,7 +123,9 @@ function PrintReservationTable({
             <td className="py-1">{row.arrivalDate}</td>
             <td className="py-1">{row.departureDate}</td>
             {showBalance ? <td className="py-1 font-semibold">{row.balance ?? '—'}</td> : null}
-            <td className="py-1">{formatAge(row.syncedAt, locale)}</td>
+            <td className="py-1">
+              {formatAge(showBalance ? row.balanceFetchedAt : row.syncedAt, locale)}
+            </td>
           </tr>
         ))}
       </tbody>

@@ -162,7 +162,7 @@ At the bottom of the page, you will find the previous imports, showing when the 
 
 ### Download extension
 
-To download the BernTicket extension, log in to [bernticket.com](https://bernticket.com) and click on the **Extension** category. There you will find the option to download the `.zip` file. Further installation steps are described in that category.
+To download the BernTicket extension, log in to [bernticket.com](https://bernticket.com) and click on the **Extension** category. There you will find the option to download the \`.zip\` file. Further installation steps are described in that category.
 
 ### Display activation code
 
