@@ -1,5 +1,5 @@
-/** URL path for the extension download (served by /api/extension/download). */
-export const EXTENSION_DOWNLOAD_PATH = '/api/extension/download';
+/** Next.js route — must NOT use /api (Nginx proxies /api to Nest on production). */
+export const EXTENSION_DOWNLOAD_PATH = '/extension/download';
 
 export function extensionDownloadUrl(): string {
   return EXTENSION_DOWNLOAD_PATH;

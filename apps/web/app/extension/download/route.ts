@@ -4,13 +4,14 @@ import { resolveExtensionZipPath } from '@/lib/extension-download.server';
 
 export const dynamic = 'force-dynamic';
 
+/** Served by Next.js at /extension/download (not under /api — Nginx routes /api to Nest). */
 export async function GET() {
   const zipPath = resolveExtensionZipPath();
   if (!zipPath) {
     return NextResponse.json(
       {
         message:
-          'Extension package not found on server. Run npm run build:extension (or full npm run build) on the server.',
+          'Extension package not found on server. Run npm run build (or npm run build:extension) on the server.',
       },
       { status: 404 },
     );

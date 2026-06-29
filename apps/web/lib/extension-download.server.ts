@@ -6,6 +6,7 @@ export function resolveExtensionZipPath(): string | null {
   const candidates = [
     path.join(cwd, 'public', 'downloads', 'prize-panel-extension.zip'),
     path.join(cwd, 'apps', 'web', 'public', 'downloads', 'prize-panel-extension.zip'),
+    path.join(cwd, '..', 'web', 'public', 'downloads', 'prize-panel-extension.zip'),
     path.join(cwd, '..', '..', 'apps', 'web', 'public', 'downloads', 'prize-panel-extension.zip'),
   ];
 

@@ -178,15 +178,15 @@ export function NotificationBell({ variant = 'default' }: { variant?: 'default' 
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={clsx(
-          'relative inline-flex h-9 w-9 items-center justify-center rounded-lg transition',
+          'relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-panel',
           variant === 'onDark'
-            ? 'text-sidebar-muted hover:bg-sidebar-hover hover:text-white'
+            ? 'bg-white/5 text-sidebar-muted hover:bg-white/10 hover:text-white'
             : 'text-ink-muted hover:bg-surface-muted hover:text-ink',
         )}
         aria-label={`${t('title')}${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={open}
       >
-        <IconBell className="h-5 w-5" />
+        <IconBell className="h-[18px] w-[18px]" />
         {unreadCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-action px-1 text-[10px] font-bold text-white">
             {unreadCount > 99 ? '99+' : unreadCount}

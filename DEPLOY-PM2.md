@@ -92,6 +92,8 @@ Example: web on `/`, API under `/api`, WebSocket for Socket.IO:
 
 - Next.js: `proxy_pass http://127.0.0.1:3100;` for `/`.
 
+**Chrome extension download:** the web app serves the ZIP at `/extension/download` (Next.js route). Do **not** put this under `/api/` — that path is proxied to Nest and will 404.
+
 Exact Nginx snippets depend on path layout; verify with your other vhosts.
 
 ## 7. Socket.IO / CORS
