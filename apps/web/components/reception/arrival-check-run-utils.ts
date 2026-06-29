@@ -15,8 +15,8 @@ export function manualReasonText(item: ArrivalCheckRunItem): string {
 /** True while the backend may still be processing — keep polling. */
 export function isRunActive(run: ArrivalCheckRunDetail | undefined): boolean {
   if (!run) return true;
-  if (run.status === 'RUNNING') return true;
   if (run.items.some((i) => i.status === 'IN_PROGRESS')) return true;
+  if (run.status === 'RUNNING' && run.pendingCount > 0) return true;
   if (
     run.status !== 'COMPLETED' &&
     run.status !== 'FAILED' &&
@@ -26,6 +26,15 @@ export function isRunActive(run: ArrivalCheckRunDetail | undefined): boolean {
     return true;
   }
   return false;
+}
+
+/** Run was interrupted (e.g. API restart) and has queue items waiting for explicit continue. */
+export function runNeedsContinue(run: ArrivalCheckRunDetail): boolean {
+  return (
+    run.status === 'RUNNING' &&
+    run.pendingCount > 0 &&
+    !run.items.some((i) => i.status === 'IN_PROGRESS')
+  );
 }
 
 export function isRunFinished(run: ArrivalCheckRunDetail): boolean {

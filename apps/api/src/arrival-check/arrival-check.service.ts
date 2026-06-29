@@ -60,8 +60,6 @@ export class ArrivalCheckService implements OnModuleInit {
    * write calls and corrupt the payment context.
    */
   private executingRunId: string | null = null;
-  /** Prevents duplicate auto-resume triggers from concurrent getRun polls. */
-  private resumeInFlight = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -80,11 +78,10 @@ export class ArrivalCheckService implements OnModuleInit {
     if (interrupted.length === 0) return;
 
     this.log.warn(
-      `[ArrivalCheck] recovering ${interrupted.length} interrupted run(s) after process start`,
+      `[ArrivalCheck] sealing ${interrupted.length} interrupted run(s) after process start (no auto-execute)`,
     );
     for (const run of interrupted) {
-      await this.resetOrphanedInProgressItems(run.id);
-      this.scheduleResumeIfInterrupted(run.id);
+      await this.sealInterruptedRun(run.id);
     }
   }
 
@@ -241,24 +238,12 @@ export class ArrivalCheckService implements OnModuleInit {
   async getRun(id: string): Promise<ArrivalCheckRunDetail> {
     const run = await this.prisma.arrivalCheckRun.findUnique({
       where: { id },
-      include: {
-        createdBy: { select: { id: true, name: true } },
-        items: { orderBy: { reservationId: 'asc' } },
-      },
+      select: { id: true },
     });
     if (!run) throw new NotFoundException('Anreise-Check-Lauf nicht gefunden.');
 
-    const reservationIds = run.items.map((i) => i.reservationId);
-    const snapshots =
-      reservationIds.length > 0
-        ? await this.prisma.reservationSnapshot.findMany({
-            where: { hotelId: run.hotelId, reservationId: { in: reservationIds } },
-          })
-        : [];
-
-    const detail = this.toDetail(run, snapshots);
-    this.scheduleResumeIfInterrupted(run.id);
-    return detail;
+    await this.sealInterruptedRun(id);
+    return this.getRunWithoutResume(id);
   }
 
   /**
@@ -310,55 +295,66 @@ export class ArrivalCheckService implements OnModuleInit {
     return item.status === 'PENDING' && item.paymentStatus !== 'DECLINED';
   }
 
-  /** True when a RUNNING run still has queue work for the auto-worker. */
-  private runHasAutoWork(
-    items: { status: ArrivalCheckRunItem['status']; paymentStatus: string | null }[],
-  ): boolean {
-    return items.some(
-      (i) =>
-        this.isQueuedForAutoProcess(i) ||
-        (i.status === 'IN_PROGRESS' && i.paymentStatus !== 'PLANNED'),
-    );
+  private async isReservationInTodayArrivals(
+    hotelId: string,
+    reservationId: string,
+  ): Promise<boolean> {
+    const snap = await this.prisma.reservationSnapshot.findUnique({
+      where: { hotelId_reservationId: { hotelId, reservationId } },
+      select: { inTodayArrivals: true },
+    });
+    return snap?.inTodayArrivals === true;
   }
 
-  /** If a RUNNING run has no in-memory worker, kick executeRun (e.g. after API restart). */
-  private scheduleResumeIfInterrupted(runId: string): void {
-    if (this.executingRunId) return;
-    if (this.resumeInFlight.has(runId)) return;
+  private async markItemNoLongerArrival(itemId: string): Promise<void> {
+    const msg = 'Nicht mehr in der EMMA-Anreiseliste – übersprungen.';
+    await this.prisma.arrivalCheckRunItem.update({
+      where: { id: itemId },
+      data: {
+        status: 'SKIPPED',
+        currentStep: null,
+        statusMessage: msg,
+        finishedAt: new Date(),
+      },
+    });
+  }
 
-    void (async () => {
-      const run = await this.prisma.arrivalCheckRun.findUnique({
-        where: { id: runId },
-        select: {
-          id: true,
-          status: true,
-          items: {
-            select: { status: true, paymentStatus: true },
-          },
-        },
-      });
-      if (!run || run.status !== 'RUNNING') return;
-      if (this.executingRunId) return;
+  /** Skip queue items whose reservation left today's EMMA arrivals tab. */
+  private async skipItemsNoLongerInArrivals(runId: string, hotelId: string): Promise<number> {
+    const pending = await this.prisma.arrivalCheckRunItem.findMany({
+      where: { runId, status: 'PENDING' },
+      select: { id: true, reservationId: true },
+    });
+    let skipped = 0;
+    for (const item of pending) {
+      if (await this.isReservationInTodayArrivals(hotelId, item.reservationId)) continue;
+      await this.markItemNoLongerArrival(item.id);
+      skipped += 1;
+    }
+    if (skipped > 0) {
+      this.log.warn(
+        `[ArrivalCheck] skipped ${skipped} stale item(s) in run ${runId} (no longer in arrivals list)`,
+      );
+    }
+    return skipped;
+  }
 
-      if (!this.runHasAutoWork(run.items)) {
-        await this.refreshRunStatus(runId);
-        return;
-      }
+  /**
+   * After restart or when viewing a run: reset orphans, drop stale queue items, seal
+   * terminal runs. Never starts EMMA work — use executeRun explicitly.
+   */
+  private async sealInterruptedRun(runId: string): Promise<void> {
+    if (this.executingRunId === runId) return;
 
-      this.resumeInFlight.add(runId);
-      try {
-        await this.resetOrphanedInProgressItems(runId);
-        await this.executeRun(runId);
-      } catch (err) {
-        this.log.error(
-          `[ArrivalCheck] auto-resume failed for ${runId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      } finally {
-        this.resumeInFlight.delete(runId);
-      }
-    })();
+    const run = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id: runId },
+      select: { id: true, status: true, hotelId: true },
+    });
+    if (!run || run.status !== 'RUNNING') return;
+
+    await this.resetOrphanedInProgressItems(runId);
+    await this.skipItemsNoLongerInArrivals(runId, run.hotelId);
+    await this.refreshRunStatus(runId);
   }
 
   /** Process pending run items: load folio, move misassigned charges, refresh folio. */
@@ -376,6 +372,14 @@ export class ArrivalCheckService implements OnModuleInit {
     }
 
     await this.resetOrphanedInProgressItems(runId);
+
+    const runHotel = await this.prisma.arrivalCheckRun.findUnique({
+      where: { id: runId },
+      select: { hotelId: true },
+    });
+    if (runHotel) {
+      await this.skipItemsNoLongerInArrivals(runId, runHotel.hotelId);
+    }
 
     if (this.executingRunId && this.executingRunId !== runId) {
       throw new ConflictException(
@@ -432,6 +436,10 @@ export class ArrivalCheckService implements OnModuleInit {
             );
             continue;
           }
+        }
+        if (!(await this.isReservationInTodayArrivals(runState.hotelId, item.reservationId))) {
+          await this.markItemNoLongerArrival(item.id);
+          continue;
         }
         await this.processRunItem(runState.hotelId, item.id);
       }

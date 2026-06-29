@@ -37,6 +37,17 @@ export default function ArrivalCheckRunPage() {
     },
   });
 
+  const continueMut = useMutation({
+    mutationFn: () =>
+      api<ArrivalCheckRunDetail>(`/arrival-check/runs/${runId}/execute`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['arrival-check', 'run', runId], data);
+    },
+  });
+
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace('/login');
@@ -105,6 +116,9 @@ export default function ArrivalCheckRunPage() {
         retryFailedError={
           retryFailedMut.isError ? (retryFailedMut.error as Error).message : null
         }
+        onContinue={() => continueMut.mutate()}
+        continuePending={continueMut.isPending}
+        continueError={continueMut.isError ? (continueMut.error as Error).message : null}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import {
   itemStatusLabel,
   manualReasonText,
   needsManual,
+  runNeedsContinue,
   stepLabel,
 } from '@/components/reception/arrival-check-run-utils';
 
@@ -26,6 +27,9 @@ type Props = {
   onRetryFailed?: () => void;
   retryFailedPending?: boolean;
   retryFailedError?: string | null;
+  onContinue?: () => void;
+  continuePending?: boolean;
+  continueError?: string | null;
 };
 
 function StatusDot({ status }: { status: ArrivalCheckRunItem['status'] }) {
@@ -150,15 +154,21 @@ export function ArrivalCheckRunView({
   onRetryFailed,
   retryFailedPending,
   retryFailedError,
+  onContinue,
+  continuePending,
+  continueError,
 }: Props) {
   const active = isRunActive(run);
+  const paused = runNeedsContinue(run);
   const finished = isRunFinished(run);
   const progressPct = computeProgressPct(run);
   const current = activeItem(run);
   const manualItems = run.items.filter(needsManual);
 
-  const headline = active
+  const headline = active && !paused
     ? 'Anreise-Check läuft'
+    : paused
+      ? 'Anreise-Check pausiert'
     : run.status === 'CANCELLED'
       ? 'Anreise-Check abgebrochen'
       : manualItems.length > 0
@@ -237,6 +247,23 @@ export function ArrivalCheckRunView({
           {active && <StatChip label="Ausstehend" value={run.pendingCount} tone="neutral" />}
         </div>
       </section>
+
+      {paused && onContinue && !preview && (
+        <section className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-center">
+          <p className="text-sm text-indigo-950">
+            {run.pendingCount} Reservierung{run.pendingCount === 1 ? '' : 'en'} in der Warteschlange
+            — nach einem Neustart oder einer Unterbrechung manuell fortsetzen.
+          </p>
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={continuePending}
+            className="mt-3 rounded-lg border border-indigo-300 bg-surface px-4 py-2 text-sm font-semibold text-indigo-950 hover:bg-indigo-50 disabled:opacity-50"
+          >
+            {continuePending ? 'Wird fortgesetzt…' : 'Fortsetzen'}
+          </button>
+        </section>
+      )}
 
       {active && current && (
         <section className="overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/50 shadow-sm">
@@ -386,6 +413,10 @@ export function ArrivalCheckRunView({
 
       {retryFailedError && (
         <p className="text-sm text-rose-700">{retryFailedError}</p>
+      )}
+
+      {continueError && (
+        <p className="text-sm text-rose-700">{continueError}</p>
       )}
     </div>
   );
