@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PermissionToggle } from '@/components/admin/PermissionToggle';
-import type { ReservationSyncStatus } from '@housekeeping/shared';
+import type { ReservationSyncStatus, EmmaIntegrationStatus } from '@housekeeping/shared';
 
 type EmmaMeta = {
   integrationEnabled: boolean;
@@ -132,6 +132,23 @@ export default function AdminEmmaCredentialsPage() {
     refetchInterval: 30_000,
   });
 
+  const integrationStatusQuery = useQuery({
+    queryKey: ['emma', 'integration-status'],
+    queryFn: () => api<EmmaIntegrationStatus>('/emma/integration-status'),
+    refetchInterval: 15_000,
+  });
+
+  const backupModeMut = useMutation({
+    mutationFn: (manual: boolean) =>
+      api<EmmaIntegrationStatus>('/emma/backup-mode', {
+        method: 'PATCH',
+        body: JSON.stringify({ manual }),
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(['emma', 'integration-status'], next);
+    },
+  });
+
   const syncReservationsMut = useMutation({
     mutationFn: () =>
       api<{ upserted: number; syncedAt: string }>('/reservations/sync', {
@@ -145,6 +162,7 @@ export default function AdminEmmaCredentialsPage() {
 
   const meta = metaQuery.data;
   const emmaActive = meta?.integrationEnabled !== false;
+  const backupMode = integrationStatusQuery.data?.backupMode;
 
   return (
     <div className="space-y-8 px-4 py-6">
@@ -187,6 +205,32 @@ export default function AdminEmmaCredentialsPage() {
             EMMA ist ausgeschaltet. Hintergrund-Sync und automatischer Re-Login laufen nicht.
           </p>
         )}
+      </section>
+
+      <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-5 shadow-card">
+        <h2 className="text-lg font-semibold text-ink">Front Office Backup-Modus</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Schaltet die EMMA-Backup-Übersicht für die Rezeption ein — unabhängig davon, ob EMMA
+          erreichbar ist. Nützlich für Tests und manuelle Notfall-Vorbereitung.
+        </p>
+        <div className="mt-4 rounded-xl border border-rose-200 bg-white/80">
+          <PermissionToggle
+            title="Manueller Backup-Modus"
+            description={
+              backupMode?.manual
+                ? 'Rezeption sieht die Kategorie „Front Office“ und das Panik-Banner.'
+                : backupMode?.active
+                  ? `Backup aktiv (${backupMode.reasons.join(', ')}) — ohne manuellen Schalter.`
+                  : 'Backup nur bei EMMA-Ausfall (Push-Fehler oder Reservierungs-Sync).'
+            }
+            checked={backupMode?.manual === true}
+            disabled={backupModeMut.isPending || integrationStatusQuery.isLoading}
+            onChange={(next) => backupModeMut.mutate(next)}
+          />
+        </div>
+        {backupModeMut.isError ? (
+          <p className="mt-2 text-sm text-rose-700">Backup-Modus konnte nicht gespeichert werden.</p>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PermissionCode, UserRole } from '@prisma/client';
+import { PermissionCode, RoomGuestStaySource, UserRole } from '@prisma/client';
 import { hotelTodayIso } from '@housekeeping/shared';
 import type { RoomManagementDetailDto } from '@housekeeping/shared';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
@@ -11,6 +11,7 @@ import { PhotosService } from '../photos/photos.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { decryptSensitivePayload } from '../reservations/reservation-sensitive';
 import { RoomsService } from '../rooms/rooms.service';
+import { normalizeEmmaRoomNumber } from '../emma/emma-room-status-sync';
 import {
   guestStayPresence,
   matchesGuestStayDateRange,
@@ -108,6 +109,24 @@ export class RoomManagementService {
   private async loadGuestStays(roomNumber: string, from?: string, to?: string) {
     const hid = process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
     const today = hotelTodayIso();
+    const normalized = normalizeEmmaRoomNumber(roomNumber);
+
+    const archived = await this.prisma.roomGuestStay.findMany({
+      where: {
+        hotelId: hid,
+        roomNumber: normalized,
+      },
+      orderBy: [{ departureDate: 'desc' }, { arrivalDate: 'desc' }, { checkInAt: 'desc' }],
+    });
+
+    const archivedRows = archived
+      .filter((stay) =>
+        matchesGuestStayDateRange(stay.arrivalDate, stay.departureDate, from, to),
+      )
+      .map((stay) => this.mapGuestStayRow(stay, today));
+
+    const archivedReservationIds = new Set(archivedRows.map((row) => row.reservationId));
+
     const snapshots = await this.prisma.reservationSnapshot.findMany({
       where: {
         hotelId: hid,
@@ -117,25 +136,73 @@ export class RoomManagementService {
       orderBy: [{ departureDate: 'desc' }, { arrivalDate: 'desc' }],
     });
 
-    const rows = snapshots.filter(
-      (snap) =>
-        matchesGuestStayForRoom(snap.roomId, roomNumber) &&
-        matchesGuestStayDateRange(snap.arrivalDate, snap.departureDate, from, to),
-    );
+    const fallbackRows = snapshots
+      .filter(
+        (snap) =>
+          !archivedReservationIds.has(snap.reservationId) &&
+          matchesGuestStayForRoom(snap.roomId, roomNumber) &&
+          matchesGuestStayDateRange(snap.arrivalDate, snap.departureDate, from, to),
+      )
+      .map((snap) => {
+        const sensitive = decryptSensitivePayload(this.cipher, snap.sensitiveEnc);
+        return {
+          id: `snapshot-${snap.id}`,
+          reservationId: snap.reservationId,
+          mainGuestName: sensitive?.mainGuestName ?? null,
+          arrivalDate: snap.arrivalDate.toISOString().slice(0, 10),
+          departureDate: snap.departureDate.toISOString().slice(0, 10),
+          checkOut: snap.checkOut,
+          presence: guestStayPresence(snap.departureDate, snap.checkOut, today),
+          stayover: sensitive?.stayover ?? false,
+          expectedDepartureTime: sensitive?.expectedDepartureTime ?? null,
+          checkInAt: null,
+          source: 'in_house' as const,
+        };
+      });
 
-    return rows.map((snap) => {
-      const sensitive = decryptSensitivePayload(this.cipher, snap.sensitiveEnc);
-      return {
-        reservationId: snap.reservationId,
-        mainGuestName: sensitive?.mainGuestName ?? null,
-        arrivalDate: snap.arrivalDate.toISOString().slice(0, 10),
-        departureDate: snap.departureDate.toISOString().slice(0, 10),
-        checkOut: snap.checkOut,
-        presence: guestStayPresence(snap.departureDate, snap.checkOut, today),
-        stayover: sensitive?.stayover ?? false,
-        expectedDepartureTime: sensitive?.expectedDepartureTime ?? null,
-      };
-    });
+    return [...archivedRows, ...fallbackRows];
+  }
+
+  private mapGuestStayRow(
+    stay: {
+      id: string;
+      reservationId: string;
+      mainGuestNameEnc: string;
+      arrivalDate: Date;
+      departureDate: Date;
+      checkedOut: boolean;
+      stayover: boolean;
+      expectedDepartureTime: string | null;
+      checkInAt: Date | null;
+      source: RoomGuestStaySource;
+    },
+    today: string,
+  ) {
+    const sensitive = decryptSensitivePayload(this.cipher, stay.mainGuestNameEnc);
+    return {
+      id: stay.id,
+      reservationId: stay.reservationId,
+      mainGuestName: sensitive?.mainGuestName ?? null,
+      arrivalDate: stay.arrivalDate.toISOString().slice(0, 10),
+      departureDate: stay.departureDate.toISOString().slice(0, 10),
+      checkOut: stay.checkedOut,
+      presence: guestStayPresence(stay.departureDate, stay.checkedOut, today),
+      stayover: stay.stayover,
+      expectedDepartureTime: stay.expectedDepartureTime,
+      checkInAt: stay.checkInAt?.toISOString() ?? null,
+      source: this.mapGuestStaySource(stay.source),
+    };
+  }
+
+  private mapGuestStaySource(source: RoomGuestStaySource): 'check_ins_done' | 'in_house' | 'backfill' {
+    switch (source) {
+      case RoomGuestStaySource.CHECK_INS_DONE:
+        return 'check_ins_done';
+      case RoomGuestStaySource.BACKFILL:
+        return 'backfill';
+      default:
+        return 'in_house';
+    }
   }
 
   private async loadInspections(roomId: string) {

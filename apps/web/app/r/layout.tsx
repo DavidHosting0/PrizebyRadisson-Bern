@@ -30,6 +30,7 @@ import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { NotificationsRuntime } from '@/components/notifications/NotificationsRuntime';
 import { PushPermissionBanner } from '@/components/notifications/PushPermissionBanner';
 import { EmmaSyncAlertBanner } from '@/components/emma/EmmaSyncAlertBanner';
+import { useEmmaIntegrationStatus } from '@/lib/hooks/useEmmaIntegrationStatus';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
@@ -50,7 +51,14 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations('common');
   const tCmd = useTranslations('commandPalette');
   const allowedNav = filterNavByPermission(user, RECEPTION_NAV);
-  const sidebarGroups = useSidebarGroups(RECEPTION_NAV_GROUPS, allowedNav, RECEPTION_NAV_ICONS);
+  const { backupModeActive } = useEmmaIntegrationStatus(!!user);
+  const visibleNav = allowedNav.filter(
+    (item) =>
+      item.href !== '/r/front-office/backup' ||
+      user?.role === 'ADMIN' ||
+      backupModeActive,
+  );
+  const sidebarGroups = useSidebarGroups(RECEPTION_NAV_GROUPS, visibleNav, RECEPTION_NAV_ICONS);
   const router = useRouter();
   const { newRequestOpen, openNewRequest, closeNewRequest, roomPanelId, openRoom } = useReceptionUi();
   const { mobileUi, hydrated, enterMobile } = useReceptionMobileMode();
@@ -83,6 +91,13 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (loading || !user || user.role === 'ADMIN') return;
+    if (path.startsWith('/r/front-office/') && !backupModeActive) {
+      router.replace(getFirstAllowedPath(user, RECEPTION_NAV) ?? '/r');
+    }
+  }, [loading, user, path, router, backupModeActive]);
 
   useEffect(() => {
     if (loading || !user || user.role === 'ADMIN') return;

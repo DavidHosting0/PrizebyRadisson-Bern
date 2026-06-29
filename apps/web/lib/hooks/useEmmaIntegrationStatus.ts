@@ -2,18 +2,9 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import type { EmmaIntegrationStatus } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
-
-export type EmmaIntegrationStatus = {
-  pushAlert: {
-    active: boolean;
-    since: string | null;
-    pendingCount: number;
-    lastError: string | null;
-  };
-  message: string | null;
-};
 
 const QUERY_KEY = ['emma', 'integration-status'] as const;
 
@@ -48,12 +39,18 @@ export function useEmmaIntegrationStatus(enabled = true) {
     };
   }, [enabled, qc]);
 
+  const backupMode = query.data?.backupMode;
+
   return {
-    active: query.data?.pushAlert.active ?? false,
-    message:
-      query.data?.message ??
-      'EMMA SYNC DOWN, EMMA IS NOT REACHABLE. ACTION REQUIRED',
-    pendingCount: query.data?.pushAlert.pendingCount ?? 0,
+    active: backupMode?.active ?? false,
+    backupModeActive: backupMode?.active ?? false,
+    backupModeReasons: backupMode?.reasons ?? [],
+    backupModeSince: backupMode?.since ?? null,
+    manualBackupMode: backupMode?.manual ?? false,
+    pushAlert: query.data?.pushAlert,
+    message: query.data?.message ?? 'EMMA DOWN — BACKUP SYSTEM',
+    pendingCount: query.data?.pushAlert?.pendingCount ?? 0,
     isLoading: query.isLoading,
+    data: query.data,
   };
 }

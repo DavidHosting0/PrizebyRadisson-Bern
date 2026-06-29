@@ -68,6 +68,8 @@ export const RECEPTION_NAV: NavItem[] = [
 
   { href: '/r/room-management', labelKey: 'roomManagement', permission: 'ROOM_MANAGEMENT_READ' },
 
+  { href: '/r/front-office/backup', labelKey: 'frontOfficeBackup', permission: 'RESERVATIONS_READ' },
+
 ];
 
 
@@ -153,6 +155,8 @@ const RECEPTION_ROUTE_PERMISSIONS: Array<{ prefix: string; permission: Permissio
   { prefix: '/r/guides/', permission: 'GUIDE_READ' },
 
   { prefix: '/r/room-management/', permission: 'ROOM_MANAGEMENT_READ' },
+
+  { prefix: '/r/front-office/', permission: 'RESERVATIONS_READ' },
 
   { prefix: '/r/m/', permission: '' },
 

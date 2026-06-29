@@ -1,4 +1,5 @@
 export type RoomGuestStayDto = {
+  id: string;
   reservationId: string;
   mainGuestName: string | null;
   arrivalDate: string;
@@ -7,6 +8,8 @@ export type RoomGuestStayDto = {
   presence: 'in_house' | 'departed';
   stayover: boolean;
   expectedDepartureTime: string | null;
+  checkInAt: string | null;
+  source: 'check_ins_done' | 'in_house' | 'backfill';
 };
 
 export type RoomInspectionHistoryDto = {

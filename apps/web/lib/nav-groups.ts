@@ -86,6 +86,16 @@ export const RECEPTION_NAV_GROUPS: NavGroupDef[] = [
 
   {
 
+    id: 'frontOffice',
+
+    labelKey: 'frontOffice',
+
+    hrefs: ['/r/front-office/backup'],
+
+  },
+
+  {
+
     id: 'tools',
 
     labelKey: 'tools',

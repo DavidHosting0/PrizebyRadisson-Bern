@@ -58,9 +58,11 @@ function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) 
       className={roomTileClass(room.derivedStatus)}
       onClick={() => onRoomClick(room.id)}
     >
-      <span className="block text-sm font-semibold tabular-nums">{room.roomNumber}</span>
+      <span className="flex items-center justify-center gap-1 text-sm font-semibold tabular-nums">
+        <span>{room.roomNumber}</span>
+        <RoomOccupancyBadges occupancy={room.occupancy} onColor />
+      </span>
       <RoomOccupancyGuestLine occupancy={room.occupancy} compact onColor />
-      <RoomOccupancyBadges occupancy={room.occupancy} onColor />
       <span className="mt-1 flex justify-center">
         <StatusBadge status={room.derivedStatus} variant="onColor" />
       </span>
@@ -83,13 +85,15 @@ function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => vo
       className={`flex h-full w-full flex-col items-center justify-center gap-0.5 px-0.5 py-1 ${roomPlanCompactClass(room.derivedStatus)}`}
       title={title}
     >
-      <span>{room.roomNumber}</span>
+      <span className="inline-flex max-w-full items-center justify-center gap-0.5">
+        <span className="shrink-0">{room.roomNumber}</span>
+        <RoomOccupancyBadges occupancy={room.occupancy} onColor size="xs" />
+      </span>
       {room.occupancy && (
         <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
           {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
         </span>
       )}
-      <RoomOccupancyBadges occupancy={room.occupancy} onColor />
     </button>
   );
 }

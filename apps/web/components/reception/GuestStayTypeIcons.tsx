@@ -4,7 +4,7 @@ import type { GuestStaySignals } from '@housekeeping/shared';
 
 type Props = {
   stay: GuestStaySignals | null | undefined;
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
   /** Floor-plan tiles on dark status colors. */
   onColor?: boolean;
   showLabels?: boolean;
@@ -22,11 +22,11 @@ function IconChip({
   title: string;
   tone: 'sky' | 'indigo' | 'amber' | 'emerald';
   onColor?: boolean;
-  size: 'sm' | 'md';
+  size: 'xs' | 'sm' | 'md';
   children: ReactNode;
 }) {
-  const dim = size === 'sm' ? 'h-5 w-5' : 'h-6 w-6';
-  const icon = size === 'sm' ? 13 : 15;
+  const dim = size === 'xs' ? 'h-3.5 w-3.5' : size === 'sm' ? 'h-5 w-5' : 'h-6 w-6';
+  const icon = size === 'xs' ? 10 : size === 'sm' ? 13 : 15;
   const tones: Record<typeof tone, string> = onColor
     ? {
         sky: 'bg-white/25 text-white ring-1 ring-inset ring-white/30',
@@ -185,7 +185,7 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
   if (items.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className={clsx('flex flex-wrap items-center', size === 'xs' ? 'gap-0.5' : 'gap-1.5')}>
       {items.map((item) => (
         <span key={item.key} className="inline-flex items-center gap-1">
           <IconChip title={item.title} tone={item.tone} onColor={onColor} size={size}>

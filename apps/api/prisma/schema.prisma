@@ -140,6 +140,12 @@ enum RoomHousekeepingEventKind {
   CHECKLIST_REOPENED
 }
 
+enum RoomGuestStaySource {
+  CHECK_INS_DONE
+  IN_HOUSE
+  BACKFILL
+}
+
 enum TeamChatReactionType {
   THUMBS_UP
   CHECK_MARK
@@ -429,6 +435,7 @@ model Room {
   inspections      RoomInspection[]
   housekeepingEvents RoomHousekeepingEvent[]
   emmaStatusPushOutbox EmmaRoomStatusPushOutbox[]
+  guestStays         RoomGuestStay[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -891,6 +898,33 @@ model ReservationSnapshot {
   @@index([hotelId, reservationId])
   @@index([hotelId, arrivalCheckCompletedAt])
   @@index([roomId, departureDate])
+}
+
+/// Immutable guest-in-room history for Room Management (fed from EMMA sync).
+model RoomGuestStay {
+  id                    String              @id @default(cuid())
+  hotelId               String
+  reservationId         String
+  roomNumber            String
+  roomId                String?
+  room                  Room?               @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  arrivalDate           DateTime            @db.Date
+  departureDate         DateTime            @db.Date
+  checkInAt             DateTime?
+  checkOutAt            DateTime?
+  checkedOut            Boolean             @default(false)
+  mainGuestNameEnc      String              @db.Text
+  stayover              Boolean             @default(false)
+  expectedDepartureTime   String?
+  source                RoomGuestStaySource
+  lastSeenAt            DateTime
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([roomNumber, departureDate])
+  @@index([hotelId, reservationId])
+  @@index([departureDate])
+  @@index([hotelId, reservationId, checkedOut])
 }
 
 model ReservationSyncRun {

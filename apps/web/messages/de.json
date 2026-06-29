@@ -62,12 +62,55 @@
     "performance": "Performance",
     "maintenance": "Wartung",
     "roomManagement": "Room Management",
+    "frontOfficeBackup": "EMMA Backup",
     "groups": {
       "overview": "Übersicht",
       "guests": "Gäste & Buchungen",
       "operations": "Betrieb",
       "tools": "Team & Tools",
-      "roomManagement": "Room Management"
+      "roomManagement": "Room Management",
+      "frontOffice": "Front Office"
+    }
+  },
+  "frontOfficeBackup": {
+    "title": "EMMA Backup — Front Office",
+    "subtitle": "Lokale Snapshots aus PrizeBern — nicht live EMMA.",
+    "loading": "Backup-Übersicht wird geladen…",
+    "loadError": "Backup-Übersicht konnte nicht geladen werden. Ist der Backup-Modus aktiv?",
+    "bannerTitle": "EMMA DOWN — BACKUP SYSTEM",
+    "bannerSubtitle": "Alle Angaben stammen aus dem lokalen Cache. Vor Entscheidungen manuell prüfen.",
+    "freshnessTitle": "Datenalter",
+    "freshnessReservations": "Reservierungen zuletzt synchronisiert",
+    "freshnessRoomsOldest": "Ältester Zimmer-EMMA-Stand",
+    "freshnessGenerated": "Stand dieser Übersicht",
+    "syncFailed": "Letzter Sync fehlgeschlagen",
+    "print": "Backup-Bericht drucken",
+    "filterAll": "Alle",
+    "noSharedRooms": "Keine geteilten Zimmer im Cache.",
+    "room": "Zimmer",
+    "sharedCount": "{count} Reservierungen",
+    "kpi": {
+      "clean": "Sauber / Inspiziert",
+      "checkedIn": "Eingecheckt",
+      "pending": "Anreise offen",
+      "sharedRooms": "Geteilte Zimmer"
+    },
+    "tabs": {
+      "rooms": "Zimmer",
+      "checkedIn": "Eingecheckt",
+      "pending": "Anreise offen",
+      "shared": "Geteilte Zimmer"
+    },
+    "col": {
+      "room": "Zimmer",
+      "floor": "Etage",
+      "status": "Status",
+      "emmaCode": "EMMA-Code",
+      "dataAge": "Datenalter",
+      "guest": "Gast",
+      "arrival": "Anreise",
+      "departure": "Abreise",
+      "balance": "Offen"
     }
   },
   "roomManagement": {
@@ -262,7 +305,42 @@
     "roles": "Rollen",
     "settings": "Einstellungen",
     "integrations": "Integrationen",
+    "analytics": "Statistiken",
+    "reservationStats": "Reservierungen",
     "aiConfigNote": "Chat-Nachrichten werden zur Übersetzung an OpenAI gesendet, wenn ein API-Schlüssel konfiguriert ist."
+  },
+  "reservationStats": {
+    "title": "Reservierungs-Statistiken",
+    "subtitle": "Check-in-Verlauf, Peaks und Aufschlüsselungen aus EMMA-Sync-Daten",
+    "businessDate": "Business-Tag",
+    "loading": "Lade Statistiken…",
+    "dataNote": "Sync-Daten ab {from} ({count} Messpunkte)",
+    "kpiSection": "Kennzahlen",
+    "kpiArrivals": "Anreisen",
+    "kpiRemaining": "Offene Check-ins",
+    "kpiQueue": "In Queue",
+    "kpiCheckInDone": "Check-in erledigt",
+    "kpiInHouse": "Im Haus",
+    "kpiDepartures": "Abreisen",
+    "peakCheckIn": "Stärkstes Check-in-Fenster",
+    "checkIns": "Check-ins",
+    "timelineTitle": "Check-in-Verlauf",
+    "timelineHint": "Offene Check-ins (sinkend) und erledigte Check-ins (steigend) über den Tag",
+    "peakTitle": "Check-in-Peaks",
+    "peakHint": "Anzahl abgeschlossener Check-ins pro 15-Minuten-Intervall (aus Sync-Deltas)",
+    "pipelineTitle": "Check-in-Pipeline",
+    "pipelineHint": "Pending, Queue und erledigt im Tagesverlauf",
+    "dailyTitle": "14-Tage-Vergleich",
+    "dailyHint": "Anreisen und Check-ins erledigt pro Business-Tag",
+    "totalPax": "Pax gesamt",
+    "avgNights": "Ø Nächte",
+    "arrivalCheckDone": "Arrival Check erledigt",
+    "arrivalCheckOpen": "Arrival Check offen",
+    "byRoomType": "Nach Zimmerkategorie",
+    "byMealPlan": "Nach Verpflegung",
+    "byTier": "Nach Tier",
+    "noBreakdown": "Keine Daten",
+    "disclaimer": "Check-in-Zeiten werden aus EMMA-Sync-Snapshots abgeleitet (~3 Min. Auflösung). Kein exakter Check-in-Zeitstempel pro Gast."
   },
   "permissions": {
     "groups": {

@@ -48,6 +48,7 @@ import {
 } from './emma-room-status-push';
 import { readEmmaMetadata } from './emma-room-status-sync';
 import { EmmaIntegrationAlertService } from './emma-integration-alert.service';
+import { EmmaBackupModeService } from './emma-backup-mode.service';
 import { EmmaPushOutboxService } from './emma-push-outbox.service';
 import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
@@ -87,6 +88,7 @@ export class EmmaService {
     private readonly cipher: SecretCipherService,
     private readonly config: ConfigService,
     private readonly integrationAlert: EmmaIntegrationAlertService,
+    private readonly backupMode: EmmaBackupModeService,
     @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
     @Inject(forwardRef(() => EmmaPushOutboxService))
@@ -395,13 +397,27 @@ export class EmmaService {
   }
 
   async getIntegrationStatus() {
-    const alert = await this.integrationAlert.getState();
+    const [pushAlert, backupMode] = await Promise.all([
+      this.integrationAlert.getState(),
+      this.backupMode.getState(),
+    ]);
     return {
-      pushAlert: alert,
-      message: alert.active
-        ? 'EMMA SYNC DOWN, EMMA IS NOT REACHABLE. ACTION REQUIRED'
-        : null,
+      backupMode,
+      pushAlert,
+      message: backupMode.active ? 'EMMA DOWN — BACKUP SYSTEM' : null,
     };
+  }
+
+  async setBackupModeManual(manual: boolean, userId: string) {
+    await this.backupMode.setManual(manual, userId);
+    await this.broadcastIntegrationStatus();
+    return this.getIntegrationStatus();
+  }
+
+  async broadcastIntegrationStatus() {
+    const status = await this.getIntegrationStatus();
+    this.realtime.emitEmmaIntegrationAlert(status);
+    return status;
   }
 
   /**
@@ -538,14 +554,7 @@ export class EmmaService {
   }
 
   private emitIntegrationAlert(): void {
-    void this.integrationAlert.getState().then((state) => {
-      this.realtime.emitEmmaIntegrationAlert({
-        pushAlert: state,
-        message: state.active
-          ? 'EMMA SYNC DOWN, EMMA IS NOT REACHABLE. ACTION REQUIRED'
-          : null,
-      });
-    });
+    void this.broadcastIntegrationStatus();
   }
 
   async retryFailedRoomStatusPushes(): Promise<void> {

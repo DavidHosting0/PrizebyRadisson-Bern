@@ -12,6 +12,7 @@ import {
 import { NextIntlClientProvider } from 'next-intl';
 import {
   DEFAULT_LOCALE,
+  HOTEL_TIME_ZONE,
   resolveLocale,
   type SupportedLocale,
 } from '@housekeeping/shared';
@@ -77,7 +78,11 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   return (
     <LocaleContext.Provider value={value}>
-      <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
+      <NextIntlClientProvider
+        locale={locale}
+        messages={MESSAGES[locale]}
+        timeZone={HOTEL_TIME_ZONE}
+      >
         {children}
       </NextIntlClientProvider>
     </LocaleContext.Provider>

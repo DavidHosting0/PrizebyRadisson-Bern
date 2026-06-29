@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import { EmmaService } from '../emma/emma.service';
 import type { EmmaReservationSyncResult, ReservationUpsertRow } from '../emma/emma-reservation-sync';
+import { RoomGuestStayService } from '../room-management/room-guest-stay.service';
 import {
   decryptSensitivePayload,
   todayIsoDate,
@@ -38,6 +39,7 @@ export class ReservationsService {
     private readonly cipher: SecretCipherService,
     @Inject(forwardRef(() => EmmaService))
     private readonly emma: EmmaService,
+    private readonly guestStays: RoomGuestStayService,
   ) {}
 
   scheduleSyncOnView(source: string): void {
@@ -148,6 +150,36 @@ export class ReservationsService {
       );
       await this.reconcileInHouseFlags(hotelId, rows, result);
 
+      for (const row of rows) {
+        const listFlags = this.checkInListFlagsForRow(
+          row.reservationId,
+          businessDate,
+          arrivalsSet,
+          queueSet,
+          checkInsDoneSet,
+        );
+        await this.guestStays.recordFromSync(row, listFlags);
+      }
+
+      const fetchedFromEmma = result.inhouseList > 0 || result.tabs.inhouse > 0;
+      if (fetchedFromEmma) {
+        const stillOpenIds = rows
+          .filter((r) => {
+            if (r.checkOut || !r.roomId?.trim()) return false;
+            if (r.checkIn) return true;
+            return checkInsDoneSet.has(r.reservationId);
+          })
+          .map((r) => r.reservationId);
+        const closedStays = await this.guestStays.closeStaysNotInHouse(
+          hotelId,
+          stillOpenIds,
+          new Date(),
+        );
+        if (closedStays > 0) {
+          this.log.log(`[Reservations] closed ${closedStays} guest stays no longer in-house`);
+        }
+      }
+
       await this.prisma.reservationSyncRun.update({
         where: { id: run.id },
         data: {
@@ -165,6 +197,7 @@ export class ReservationsService {
       this.log.log(
         `[Reservations] sync OK (${triggerLabel}): ${created} created, ${updated} updated, ${unchanged} unchanged, businessDate=${membership.checkInBusinessDateIso}, arrivals=${arrivalsSet.size}, queue=${queueSet.size}, checkInsDone=${checkInsDoneSet.size}, tabs=${JSON.stringify(result.tabs)}, inhouseList=${result.inhouseList}, inHouseActive=${rows.filter((r) => r.checkIn && !r.checkOut).length}`,
       );
+      void this.emma.broadcastIntegrationStatus();
       return { ...result, upserted };
     } catch (err) {
       const msg = (err as Error).message;
@@ -172,6 +205,7 @@ export class ReservationsService {
         where: { id: run.id },
         data: { status: 'error', finishedAt: new Date(), error: msg },
       });
+      void this.emma.broadcastIntegrationStatus();
       throw err;
     }
   }
@@ -442,17 +476,24 @@ export class ReservationsService {
     };
   }
 
-  /** Delete snapshots whose departure was more than retentionDays ago. */
+  /** Delete snapshots and guest stays whose departure was more than retentionDays ago. */
   async purgeExpired(retentionDays = 30): Promise<number> {
     const cutoff = new Date();
     cutoff.setUTCDate(cutoff.getUTCDate() - retentionDays);
-    const result = await this.prisma.reservationSnapshot.deleteMany({
-      where: { departureDate: { lt: cutoff } },
-    });
-    if (result.count > 0) {
-      this.log.log(`[Reservations] purged ${result.count} snapshots older than ${retentionDays}d`);
+    const [snapshotResult, stayResult] = await Promise.all([
+      this.prisma.reservationSnapshot.deleteMany({
+        where: { departureDate: { lt: cutoff } },
+      }),
+      this.guestStays.purgeExpired(cutoff),
+    ]);
+    const total = snapshotResult.count + stayResult;
+    if (snapshotResult.count > 0) {
+      this.log.log(`[Reservations] purged ${snapshotResult.count} snapshots older than ${retentionDays}d`);
     }
-    return result.count;
+    if (stayResult > 0) {
+      this.log.log(`[Reservations] purged ${stayResult} guest stays older than ${retentionDays}d`);
+    }
+    return total;
   }
 
   /** Clear stale in-house flags when EMMA no longer reports a guest as checked in. */

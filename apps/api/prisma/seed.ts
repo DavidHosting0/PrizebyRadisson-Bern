@@ -6,6 +6,7 @@ import {
   RETIRED_HOTEL_ROOM_NUMBERS,
 } from '../src/rooms/room-layout';
 import { ensureSystemRoles } from '../src/permissions/ensure-system-roles';
+import { BERN_TICKET_GUIDE_SLUG, bernTicketGuideMarkdown, bernTicketGuideSummary } from './seed-guides';
 
 const prisma = new PrismaClient();
 
@@ -344,6 +345,36 @@ async function main() {
   }
 
   await ensureSystemRoles(prisma);
+
+  const guideAuthor =
+    (await prisma.user.findFirst({
+      where: { role: UserRole.ADMIN, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    })) ?? admin;
+
+  await prisma.guide.upsert({
+    where: { slug: BERN_TICKET_GUIDE_SLUG },
+    update: {
+      title: 'Bern Ticket Instructions',
+      summary: bernTicketGuideSummary,
+      body: bernTicketGuideMarkdown,
+      category: 'Bern Ticket',
+      sortOrder: 0,
+      published: true,
+      updatedByUserId: guideAuthor.id,
+    },
+    create: {
+      title: 'Bern Ticket Instructions',
+      slug: BERN_TICKET_GUIDE_SLUG,
+      summary: bernTicketGuideSummary,
+      body: bernTicketGuideMarkdown,
+      category: 'Bern Ticket',
+      sortOrder: 0,
+      published: true,
+      createdByUserId: guideAuthor.id,
+      updatedByUserId: guideAuthor.id,
+    },
+  });
 
   console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
 }

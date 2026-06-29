@@ -7,6 +7,7 @@ import { EmmaController } from './emma.controller';
 import { EmmaService } from './emma.service';
 import { EmmaScheduler } from './emma.scheduler';
 import { EmmaIntegrationAlertService } from './emma-integration-alert.service';
+import { EmmaBackupModeService } from './emma-backup-mode.service';
 import { EmmaPushOutboxService } from './emma-push-outbox.service';
 /** EMMA: HTTP session + OData room-status sync (no browser automation). */
 @Module({
@@ -16,8 +17,9 @@ import { EmmaPushOutboxService } from './emma-push-outbox.service';
     EmmaService,
     EmmaScheduler,
     EmmaIntegrationAlertService,
+    EmmaBackupModeService,
     EmmaPushOutboxService,
   ],
-  exports: [EmmaService],
+  exports: [EmmaService, EmmaBackupModeService],
 })
 export class EmmaModule {}

@@ -239,6 +239,20 @@ export function IconRoomManagement({ className }: { className?: string }) {
   );
 }
 
+export function IconFrontOfficeBackup({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export type NavIcon = ComponentType<{ className?: string }>;
 
 export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
@@ -258,6 +272,7 @@ export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
   '/r/puzzle': IconPuzzle,
   '/r/monitor-map': IconMonitor,
   '/r/room-management': IconRoomManagement,
+  '/r/front-office/backup': IconFrontOfficeBackup,
 };
 
 export const SUPERVISOR_NAV_ICONS: Record<string, NavIcon> = {

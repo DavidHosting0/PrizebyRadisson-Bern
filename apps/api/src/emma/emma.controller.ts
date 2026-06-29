@@ -4,13 +4,15 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { PermissionCode, UserRole } from '@prisma/client';
+import { PermissionCode, User, UserRole } from '@prisma/client';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { EmmaService } from './emma.service';
 @Controller('emma')
 export class EmmaController {
@@ -73,5 +75,12 @@ export class EmmaController {
   @Roles(UserRole.RECEPTION, UserRole.ADMIN)
   integrationStatus() {
     return this.emma.getIntegrationStatus();
+  }
+
+  @Patch('backup-mode')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  setBackupMode(@Body() body: { manual: boolean }, @CurrentUser() user: User) {
+    return this.emma.setBackupModeManual(body.manual === true, user.id);
   }
 }

@@ -257,7 +257,7 @@ export function RoomManagementDetail({ roomId, listPath, reservationsPath = '/r/
                 </thead>
                 <tbody>
                   {data.guestStays.map((stay) => (
-                    <tr key={stay.reservationId} className="border-b border-border last:border-0">
+                    <tr key={stay.id} className="border-b border-border last:border-0">
                       <td className="px-4 py-3 font-medium text-ink">
                         {stay.mainGuestName ?? t('unknownGuest')}
                       </td>

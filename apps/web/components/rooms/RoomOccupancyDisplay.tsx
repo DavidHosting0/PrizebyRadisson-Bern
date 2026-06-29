@@ -24,12 +24,14 @@ function occupancyHint(occupancy: RoomOccupancy): string | null {
 export function RoomOccupancyBadges({
   occupancy,
   onColor,
+  size = 'sm',
 }: {
   occupancy: RoomOccupancy | null | undefined;
   onColor?: boolean;
+  size?: 'xs' | 'sm' | 'md';
 }) {
   if (!occupancy) return null;
-  return <GuestStayTypeIcons stay={toStaySignals(occupancy)} size="sm" onColor={onColor} />;
+  return <GuestStayTypeIcons stay={toStaySignals(occupancy)} size={size} onColor={onColor} />;
 }
 
 export function RoomOccupancyGuestLine({

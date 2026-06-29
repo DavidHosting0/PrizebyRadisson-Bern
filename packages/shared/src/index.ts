@@ -19,6 +19,7 @@ export * from './emma-folio-move';
 export * from './guest-stay-type';
 export * from './room-layout';
 export * from './reservations';
+export * from './reservation-analytics';
 export * from './arrival-check';
 export * from './occupancy';
 export * from './monitor-map';
@@ -26,6 +27,7 @@ export * from './guides';
 export * from './departures';
 export * from './locale';
 export * from './room-management';
+export * from './front-office-backup';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',

@@ -36,7 +36,7 @@ const QUICK_HREFS: Record<string, string[]> = {
   SUPERVISOR: ['/s', '/s/board', '/s/departures', '/s/room-tasks'],
   HOUSEKEEPER: ['/h', '/h/requests'],
   TECHNICIAN: ['/t/maintenance', '/t/rooms'],
-  ADMIN: ['/a', '/a/roles'],
+  ADMIN: ['/a', '/a/roles', '/a/reservations-stats'],
 };
 
 function navForRole(role: string | undefined): NavItem[] {

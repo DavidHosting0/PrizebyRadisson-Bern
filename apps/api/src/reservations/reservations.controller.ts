@@ -1,13 +1,51 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
-import { PermissionCode } from '@prisma/client';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { PermissionCode, UserRole } from '@prisma/client';
 import type { ReservationTab } from '@housekeeping/shared';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { MoveFolioChargeDto } from './dto/move-folio-charge.dto';
+import { ReservationsAnalyticsService } from './reservations-analytics.service';
 import { ReservationsService } from './reservations.service';
 
 @Controller('reservations')
 export class ReservationsController {
-  constructor(private readonly reservations: ReservationsService) {}
+  constructor(
+    private readonly reservations: ReservationsService,
+    private readonly analytics: ReservationsAnalyticsService,
+  ) {}
+
+  @Get('analytics/timeline')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyticsTimeline(@Query('date') date?: string) {
+    return this.analytics.timeline(date);
+  }
+
+  @Get('analytics/check-in-rate')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyticsCheckInRate(
+    @Query('date') date?: string,
+    @Query('bucketMinutes') bucketMinutes?: string,
+  ) {
+    const bucket = bucketMinutes ? parseInt(bucketMinutes, 10) : 15;
+    return this.analytics.checkInRate(date, Number.isFinite(bucket) ? bucket : 15);
+  }
+
+  @Get('analytics/daily-summary')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyticsDailySummary(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.analytics.dailySummary(from, to);
+  }
+
+  @Get('analytics/breakdown')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  analyticsBreakdown(@Query('date') date?: string) {
+    return this.analytics.breakdown(date);
+  }
 
   @Get()
   @RequirePermissions(PermissionCode.RESERVATIONS_READ)

@@ -25,6 +25,10 @@ const ADMIN_NAV_GROUPS = [
     ],
   },
   {
+    labelKey: 'analytics',
+    items: [{ href: '/a/reservations-stats', labelKey: 'reservationStats' }],
+  },
+  {
     labelKey: 'integrations',
     items: [
       { href: '/a/integrations', labelKey: 'integrations' },
@@ -65,6 +69,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const groupLabels: Record<string, string> = {
     people: 'People',
     property: 'Property',
+    analytics: tAdmin('analytics'),
     integrations: tAdmin('integrations'),
   };
 
@@ -73,6 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     roles: tAdmin('roles'),
     floorPlans: 'Floor plans',
     guides: 'Guides',
+    reservationStats: tAdmin('reservationStats'),
     integrations: tAdmin('integrations'),
     emma: 'EMMA',
     puzzle: 'Puzzle',
