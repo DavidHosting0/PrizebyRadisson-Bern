@@ -39,6 +39,11 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       { code: PermissionCode.ROOM_TYPE_WRITE, title: 'Manage room types', description: 'Edit checklist templates.' },
       { code: PermissionCode.FLOOR_PLAN_READ, title: 'View floor plans', description: 'Open floor plan layouts.' },
       { code: PermissionCode.FLOOR_PLAN_WRITE, title: 'Edit floor plans', description: 'Rearrange floor layouts.' },
+      {
+        code: PermissionCode.ROOM_MANAGEMENT_READ,
+        title: 'Room management',
+        description: 'Analyse room history: guests, cleaning, photos, damages, lost & found.',
+      },
     ],
   },
   {
@@ -47,7 +52,7 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     entries: [
       { code: PermissionCode.CHECKLIST_TASK_UPDATE, title: 'Update checklist tasks', description: 'Tick or untick room tasks.' },
       { code: PermissionCode.CHECKLIST_REOPEN, title: 'Reopen checklists', description: 'Send a finished checklist back.' },
-      { code: PermissionCode.PHOTO_UPLOAD, title: 'Upload cleaning photos', description: 'Add room photos.' },
+      { code: PermissionCode.PHOTO_UPLOAD, title: 'Upload inspection photos', description: 'Add room photos during supervisor inspections.' },
       { code: PermissionCode.PHOTO_TIMELINE_READ, title: 'View photo timeline', description: 'See historical room photos.' },
       { code: PermissionCode.ASSIGNMENT_READ, title: 'View assignments', description: 'See who is cleaning what.' },
       { code: PermissionCode.ASSIGNMENT_CREATE, title: 'Assign rooms', description: 'Assign rooms to housekeepers.' },
@@ -124,6 +129,22 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     ],
   },
   {
+    id: 'guides',
+    label: 'Guides',
+    entries: [
+      {
+        code: PermissionCode.GUIDE_READ,
+        title: 'View guides',
+        description: 'Open reception guides and procedures.',
+      },
+      {
+        code: PermissionCode.GUIDE_WRITE,
+        title: 'Manage guides',
+        description: 'Create, edit, publish, and delete guides.',
+      },
+    ],
+  },
+  {
     id: 'reservations',
     label: 'Reservations',
     entries: [
@@ -161,6 +182,7 @@ export class PermissionsController {
       groups: GROUPS.map((g) => ({
         id: g.id,
         label: g.label,
+        labelKey: g.id,
         codes: g.entries.map((e) => e.code),
       })),
     };

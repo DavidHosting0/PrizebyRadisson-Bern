@@ -22,6 +22,10 @@ export * from './reservations';
 export * from './arrival-check';
 export * from './occupancy';
 export * from './monitor-map';
+export * from './guides';
+export * from './departures';
+export * from './locale';
+export * from './room-management';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',
@@ -29,4 +33,18 @@ export const WS_EVENTS = {
   SERVICE_REQUEST_RESOLVED: 'service_request.resolved',
   ROOM_STATUS_UPDATED: 'room.status_updated',
   CHECKLIST_TASK_UPDATED: 'checklist.task_updated',
+  NOTIFICATION_CREATED: 'notification.created',
 } as const;
+
+export type NotificationType = 'SERVICE_REQUEST_CREATED' | 'TEAM_CHAT_MENTION';
+
+export type NotificationDto = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  linkPath: string;
+  readAt: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+};

@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { api } from '@/lib/api';
 import { KpiStat } from '@/components/supervisor/KpiStat';
+import { Card } from '@/components/ui/Card';
+import { PageHeader, PageSection, PageShell } from '@/components/ui/PageShell';
 
 type RoomRow = { id: string; derivedStatus: string };
 
@@ -31,49 +33,70 @@ export default function SupervisorDashboardPage() {
   }, [rooms, requests]);
 
   return (
-    <div className="space-y-10 p-4 md:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Supervisor dashboard</h1>
-          <p className="mt-1 text-sm text-ink-muted">Operational overview — Prize by Radisson Bern</p>
-        </div>
-        <Link
-          href="/s/board"
-          className="inline-flex min-h-[48px] items-center justify-center rounded-btn bg-action px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90"
-        >
-          Open assignment board
-        </Link>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Supervisor dashboard"
+        description="Operational overview — Prize by Radisson Bern"
+        actions={
+          <Link
+            href="/s/board"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-btn bg-action px-5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90"
+          >
+            Open assignment board
+          </Link>
+        }
+      />
 
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Overview</h2>
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <PageSection title="Overview">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <KpiStat label="Total rooms" value={stats.total} />
           <KpiStat label="Clean" value={stats.clean} />
           <KpiStat label="In progress" value={stats.progress} />
           <KpiStat label="Dirty" value={stats.dirty} />
           <KpiStat label="Active requests" value={stats.activeReq} sub="Open pipeline" />
         </div>
-      </section>
+      </PageSection>
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-card border border-border bg-surface p-6 shadow-card">
-          <h3 className="font-semibold text-ink">Assignments</h3>
-          <p className="mt-2 text-sm text-ink-muted">
-            Drag rooms onto housekeepers, run auto-assign, or override suggestions in the board view.
-          </p>
-          <Link href="/s/board" className="mt-4 inline-block text-sm font-medium text-action hover:underline">
-            Go to assignment board →
-          </Link>
+      <PageSection title="Quick actions">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Card>
+            <h3 className="font-semibold text-ink">Daily departures</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+              See who is leaving today and auto-assign departure rooms evenly across your team by floor.
+            </p>
+            <Link
+              href="/s/departures"
+              className="mt-4 inline-flex text-sm font-medium text-action transition-colors hover:text-action/80"
+            >
+              View departures →
+            </Link>
+          </Card>
+          <Card>
+            <h3 className="font-semibold text-ink">Assignments</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+              Drag rooms onto housekeepers, run auto-assign, or override suggestions in the board view.
+            </p>
+            <Link
+              href="/s/board"
+              className="mt-4 inline-flex text-sm font-medium text-action transition-colors hover:text-action/80"
+            >
+              Go to assignment board →
+            </Link>
+          </Card>
+          <Card>
+            <h3 className="font-semibold text-ink">Service requests</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+              Monitor status, escalate urgent items, or update resolution.
+            </p>
+            <Link
+              href="/s/requests"
+              className="mt-4 inline-flex text-sm font-medium text-action transition-colors hover:text-action/80"
+            >
+              View requests →
+            </Link>
+          </Card>
         </div>
-        <div className="rounded-card border border-border bg-surface p-6 shadow-card">
-          <h3 className="font-semibold text-ink">Service requests</h3>
-          <p className="mt-2 text-sm text-ink-muted">Monitor status, escalate urgent items, or update resolution.</p>
-          <Link href="/s/requests" className="mt-4 inline-block text-sm font-medium text-action hover:underline">
-            View requests →
-          </Link>
-        </div>
-      </section>
-    </div>
+      </PageSection>
+    </PageShell>
   );
 }

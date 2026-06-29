@@ -2,6 +2,7 @@
 
 import type { ReservationListItem } from '@housekeeping/shared';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 
 export type ArrivalsSortKey =
   | 'guest'
@@ -59,6 +60,32 @@ export function compareArrivalRows(
     default:
       return 0;
   }
+}
+
+export function useArrivalsSortLabel() {
+  const t = useTranslations('reception');
+  return (key: ArrivalsSortKey): string => {
+    switch (key) {
+      case 'guest':
+        return t('sortGuest');
+      case 'reservationId':
+        return t('sortReservation');
+      case 'roomId':
+        return t('sortRoom');
+      case 'arrivalDate':
+        return t('sortDates');
+      case 'roomType':
+        return t('sortType');
+      case 'numPax':
+        return t('sortPax');
+      case 'vip':
+        return t('sortVip');
+      case 'creditCard':
+        return t('sortCreditCard');
+      default:
+        return key;
+    }
+  };
 }
 
 export function arrivalsSortLabel(key: ArrivalsSortKey): string {

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { damageTypeLabel } from '@/lib/damageReportTypes';
+import { useDamageTypeLabel } from '@/lib/damageReportTypes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { usePermission } from '@/lib/auth-context';
 import { Card } from '@/components/ui/Card';
@@ -22,6 +22,7 @@ type Row = {
 const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'];
 
 export default function TechnicianMaintenancePage() {
+  const damageLabel = useDamageTypeLabel();
   const qc = useQueryClient();
   const [status, setStatus] = useState('');
   const canUpdate = usePermission('DAMAGE_REPORT_UPDATE');
@@ -47,7 +48,9 @@ export default function TechnicianMaintenancePage() {
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Maintenance</h1>
-        <p className="mt-1 text-sm text-ink-muted">Room damage reports from housekeeping.</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          All damage reports from housekeeping and supervisors — newest first.
+        </p>
       </div>
       <div>
         <label className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Status</label>
@@ -77,7 +80,7 @@ export default function TechnicianMaintenancePage() {
               </div>
               <div className="p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  {damageTypeLabel(item.damageType)}
+                  {damageLabel(item.damageType)}
                 </p>
                 <p className="mt-1 text-sm font-medium leading-snug text-ink">{item.description}</p>
                 <p className="mt-2 text-xs text-ink-muted">

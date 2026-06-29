@@ -43,9 +43,10 @@ export class LostFoundService {
     return { uploadUrl: url, key };
   }
 
-  async list(query: { status?: LostFoundStatus; q?: string }) {
+  async list(query: { status?: LostFoundStatus; q?: string; roomId?: string }) {
     const where: Prisma.LostFoundItemWhereInput = {};
     if (query.status) where.status = query.status;
+    if (query.roomId) where.roomId = query.roomId;
     if (query.q) {
       where.description = { contains: query.q, mode: 'insensitive' };
     }

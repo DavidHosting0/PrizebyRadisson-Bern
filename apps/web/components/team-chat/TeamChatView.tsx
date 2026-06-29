@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { io } from 'socket.io-client';
 import clsx from 'clsx';
-import { api, API_BASE } from '@/lib/api';
+import { api } from '@/lib/api';
+import { getSocket } from '@/lib/socket';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -12,7 +12,12 @@ import { NewRequestModal } from '@/components/reception/NewRequestModal';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { useToast } from '@/components/toast/ToastProvider';
-import { userTitlePrefixLabel } from '@/lib/userTitlePrefix';
+import { userTitlePrefixLabel, formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
+import { useDamageTypeLabel } from '@/lib/damageReportTypes';
+import { MentionText } from '@/components/team-chat/MentionText';
+import { MentionComposer } from '@/components/team-chat/MentionComposer';
+import { useLocale } from '@/lib/locale-context';
+import { useTranslations } from 'next-intl';
 
 const REACTION_TYPES = [
   { type: 'THUMBS_UP', emoji: '👍', label: 'Thumbs up' },
@@ -36,16 +41,55 @@ type ChatAuthor = {
 type ChatMsg = {
   id: string;
   body: string;
+  bodyTranslated?: string | null;
+  sourceLocale?: string | null;
+  isTranslated?: boolean;
   createdAt: string;
   author: ChatAuthor;
   replyTo: {
     id: string;
     body: string;
+    bodyTranslated?: string | null;
     createdAt: string;
     author: ChatAuthor;
   } | null;
   reactions: ReactionSummary[];
+  mentions?: ChatAuthor[];
 };
+
+function ChatMessageBody({
+  msg,
+  mine,
+  mentions,
+}: {
+  msg: ChatMsg;
+  mine: boolean;
+  mentions?: ChatAuthor[];
+}) {
+  const t = useTranslations('chat');
+  const [showOriginal, setShowOriginal] = useState(false);
+  const hasTranslation = !!msg.isTranslated && !!msg.bodyTranslated;
+  const displayBody =
+    hasTranslation && showOriginal ? msg.bodyTranslated! : msg.body;
+
+  return (
+    <>
+      <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
+      {hasTranslation && (
+        <button
+          type="button"
+          onClick={() => setShowOriginal((v) => !v)}
+          className={clsx(
+            'mt-1 text-[10px] font-medium underline-offset-2 hover:underline',
+            mine ? 'text-ink/70' : 'text-action',
+          )}
+        >
+          {showOriginal ? t('showTranslation') : t('showOriginal')}
+        </button>
+      )}
+    </>
+  );
+}
 
 type ReqRow = {
   id: string;
@@ -55,6 +99,17 @@ type ReqRow = {
   room: { roomNumber: string };
   type: { label: string };
   claimedBy: { id: string; name: string; titlePrefix: string } | null;
+};
+
+type DmgRow = {
+  id: string;
+  reportedAt: string;
+  status: string;
+  damageType: string;
+  description: string;
+  photoUrl: string;
+  room: { roomNumber: string };
+  reportedBy: { name: string; titlePrefix: string };
 };
 
 type ReplyTarget = {
@@ -103,6 +158,16 @@ function statusLine(r: ReqRow): string {
   return s.replace(/_/g, ' ');
 }
 
+function damageStatusLine(d: DmgRow): string {
+  const s = d.status;
+  if (s === 'REPORTED') return 'Reported — awaiting review';
+  if (s === 'ACKNOWLEDGED') return 'Acknowledged';
+  if (s === 'RESOLVED') return 'Resolved';
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+const DAMAGE_STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+
 function truncateBody(s: string, max = 100) {
   const t = s.trim();
   if (t.length <= max) return t;
@@ -111,8 +176,9 @@ function truncateBody(s: string, max = 100) {
 
 type MsgItem = { kind: 'msg'; at: string; key: string; msg: ChatMsg };
 type ReqItem = { kind: 'req'; at: string; key: string; req: ReqRow };
+type DmgItem = { kind: 'dmg'; at: string; key: string; dmg: DmgRow };
 type DayItem = { kind: 'day'; at: string; key: string; label: string };
-type TimelineItem = MsgItem | ReqItem | DayItem;
+type TimelineItem = MsgItem | ReqItem | DmgItem | DayItem;
 
 /** Group-aware flag: last message in an author's contiguous run (within 5 minutes). */
 function computeIsGroupTail(items: TimelineItem[]): Record<string, boolean> {
@@ -162,8 +228,14 @@ export function TeamChatView({
   embedOperationsSocket?: boolean;
 }) {
   const { user } = useAuth();
+  const { locale } = useLocale();
+  const tChat = useTranslations('chat');
+  const tCommon = useTranslations('common');
+  const damageLabel = useDamageTypeLabel();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const canPost = usePermission('TEAM_CHAT_POST');
+  const canReadDamage = usePermission('DAMAGE_REPORT_READ');
+  const canUpdateDamage = usePermission('DAMAGE_REPORT_UPDATE');
   const qc = useQueryClient();
   const toast = useToast();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -172,6 +244,7 @@ export function TeamChatView({
   const prevTimelineTailRef = useRef<string | null>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
+  const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
@@ -182,13 +255,19 @@ export function TeamChatView({
   const touchMsgId = useRef<string | null>(null);
 
   const { data: messages = [], isLoading: loadingMsg } = useQuery({
-    queryKey: ['team-chat-messages'],
-    queryFn: () => api<ChatMsg[]>('/team-chat/messages?limit=300'),
+    queryKey: ['team-chat-messages', locale],
+    queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=300&lang=${locale}`),
   });
 
   const { data: requests = [], isLoading: loadingReq } = useQuery({
     queryKey: ['service-requests'],
     queryFn: () => api<ReqRow[]>('/service-requests'),
+  });
+
+  const { data: damages = [], isLoading: loadingDmg } = useQuery({
+    queryKey: ['damage-reports'],
+    queryFn: () => api<DmgRow[]>('/damage-reports'),
+    enabled: canReadDamage,
   });
 
   const timeline = useMemo<TimelineItem[]>(() => {
@@ -204,7 +283,13 @@ export function TeamChatView({
       key: `r-${req.id}`,
       req,
     }));
-    const combined = [...m, ...r].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    const d: TimelineItem[] = damages.map((dmg) => ({
+      kind: 'dmg',
+      at: dmg.reportedAt,
+      key: `d-${dmg.id}`,
+      dmg,
+    }));
+    const combined = [...m, ...r, ...d].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     // Inject day dividers at each date boundary.
     const withDividers: TimelineItem[] = [];
@@ -223,29 +308,28 @@ export function TeamChatView({
       withDividers.push(item);
     }
     return withDividers;
-  }, [messages, requests]);
+  }, [messages, requests, damages]);
 
   const groupTails = useMemo(() => computeIsGroupTail(timeline), [timeline]);
   const groupHeads = useMemo(() => computeIsGroupHead(timeline), [timeline]);
 
   useEffect(() => {
     if (!embedOperationsSocket) return;
-    const origin = API_BASE.replace(/\/api\/v1\/?$/, '');
-    let socket: ReturnType<typeof io> | undefined;
-    try {
-      socket = io(`${origin}/operations`, { transports: ['websocket'] });
-    } catch {
-      return undefined;
-    }
-    const onChat = () => qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
-    const onReact = () => qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
+    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    const socket = getSocket(token);
+    if (!socket) return undefined;
+    const onChat = () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+    const onReact = () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
     const onReq = () => qc.invalidateQueries({ queryKey: ['service-requests'] });
+    const onDmg = () => qc.invalidateQueries({ queryKey: ['damage-reports'] });
     socket.on('team_chat.message', onChat);
     socket.on('team_chat.reaction', onReact);
     socket.on('service_request.created', onReq);
     socket.on('service_request.claimed', onReq);
     socket.on('service_request.resolved', onReq);
     socket.on('service_request.updated', onReq);
+    socket.on('damage_report.created', onDmg);
+    socket.on('damage_report.updated', onDmg);
     return () => {
       socket?.off('team_chat.message', onChat);
       socket?.off('team_chat.reaction', onReact);
@@ -253,9 +337,10 @@ export function TeamChatView({
       socket?.off('service_request.claimed', onReq);
       socket?.off('service_request.resolved', onReq);
       socket?.off('service_request.updated', onReq);
-      socket?.disconnect();
+      socket?.off('damage_report.created', onDmg);
+      socket?.off('damage_report.updated', onDmg);
     };
-  }, [embedOperationsSocket, qc]);
+  }, [embedOperationsSocket, qc, locale]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
     const el = scrollContainerRef.current;
@@ -288,7 +373,7 @@ export function TeamChatView({
   const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
 
   useLayoutEffect(() => {
-    if (loadingMsg || loadingReq) return;
+    if (loadingMsg || loadingReq || (canReadDamage && loadingDmg)) return;
     if (timeline.length === 0) return;
 
     const isInitial = !hasInitialScrolledRef.current;
@@ -310,10 +395,10 @@ export function TeamChatView({
     } else {
       setShowJumpToBottom(true);
     }
-  }, [loadingMsg, loadingReq, timeline, timelineTailKey, scrollToBottom]);
+  }, [loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline, timelineTailKey, scrollToBottom]);
 
   useEffect(() => {
-    if (loadingMsg || loadingReq || timeline.length === 0 || hasInitialScrolledRef.current) return;
+    if (loadingMsg || loadingReq || (canReadDamage && loadingDmg) || timeline.length === 0 || hasInitialScrolledRef.current) return;
 
     let frame = 0;
     let rafId = 0;
@@ -328,7 +413,7 @@ export function TeamChatView({
     };
     rafId = requestAnimationFrame(retry);
     return () => cancelAnimationFrame(rafId);
-  }, [loadingMsg, loadingReq, timeline.length, timelineTailKey, scrollToBottom]);
+  }, [loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline.length, timelineTailKey, scrollToBottom]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -351,7 +436,7 @@ export function TeamChatView({
     if (inner) observer.observe(inner);
 
     return () => observer.disconnect();
-  }, [scrollToBottom, loadingMsg, loadingReq, timeline.length, timelineTailKey]);
+  }, [scrollToBottom, loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline.length, timelineTailKey]);
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -365,15 +450,20 @@ export function TeamChatView({
   }, []);
 
   const send = useMutation({
-    mutationFn: (payload: { text: string; replyToId?: string }) =>
+    mutationFn: (payload: { text: string; replyToId?: string; mentionUserIds: string[] }) =>
       api('/team-chat/messages', {
         method: 'POST',
-        body: JSON.stringify({ body: payload.text, replyToId: payload.replyToId }),
+        body: JSON.stringify({
+          body: payload.text,
+          replyToId: payload.replyToId,
+          mentionUserIds: payload.mentionUserIds,
+        }),
       }),
     onSuccess: () => {
       setBody('');
+      setMentionUserIds([]);
       setReplyTo(null);
-      qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
+      qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
     },
     onError: (e: unknown) => {
       toast.push(e instanceof Error ? e.message : 'Could not send message', 'warning');
@@ -386,7 +476,7 @@ export function TeamChatView({
         method: 'POST',
         body: JSON.stringify({ type }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-chat-messages'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] }),
   });
 
   const claim = useMutation({
@@ -403,11 +493,20 @@ export function TeamChatView({
     onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
   });
 
+  const patchDamageStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api(`/damage-reports/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['damage-reports'] }),
+  });
+
   function onSend(e: FormEvent) {
     e.preventDefault();
     const t = body.trim();
     if (!t || send.isPending || !canPost) return;
-    send.mutate({ text: t, replyToId: replyTo?.id });
+    send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds });
   }
 
   const startReply = useCallback((m: ChatMsg) => {
@@ -456,8 +555,13 @@ export function TeamChatView({
         onScroll={handleScroll}
       >
         <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end">
-        {(loadingMsg || loadingReq) && <p className="text-sm text-ink-muted">Loading…</p>}
-        {!loadingMsg && !loadingReq && timeline.filter((i) => i.kind !== 'day').length === 0 && (
+        {(loadingMsg || loadingReq || (canReadDamage && loadingDmg)) && (
+          <p className="text-sm text-ink-muted">Loading…</p>
+        )}
+        {!loadingMsg &&
+          !loadingReq &&
+          !(canReadDamage && loadingDmg) &&
+          timeline.filter((i) => i.kind !== 'day').length === 0 && (
           <p className="mt-12 text-center text-sm text-ink-muted">
             No messages or requests yet. Say hi to your team 👋
           </p>
@@ -536,6 +640,65 @@ export function TeamChatView({
               );
             }
 
+            if (item.kind === 'dmg') {
+              const d = item.dmg;
+              const active = d.status !== 'RESOLVED';
+              return (
+                <li key={item.key} className="my-2 flex justify-center">
+                  <div
+                    className={clsx(
+                      'w-full max-w-xl overflow-hidden rounded-2xl border shadow-sm',
+                      active
+                        ? 'border-rose-500/35 bg-rose-50/90'
+                        : 'border-border/70 bg-surface/80 text-ink-muted',
+                    )}
+                  >
+                    <div className="aspect-[16/9] max-h-40 bg-surface-muted">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={d.photoUrl} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <div className="px-4 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                            Damage report
+                          </p>
+                          <p className="mt-1 text-base font-semibold text-ink">
+                            Room {d.room.roomNumber}
+                            <span className="font-normal text-ink-muted"> · {damageLabel(d.damageType)}</span>
+                          </p>
+                          <p className="mt-1 text-sm leading-snug text-ink">{truncateBody(d.description, 160)}</p>
+                          <p className="mt-1 text-sm text-ink-muted">
+                            {formatUserWithTitlePrefix(d.reportedBy.name, d.reportedBy.titlePrefix)} ·{' '}
+                            {damageStatusLine(d)}
+                          </p>
+                          <span className="mt-2 inline-block text-[10px] text-ink-muted/80">
+                            {formatClock(d.reportedAt)}
+                          </span>
+                        </div>
+                        {canUpdateDamage && (
+                          <select
+                            className="min-h-[36px] shrink-0 rounded-btn border border-border bg-surface px-2 text-xs"
+                            value={d.status}
+                            disabled={patchDamageStatus.isPending}
+                            onChange={(e) =>
+                              patchDamageStatus.mutate({ id: d.id, status: e.target.value })
+                            }
+                          >
+                            {DAMAGE_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s.charAt(0) + s.slice(1).toLowerCase()}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            }
+
             const m = item.msg;
             const mine = m.author.id === user?.id;
             const isTail = groupTails[m.id] ?? true;
@@ -604,7 +767,7 @@ export function TeamChatView({
                         </div>
                       )}
 
-                      <p className="whitespace-pre-wrap break-words text-[14.5px] leading-snug">{m.body}</p>
+                      <ChatMessageBody msg={m} mine={mine} mentions={m.mentions} />
 
                       <span
                         className={clsx(
@@ -776,16 +939,19 @@ export function TeamChatView({
               </button>
             )}
 
-            <div className="relative flex-1">
-              <input
-                className="min-h-[44px] w-full rounded-full border border-border bg-surface-muted/70 px-4 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action/40 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-action/15"
-                placeholder={replyTo ? 'Write a reply…' : 'Message the team…'}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                maxLength={2000}
-                autoComplete="off"
-              />
-            </div>
+            <MentionComposer
+              value={body}
+              onChange={setBody}
+              mentionUserIds={mentionUserIds}
+              onMentionUserIdsChange={setMentionUserIds}
+              placeholder={replyTo ? 'Write a reply…' : 'Message the team…'}
+              maxLength={2000}
+              onSubmitShortcut={() => {
+                const t = body.trim();
+                if (!t || send.isPending || !canPost) return;
+                send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds });
+              }}
+            />
 
             <button
               type="submit"

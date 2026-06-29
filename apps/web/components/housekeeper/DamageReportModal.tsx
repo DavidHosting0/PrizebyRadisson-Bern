@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
-import { DAMAGE_TYPE_OPTIONS } from '@/lib/damageReportTypes';
+import { useDamageTypeOptions } from '@/lib/damageReportTypes';
 import { Button } from '@/components/ui/Button';
 
 type Props = {
@@ -16,6 +16,7 @@ type Props = {
 
 export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) {
   const qc = useQueryClient();
+  const damageTypeOptions = useDamageTypeOptions();
   const fileRef = useRef<HTMLInputElement>(null);
   const [damageType, setDamageType] = useState<string>('FURNITURE');
   const [description, setDescription] = useState('');
@@ -86,7 +87,7 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
               onChange={(e) => setDamageType(e.target.value)}
               required
             >
-              {DAMAGE_TYPE_OPTIONS.map((o) => (
+              {damageTypeOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>

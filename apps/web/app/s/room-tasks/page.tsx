@@ -166,7 +166,7 @@ export default function SupervisorRoomTasksPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Room task lists</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Edit the housekeeping checklist for each room type. Room attendants see these tasks when they open a room.
+          Edit the housekeeping checklist for each room type. Supervisors use this for inspections; attendants only mark rooms clean.
         </p>
       </div>
 

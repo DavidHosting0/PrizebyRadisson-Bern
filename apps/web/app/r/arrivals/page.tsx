@@ -7,7 +7,7 @@ import type { ReservationListItem, ReservationOverview } from '@housekeeping/sha
 import { api } from '@/lib/api';
 import {
   ArrivalsTable,
-  arrivalsSortLabel,
+  useArrivalsSortLabel,
   compareArrivalRows,
   type ArrivalsSortDir,
   type ArrivalsSortKey,
@@ -24,6 +24,7 @@ function Kpi({ label, value }: { label: string; value: number }) {
 
 export default function ReceptionArrivalsPage() {
   const router = useRouter();
+  const sortLabel = useArrivalsSortLabel();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
@@ -149,7 +150,7 @@ export default function ReceptionArrivalsPage() {
 
         {!listQuery.isLoading && sortedRows.length > 0 && (
           <div className="border-t border-border px-4 py-2.5 text-xs text-ink-muted">
-            {sortedRows.length} Einträge · Sortiert nach {arrivalsSortLabel(sortKey)} (
+            {sortedRows.length} Einträge · Sortiert nach {sortLabel(sortKey)} (
             {sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
           </div>
         )}

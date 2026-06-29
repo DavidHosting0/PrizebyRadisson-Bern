@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/auth-context';
 import {
   filterNavByPermission,
@@ -13,10 +14,15 @@ import {
   hasPermission,
   HOUSEKEEPER_NAV,
 } from '@/lib/permission-routes';
+import { useTranslatedNav } from '@/lib/use-translated-nav';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { IconChat, IconRequests, IconRooms } from '@/components/icons';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
+import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { NotificationsRuntime } from '@/components/notifications/NotificationsRuntime';
+import { PushPermissionBanner } from '@/components/notifications/PushPermissionBanner';
 
 const TAB_ICONS: Record<string, typeof IconRooms> = {
   '/h': IconRooms,
@@ -28,6 +34,8 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
   const path = usePathname();
   const { user, loading } = useAuth();
   const router = useRouter();
+  const tCommon = useTranslations('common');
+  const translatedTabs = useTranslatedNav(filterNavByPermission(user, HOUSEKEEPER_NAV));
 
   useEffect(() => {
     if (loading) return;
@@ -56,15 +64,15 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="text-sm text-ink-muted">{tCommon('loading')}</p>
       </div>
     );
   }
 
   const isChat = path === '/h/chat' || path.startsWith('/h/chat/');
-  const tabs = filterNavByPermission(user, HOUSEKEEPER_NAV).map((t) => ({
-    ...t,
-    Icon: TAB_ICONS[t.href] ?? IconRooms,
+  const tabItems = translatedTabs.map((tab) => ({
+    ...tab,
+    Icon: TAB_ICONS[tab.href] ?? IconRooms,
   }));
 
   return (
@@ -76,10 +84,16 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
     >
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface/95 px-4 py-3 shadow-card backdrop-blur-sm">
         <BrandLogo compact />
-        <span className="max-w-[55%] truncate text-right text-xs font-medium text-ink-muted">
-          {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
-        </span>
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher compact />
+          <NotificationBell />
+          <span className="max-w-[55%] truncate text-right text-xs font-medium text-ink-muted">
+            {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
+          </span>
+        </div>
       </header>
+      <PushPermissionBanner />
+      <NotificationsRuntime />
       <main
         className={clsx(
           'flex min-h-0 min-w-0 flex-1 flex-col',
@@ -89,7 +103,7 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
         {children}
       </main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
-        {tabs.map((t) => {
+        {tabItems.map((t) => {
           const active = t.href === '/h' ? path === '/h' : path === t.href || path.startsWith(`${t.href}/`);
           const Icon = t.Icon;
           return (

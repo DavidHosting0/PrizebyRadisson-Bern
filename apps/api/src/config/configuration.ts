@@ -31,6 +31,11 @@ export default () => ({
     debug: process.env.EMMA_DEBUG,
     reservationAutoSync: process.env.EMMA_RESERVATION_AUTO_SYNC !== 'false',
     reservationSyncCron: process.env.EMMA_RESERVATION_SYNC_CRON ?? '0 */3 * * * *',
-    reservationRetentionDays: parseInt(process.env.EMMA_RESERVATION_RETENTION_DAYS ?? '30', 10),
+    reservationRetentionDays: parseInt(process.env.EMMA_RESERVATION_RETENTION_DAYS ?? '730', 10),
+  },
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY ?? '',
+    privateKey: process.env.VAPID_PRIVATE_KEY ?? '',
+    subject: process.env.VAPID_SUBJECT ?? 'mailto:housekeeping@localhost',
   },
 });

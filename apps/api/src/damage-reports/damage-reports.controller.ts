@@ -13,8 +13,8 @@ export class DamageReportsController {
 
   @Get()
   @RequirePermissions(PermissionCode.DAMAGE_REPORT_READ)
-  list(@Query('status') status?: RoomDamageReportStatus, @Query('q') q?: string) {
-    return this.damageReports.list({ status, q });
+  list(@Query('status') status?: RoomDamageReportStatus, @Query('q') q?: string, @Query('roomId') roomId?: string) {
+    return this.damageReports.list({ status, q, roomId });
   }
 
   @Post('presign')

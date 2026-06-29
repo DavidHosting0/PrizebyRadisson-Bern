@@ -12,15 +12,22 @@ export class TeamChatController {
 
   @Get('messages')
   @RequirePermissions(PermissionCode.TEAM_CHAT_READ)
-  list(@CurrentUser() user: User, @Query('limit') limit?: string) {
-    return this.svc.list(limit ? parseInt(limit, 10) : 200, user);
+  list(@CurrentUser() user: User, @Query('limit') limit?: string, @Query('lang') lang?: string) {
+    return this.svc.list(limit ? parseInt(limit, 10) : 200, user, lang);
+  }
+
+  @Get('mentionables')
+  @RequirePermissions(PermissionCode.TEAM_CHAT_POST)
+  mentionables(@Query('q') q?: string) {
+    return this.svc.listMentionables(q ?? '');
   }
 
   @Post('messages')
   @RequirePermissions(PermissionCode.TEAM_CHAT_POST)
   post(@Body() dto: PostTeamChatDto, @CurrentUser() user: User) {
     const replyToId = dto.replyToId?.trim() || undefined;
-    return this.svc.create(dto.body, user, replyToId);
+    const mentionUserIds = dto.mentionUserIds?.filter(Boolean) ?? [];
+    return this.svc.create(dto.body, user, replyToId, mentionUserIds);
   }
 
   @Post('messages/:messageId/reactions')

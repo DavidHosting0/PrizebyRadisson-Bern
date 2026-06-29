@@ -11,6 +11,9 @@ import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
 import { useAuth } from '@/lib/auth-context';
 import { filterNavByPermission, RECEPTION_MOBILE_NAV } from '@/lib/permission-routes';
+import { useTranslatedNav } from '@/lib/use-translated-nav';
+import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
+import { useTranslations } from 'next-intl';
 
 const MOBILE_ICONS: Record<string, typeof IconRequests> = {
   '/r/m/requests': IconRequests,
@@ -31,8 +34,9 @@ export function ReceptionMobileShell({
   const path = usePathname();
   const { user } = useAuth();
   const { exitMobile } = useReceptionMobileMode();
+  const t = useTranslations('common');
   const isChat = path === '/r/m/chat' || path.startsWith('/r/m/chat/');
-  const tabs = filterNavByPermission(user, RECEPTION_MOBILE_NAV).map((item) => ({
+  const tabs = useTranslatedNav(filterNavByPermission(user, RECEPTION_MOBILE_NAV)).map((item) => ({
     ...item,
     Icon: MOBILE_ICONS[item.href] ?? IconRequests,
   }));
@@ -52,11 +56,12 @@ export function ReceptionMobileShell({
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
+          <LanguageSwitcher compact />
           <span className="max-w-[140px] truncate text-[11px] font-medium text-ink-muted">
             {formatUserWithTitlePrefix(userName, titlePrefix)}
           </span>
           <Button type="button" variant="secondary" className="min-h-[36px] px-3 py-1.5 text-xs" onClick={exitMobile}>
-            Desktop site
+            {t('desktopView')}
           </Button>
         </div>
       </header>

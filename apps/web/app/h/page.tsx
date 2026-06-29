@@ -14,9 +14,6 @@ type RoomRow = {
   roomNumber: string;
   floor: number | null;
   derivedStatus: string;
-  checklist: {
-    tasks: { status: string }[];
-  } | null;
 };
 
 type Req = {
@@ -72,42 +69,24 @@ export default function HousekeeperRoomsPage() {
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">My rooms</h2>
         <ul className="mt-3 space-y-3">
-          {rooms?.map((r) => {
-            const total = r.checklist?.tasks.length ?? 0;
-            const done = r.checklist?.tasks.filter((t) => t.status === 'COMPLETED').length ?? 0;
-            const pct = total ? Math.round((done / total) * 100) : 0;
-            return (
-              <li key={r.id}>
-                <Link href={`/h/room/${r.id}`} className="block tap-scale">
-                  <Card className="transition-shadow hover:shadow-lift">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-semibold tracking-tight text-ink">Room {r.roomNumber}</p>
-                        {r.floor != null && (
-                          <p className="mt-0.5 text-xs text-ink-muted">Floor {r.floor}</p>
-                        )}
-                      </div>
-                      <StatusBadge status={r.derivedStatus} />
+          {rooms?.map((r) => (
+            <li key={r.id}>
+              <Link href={`/h/room/${r.id}`} className="block tap-scale">
+                <Card className="transition-shadow hover:shadow-lift">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-semibold tracking-tight text-ink">Room {r.roomNumber}</p>
+                      {r.floor != null && (
+                        <p className="mt-0.5 text-xs text-ink-muted">Floor {r.floor}</p>
+                      )}
                     </div>
-                    <div className="mt-4">
-                      <div className="flex justify-between text-xs text-ink-muted">
-                        <span>Checklist</span>
-                        <span>
-                          {done}/{total} tasks
-                        </span>
-                      </div>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-muted">
-                        <div
-                          className="h-full rounded-full bg-success transition-all duration-300"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
-              </li>
-            );
-          })}
+                    <StatusBadge status={r.derivedStatus} />
+                  </div>
+                  <p className="mt-3 text-sm text-ink-muted">Tap to finish cleaning</p>
+                </Card>
+              </Link>
+            </li>
+          ))}
         </ul>
         {rooms?.length === 0 && (
           <p className="mt-2 text-sm text-ink-muted">No rooms assigned right now.</p>

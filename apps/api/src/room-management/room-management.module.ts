@@ -1,0 +1,15 @@
+import { Module } from '@nestjs/common';
+import { CryptoModule } from '../common/crypto/crypto.module';
+import { DamageReportsModule } from '../damage-reports/damage-reports.module';
+import { LostFoundModule } from '../lost-found/lost-found.module';
+import { PhotosModule } from '../photos/photos.module';
+import { RoomsModule } from '../rooms/rooms.module';
+import { RoomManagementController } from './room-management.controller';
+import { RoomManagementService } from './room-management.service';
+
+@Module({
+  imports: [RoomsModule, PhotosModule, DamageReportsModule, LostFoundModule, CryptoModule],
+  controllers: [RoomManagementController],
+  providers: [RoomManagementService],
+})
+export class RoomManagementModule {}

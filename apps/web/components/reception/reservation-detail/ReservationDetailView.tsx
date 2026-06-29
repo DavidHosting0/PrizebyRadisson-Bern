@@ -1,6 +1,9 @@
 'use client';
 
 import type { ReservationDetail } from '@housekeeping/shared';
+import { useTranslations } from 'next-intl';
+import { useLocale } from '@/lib/locale-context';
+import { formatDateTime } from '@/lib/format-locale';
 import {
   BoolField,
   EmptyState,
@@ -15,84 +18,82 @@ import { formatEmmaAmount } from './folioFormat';
 
 export type ReservationDetailTab = 'overview' | 'folio' | 'emma' | 'guests';
 
-const TABS: { id: ReservationDetailTab; label: string }[] = [
-  { id: 'overview', label: 'Übersicht' },
-  { id: 'folio', label: 'Folio & Charges' },
-  { id: 'emma', label: 'EMMA Detail' },
-  { id: 'guests', label: 'Gäste & Zahlung' },
-];
+const TAB_IDS: ReservationDetailTab[] = ['overview', 'folio', 'emma', 'guests'];
 
 function OverviewTab({ data }: { data: ReservationDetail }) {
+  const t = useTranslations('reception');
+  const tCommon = useTranslations('common');
+  const { locale } = useLocale();
   return (
     <div className="space-y-4">
-      <Section title="Gast">
-        <Field label="Hauptgast" value={data.mainGuestName} />
-        <Field label="Gast-ID" value={data.mainGuestId} />
-        <Field label="Kundenname" value={data.mainClientName} />
-        <Field label="VIP / Tier" value={[data.tier, data.vipDesc].filter(Boolean).join(' · ') || null} />
-        <Field label="Gäste gesamt" value={data.numPax != null ? String(data.numPax) : null} />
-        <Field label="Gäste (Detail)" value={data.guests} />
+      <Section title={t('guest')}>
+        <Field label={t('mainGuest')} value={data.mainGuestName} />
+        <Field label={t('guestId')} value={data.mainGuestId} />
+        <Field label={t('clientName')} value={data.mainClientName} />
+        <Field label={t('vipTier')} value={[data.tier, data.vipDesc].filter(Boolean).join(' · ') || null} />
+        <Field label={t('totalGuests')} value={data.numPax != null ? String(data.numPax) : null} />
+        <Field label={t('guestsDetail')} value={data.guests} />
       </Section>
 
-      <Section title="Aufenthalt">
-        <Field label="Anreise" value={data.arrivalDate} />
-        <Field label="Abreise" value={data.departureDate} />
-        <Field label="Nächte" value={data.nightsStay != null ? String(data.nightsStay) : null} />
-        <Field label="Verpflegung" value={data.mealPlan} />
-        <Field label="Aufenthalte" value={data.stays} />
-        <Field label="Stayover" value={data.stayover ? 'Ja' : null} />
+      <Section title={t('stay')}>
+        <Field label={t('arrival')} value={data.arrivalDate} />
+        <Field label={t('departure')} value={data.departureDate} />
+        <Field label={t('nights')} value={data.nightsStay != null ? String(data.nightsStay) : null} />
+        <Field label={t('mealPlan')} value={data.mealPlan} />
+        <Field label={t('stays')} value={data.stays} />
+        <Field label={t('stayover')} value={data.stayover ? tCommon('yes') : null} />
       </Section>
 
-      <Section title="Zimmer">
-        <Field label="Zimmer" value={data.roomId} />
-        <Field label="Zimmertyp" value={data.roomType} />
-        <Field label="Original-Typ" value={data.originalRoomType} />
-        <Field label="Upgrade-Typ" value={data.roomTypeUpg} />
-        <BoolField label="No Move" value={data.noMove} />
+      <Section title={t('room')}>
+        <Field label={t('room')} value={data.roomId} />
+        <Field label={t('roomType')} value={data.roomType} />
+        <Field label={t('originalType')} value={data.originalRoomType} />
+        <Field label={t('upgradeType')} value={data.roomTypeUpg} />
+        <BoolField label={t('noMove')} value={data.noMove} />
       </Section>
 
-      <Section title="Gruppe & Firma">
-        <Field label="Gruppe" value={data.groupName} />
-        <Field label="Gruppen-ID" value={data.groupId} />
-        <Field label="Firma" value={data.companyName} />
-        <Field label="Reisebüro" value={data.travelAgent} />
-        <Field label="Booking File" value={data.bookingFileId} />
+      <Section title={t('groupCompany')}>
+        <Field label={t('group')} value={data.groupName} />
+        <Field label={t('groupId')} value={data.groupId} />
+        <Field label={t('company')} value={data.companyName} />
+        <Field label={t('travelAgent')} value={data.travelAgent} />
+        <Field label={t('bookingFile')} value={data.bookingFileId} />
       </Section>
 
-      <Section title="Tarif & Quelle">
-        <Field label="Rate Code" value={data.rateCode} />
-        <Field label="Source Code" value={data.sourceCode} />
-        <Field label="Market Code" value={data.marketCode} />
-        <Field label="Balance" value={data.balance} />
+      <Section title={t('rateSource')}>
+        <Field label={t('rateCode')} value={data.rateCode} />
+        <Field label={t('sourceCode')} value={data.sourceCode} />
+        <Field label={t('marketCode')} value={data.marketCode} />
+        <Field label={t('balance')} value={data.balance} />
       </Section>
 
-      <Section title="Check-in Status">
-        <Field label="Queue-Datum" value={data.checkInQDate} />
-        <BoolField label="Eingecheckt" value={data.checkIn} />
-        <BoolField label="Ausgecheckt" value={data.checkOut} />
-        <BoolField label="In Queue" value={data.checkInQueue} />
-        <BoolField label="CI Status signiert" value={data.ciStatusSigned} />
-        <Field label="Draft Status" value={data.draftStatus} />
-        <Field label="Draft gesperrt von" value={data.draftLockedBy} />
+      <Section title={t('checkInStatus')}>
+        <Field label={t('queueDate')} value={data.checkInQDate} />
+        <BoolField label={t('checkedIn')} value={data.checkIn} />
+        <BoolField label={t('checkedOut')} value={data.checkOut} />
+        <BoolField label={t('inQueue')} value={data.checkInQueue} />
+        <BoolField label={t('ciSigned')} value={data.ciStatusSigned} />
+        <Field label={t('draftStatus')} value={data.draftStatus} />
+        <Field label={t('draftLockedBy')} value={data.draftLockedBy} />
       </Section>
 
       {(data.comments || data.inTodayArrivals != null) && (
-        <Section title="Notizen & Sichtbarkeit">
-          <Field label="Kommentar" value={data.comments} />
+        <Section title={t('notesVisibility')}>
+          <Field label={t('comment')} value={data.comments} />
           {data.inTodayArrivals != null && (
-            <BoolField label="Heute in Anreisen" value={data.inTodayArrivals} />
+            <BoolField label={t('inTodayArrivals')} value={data.inTodayArrivals} />
           )}
         </Section>
       )}
 
-      <Section title="System">
-        <Field label="Hotel" value={data.hotelId} />
-        <Field label="Zuletzt synchronisiert" value={new Date(data.syncedAt).toLocaleString('de-CH')} />
+      <Section title={t('system')}>
+        <Field label={t('hotel')} value={data.hotelId} />
+        <Field label={t('lastSynced')} value={formatDateTime(data.syncedAt, locale)} />
         {data.detailFetchedAt && (
-          <Field label="EMMA Detail geladen" value={new Date(data.detailFetchedAt).toLocaleString('de-CH')} />
+          <Field label={t('emmaDetailLoaded')} value={formatDateTime(data.detailFetchedAt, locale)} />
         )}
         {data.folioFetchedAt && (
-          <Field label="Folio geladen" value={new Date(data.folioFetchedAt).toLocaleString('de-CH')} />
+          <Field label={t('folioLoaded')} value={formatDateTime(data.folioFetchedAt, locale)} />
         )}
       </Section>
     </div>
@@ -116,15 +117,12 @@ function FolioTab({
     destinationFolioId: string,
   ) => Promise<void>;
 }) {
+  const t = useTranslations('reception');
   if (!data.emmaFolio) {
     return (
       <EmptyState
-        title="Folio noch nicht geladen"
-        description={
-          canSync
-            ? 'Nutzen Sie oben „Folio laden“, um Charges und Summen von EMMA abzurufen.'
-            : 'Folio-Daten wurden noch nicht von EMMA geladen.'
-        }
+        title={t('noFolio')}
+        description={canSync ? t('syncFolio') : t('noFolio')}
       />
     );
   }
@@ -212,21 +210,29 @@ export function ReservationDetailView({
   ) => Promise<void>;
   movingCharge?: boolean;
 }) {
+  const t = useTranslations('reception');
+  const tabLabels: Record<ReservationDetailTab, string> = {
+    overview: t('tabOverview'),
+    folio: t('tabFolio'),
+    emma: t('tabEmma'),
+    guests: t('tabGuests'),
+  };
+
   return (
     <div>
       <div className="flex gap-1 overflow-x-auto border-b border-border">
-        {TABS.map((tab) => (
+        {TAB_IDS.map((tabId) => (
           <button
-            key={tab.id}
+            key={tabId}
             type="button"
-            onClick={() => onTabChange(tab.id)}
+            onClick={() => onTabChange(tabId)}
             className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-              activeTab === tab.id
+              activeTab === tabId
                 ? 'border-ink text-ink'
                 : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
-            {tab.label}
+            {tabLabels[tabId]}
           </button>
         ))}
       </div>

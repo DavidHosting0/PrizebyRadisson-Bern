@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -13,6 +12,7 @@ import {
   PermissionCode,
   PhotoUploadStatus,
   Prisma,
+  RoomHousekeepingEventKind,
   User,
   UserRole,
 } from '@prisma/client';
@@ -100,7 +100,8 @@ export class RoomsService {
     });
 
     const dtos = rooms.map((r) => this.toRoomDto(r));
-    return this.attachOccupancy(dtos, user);
+    const withOccupancy = await this.attachOccupancy(dtos, user);
+    return this.attachLastPhotoThumbs(withOccupancy, user);
   }
 
   async findOne(id: string, viewer?: RoomViewer) {
@@ -154,14 +155,33 @@ export class RoomsService {
     let lastCleaning: {
       by: { id: string; name: string; titlePrefix: string };
       at: Date;
-      source: 'cleaning_photo' | 'cleaning_session' | 'inspection';
+      source: 'inspection_photo' | 'housekeeper_declared' | 'cleaning_session' | 'inspection';
     } | null = null;
 
-    if (lastPhotoRow) {
+    if (lastPhotoRow?.roomInspectionId) {
       lastCleaning = {
         by: lastPhotoRow.uploadedBy,
         at: lastPhotoRow.takenAt ?? lastPhotoRow.createdAt,
-        source: 'cleaning_photo',
+        source: 'inspection_photo',
+      };
+    } else if (room.cleaningDeclaredAt) {
+      const assignment = await this.prisma.roomAssignment.findFirst({
+        where: { roomId: id, status: AssignmentStatus.ACTIVE },
+        orderBy: { assignedAt: 'desc' },
+        include: { housekeeper: { select: userPublicSelect } },
+      });
+      if (assignment) {
+        lastCleaning = {
+          by: assignment.housekeeper,
+          at: room.cleaningDeclaredAt,
+          source: 'housekeeper_declared',
+        };
+      }
+    } else if (lastPhotoRow) {
+      lastCleaning = {
+        by: lastPhotoRow.uploadedBy,
+        at: lastPhotoRow.takenAt ?? lastPhotoRow.createdAt,
+        source: 'inspection_photo',
       };
     } else {
       const session = await this.prisma.cleaningSession.findFirst({
@@ -191,19 +211,7 @@ export class RoomsService {
       }
     }
 
-    let hasMyReadyCleaningPhoto = false;
-    if (viewer?.id) {
-      const n = await this.prisma.roomPhoto.count({
-        where: {
-          roomId: id,
-          uploadedByUserId: viewer.id,
-          status: PhotoUploadStatus.READY,
-        },
-      });
-      hasMyReadyCleaningPhoto = n > 0;
-    }
-
-    return this.attachOccupancy([{ ...base, lastCleaningPhoto, lastCleaning, hasMyReadyCleaningPhoto }], viewer).then(
+    return this.attachOccupancy([{ ...base, lastCleaningPhoto, lastCleaning }], viewer).then(
       (rows) => rows[0]!,
     );
   }
@@ -221,41 +229,19 @@ export class RoomsService {
     });
     if (!a) throw new ForbiddenException('Not assigned to this room');
 
-    await this.ensureChecklistState(roomId);
-    const roomFull = await this.prisma.room.findUnique({
-      where: { id: roomId },
-      include: {
-        checklistStates: {
-          take: 1,
-          include: { tasks: true },
+    await this.prisma.$transaction([
+      this.prisma.room.update({
+        where: { id: roomId },
+        data: { cleaningDeclaredAt: new Date() },
+      }),
+      this.prisma.roomHousekeepingEvent.create({
+        data: {
+          roomId,
+          userId: user.id,
+          kind: RoomHousekeepingEventKind.MARKED_CLEAN,
         },
-      },
-    });
-    if (!roomFull) throw new NotFoundException('Room not found');
-    const tasks = roomFull.checklistStates[0]?.tasks ?? [];
-    if (tasks.length === 0) {
-      throw new BadRequestException('No checklist tasks for this room');
-    }
-    const allComplete = tasks.every((t) => t.status === ChecklistTaskStatus.COMPLETED);
-    if (!allComplete) {
-      throw new BadRequestException('Complete all checklist tasks first');
-    }
-
-    const photo = await this.prisma.roomPhoto.findFirst({
-      where: {
-        roomId,
-        uploadedByUserId: user.id,
-        status: PhotoUploadStatus.READY,
-      },
-    });
-    if (!photo) {
-      throw new BadRequestException('Upload at least one cleaning photo before marking the room clean');
-    }
-
-    await this.prisma.room.update({
-      where: { id: roomId },
-      data: { cleaningDeclaredAt: new Date() },
-    });
+      }),
+    ]);
 
     const out = await this.findOne(roomId, user);
     this.realtime.emitRoomStatus(out);
@@ -399,9 +385,62 @@ export class RoomsService {
     return state;
   }
 
+  private canViewPhotoTimeline(viewer?: RoomViewer): boolean {
+    if (!viewer) return false;
+    if (viewer.role === UserRole.ADMIN) return true;
+    return viewer.effectivePermissions?.includes(PermissionCode.PHOTO_TIMELINE_READ) ?? false;
+  }
+
+  private async attachLastPhotoThumbs<T extends { id: string }>(
+    dtos: T[],
+    viewer?: RoomViewer,
+  ): Promise<(T & { lastPhotoUrl: string | null; lastPhotoAt: string | null })[]> {
+    const empty = dtos.map((d) => ({ ...d, lastPhotoUrl: null, lastPhotoAt: null }));
+    if (!this.canViewPhotoTimeline(viewer) || dtos.length === 0) return empty;
+
+    const roomIds = dtos.map((d) => d.id);
+    const photos = await this.prisma.roomPhoto.findMany({
+      where: { roomId: { in: roomIds }, status: PhotoUploadStatus.READY },
+      orderBy: { createdAt: 'desc' },
+      select: { roomId: true, s3Key: true, createdAt: true, takenAt: true },
+    });
+
+    const latest = new Map<string, (typeof photos)[0]>();
+    for (const p of photos) {
+      if (!latest.has(p.roomId)) latest.set(p.roomId, p);
+    }
+
+    const thumbByRoom = new Map<string, { url: string | null; at: string }>();
+    await Promise.all(
+      Array.from(latest.entries()).map(async ([roomId, row]) => {
+        let url: string | null = null;
+        try {
+          url = (await this.s3.presignGet(row.s3Key)).url;
+        } catch {
+          url = null;
+        }
+        const at = (row.takenAt ?? row.createdAt).toISOString();
+        thumbByRoom.set(roomId, { url, at });
+      }),
+    );
+
+    return dtos.map((d) => {
+      const thumb = thumbByRoom.get(d.id);
+      return {
+        ...d,
+        lastPhotoUrl: thumb?.url ?? null,
+        lastPhotoAt: thumb?.at ?? null,
+      };
+    });
+  }
+
   private canViewOccupancy(viewer?: RoomViewer): boolean {
     if (!viewer) return false;
-    return viewer.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ) ?? false;
+    if (viewer.effectivePermissions?.includes(PermissionCode.RESERVATIONS_READ)) return true;
+    return (
+      viewer.role === UserRole.TECHNICIAN &&
+      (viewer.effectivePermissions?.includes(PermissionCode.ROOMS_READ) ?? false)
+    );
   }
 
   private async attachOccupancy<T extends { roomNumber: string }>(

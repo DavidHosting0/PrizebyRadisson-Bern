@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { damageTypeLabel } from '@/lib/damageReportTypes';
+import { useDamageTypeLabel } from '@/lib/damageReportTypes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { usePermission } from '@/lib/auth-context';
 import { Card } from '@/components/ui/Card';
@@ -23,6 +23,7 @@ const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'];
 
 export default function ReceptionDamageReportsPage() {
   const qc = useQueryClient();
+  const damageLabel = useDamageTypeLabel();
   const [status, setStatus] = useState('');
   const canUpdate = usePermission('DAMAGE_REPORT_UPDATE');
 
@@ -78,7 +79,7 @@ export default function ReceptionDamageReportsPage() {
                 <img src={item.photoUrl} alt="" className="h-full w-full object-cover" />
               </div>
               <div className="p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{damageTypeLabel(item.damageType)}</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">{damageLabel(item.damageType)}</p>
                 <p className="mt-1 font-medium leading-snug text-ink">{item.description}</p>
                 <p className="mt-2 text-sm text-ink-muted">
                   Room {item.room.roomNumber} ·{' '}

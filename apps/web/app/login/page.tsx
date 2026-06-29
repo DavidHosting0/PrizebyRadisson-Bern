@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/auth-context';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +13,8 @@ const LEGACY_REMEMBER_KEY = 'hk_remember_email';
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
+  const t = useTranslations('auth');
+  const tCommon = useTranslations('common');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -50,11 +53,9 @@ export default function LoginPage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/failed to fetch|networkerror|load failed|fetch/i.test(msg)) {
-        setErr(
-          'Cannot reach the API. Set NEXT_PUBLIC_API_URL to this site’s public API base and rebuild the web app.',
-        );
+        setErr(t('networkError'));
       } else {
-        setErr('Login failed. Check username and password.');
+        setErr(t('loginFailed'));
       }
     } finally {
       setPending(false);
@@ -70,13 +71,13 @@ export default function LoginPage() {
         <BrandLogo />
         <div>
           <h2 className="max-w-md text-3xl font-semibold leading-tight tracking-tight text-ink xl:text-4xl">
-            Prize by Radisson Bern
+            {t('title')}
           </h2>
           <p className="mt-4 max-w-sm text-base leading-relaxed text-ink-muted">
-            Staff sign-in for housekeeping, reception, and operations.
+            {t('subtitle')}
           </p>
         </div>
-        <p className="text-xs text-ink-muted/50">Secure access for authorized personnel only.</p>
+        <p className="text-xs text-ink-muted/50">{t('secureNote')}</p>
       </section>
 
       <section className="flex flex-1 flex-col justify-center bg-surface px-6 py-12 sm:px-10 lg:px-16">
@@ -86,18 +87,18 @@ export default function LoginPage() {
           </div>
 
           <p className="mb-6 text-center text-3xl font-bold tracking-tight text-ink sm:text-4xl lg:mb-8 lg:text-left">
-            Beta Testversion
+            {tCommon('beta')}
           </p>
 
           <div className="mb-8 lg:mb-10">
-            <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">Sign in</h1>
-            <p className="mt-2 text-sm text-ink-muted">Use your staff username and password.</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-[1.75rem]">{t('signIn')}</h1>
+            <p className="mt-2 text-sm text-ink-muted">{t('welcomeBack')}</p>
           </div>
 
           <form className="space-y-5" onSubmit={onSubmit}>
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-ink">
-                Username
+                {t('username')}
               </label>
               <input
                 id="username"
@@ -112,7 +113,7 @@ export default function LoginPage() {
             </div>
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-ink">
-                Password
+                {t('password')}
               </label>
               <input
                 id="password"
@@ -134,7 +135,7 @@ export default function LoginPage() {
                   checked={remember}
                   onChange={(e) => setRemember(e.target.checked)}
                 />
-                Remember me
+                {t('rememberMe')}
               </label>
               <span className="text-ink-muted/70">Contact admin for access</span>
             </div>
@@ -146,7 +147,7 @@ export default function LoginPage() {
             )}
 
             <Button type="submit" variant="primary" fullWidth disabled={pending} className="mt-2 min-h-[50px]">
-              {pending ? 'Signing in…' : 'Sign in'}
+              {pending ? t('signingIn') : t('signIn')}
             </Button>
           </form>
           <p className="mt-6 text-center text-xs text-ink-muted">

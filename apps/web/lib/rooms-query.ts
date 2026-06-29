@@ -9,6 +9,8 @@ export type RoomListRow = {
   roomNumber: string;
   floor: number | null;
   derivedStatus: string;
+  lastPhotoUrl?: string | null;
+  lastPhotoAt?: string | null;
 };
 
 export function roomsListQueryOptions<T = RoomListRow>() {

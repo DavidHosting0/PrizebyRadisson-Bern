@@ -51,6 +51,7 @@ export class AuthController {
       phone: user.phone,
       titlePrefix: user.titlePrefix,
       avatarUrl,
+      preferredLocale: user.preferredLocale,
       permissions: user.effectivePermissions,
       roles,
     };

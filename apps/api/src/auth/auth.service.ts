@@ -68,6 +68,7 @@ export class AuthService {
         phone: true,
         titlePrefix: true,
         avatarS3Key: true,
+        preferredLocale: true,
         permissionGrants: { select: { permission: true } },
         roleAssignments: {
           include: {
@@ -127,6 +128,7 @@ export class AuthService {
         phone: u.phone,
         titlePrefix: u.titlePrefix,
         avatarUrl,
+        preferredLocale: u.preferredLocale,
         permissions: effectivePermissions,
         roles,
       },

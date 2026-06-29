@@ -15,4 +15,23 @@ body {
   .tap-scale {
     @apply active:scale-[0.98] transition-transform duration-tap;
   }
+
+  .room-num {
+    @apply font-mono text-sm font-medium tabular-nums tracking-tight;
+  }
+
+  .page-enter {
+    @apply animate-[fadeIn_200ms_ease-out];
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

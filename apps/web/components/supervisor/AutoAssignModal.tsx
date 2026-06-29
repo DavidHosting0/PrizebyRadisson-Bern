@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import type { AssignmentSuggestionsResponse } from '@housekeeping/shared';
+import { formatFloorLabel } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
@@ -9,13 +11,25 @@ import { Card } from '@/components/ui/Card';
 
 type Hk = { id: string; name: string; email: string; titlePrefix: string };
 
-type SuggestionsRes = {
-  dirtyRooms: number;
-  suggestions: { roomId: string; roomNumber: string; suggestedHousekeeperId: string }[];
-};
+function formatFloorRange(floors: number[]): string {
+  if (!floors.length) return '—';
+  if (floors.length === 1) return formatFloorLabel(floors[0]);
+  const sorted = [...floors].sort((a, b) => a - b);
+  return `${formatFloorLabel(sorted[0])} – ${formatFloorLabel(sorted[sorted.length - 1])}`;
+}
 
-export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AutoAssignModal({
+  open,
+  onClose,
+  date,
+}: {
+  open: boolean;
+  onClose: () => void;
+  date?: string;
+}) {
   const qc = useQueryClient();
+  const dateParam = date?.trim() ? `?date=${encodeURIComponent(date.trim())}` : '';
+
   const { data: housekeepers } = useQuery({
     queryKey: ['housekeepers'],
     queryFn: () => api<Hk[]>('/users/housekeepers'),
@@ -23,14 +37,16 @@ export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () 
   });
 
   const suggestionsQ = useQuery({
-    queryKey: ['assignments', 'suggestions'],
-    queryFn: () => api<SuggestionsRes>('/assignments/suggestions', { method: 'POST' }),
+    queryKey: ['assignments', 'suggestions', date ?? 'today'],
+    queryFn: () =>
+      api<AssignmentSuggestionsResponse>(`/assignments/suggestions${dateParam}`, { method: 'POST' }),
     enabled: open,
   });
 
   const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const rows = suggestionsQ.data?.suggestions ?? [];
+  const summaries = suggestionsQ.data?.summaries ?? [];
   const hkById = useMemo(() => Object.fromEntries((housekeepers ?? []).map((h) => [h.id, h])), [housekeepers]);
 
   const assignOne = useMutation({
@@ -40,10 +56,12 @@ export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () 
   });
 
   const runAuto = useMutation({
-    mutationFn: () => api<{ assigned: number }>('/assignments/run-auto', { method: 'POST' }),
+    mutationFn: () =>
+      api<{ assigned: number }>(`/assignments/run-auto${dateParam}`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['assignments'] });
       qc.invalidateQueries({ queryKey: ['rooms'] });
+      qc.invalidateQueries({ queryKey: ['departures'] });
       onClose();
     },
   });
@@ -58,6 +76,7 @@ export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () 
     );
     await qc.invalidateQueries({ queryKey: ['assignments'] });
     await qc.invalidateQueries({ queryKey: ['rooms'] });
+    await qc.invalidateQueries({ queryKey: ['departures'] });
     onClose();
   }
 
@@ -72,24 +91,49 @@ export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () 
       >
         <div className="border-b border-border px-6 py-4">
           <h2 id="auto-assign-title" className="text-lg font-semibold text-ink">
-            Auto-assign rooms
+            Auto-assign departures
           </h2>
           <p className="mt-1 text-sm text-ink-muted">
-            Suggested pairings balance workload. Adjust staff per room, then confirm — or run the automated job.
+            Suggested pairings balance workload and keep cleaners on the same floors when possible.
+            {date ? ` Date: ${date}.` : ''}
           </p>
         </div>
         <div className="space-y-4 p-6">
           {suggestionsQ.isLoading && <p className="text-sm text-ink-muted">Loading suggestions…</p>}
           {suggestionsQ.data && (
             <p className="text-sm text-ink-muted">
-              <span className="font-medium text-ink">{suggestionsQ.data.dirtyRooms}</span> unassigned dirty rooms
-              · {rows.length} suggestions
+              <span className="font-medium text-ink">{suggestionsQ.data.departureRooms}</span> unassigned
+              departure rooms · {rows.length} suggestions
             </p>
           )}
+
+          {summaries.length > 0 && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {summaries.map((s) => {
+                const hk = hkById[s.housekeeperId];
+                return (
+                  <Card key={s.housekeeperId} className="text-sm">
+                    <p className="font-semibold text-ink">
+                      {hk ? formatUserWithTitlePrefix(hk.name, hk.titlePrefix) : s.housekeeperId}
+                    </p>
+                    <p className="mt-1 text-ink-muted">
+                      {s.count} rooms · {formatFloorRange(s.floors)}
+                    </p>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
           <div className="space-y-2">
             {rows.map((row) => (
               <Card key={row.roomId} className="flex flex-wrap items-center gap-3">
-                <div className="min-w-[100px] font-semibold text-ink">Room {row.roomNumber}</div>
+                <div className="min-w-[100px]">
+                  <p className="font-semibold text-ink">Room {row.roomNumber}</p>
+                  {row.floor != null && (
+                    <p className="text-xs text-ink-muted">{formatFloorLabel(row.floor)}</p>
+                  )}
+                </div>
                 <div className="flex flex-1 flex-wrap items-center gap-2">
                   <span className="text-xs text-ink-muted">Assign to</span>
                   <select
@@ -106,12 +150,11 @@ export function AutoAssignModal({ open, onClose }: { open: boolean; onClose: () 
                     ))}
                   </select>
                 </div>
-                <span className="text-xs text-ink-muted">Workload balancing</span>
               </Card>
             ))}
           </div>
           {rows.length === 0 && !suggestionsQ.isLoading && suggestionsQ.data && (
-            <p className="text-sm text-ink-muted">No suggestions — no dirty unassigned rooms.</p>
+            <p className="text-sm text-ink-muted">No suggestions — no unassigned departure rooms.</p>
           )}
         </div>
         <div className="flex flex-wrap gap-3 border-t border-border bg-surface-muted/50 px-6 py-4">

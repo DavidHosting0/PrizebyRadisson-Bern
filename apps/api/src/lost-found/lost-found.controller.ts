@@ -13,8 +13,8 @@ export class LostFoundController {
 
   @Get()
   @RequirePermissions(PermissionCode.LOST_FOUND_READ)
-  list(@Query('status') status?: LostFoundStatus, @Query('q') q?: string) {
-    return this.lostFound.list({ status, q });
+  list(@Query('status') status?: LostFoundStatus, @Query('q') q?: string, @Query('roomId') roomId?: string) {
+    return this.lostFound.list({ status, q, roomId });
   }
 
   @Post('presign')

@@ -3,13 +3,50 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/auth-context';
 import { BrandLogo } from '@/components/BrandLogo';
+import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
+
+const ADMIN_NAV_GROUPS = [
+  {
+    labelKey: 'people',
+    items: [
+      { href: '/a', labelKey: 'members', exact: true },
+      { href: '/a/roles', labelKey: 'roles' },
+    ],
+  },
+  {
+    labelKey: 'property',
+    items: [
+      { href: '/a/floor-plans', labelKey: 'floorPlans' },
+      { href: '/a/guides', labelKey: 'guides' },
+    ],
+  },
+  {
+    labelKey: 'integrations',
+    items: [
+      { href: '/a/integrations', labelKey: 'integrations' },
+      { href: '/a/emma', labelKey: 'emma' },
+      { href: '/a/puzzle', labelKey: 'puzzle' },
+      { href: '/a/ai', labelKey: 'ai' },
+      { href: '/a/monitor-map', labelKey: 'monitorMap' },
+    ],
+  },
+];
+
+function navActive(pathname: string, href: string, exact?: boolean) {
+  if (exact) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const t = useTranslations('common');
+  const tAdmin = useTranslations('admin');
 
   useEffect(() => {
     if (loading) return;
@@ -20,96 +57,71 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="text-sm text-ink-muted">{t('loading')}</p>
       </div>
     );
   }
 
+  const groupLabels: Record<string, string> = {
+    people: 'People',
+    property: 'Property',
+    integrations: tAdmin('integrations'),
+  };
+
+  const itemLabels: Record<string, string> = {
+    members: tAdmin('users'),
+    roles: tAdmin('roles'),
+    floorPlans: 'Floor plans',
+    guides: 'Guides',
+    integrations: tAdmin('integrations'),
+    emma: 'EMMA',
+    puzzle: 'Puzzle',
+    ai: 'AI',
+    monitorMap: 'Monitor Map',
+  };
+
   return (
     <div className="min-h-screen bg-surface-muted">
-      <header className="border-b border-border bg-surface px-4 py-3 shadow-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <BrandLogo compact />
-            <nav className="flex items-center gap-2">
-              <Link
-                href="/a"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname === '/a' ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                Members
-              </Link>
-              <Link
-                href="/a/roles"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/roles')
-                    ? 'bg-ink text-white'
-                    : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                Roles
-              </Link>
-              <Link
-                href="/a/floor-plans"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/floor-plans')
-                    ? 'bg-ink text-white'
-                    : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                Floor plans
-              </Link>
-              <Link
-                href="/a/integrations"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/integrations')
-                    ? 'bg-ink text-white'
-                    : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                Integrations
-              </Link>
-              <Link
-                href="/a/puzzle"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/puzzle') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                Puzzle
-              </Link>
-              <Link
-                href="/a/emma"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/emma') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                EMMA
-              </Link>
-              <Link
-                href="/a/ai"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/ai') ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                AI
-              </Link>
-              <Link
-                href="/a/monitor-map"
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  pathname.startsWith('/a/monitor-map')
-                    ? 'bg-ink text-white'
-                    : 'text-ink-muted hover:bg-surface-muted'
-                }`}
-              >
-                Monitor Map
-              </Link>
-            </nav>
+      <header className="border-b border-border bg-surface shadow-card">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4">
+          <BrandLogo compact />
+          <div className="flex items-center gap-3">
+            <LanguageSwitcher compact />
+            <span className="truncate text-sm text-ink-muted">{user.email}</span>
           </div>
-          <span className="truncate text-sm text-ink-muted">{user.email}</span>
+        </div>
+        <div className="mx-auto max-w-7xl overflow-x-auto px-5 pb-4">
+          <nav className="flex flex-wrap items-start gap-6">
+            {ADMIN_NAV_GROUPS.map((group) => (
+              <div key={group.labelKey} className="min-w-0">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-muted">
+                  {groupLabels[group.labelKey] ?? group.labelKey}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {group.items.map((item) => {
+                    const active = navActive(pathname, item.href, item.exact);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={clsx(
+                          'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-panel',
+                          active
+                            ? 'bg-sidebar text-white'
+                            : 'border border-border text-ink-muted hover:bg-surface-muted hover:text-ink',
+                        )}
+                      >
+                        {itemLabels[item.labelKey] ?? item.labelKey}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
         </div>
       </header>
-      <div className="mx-auto max-w-7xl">{children}</div>
+      <div className="mx-auto max-w-7xl page-enter">{children}</div>
     </div>
   );
 }

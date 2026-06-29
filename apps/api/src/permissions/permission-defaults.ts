@@ -43,19 +43,21 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.RESERVATIONS_SYNC,
   PermissionCode.MONITOR_MAP_READ,
   PermissionCode.ARRIVAL_CHECK,
+  PermissionCode.GUIDE_READ,
+  PermissionCode.GUIDE_WRITE,
+  PermissionCode.ROOM_MANAGEMENT_READ,
 ];
 
 export function addCleanerBase(s: Set<PermissionCode>) {
   s.add(PermissionCode.ROOMS_READ);
   s.add(PermissionCode.CHECKLIST_TASK_UPDATE);
-  s.add(PermissionCode.PHOTO_UPLOAD);
-  s.add(PermissionCode.PHOTO_TIMELINE_READ);
   s.add(PermissionCode.SERVICE_REQUEST_READ);
   s.add(PermissionCode.SERVICE_REQUEST_CLAIM);
   s.add(PermissionCode.SERVICE_REQUEST_PATCH);
   s.add(PermissionCode.LOST_FOUND_READ);
   s.add(PermissionCode.LOST_FOUND_CREATE);
   s.add(PermissionCode.DAMAGE_REPORT_CREATE);
+  s.add(PermissionCode.DAMAGE_REPORT_READ);
   s.add(PermissionCode.TEAM_CHAT_READ);
   s.add(PermissionCode.TEAM_CHAT_POST);
 }
@@ -114,6 +116,8 @@ export function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.RESERVATIONS_READ);
   s.add(PermissionCode.RESERVATIONS_SYNC);
   s.add(PermissionCode.ARRIVAL_CHECK);
+  s.add(PermissionCode.GUIDE_READ);
+  s.add(PermissionCode.ROOM_MANAGEMENT_READ);
   return s;
 }
 
@@ -151,6 +155,7 @@ export function buildSupervisorSet(): Set<PermissionCode> {
   s.add(PermissionCode.USERS_READ_HOUSEKEEPERS);
   s.add(PermissionCode.SHIFT_READ);
   s.add(PermissionCode.RESERVATIONS_READ);
+  s.add(PermissionCode.ROOM_MANAGEMENT_READ);
   return s;
 }
 

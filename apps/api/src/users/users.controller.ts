@@ -16,6 +16,7 @@ import { RequirePermissions } from '../common/decorators/require-permissions.dec
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateLocaleDto } from './dto/update-locale.dto';
 
 @Controller('users')
 export class UsersController {
@@ -66,6 +67,11 @@ export class UsersController {
   @Delete('me/avatar')
   clearOwnAvatar(@CurrentUser('id') userId: string) {
     return this.users.setOwnAvatar(userId, null);
+  }
+
+  @Patch('me/locale')
+  setOwnLocale(@CurrentUser('id') userId: string, @Body() dto: UpdateLocaleDto) {
+    return this.users.setOwnLocale(userId, dto.locale);
   }
 
   @Patch(':userId')

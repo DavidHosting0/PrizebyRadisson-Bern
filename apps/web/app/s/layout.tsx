@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/auth-context';
 import {
   filterNavByPermission,
@@ -13,10 +14,20 @@ import {
   hasPermission,
   SUPERVISOR_NAV,
 } from '@/lib/permission-routes';
+import { SUPERVISOR_NAV_GROUPS } from '@/lib/nav-groups';
+import { useSidebarGroups } from '@/lib/use-sidebar-groups';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
+import { Button } from '@/components/ui/Button';
+import { AppSidebar } from '@/components/nav/AppSidebar';
+import { SUPERVISOR_NAV_ICONS } from '@/components/nav/nav-icons';
 import { SupervisorMobileModeProvider, useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { SupervisorMobileShell } from '@/components/supervisor/SupervisorMobileShell';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { NotificationsRuntime } from '@/components/notifications/NotificationsRuntime';
+import { PushPermissionBanner } from '@/components/notifications/PushPermissionBanner';
+import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
+import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 
 /** Mobile supervisor routes live under `/s/m/` — not `/s/monitor-map` etc. */
 function isSupervisorMobilePath(path: string) {
@@ -37,7 +48,10 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
+  const t = useTranslations('common');
+  const tCmd = useTranslations('commandPalette');
   const nav = filterNavByPermission(user, baseNav);
+  const sidebarGroups = useSidebarGroups(SUPERVISOR_NAV_GROUPS, nav, SUPERVISOR_NAV_ICONS);
   const { mobileUi, hydrated, enterMobile } = useSupervisorMobileMode();
 
   useEffect(() => {
@@ -75,7 +89,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="text-sm text-ink-muted">{t('loading')}</p>
       </div>
     );
   }
@@ -83,7 +97,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   if (!hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="text-sm text-ink-muted">{t('loading')}</p>
       </div>
     );
   }
@@ -93,7 +107,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   if (redirectingMobile || redirectingDesktop) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="text-sm text-ink-muted">{t('loading')}</p>
       </div>
     );
   }
@@ -101,6 +115,8 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   if (mobileUi) {
     return (
       <SupervisorMobileShell userName={user.name} titlePrefix={user.titlePrefix}>
+        <NotificationsRuntime />
+        <PushPermissionBanner />
         {children}
       </SupervisorMobileShell>
     );
@@ -113,54 +129,33 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
         path === '/s/chat' ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface py-6 shadow-card md:flex">
-        <div className="px-4">
-          <BrandLogo />
-        </div>
-        <button
-          type="button"
-          onClick={enterMobile}
-          className="mx-4 mt-4 w-[calc(100%-2rem)] rounded-lg border border-action/30 bg-action-muted px-3 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-action-muted/80"
-        >
-          Mobile view
-        </button>
-        <nav className="mt-4 flex flex-1 flex-col gap-0.5 px-2">
-          {nav.map((item) => {
-            const active =
-              item.href === '/s'
-                ? path === '/s'
-                : path === item.href || path.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={clsx(
-                  'rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                  active ? 'bg-surface-muted text-ink' : 'text-ink-muted hover:bg-surface-muted/70 hover:text-ink',
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="mt-auto border-t border-border px-4 pt-4">
-          <p className="truncate text-xs font-medium text-ink">
-            {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
-          </p>
-          <p className="truncate text-xs text-ink-muted">{user.email}</p>
-          <button
-            type="button"
-            onClick={() => {
-              logout();
-              router.replace('/login');
-            }}
-            className="mt-3 text-xs font-medium text-ink-muted underline underline-offset-2 hover:text-ink"
-          >
-            Sign out
-          </button>
-        </div>
-      </aside>
+      <NotificationsRuntime />
+      <AppSidebar
+        groups={sidebarGroups}
+        path={path}
+        header={<BrandLogo className="brightness-0 invert" />}
+        footer={
+          <div className="space-y-3">
+            <NotificationBell variant="onDark" />
+            <div>
+              <p className="truncate text-sm font-medium text-white">
+                {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
+              </p>
+              <p className="truncate text-xs text-sidebar-muted">{user.email}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                router.replace('/login');
+              }}
+              className="text-xs font-medium text-sidebar-muted transition-colors hover:text-white"
+            >
+              {t('signOut')}
+            </button>
+          </div>
+        }
+      />
 
       <div
         className={clsx(
@@ -168,36 +163,25 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
           path === '/s/chat' ? 'h-full overflow-hidden' : 'md:min-h-screen',
         )}
       >
-        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 shadow-card md:hidden">
+        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface/95 px-5 py-3 shadow-card backdrop-blur-sm md:hidden">
           <BrandLogo compact />
-          <button
-            type="button"
-            onClick={enterMobile}
-            className="shrink-0 rounded-lg border border-action/30 bg-action-muted px-3 py-2 text-xs font-semibold text-ink"
-          >
-            Mobile view
-          </button>
+          <div className="flex items-center gap-2">
+            <CommandPaletteTrigger className="min-h-[36px] gap-2 px-2 text-xs" />
+            <LanguageSwitcher compact />
+            <NotificationBell />
+            <Button type="button" variant="ghost" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
+              {t('mobileView')}
+            </Button>
+          </div>
         </header>
-        <nav className="flex flex-wrap gap-1 border-b border-border bg-surface px-2 py-2 md:hidden">
-          {nav.map((item) => {
-            const active =
-              item.href === '/s'
-                ? path === '/s'
-                : path === item.href || path.startsWith(`${item.href}/`);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={clsx(
-                  'rounded-lg px-2.5 py-1.5 text-xs font-medium',
-                  active ? 'bg-ink text-white' : 'text-ink-muted',
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <header className="hidden items-center justify-end gap-2 border-b border-border bg-surface/95 px-8 py-3 shadow-card backdrop-blur-sm md:flex">
+          <CommandPaletteTrigger className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
+          <LanguageSwitcher compact />
+          <Button type="button" variant="ghost" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
+            {t('mobileView')}
+          </Button>
+        </header>
+        <PushPermissionBanner />
         <main
           className={clsx(
             'flex-1',

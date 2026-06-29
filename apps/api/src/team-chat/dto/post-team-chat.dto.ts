@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class PostTeamChatDto {
   @IsString()
@@ -9,4 +9,9 @@ export class PostTeamChatDto {
   @IsOptional()
   @IsString()
   replyToId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  mentionUserIds?: string[];
 }

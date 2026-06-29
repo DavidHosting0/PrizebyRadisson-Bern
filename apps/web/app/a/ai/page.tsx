@@ -155,6 +155,11 @@ export default function AdminAiConfigPage() {
           erzeugt, wenn neue Nachrichten zum Ticket hinzukommen.
         </p>
         <p className="mt-2 text-sm text-ink-muted">
+          Team-Chat-Nachrichten werden ebenfalls über OpenAI übersetzt, wenn ein
+          API-Schlüssel konfiguriert ist. Übersetzungen werden in der Datenbank
+          zwischengespeichert.
+        </p>
+        <p className="mt-2 text-sm text-ink-muted">
           Kostenrahmen: <code>gpt-4o-mini</code> liegt bei ~0.15&nbsp;$ pro
           Million Input-Tokens und ~0.60&nbsp;$ pro Million Output-Tokens. Ein
           typisches Puzzel-Ticket kostet damit unter 0.001&nbsp;$ pro Analyse.

@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BoardRoomCard, type BoardRoom } from '@/components/supervisor/BoardRoomCard';
@@ -98,12 +100,20 @@ export default function SupervisorBoardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Room assignment</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Drag the grip handle to move a room to a housekeeper column. Open details to edit checklist or notes.
+            Drag the grip handle to move a room to a housekeeper column. Use departures for auto-assign by floor.
           </p>
         </div>
-        <Button variant="action" className="min-h-[48px] shrink-0" onClick={() => setAutoOpen(true)}>
-          Auto-assign
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/s/departures"
+            className="inline-flex min-h-[44px] items-center rounded-btn border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-muted"
+          >
+            Departures
+          </Link>
+          <Button variant="action" className="min-h-[48px] shrink-0" onClick={() => setAutoOpen(true)}>
+            Auto-assign
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -183,7 +193,7 @@ export default function SupervisorBoardPage() {
       </div>
 
       <RoomSlideOver roomId={panelRoomId} open={!!panelRoomId} onClose={() => setPanelRoomId(null)} />
-      <AutoAssignModal open={autoOpen} onClose={() => setAutoOpen(false)} />
+      <AutoAssignModal open={autoOpen} onClose={() => setAutoOpen(false)} date={hotelTodayIso()} />
     </div>
   );
 }

@@ -16,11 +16,12 @@ export type LastCleaningPhotoDto = {
 export type LastCleaningDto = {
   by: { id: string; name: string; titlePrefix: string };
   at: string;
-  source: 'cleaning_photo' | 'cleaning_session' | 'inspection';
+  source: 'inspection_photo' | 'housekeeper_declared' | 'cleaning_session' | 'inspection';
 } | null;
 
 const SOURCE_LABEL: Record<NonNullable<LastCleaningDto>['source'], string> = {
-  cleaning_photo: 'Documented with photo',
+  inspection_photo: 'Inspection photo',
+  housekeeper_declared: 'Marked clean by housekeeper',
   cleaning_session: 'Cleaning session',
   inspection: 'Passed inspection',
 };
@@ -73,12 +74,12 @@ export function RoomDetailInsights({
             <p className="mt-1 text-xs text-ink-muted">{SOURCE_LABEL[lastCleaning.source]}</p>
           </div>
         ) : (
-          <p className="text-sm text-ink-muted">No cleaning photo, session, or inspection on record yet.</p>
+          <p className="text-sm text-ink-muted">No cleaning or inspection activity on record yet.</p>
         )}
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Latest cleaning photo</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Latest inspection photo</h3>
         {lastCleaningPhoto?.url ? (
           <button
             type="button"
@@ -86,7 +87,7 @@ export function RoomDetailInsights({
             onClick={() => setTimelineOpen(true)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lastCleaningPhoto.url} alt={`Room ${roomNumber} after cleaning`} className="aspect-video w-full object-cover" />
+            <img src={lastCleaningPhoto.url} alt={`Room ${roomNumber} inspection`} className="aspect-video w-full object-cover" />
             <p className="px-2 py-1.5 text-xs text-ink-muted">
               {formatUserWithTitlePrefix(
                 lastCleaningPhoto.uploadedBy.name,
@@ -98,7 +99,7 @@ export function RoomDetailInsights({
         ) : lastCleaningPhoto && !lastCleaningPhoto.url ? (
           <p className="text-sm text-ink-muted">Photo is stored but could not be loaded (check S3 configuration).</p>
         ) : (
-          <p className="text-sm text-ink-muted">No photos yet.</p>
+          <p className="text-sm text-ink-muted">No inspection photos yet.</p>
         )}
         <Button type="button" variant="secondary" className="w-full min-h-[44px]" onClick={() => setTimelineOpen(true)}>
           Photo timeline

@@ -11,7 +11,7 @@ const styles: Record<Variant, string> = {
   secondary:
     'bg-surface text-ink border border-border shadow-card hover:bg-surface-muted active:bg-surface-muted/80',
   danger: 'bg-danger-muted text-danger border border-danger/20 hover:bg-danger/10',
-  ghost: 'text-ink-muted hover:bg-surface-muted/80',
+  ghost: 'text-ink-muted border border-transparent hover:bg-surface-muted/80 hover:border-border',
 };
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {

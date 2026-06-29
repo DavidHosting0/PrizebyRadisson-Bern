@@ -7,17 +7,16 @@ import {
   Optional,
   forwardRef,
 } from '@nestjs/common';
-import {
-  AssignmentStatus,
-  ChecklistTaskStatus,
-  User,
-  UserRole,
-} from '@prisma/client';
+import type { AssignmentSuggestionsResponse, RunAutoAssignResponse } from '@housekeeping/shared';
+import { hotelTodayIso } from '@housekeeping/shared';
+import { AssignmentStatus, User, UserRole } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
+import { DeparturesService } from '../departures/departures.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { EmmaService } from '../emma/emma.service';
+import { balanceDepartureAssignments } from './assignment-balancer';
 
 @Injectable()
 export class AssignmentsService implements OnModuleInit {
@@ -27,6 +26,7 @@ export class AssignmentsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
+    private readonly departures: DeparturesService,
     @Optional()
     @Inject(forwardRef(() => EmmaService))
     private readonly emma?: EmmaService,
@@ -76,30 +76,11 @@ export class AssignmentsService implements OnModuleInit {
     return row;
   }
 
-  async suggestions() {
-    const dirtyRooms = await this.findDirtyUnassignedRooms();
-    const hk = await this.prisma.user.findMany({
-      where: { role: UserRole.HOUSEKEEPER, isActive: true },
-      select: { id: true, name: true, titlePrefix: true },
-    });
-    const loads = await Promise.all(
-      hk.map(async (u) => ({
-        user: u,
-        count: await this.prisma.roomAssignment.count({
-          where: { housekeeperUserId: u.id, status: AssignmentStatus.ACTIVE },
-        }),
-      })),
-    );
-    loads.sort((a, b) => a.count - b.count);
-    const suggestions = dirtyRooms.map((room, i) => ({
-      roomId: room.id,
-      roomNumber: room.roomNumber,
-      suggestedHousekeeperId: loads[i % loads.length]?.user.id,
-    }));
-    return { dirtyRooms: dirtyRooms.length, suggestions };
+  private resolveDate(date?: string): string {
+    return date?.trim() || hotelTodayIso();
   }
 
-  async runAutoAssignment() {
+  private async eligibleHousekeepers() {
     const now = new Date();
     const onShift = await this.prisma.shift.findMany({
       where: { startsAt: { lte: now }, endsAt: { gte: now } },
@@ -110,62 +91,73 @@ export class AssignmentsService implements OnModuleInit {
       where: { role: UserRole.HOUSEKEEPER, isActive: true },
       select: { id: true },
     });
-    const eligible = housekeepers.filter((h) => shiftUserIds.size === 0 || shiftUserIds.has(h.id));
-    if (!eligible.length) return { assigned: 0 };
+    return housekeepers.filter((h) => shiftUserIds.size === 0 || shiftUserIds.has(h.id));
+  }
 
-    const dirtyRooms = await this.findDirtyUnassignedRooms();
-    let assigned = 0;
+  private async buildDeparturePlan(date?: string) {
+    const resolvedDate = this.resolveDate(date);
+    const departureRooms = await this.departures.listAssignableDepartureRooms(resolvedDate);
+    const eligible = await this.eligibleHousekeepers();
     const loads = await Promise.all(
       eligible.map(async (u) => ({
-        id: u.id,
-        n: await this.prisma.roomAssignment.count({
+        housekeeperId: u.id,
+        currentCount: await this.prisma.roomAssignment.count({
           where: { housekeeperUserId: u.id, status: AssignmentStatus.ACTIVE },
         }),
       })),
     );
-    loads.sort((a, b) => a.n - b.n);
+    const { assignments, summaries } = balanceDepartureAssignments(
+      departureRooms.map((r) => ({
+        roomId: r.roomId,
+        roomNumber: r.roomNumber,
+        floor: r.floor,
+      })),
+      loads,
+    );
+    return { resolvedDate, departureRooms, assignments, summaries };
+  }
 
-    for (const room of dirtyRooms) {
-      const pick = loads[0];
-      if (!pick) break;
+  async suggestions(date?: string): Promise<AssignmentSuggestionsResponse> {
+    const { resolvedDate, departureRooms, assignments, summaries } = await this.buildDeparturePlan(date);
+    return {
+      date: resolvedDate,
+      departureRooms: departureRooms.length,
+      suggestions: assignments.map((a) => ({
+        roomId: a.roomId,
+        roomNumber: a.roomNumber,
+        floor: a.floor,
+        suggestedHousekeeperId: a.housekeeperId,
+      })),
+      summaries,
+    };
+  }
+
+  async runAutoAssignment(date?: string, assigner?: User): Promise<RunAutoAssignResponse> {
+    const { resolvedDate, assignments, summaries } = await this.buildDeparturePlan(date);
+    if (!assignments.length) return { date: resolvedDate, assigned: 0, summaries };
+
+    let assigned = 0;
+    for (const row of assignments) {
+      await this.prisma.roomAssignment.updateMany({
+        where: { roomId: row.roomId, status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
+        data: { status: AssignmentStatus.CANCELLED },
+      });
       await this.prisma.roomAssignment.create({
         data: {
-          roomId: room.id,
-          housekeeperUserId: pick.id,
+          roomId: row.roomId,
+          housekeeperUserId: row.housekeeperId,
+          assignedByUserId: assigner?.id,
           status: AssignmentStatus.ACTIVE,
         },
       });
-      pick.n += 1;
-      loads.sort((a, b) => a.n - b.n);
-      assigned += 1;
-      const r = await this.rooms.findOne(room.id);
+      const r = await this.rooms.findOne(row.roomId);
       this.realtime.emitRoomStatus(r);
+      assigned += 1;
     }
+
     if (assigned > 0) {
       this.emma?.scheduleRoomStatusSync('assignments.autoAssign');
     }
-    return { assigned };
-  }
-
-  private async findDirtyUnassignedRooms() {
-    const rooms = await this.prisma.room.findMany({
-      where: {
-        outOfOrder: false,
-        assignments: {
-          none: { status: AssignmentStatus.ACTIVE },
-        },
-      },
-      include: {
-        checklistStates: {
-          take: 1,
-          include: { tasks: true },
-        },
-      },
-    });
-    return rooms.filter((r) => {
-      const tasks = r.checklistStates[0]?.tasks ?? [];
-      if (!tasks.length) return true;
-      return tasks.some((t) => t.status !== ChecklistTaskStatus.COMPLETED);
-    });
+    return { date: resolvedDate, assigned, summaries };
   }
 }

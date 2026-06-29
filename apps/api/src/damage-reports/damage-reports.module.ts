@@ -7,5 +7,6 @@ import { EmmaModule } from '../emma/emma.module';
   imports: [forwardRef(() => EmmaModule)],
   controllers: [DamageReportsController],
   providers: [DamageReportsService],
+  exports: [DamageReportsService],
 })
 export class DamageReportsModule {}

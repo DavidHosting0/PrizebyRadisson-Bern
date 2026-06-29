@@ -12,6 +12,7 @@ import {
   type LastCleaningPhotoDto,
 } from '@/components/rooms/RoomDetailInsights';
 import { RoomOccupancySection } from '@/components/rooms/RoomOccupancyDisplay';
+import { InspectRoomModal } from '@/components/supervisor/InspectRoomModal';
 import type { RoomOccupancy } from '@housekeeping/shared';
 
 type Task = {
@@ -56,6 +57,7 @@ export function RoomSlideOver({
   });
 
   const [notes, setNotes] = useState('');
+  const [inspectOpen, setInspectOpen] = useState(false);
   const [oooReason, setOooReason] = useState('');
   const [oooUntilLocal, setOooUntilLocal] = useState('');
   useEffect(() => {
@@ -152,6 +154,10 @@ export function RoomSlideOver({
               />
 
               <RoomOccupancySection occupancy={data.occupancy} />
+
+              <Button type="button" variant="action" className="min-h-[48px] w-full" onClick={() => setInspectOpen(true)}>
+                Inspect room
+              </Button>
 
               <Card>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Room notes</h3>
@@ -251,6 +257,14 @@ export function RoomSlideOver({
           )}
         </div>
       </aside>
+      {data && (
+        <InspectRoomModal
+          open={inspectOpen}
+          onClose={() => setInspectOpen(false)}
+          roomId={data.id}
+          roomNumber={data.roomNumber}
+        />
+      )}
     </>
   );
 }

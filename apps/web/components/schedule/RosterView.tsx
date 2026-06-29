@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatUserWithTitlePrefix, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
+import { useLocale } from '@/lib/locale-context';
+import { formatDate as formatLocaleDate, formatTime as formatLocaleTime } from '@/lib/format-locale';
 
 type RosterShift = {
   id: string;
@@ -43,40 +46,38 @@ const ROLE_COLORS: Record<string, string> = {
   ADMIN: 'bg-rose-100 text-rose-900 border-rose-200',
 };
 
-function formatDate(d: Date): string {
+function toDateKey(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
-function buildRanges(): Range[] {
+function buildRanges(t: (key: string) => string): Range[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   return [
-    { id: 'today', label: 'Heute', date: formatDate(today), days: 1 },
-    { id: 'tomorrow', label: 'Morgen', date: formatDate(tomorrow), days: 1 },
-    { id: 'week', label: 'Diese Woche', date: formatDate(today), days: 7 },
-    { id: 'fortnight', label: 'Nächste 14 Tage', date: formatDate(today), days: 14 },
+    { id: 'today', label: t('today'), date: toDateKey(today), days: 1 },
+    { id: 'tomorrow', label: t('tomorrow'), date: toDateKey(tomorrow), days: 1 },
+    { id: 'week', label: t('thisWeek'), date: toDateKey(today), days: 7 },
+    { id: 'fortnight', label: t('fortnight'), date: toDateKey(today), days: 14 },
   ];
 }
 
 const ROSTER_TZ = 'Europe/Zurich';
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString('de-CH', {
+function formatTime(iso: string, locale: 'de' | 'en') {
+  return formatLocaleTime(iso, locale, {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: ROSTER_TZ,
   });
 }
 
-function formatDayLabel(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('de-CH', {
+function formatDayLabel(iso: string, locale: 'de' | 'en') {
+  return formatLocaleDate(iso, locale, {
     weekday: 'short',
     day: '2-digit',
     month: '2-digit',
@@ -90,7 +91,10 @@ function durationHours(startIso: string, endIso: string): number {
 }
 
 export function RosterView() {
-  const ranges = useMemo(buildRanges, []);
+  const t = useTranslations('schedule');
+  const tCommon = useTranslations('common');
+  const { locale } = useLocale();
+  const ranges = useMemo(() => buildRanges((key) => t(key as 'today')), [t]);
   const [activeId, setActiveId] = useState<string>(ranges[0].id);
   const range = ranges.find((r) => r.id === activeId) ?? ranges[0];
 
@@ -108,7 +112,7 @@ export function RosterView() {
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-ink">Schichtplan</h1>
+          <h1 className="text-2xl font-semibold text-ink">{t('title')}</h1>
           <p className="mt-1 text-sm text-ink-muted">
             Wer arbeitet wann. Wird alle 15 Minuten von Favur synchronisiert.
           </p>
@@ -120,7 +124,7 @@ export function RosterView() {
             className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-muted"
             disabled={isRefetching}
           >
-            {isRefetching ? 'Lädt…' : 'Aktualisieren'}
+            {isRefetching ? tCommon('loading') : tCommon('retry')}
           </button>
         </div>
       </header>
@@ -144,19 +148,19 @@ export function RosterView() {
 
       {isLoading && (
         <p className="rounded-xl border border-border bg-surface px-4 py-6 text-sm text-ink-muted">
-          Schichten werden geladen…
+          {t('loading')}
         </p>
       )}
 
       {isError && (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
-          Schichtplan konnte nicht geladen werden: {(error as Error).message}
+          {t('loadError')}: {(error as Error).message}
         </p>
       )}
 
       {!isLoading && !isError && entries.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center">
-          <p className="text-base font-medium text-ink">Keine Schichten in diesem Zeitraum.</p>
+          <p className="text-base font-medium text-ink">{t('noShifts')}</p>
           <p className="mt-1 text-sm text-ink-muted">
             Sobald Favur synchronisiert ist und Mitarbeiter zugeordnet sind, erscheinen
             sie hier. Admins können das unter „Integrationen → Favur" einrichten.
@@ -199,11 +203,11 @@ export function RosterView() {
                   >
                     {showDayHeader && (
                       <span className="min-w-[6.5rem] font-medium text-ink-muted">
-                        {formatDayLabel(s.startsAt)}
+                        {formatDayLabel(s.startsAt, locale)}
                       </span>
                     )}
                     <span className="font-mono text-ink">
-                      {formatTime(s.startsAt)} – {formatTime(s.endsAt)}
+                      {formatTime(s.startsAt, locale)} – {formatTime(s.endsAt, locale)}
                     </span>
                     <span className="text-xs text-ink-muted">
                       ({durationHours(s.startsAt, s.endsAt)} h)

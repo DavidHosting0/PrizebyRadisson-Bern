@@ -20,7 +20,7 @@ export class ReservationsScheduler {
   /** Nightly purge of old reservation snapshots (default 03:15). */
   @Cron(process.env.EMMA_RESERVATION_PURGE_CRON ?? '0 15 3 * * *')
   async runRetentionPurge() {
-    const days = parseInt(process.env.EMMA_RESERVATION_RETENTION_DAYS ?? '30', 10);
+    const days = parseInt(process.env.EMMA_RESERVATION_RETENTION_DAYS ?? '730', 10);
     try {
       await this.reservations.purgeExpired(days);
     } catch (err) {

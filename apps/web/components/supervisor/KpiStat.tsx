@@ -10,10 +10,10 @@ export function KpiStat({
   sub?: string;
 }) {
   return (
-    <Card className="min-h-[100px]">
+    <Card className="min-h-[108px]">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight text-ink">{value}</p>
-      {sub && <p className="mt-1 text-xs text-ink-muted">{sub}</p>}
+      <p className="mt-2 font-mono text-3xl font-semibold tabular-nums tracking-tight text-ink">{value}</p>
+      {sub && <p className="mt-1.5 text-xs text-ink-muted">{sub}</p>}
     </Card>
   );
 }

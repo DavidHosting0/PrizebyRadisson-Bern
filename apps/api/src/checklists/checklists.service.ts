@@ -9,6 +9,7 @@ import {
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
+  RoomHousekeepingEventKind,
   User,
   UserRole,
 } from '@prisma/client';
@@ -97,6 +98,13 @@ export class ChecklistsService {
       this.prisma.room.update({
         where: { id: roomId },
         data: { cleaningDeclaredAt: null },
+      }),
+      this.prisma.roomHousekeepingEvent.create({
+        data: {
+          roomId,
+          userId: user.id,
+          kind: RoomHousekeepingEventKind.CHECKLIST_REOPENED,
+        },
       }),
       ...state.tasks.map((t) =>
         this.prisma.roomChecklistTask.update({

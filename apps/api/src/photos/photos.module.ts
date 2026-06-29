@@ -8,5 +8,6 @@ import { EmmaModule } from '../emma/emma.module';
   imports: [RoomsModule, forwardRef(() => EmmaModule)],
   controllers: [PhotosController],
   providers: [PhotosService],
+  exports: [PhotosService],
 })
 export class PhotosModule {}

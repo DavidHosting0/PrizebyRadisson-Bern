@@ -84,6 +84,15 @@ export class UsersService {
     return { id: fresh.id, avatarUrl };
   }
 
+  async setOwnLocale(userId: string, locale: string) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { preferredLocale: locale },
+      select: { id: true, preferredLocale: true },
+    });
+    return updated;
+  }
+
   async listHousekeepers() {
     return this.prisma.user.findMany({
       where: { role: UserRole.HOUSEKEEPER, isActive: true },

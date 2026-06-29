@@ -3,39 +3,26 @@
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
-import imageCompression from 'browser-image-compression';
+import { useState } from 'react';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
-import { ChecklistToggle } from '@/components/ChecklistToggle';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { LostFoundReportModal } from '@/components/housekeeper/LostFoundReportModal';
 import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
 import { useToast } from '@/components/toast/ToastProvider';
 import { usePermission } from '@/lib/auth-context';
-
-type Task = {
-  id: string;
-  code: string;
-  label: string;
-  status: string;
-};
 
 type RoomDetail = {
   id: string;
   roomNumber: string;
   derivedStatus: string;
   cleaningDeclaredAt: string | null;
-  hasMyReadyCleaningPhoto?: boolean;
-  checklist: { stateId: string; tasks: Task[] } | null;
 };
 
 export default function RoomChecklistPage() {
   const params = useParams();
   const id = params.id as string;
   const qc = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [lostFoundOpen, setLostFoundOpen] = useState(false);
   const [damageOpen, setDamageOpen] = useState(false);
   const canReportDamage = usePermission('DAMAGE_REPORT_CREATE');
@@ -44,54 +31,6 @@ export default function RoomChecklistPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['room', id],
     queryFn: () => api<RoomDetail>(`/rooms/${id}`),
-  });
-
-  const patchTask = useMutation({
-    mutationFn: ({ taskId, status }: { taskId: string; status: string }) =>
-      api(`/rooms/${id}/checklist/tasks/${taskId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['room', id] }),
-  });
-
-  /** One tap: mark complete, or tap again to undo (not started). */
-  const toggleTask = (t: Task) => {
-    const next = t.status === 'COMPLETED' ? 'NOT_STARTED' : 'COMPLETED';
-    patchTask.mutate({ taskId: t.id, status: next });
-  };
-
-  const uploadPhoto = useMutation({
-    mutationFn: async (file: File) => {
-      const compressed = await imageCompression(file, { maxSizeMB: 0.6, maxWidthOrHeight: 1600 });
-      const contentType = compressed.type?.trim() ? compressed.type : 'image/jpeg';
-      const presign = await api<{ uploadUrl: string; photoId: string }>(`/rooms/${id}/photos/presign`, {
-        method: 'POST',
-        body: JSON.stringify({ contentType }),
-      });
-      const putRes = await fetch(presign.uploadUrl, {
-        method: 'PUT',
-        body: compressed,
-        headers: { 'Content-Type': contentType },
-      });
-      if (!putRes.ok) {
-        const t = await putRes.text().catch(() => '');
-        throw new Error(t || `Upload failed (${putRes.status})`);
-      }
-      await api(`/rooms/${id}/photos/complete`, {
-        method: 'POST',
-        body: JSON.stringify({
-          photoId: presign.photoId,
-          mime: contentType,
-          bytes: Math.max(0, Math.round(compressed.size)),
-        }),
-      });
-    },
-    onSuccess: () => {
-      toast.push('Photo uploaded', 'success');
-      qc.invalidateQueries({ queryKey: ['room', id] });
-    },
-    onError: (e: Error) => toast.push(e.message || 'Photo upload failed', 'warning'),
   });
 
   const markClean = useMutation({
@@ -106,25 +45,12 @@ export default function RoomChecklistPage() {
     onError: (e: Error) => toast.push(e.message || 'Could not mark room clean', 'warning'),
   });
 
-  const tasks = data?.checklist?.tasks ?? [];
-  const progress = useMemo(() => {
-    const total = tasks.length;
-    if (!total) return 0;
-    const done = tasks.filter((t) => t.status === 'COMPLETED').length;
-    return Math.round((done / total) * 100);
-  }, [tasks]);
-
-  const allTasksDone = progress === 100 && tasks.length > 0;
-  const hasPhoto = data?.hasMyReadyCleaningPhoto === true;
   const canMarkClean =
     !!data &&
-    allTasksDone &&
-    hasPhoto &&
     !data.cleaningDeclaredAt &&
     data.derivedStatus !== 'INSPECTED' &&
     data.derivedStatus !== 'OUT_OF_ORDER';
-  const markCleanReady = canMarkClean;
-  const markCleanDisabled = !markCleanReady || markClean.isPending;
+  const isFinished = !!data?.cleaningDeclaredAt || data?.derivedStatus === 'INSPECTED';
 
   if (isLoading || !data) {
     return (
@@ -188,95 +114,32 @@ export default function RoomChecklistPage() {
         roomNumber={data.roomNumber}
       />
 
-      <Card>
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Checklist progress</p>
-          <span className="text-lg font-semibold tabular-nums text-ink">{progress}%</span>
-        </div>
-        <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface-muted">
-          <div
-            className="h-full rounded-full bg-success transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <p className="mt-3 text-sm text-ink-muted">Tap once to mark done. Tap again to undo.</p>
-      </Card>
-
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Tasks</h2>
-        <ul className="mt-3 space-y-3">
-          {tasks.map((t) => (
-            <li key={t.id}>
-              <ChecklistToggle task={t} onToggle={() => toggleTask(t)} />
-            </li>
-          ))}
-        </ul>
-        {tasks.length === 0 && (
-          <p className="mt-2 text-sm text-ink-muted">No checklist tasks for this room.</p>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="sr-only"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) uploadPhoto.mutate(f);
-            e.target.value = '';
-          }}
-        />
-        <Button
-          variant="secondary"
-          fullWidth
-          disabled={uploadPhoto.isPending}
-          onClick={() => fileRef.current?.click()}
-        >
-          {uploadPhoto.isPending ? 'Uploading…' : 'Upload cleaning photo'}
-        </Button>
-        {allTasksDone && !hasPhoto && (
-          <p className="text-center text-sm text-ink-muted">Add a cleaning photo to finish and mark the room clean.</p>
-        )}
-      </section>
+      {!isFinished && (
+        <p className="text-center text-sm text-ink-muted">
+          When you are done cleaning, mark the room clean. A supervisor will inspect and take photos.
+        </p>
+      )}
 
       <Button
         variant="primary"
         fullWidth
-        className={`min-h-[48px] border-0 text-white ${
-          markCleanReady
-            ? 'bg-red-600 hover:bg-red-700'
-            : 'bg-emerald-400/80 hover:bg-emerald-400/80'
+        className={`min-h-[52px] border-0 text-base font-semibold text-white ${
+          canMarkClean ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-400/80 hover:bg-emerald-400/80'
         }`}
-        disabled={markCleanDisabled}
+        disabled={!canMarkClean || markClean.isPending}
         onClick={() => markClean.mutate()}
       >
         {markClean.isPending
           ? 'Saving…'
-          : data.cleaningDeclaredAt
+          : isFinished
             ? 'Room already marked clean'
-            : markCleanReady
-              ? 'Mark room clean'
-              : 'Mark room clean (complete tasks + upload photo)'}
+            : 'Mark room clean'}
       </Button>
 
-      {allTasksDone && data.cleaningDeclaredAt && (
+      {isFinished && (
         <section className="rounded-card border border-success/30 bg-success-muted/50 p-4 text-center">
           <p className="font-medium text-ink">Room marked clean</p>
-          <p className="mt-1 text-sm text-ink-muted">Supervisors will see this room as clean pending inspection.</p>
-        </section>
-      )}
-
-      {allTasksDone && !data.cleaningDeclaredAt && data.derivedStatus === 'IN_PROGRESS' && (
-        <section className="rounded-card border border-border bg-surface p-4 text-center">
-          <p className="font-medium text-ink">All tasks complete</p>
-          <p className="mt-1 text-sm text-ink-muted">
-            {hasPhoto
-              ? 'Tap “Mark room clean” when you are finished.'
-              : 'Upload a cleaning photo, then mark the room clean.'}
-          </p>
+          <p className="mt-1 text-sm text-ink-muted">Waiting for supervisor inspection.</p>
         </section>
       )}
     </div>

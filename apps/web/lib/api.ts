@@ -14,6 +14,7 @@ export type Me = {
   name: string;
   phone?: string | null;
   titlePrefix?: string | null;
+  preferredLocale?: string;
   /** Short-lived presigned GET URL for the user's profile picture, or null. */
   avatarUrl?: string | null;
   /** Effective permission codes (assigned roles ∪ individual grants; ADMIN has all). */

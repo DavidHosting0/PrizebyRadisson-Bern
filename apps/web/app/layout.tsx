@@ -1,11 +1,17 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -28,7 +34,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#2B2B2B',
+  themeColor: '#1A2332',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -36,7 +42,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans">
         <Providers>{children}</Providers>
       </body>

@@ -20,12 +20,14 @@ import { S3Service } from '../storage/s3.service';
 import { CreateDamageReportDto } from './dto/create-damage-report.dto';
 import { UpdateDamageReportDto } from './dto/update-damage-report.dto';
 import { EmmaService } from '../emma/emma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class DamageReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
+    private readonly realtime: RealtimeGateway,
     @Optional()
     @Inject(forwardRef(() => EmmaService))
     private readonly emma?: EmmaService,
@@ -55,9 +57,10 @@ export class DamageReportsService {
     return { uploadUrl: url, key };
   }
 
-  async list(query: { status?: RoomDamageReportStatus; q?: string }) {
+  async list(query: { status?: RoomDamageReportStatus; q?: string; roomId?: string }) {
     const where: Prisma.RoomDamageReportWhereInput = {};
     if (query.status) where.status = query.status;
+    if (query.roomId) where.roomId = query.roomId;
     if (query.q) {
       where.description = { contains: query.q, mode: 'insensitive' };
     }
@@ -98,8 +101,10 @@ export class DamageReportsService {
       },
       include: {
         room: { select: { id: true, roomNumber: true } },
+        reportedBy: { select: userPublicSelect },
       },
     });
+    this.realtime.emitDamageReport('damage_report.created', row);
     this.emma?.scheduleRoomStatusSync('damageReports.create');
     return row;
   }
@@ -118,6 +123,7 @@ export class DamageReportsService {
         reportedBy: { select: userPublicSelect },
       },
     });
+    this.realtime.emitDamageReport('damage_report.updated', updated);
     this.emma?.scheduleRoomStatusSync('damageReports.update');
     return updated;
   }

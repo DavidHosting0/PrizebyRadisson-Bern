@@ -44,6 +44,14 @@ export class RoomStatusService {
     }
 
     if (room.outOfOrder) return DerivedRoomStatus.OUT_OF_ORDER;
+
+    const sorted = [...inspections].sort(
+      (a, b) => b.inspectedAt.getTime() - a.inspectedAt.getTime(),
+    );
+    const latest = sorted[0];
+    if (latest?.passed) return DerivedRoomStatus.INSPECTED;
+    if (room.cleaningDeclaredAt) return DerivedRoomStatus.CLEAN;
+
     if (!tasks.length) return DerivedRoomStatus.DIRTY;
     const allComplete = tasks.every((t) => t.status === ChecklistTaskStatus.COMPLETED);
     const anyProgress = tasks.some((t) => t.status !== ChecklistTaskStatus.NOT_STARTED);
@@ -51,12 +59,6 @@ export class RoomStatusService {
       if (!anyProgress) return DerivedRoomStatus.DIRTY;
       return DerivedRoomStatus.IN_PROGRESS;
     }
-    const sorted = [...inspections].sort(
-      (a, b) => b.inspectedAt.getTime() - a.inspectedAt.getTime(),
-    );
-    const latest = sorted[0];
-    if (latest?.passed) return DerivedRoomStatus.INSPECTED;
-    if (!room.cleaningDeclaredAt) return DerivedRoomStatus.IN_PROGRESS;
-    return DerivedRoomStatus.CLEAN;
+    return DerivedRoomStatus.IN_PROGRESS;
   }
 }

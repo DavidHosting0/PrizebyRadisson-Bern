@@ -7,6 +7,7 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { IconChat, IconRequests } from '@/components/icons';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
 
@@ -58,6 +59,7 @@ export function SupervisorMobileShell({
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
+          <NotificationBell />
           <span className="max-w-[140px] truncate text-[11px] font-medium text-ink-muted">
             {formatUserWithTitlePrefix(userName, titlePrefix)}
           </span>

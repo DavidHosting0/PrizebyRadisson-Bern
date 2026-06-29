@@ -41,6 +41,20 @@ export function IconChat({ className }: { className?: string }) {
   );
 }
 
+export function IconBell({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconUser({ className }: { className?: string }) {
   return (
     <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>

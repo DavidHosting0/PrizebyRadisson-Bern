@@ -69,6 +69,9 @@ enum PermissionCode {
   RESERVATIONS_SYNC
   MONITOR_MAP_READ
   ARRIVAL_CHECK
+  GUIDE_READ
+  GUIDE_WRITE
+  ROOM_MANAGEMENT_READ
 }
 
 enum MonitorMapFeedKind {
@@ -132,12 +135,22 @@ enum PhotoUploadStatus {
   READY
 }
 
+enum RoomHousekeepingEventKind {
+  MARKED_CLEAN
+  CHECKLIST_REOPENED
+}
+
 enum TeamChatReactionType {
   THUMBS_UP
   CHECK_MARK
   HEART
   EYES
   EXCLAMATION_QUESTION
+}
+
+enum NotificationType {
+  SERVICE_REQUEST_CREATED
+  TEAM_CHAT_MENTION
 }
 
 enum ArrivalCheckRunStatus {
@@ -255,6 +268,8 @@ model User {
   titlePrefix  UserTitlePrefix @default(CLEANER)
   /// Object-storage key for the user's avatar photo. URLs are resolved on read via presigned GETs.
   avatarS3Key  String?
+  /// UI and chat translation locale (`de` | `en`).
+  preferredLocale String @default("de")
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
@@ -274,10 +289,16 @@ model User {
   floorPlansUpdated  FloorPlan[]
   teamChatMessages         TeamChatMessage[]
   teamChatMessageReactions TeamChatMessageReaction[]
+  teamChatMentions         TeamChatMessageMention[]
+  notifications            Notification[]
+  pushSubscriptions        PushSubscription[]
   permissionGrants         UserPermissionGrant[]
   roleAssignments          UserRoleAssignment[]
   favurMap                 FavurUserMap[]
   arrivalCheckRuns         ArrivalCheckRun[]
+  guidesCreated            Guide[] @relation("GuideCreatedBy")
+  guidesUpdated            Guide[] @relation("GuideUpdatedBy")
+  roomHousekeepingEvents   RoomHousekeepingEvent[]
 }
 
 /**
@@ -395,7 +416,7 @@ model Room {
   oooUntil    DateTime?
   notes       String?
   metadata    Json     @default("{}")
-  /** Set when assigned housekeeper confirms clean (checklist + photo). Drives derived CLEAN vs IN_PROGRESS. */
+  /** Set when assigned housekeeper confirms clean. Drives derived CLEAN vs IN_PROGRESS. */
   cleaningDeclaredAt DateTime?
 
   checklistStates  RoomChecklistState[]
@@ -406,9 +427,22 @@ model Room {
   damageReports    RoomDamageReport[]
   assignments      RoomAssignment[]
   inspections      RoomInspection[]
+  housekeepingEvents RoomHousekeepingEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model RoomHousekeepingEvent {
+  id         String                    @id @default(cuid())
+  roomId     String
+  room       Room                      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User                      @relation(fields: [userId], references: [id])
+  kind       RoomHousekeepingEventKind
+  occurredAt DateTime                  @default(now())
+
+  @@index([roomId, occurredAt])
 }
 
 model RoomChecklistState {
@@ -462,6 +496,7 @@ model RoomInspection {
   inspectedAt     DateTime @default(now())
   notes           String?
   passed          Boolean  @default(true)
+  photos          RoomPhoto[]
 
   @@index([roomId])
 }
@@ -479,9 +514,12 @@ model RoomPhoto {
   status             PhotoUploadStatus @default(PENDING)
   cleaningSessionId  String?
   cleaningSession    CleaningSession?  @relation(fields: [cleaningSessionId], references: [id])
+  roomInspectionId   String?
+  roomInspection     RoomInspection?   @relation(fields: [roomInspectionId], references: [id], onDelete: SetNull)
   createdAt          DateTime          @default(now())
 
   @@index([roomId])
+  @@index([roomInspectionId])
 }
 
 model ServiceRequestType {
@@ -704,16 +742,73 @@ model FloorPlan {
 model TeamChatMessage {
   id        String   @id @default(cuid())
   body      String   @db.VarChar(2000)
+  /// Detected language when posted (`de` | `en` | …).
+  sourceLocale String?
   authorId  String
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   replyToId String?
   replyTo   TeamChatMessage? @relation("TeamChatReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies   TeamChatMessage[] @relation("TeamChatReplies")
   reactions TeamChatMessageReaction[]
+  mentions  TeamChatMessageMention[]
+  translations TeamChatMessageTranslation[]
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([replyToId])
+}
+
+model TeamChatMessageTranslation {
+  id        String          @id @default(cuid())
+  messageId String
+  message   TeamChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  locale    String
+  body      String          @db.VarChar(2000)
+  createdAt DateTime        @default(now())
+
+  @@unique([messageId, locale])
+  @@index([messageId])
+}
+
+model TeamChatMessageMention {
+  id        String          @id @default(cuid())
+  messageId String
+  message   TeamChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+
+  @@unique([messageId, userId])
+  @@index([userId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  linkPath  String
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model TeamChatMessageReaction {
@@ -766,8 +861,10 @@ model ReservationSnapshot {
   @@index([hotelId, checkInQueue, checkIn])
   @@index([hotelId, inCheckInDone])
   @@index([hotelId, checkIn, checkOut])
+  @@index([hotelId, departureDate, checkIn])
   @@index([hotelId, reservationId])
   @@index([hotelId, arrivalCheckCompletedAt])
+  @@index([roomId, departureDate])
 }
 
 model ReservationSyncRun {
@@ -876,4 +973,24 @@ model MonitorMapPoliceItem {
 
   @@unique([sourceId, externalId])
   @@index([publishedAt])
+}
+
+model Guide {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  summary         String?
+  body            String   @db.Text
+  category        String?
+  sortOrder       Int      @default(0)
+  published       Boolean  @default(false)
+  createdByUserId String
+  createdBy       User     @relation("GuideCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedByUserId String?
+  updatedBy       User?    @relation("GuideUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([published, sortOrder])
+  @@index([category])
 }

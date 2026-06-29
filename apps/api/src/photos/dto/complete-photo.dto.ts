@@ -20,4 +20,8 @@ export class CompletePhotoDto {
   @IsOptional()
   @IsString()
   cleaningSessionId?: string;
+
+  @IsOptional()
+  @IsString()
+  roomInspectionId?: string;
 }

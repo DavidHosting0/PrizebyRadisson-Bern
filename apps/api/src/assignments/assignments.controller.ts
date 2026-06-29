@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { PermissionCode, User } from '@prisma/client';
 import { AssignmentsService } from './assignments.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -23,13 +23,13 @@ export class AssignmentsController {
 
   @Post('suggestions')
   @RequirePermissions(PermissionCode.ASSIGNMENT_SUGGESTIONS)
-  suggestions() {
-    return this.assignments.suggestions();
+  suggestions(@Query('date') date?: string) {
+    return this.assignments.suggestions(date);
   }
 
   @Post('run-auto')
   @RequirePermissions(PermissionCode.ASSIGNMENT_RUN_AUTO)
-  runAuto() {
-    return this.assignments.runAutoAssignment();
+  runAuto(@Query('date') date?: string, @CurrentUser() user?: User) {
+    return this.assignments.runAutoAssignment(date, user);
   }
 }

@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { KpiStat } from '@/components/supervisor/KpiStat';
 import { ReceptionRoomBoard } from '@/components/reception/ReceptionRoomBoard';
+import { PageHeader, PageSection, PageShell } from '@/components/ui/PageShell';
 
 type RoomRow = { id: string; roomNumber: string; floor: number | null; derivedStatus: string };
 type ReqRow = { id: string; status: string };
@@ -29,44 +30,44 @@ export default function ReceptionDashboardPage() {
   }, [rooms, requests]);
 
   return (
-    <div className="space-y-10 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Dashboard</h1>
-        <p className="mt-1 text-sm text-ink-muted">Live operational snapshot</p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Dashboard"
+        description="Live operational snapshot"
+        actions={
+          <>
+            <Link
+              href="/r/rooms"
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-border px-4 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+            >
+              Room board
+            </Link>
+            <Link
+              href="/r/requests"
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-border px-4 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+            >
+              Service requests
+            </Link>
+          </>
+        }
+      />
 
-      <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Overview</h2>
-        <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <PageSection title="Overview">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
           <KpiStat label="Total rooms" value={stats.total} />
           <KpiStat label="Clean / ready" value={stats.clean} sub="Turn-down complete" />
           <KpiStat label="In progress" value={stats.progress} />
           <KpiStat label="Dirty" value={stats.dirty} />
           <KpiStat label="Active requests" value={stats.activeReq} sub="Open pipeline" />
         </div>
-      </section>
+      </PageSection>
 
-      <section className="flex flex-wrap gap-4">
-        <Link
-          href="/r/rooms"
-          className="text-sm font-medium text-action hover:underline"
-        >
-          Full room board →
-        </Link>
-        <Link href="/r/requests" className="text-sm font-medium text-action hover:underline">
-          Service requests →
-        </Link>
-      </section>
-
-      <section>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-ink">Live room status</h2>
-            <p className="text-sm text-ink-muted">Click a room for details. Urgent request flags highlighted.</p>
-          </div>
-        </div>
+      <PageSection
+        title="Live room status"
+        description="Click a room for details. Urgent request flags highlighted."
+      >
         <ReceptionRoomBoard compact />
-      </section>
-    </div>
+      </PageSection>
+    </PageShell>
   );
 }

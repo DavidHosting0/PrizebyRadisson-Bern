@@ -20,6 +20,7 @@ import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateServiceRequestDto } from './dto/create-service-request.dto';
 import { EmmaService } from '../emma/emma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ServiceRequestsService {
@@ -27,6 +28,7 @@ export class ServiceRequestsService {
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
+    private readonly notifications: NotificationsService,
     @Optional()
     @Inject(forwardRef(() => EmmaService))
     private readonly emma?: EmmaService,
@@ -98,6 +100,7 @@ export class ServiceRequestsService {
     const room = await this.rooms.findOne(dto.roomId);
     this.realtime.emitRoomStatus(room);
     this.realtime.emitServiceRequest('service_request.created', req);
+    void this.notifications.notifyServiceRequestCreated(req, user.id);
     this.emma?.scheduleRoomStatusSync('serviceRequests.create');
     return req;
   }

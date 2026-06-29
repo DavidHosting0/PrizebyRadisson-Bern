@@ -1,12 +1,7 @@
-import clsx from 'clsx';
+'use client';
 
-const LABEL: Record<string, string> = {
-  OUT_OF_ORDER: 'Out of order',
-  DIRTY: 'Dirty',
-  IN_PROGRESS: 'In progress',
-  CLEAN: 'Clean',
-  INSPECTED: 'Inspected',
-};
+import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 
 const style: Record<string, string> = {
   OUT_OF_ORDER: 'bg-warning-muted text-warning',
@@ -16,6 +11,21 @@ const style: Record<string, string> = {
   INSPECTED: 'bg-surface-muted text-ink',
 };
 
+const STATUS_KEYS = [
+  'OUT_OF_ORDER',
+  'DIRTY',
+  'IN_PROGRESS',
+  'CLEAN',
+  'INSPECTED',
+] as const;
+
+export function roomStatusLabel(status: string, t: (key: string) => string): string {
+  if ((STATUS_KEYS as readonly string[]).includes(status)) {
+    return t(`room.status.${status}`);
+  }
+  return status.replace(/_/g, ' ');
+}
+
 export function StatusBadge({
   status,
   variant = 'default',
@@ -24,10 +34,13 @@ export function StatusBadge({
   /** Readable on saturated status-colored tiles (floor plan). */
   variant?: 'default' | 'onColor';
 }) {
+  const t = useTranslations();
+  const label = roomStatusLabel(status, (key) => t(key as 'room.status.DIRTY'));
+
   if (variant === 'onColor') {
     return (
       <span className="inline-flex rounded-full border border-white/30 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-[2px]">
-        {LABEL[status] ?? status.replace(/_/g, ' ')}
+        {label}
       </span>
     );
   }
@@ -38,7 +51,7 @@ export function StatusBadge({
         style[status] ?? 'bg-surface-muted text-ink-muted',
       )}
     >
-      {LABEL[status] ?? status.replace(/_/g, ' ')}
+      {label}
     </span>
   );
 }

@@ -1,15 +1,38 @@
-/** Matches API enum `RoomDamageType`. */
-export const DAMAGE_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'FURNITURE', label: 'Furniture' },
-  { value: 'FIXTURES', label: 'Fixtures & fittings' },
-  { value: 'WALL_OR_CEILING', label: 'Wall / ceiling' },
-  { value: 'FLOOR', label: 'Floor' },
-  { value: 'WINDOW_OR_DOOR', label: 'Window / door' },
-  { value: 'BATHROOM', label: 'Bathroom' },
-  { value: 'ELECTRICAL_OR_APPLIANCE', label: 'Electrical / appliance' },
-  { value: 'OTHER', label: 'Other' },
-];
+'use client';
 
+import { useTranslations } from 'next-intl';
+
+/** Matches API enum `RoomDamageType`. */
+export const DAMAGE_TYPE_VALUES = [
+  'FURNITURE',
+  'FIXTURES',
+  'WALL_OR_CEILING',
+  'FLOOR',
+  'WINDOW_OR_DOOR',
+  'BATHROOM',
+  'ELECTRICAL_OR_APPLIANCE',
+  'OTHER',
+] as const;
+
+export function useDamageTypeOptions() {
+  const t = useTranslations('damage');
+  return DAMAGE_TYPE_VALUES.map((value) => ({
+    value,
+    label: t(value),
+  }));
+}
+
+export function useDamageTypeLabel() {
+  const t = useTranslations('damage');
+  return (code: string) => {
+    if ((DAMAGE_TYPE_VALUES as readonly string[]).includes(code)) {
+      return t(code as (typeof DAMAGE_TYPE_VALUES)[number]);
+    }
+    return code;
+  };
+}
+
+/** @deprecated Use useDamageTypeLabel() in client components. */
 export function damageTypeLabel(code: string): string {
-  return DAMAGE_TYPE_OPTIONS.find((o) => o.value === code)?.label ?? code;
+  return code;
 }

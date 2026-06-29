@@ -28,7 +28,12 @@ import { PuzzleModule } from './puzzle/puzzle.module';
 import { EmmaModule } from './emma/emma.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { ArrivalCheckModule } from './arrival-check/arrival-check.module';
+import { DeparturesModule } from './departures/departures.module';
 import { MonitorMapModule } from './monitor-map/monitor-map.module';
+import { GuidesModule } from './guides/guides.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { PushModule } from './push/push.module';
+import { RoomManagementModule } from './room-management/room-management.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -65,7 +70,12 @@ import configuration from './config/configuration';
     EmmaModule,
     ReservationsModule,
     ArrivalCheckModule,
+    DeparturesModule,
     MonitorMapModule,
+    GuidesModule,
+    NotificationsModule,
+    PushModule,
+    RoomManagementModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
