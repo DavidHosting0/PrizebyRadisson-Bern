@@ -32,7 +32,7 @@ export function Button({
     <button
       type={type}
       className={clsx(
-        'inline-flex min-h-[44px] items-center justify-center rounded-btn px-4 py-2.5 text-sm font-medium transition-colors duration-tap',
+        'inline-flex min-h-[34px] items-center justify-center rounded-btn px-3 py-1.5 text-xs font-medium transition-colors duration-tap',
         styles[variant],
         fullWidth && 'w-full',
         className,

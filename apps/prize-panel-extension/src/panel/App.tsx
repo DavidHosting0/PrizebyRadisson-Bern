@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth, usePermission } from '@/lib/auth-context';
 import { PANEL_MESSAGE } from '@/lib/storage';
@@ -6,7 +6,6 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { LoginForm } from '@/components/LoginForm';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ShiftHandoverBoard } from '@/components/ShiftHandoverBoard';
-import { Button } from '@/components/ui/Button';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -14,52 +13,70 @@ const queryClient = new QueryClient({
   },
 });
 
+function IconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-muted transition hover:bg-surface-muted hover:text-ink"
+      title={label}
+      aria-label={label}
+    >
+      {children}
+    </button>
+  );
+}
+
 function PanelHeader({
   onSettings,
   onCollapse,
+  onLogout,
 }: {
   onSettings: () => void;
   onCollapse: () => void;
+  onLogout: () => void;
 }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2.5">
-      <BrandLogo compact />
-      <div className="flex items-center gap-1">
+    <header className="flex shrink-0 items-center justify-between gap-1.5 border-b border-border bg-surface px-2 py-1.5">
+      <div className="min-w-0 flex-1">
+        <BrandLogo compact />
         {user && (
-          <span className="max-w-[100px] truncate text-xs text-ink-muted" title={user.name}>
+          <p className="mt-0.5 truncate text-[10px] text-ink-muted" title={user.email}>
             {user.name}
-          </span>
+          </p>
         )}
-        <button
-          type="button"
-          className="rounded-md p-1.5 text-ink-muted transition hover:bg-surface-muted hover:text-ink"
-          title="Einstellungen"
-          aria-label="Einstellungen"
-          onClick={onSettings}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="rounded-md p-1.5 text-ink-muted transition hover:bg-surface-muted hover:text-ink"
-          title="Panel einklappen"
-          aria-label="Panel einklappen"
-          onClick={onCollapse}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        </button>
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
         {user && (
-          <Button type="button" variant="ghost" className="min-h-0 px-2 py-1 text-xs" onClick={logout}>
-            Abmelden
-          </Button>
+          <>
+            <IconButton label="Einstellungen" onClick={onSettings}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+              </svg>
+            </IconButton>
+            <IconButton label="Abmelden" onClick={onLogout}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </IconButton>
+          </>
         )}
+        <IconButton label="Panel einklappen" onClick={onCollapse}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </IconButton>
       </div>
     </header>
   );
@@ -70,7 +87,7 @@ function PanelBody() {
   const canReadHandover = usePermission('SHIFT_HANDOVER_READ');
 
   if (loading) {
-    return <p className="p-4 text-sm text-ink-muted">Wird geladen…</p>;
+    return <p className="p-3 text-xs text-ink-muted">Wird geladen…</p>;
   }
 
   if (!user) {
@@ -79,10 +96,9 @@ function PanelBody() {
 
   if (!canReadHandover) {
     return (
-      <div className="p-4">
-        <p className="text-sm text-ink-muted">
-          Dein Konto hat keine Berechtigung für die Schichtübergabe. Bitte wende dich an einen
-          Administrator.
+      <div className="p-3">
+        <p className="text-xs text-ink-muted">
+          Keine Berechtigung für die Schichtübergabe.
         </p>
       </div>
     );
@@ -92,6 +108,7 @@ function PanelBody() {
 }
 
 function AppInner() {
+  const { logout } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   function collapsePanel() {
@@ -99,8 +116,12 @@ function AppInner() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface">
-      <PanelHeader onSettings={() => setSettingsOpen(true)} onCollapse={collapsePanel} />
+    <div className="flex h-screen flex-col overflow-hidden bg-surface text-[13px]">
+      <PanelHeader
+        onSettings={() => setSettingsOpen(true)}
+        onCollapse={collapsePanel}
+        onLogout={logout}
+      />
       <main className="flex-1 overflow-y-auto">
         <PanelBody />
       </main>

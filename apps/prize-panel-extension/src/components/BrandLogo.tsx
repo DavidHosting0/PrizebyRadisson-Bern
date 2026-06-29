@@ -7,18 +7,20 @@ type Props = {
 
 export function BrandLogo({ className = '', compact }: Props) {
   return (
-    <div className={clsx('flex shrink-0 flex-col', className)}>
+    <div className={clsx('flex shrink-0 items-center gap-1.5', className)}>
       <span
         className={clsx(
-          'font-semibold tracking-tight text-ink',
-          compact ? 'text-sm' : 'text-base',
+          'flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-action text-[10px] font-bold text-white',
         )}
+        aria-hidden
       >
-        Prize by Radisson
+        PB
       </span>
-      <span className={clsx('font-medium text-action', compact ? 'text-xs' : 'text-sm')}>
-        Bern
-      </span>
+      {!compact && (
+        <span className="text-xs font-semibold leading-tight text-ink">
+          PrizeBern
+        </span>
+      )}
     </div>
   );
 }

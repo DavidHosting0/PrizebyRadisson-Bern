@@ -29,32 +29,30 @@ export function SettingsDialog({ open, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex items-end bg-ink/40 p-2"
       role="dialog"
       aria-modal
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-card border border-border bg-surface p-4 shadow-lift"
+        className="w-full rounded-lg border border-border bg-surface p-3 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-base font-semibold text-ink">Einstellungen</h3>
-        <p className="mt-1 text-xs text-ink-muted">API-Basis-URL für PrizeBern Backend.</p>
-        <label className="mt-3 flex flex-col gap-1">
-          <span className="text-xs text-ink-muted">API URL</span>
+        <h3 className="text-xs font-semibold text-ink">API-URL</h3>
+        <label className="mt-2 flex flex-col gap-0.5">
           <input
-            className="min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className="min-h-[34px] rounded-md border border-border bg-surface px-2 text-xs"
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
             placeholder={DEFAULT_API_BASE}
           />
         </label>
-        {saved && <p className="mt-2 text-xs text-success">Gespeichert.</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+        {saved && <p className="mt-1.5 text-[11px] text-success">Gespeichert.</p>}
+        <div className="mt-2 flex justify-end gap-1.5">
+          <Button type="button" variant="secondary" className="min-h-[30px] px-2.5" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button type="button" variant="action" onClick={() => void onSave()}>
+          <Button type="button" variant="action" className="min-h-[30px] px-2.5" onClick={() => void onSave()}>
             Speichern
           </Button>
         </div>

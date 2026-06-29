@@ -6,13 +6,12 @@ import { STORAGE_KEYS, storageGet, storageRemove, storageSet } from '@/lib/stora
 
 const strings = {
   signIn: 'Anmelden',
-  welcomeBack: 'Melde dich mit deinen PrizeBern-Zugangsdaten an.',
   email: 'E-Mail',
   password: 'Passwort',
-  rememberMe: 'E-Mail merken',
-  signingIn: 'Anmeldung…',
-  loginFailed: 'Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.',
-  networkError: 'Verbindung zum Server fehlgeschlagen.',
+  rememberMe: 'Merken',
+  signingIn: '…',
+  loginFailed: 'Anmeldung fehlgeschlagen.',
+  networkError: 'Server nicht erreichbar.',
 };
 
 export function LoginForm() {
@@ -56,19 +55,16 @@ export function LoginForm() {
   }
 
   const field =
-    'mt-1.5 w-full min-h-[44px] rounded-lg border border-border bg-surface-muted/60 px-3 py-2.5 text-sm text-ink shadow-card transition placeholder:text-ink-muted/45 focus:border-ink/20 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ink/8';
+    'mt-1 w-full min-h-[34px] rounded-md border border-border bg-surface-muted/60 px-2.5 py-1.5 text-xs text-ink transition placeholder:text-ink-muted/45 focus:border-ink/20 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-ink/8';
 
   return (
-    <div className="flex flex-1 flex-col px-4 py-6">
-      <div className="mb-6">
-        <BrandLogo />
-      </div>
-      <h1 className="text-xl font-semibold tracking-tight text-ink">{strings.signIn}</h1>
-      <p className="mt-1 text-sm text-ink-muted">{strings.welcomeBack}</p>
+    <div className="flex flex-1 flex-col px-3 py-4">
+      <BrandLogo className="mb-4" />
+      <h1 className="text-sm font-semibold text-ink">{strings.signIn}</h1>
 
-      <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+      <form className="mt-3 space-y-2.5" onSubmit={onSubmit}>
         <div>
-          <label htmlFor="panel-email" className="block text-sm font-medium text-ink">
+          <label htmlFor="panel-email" className="block text-[11px] font-medium text-ink-muted">
             {strings.email}
           </label>
           <input
@@ -82,7 +78,7 @@ export function LoginForm() {
           />
         </div>
         <div>
-          <label htmlFor="panel-password" className="block text-sm font-medium text-ink">
+          <label htmlFor="panel-password" className="block text-[11px] font-medium text-ink-muted">
             {strings.password}
           </label>
           <input
@@ -96,10 +92,10 @@ export function LoginForm() {
           />
         </div>
 
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-muted">
+        <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-ink-muted">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-border text-ink accent-ink"
+            className="h-3.5 w-3.5 rounded border-border accent-ink"
             checked={remember}
             onChange={(e) => setRemember(e.target.checked)}
           />
@@ -107,7 +103,7 @@ export function LoginForm() {
         </label>
 
         {err && (
-          <p className="rounded-lg border border-danger/15 bg-danger-muted px-3 py-2 text-sm text-danger">
+          <p className="rounded-md border border-danger/15 bg-danger-muted px-2 py-1.5 text-[11px] text-danger">
             {err}
           </p>
         )}

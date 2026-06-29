@@ -14,7 +14,7 @@ export function Card({
     <div
       className={clsx(
         'rounded-card border border-border/80 bg-surface shadow-card',
-        padding && 'p-4',
+        padding && 'p-3',
         className,
       )}
     >

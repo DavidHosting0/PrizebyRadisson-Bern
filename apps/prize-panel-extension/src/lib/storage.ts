@@ -9,8 +9,8 @@ export const STORAGE_KEYS = {
 export const DEFAULT_API_BASE =
   import.meta.env.VITE_API_URL ?? 'https://prizebern.com/api/v1';
 
-export const PANEL_WIDTH_PX = 380;
-export const TAB_WIDTH_PX = 44;
+export const PANEL_WIDTH_PX = 288;
+export const TAB_WIDTH_PX = 32;
 export const ACTION_COLOR = '#3B6FA0';
 
 export const PANEL_MESSAGE = {

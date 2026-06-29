@@ -15,7 +15,7 @@ function chevronSvg(direction: 'left' | 'right') {
     direction === 'left'
       ? 'M15 6l-6 6 6 6'
       : 'M9 6l6 6-6 6';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
 }
 
 function applyCollapsed(shell: HTMLElement, tab: HTMLButtonElement, collapsed: boolean) {
@@ -117,7 +117,7 @@ function injectPanel() {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '12px 0',
+    padding: '8px 0',
     boxShadow: '-2px 0 8px rgba(59, 111, 160, 0.35)',
     transition: 'background 150ms ease, filter 150ms ease',
     pointerEvents: 'auto',
