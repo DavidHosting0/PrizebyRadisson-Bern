@@ -666,6 +666,23 @@ export class ArrivalCheckService implements OnModuleInit {
     });
   }
 
+  /** Move multiple charges in one EMMA folio session (arrival check). */
+  async moveFolioCharges(
+    hotelId: string,
+    reservationId: string,
+    moves: Array<{
+      sourceFolioId: string;
+      chargeRowId: string;
+      destinationFolioId: string;
+    }>,
+  ): Promise<EmmaMoveFolioChargeResult[]> {
+    return this.emma.moveFolioCharges({
+      hotelId,
+      reservationId,
+      moves,
+    });
+  }
+
   private async processRunItem(hotelId: string, itemId: string): Promise<void> {
     const item = await this.prisma.arrivalCheckRunItem.findUnique({
       where: { id: itemId },
@@ -751,12 +768,7 @@ export class ArrivalCheckService implements OnModuleInit {
 
       let movesDone = 0;
       let workingFolioForMoves = folio;
-      for (const move of decision.moves) {
-        // Per-move freshness: re-read the snapshot so we always operate on the
-        // latest charge layout. Then assert the charge still belongs to THIS
-        // reservation and lives on the expected source folio — never move a
-        // charge that has drifted to a different folio (or worse, isn't on
-        // this reservation any more).
+      if (decision.moves.length > 0) {
         const beforeSnap = await this.prisma.reservationSnapshot.findUnique({
           where: { hotelId_reservationId: { hotelId, reservationId: item.reservationId } },
         });
@@ -764,27 +776,33 @@ export class ArrivalCheckService implements OnModuleInit {
           ? decryptFolioBundle(this.cipher, beforeSnap.folioEnc)
           : null;
         if (beforeFolio) workingFolioForMoves = beforeFolio;
-        this.assertChargeBelongsToReservation(
-          workingFolioForMoves,
-          item.reservationId,
-          move.chargeRowId,
-          move.sourceFolioId,
-        );
+
+        for (const move of decision.moves) {
+          this.assertChargeBelongsToReservation(
+            workingFolioForMoves,
+            item.reservationId,
+            move.chargeRowId,
+            move.sourceFolioId,
+          );
+        }
 
         await this.prisma.arrivalCheckRunItem.update({
           where: { id: itemId },
           data: {
-            statusMessage: `Posten ${move.concept ?? move.chargeRowId} wird von Folio ${move.sourceFolioId} auf Folio ${move.destinationFolioId} verschoben (${movesDone + 1}/${decision.moves.length}) …`,
+            statusMessage: `${decision.moves.length} Posten werden in einer EMMA-Sitzung verschoben …`,
           },
         });
-        await this.moveFolioCharge(
+
+        await this.moveFolioCharges(
           hotelId,
           item.reservationId,
-          move.sourceFolioId,
-          move.chargeRowId,
-          move.destinationFolioId,
+          decision.moves.map((move) => ({
+            sourceFolioId: move.sourceFolioId,
+            chargeRowId: move.chargeRowId,
+            destinationFolioId: move.destinationFolioId,
+          })),
         );
-        movesDone += 1;
+        movesDone = decision.moves.length;
         await this.prisma.arrivalCheckRunItem.update({
           where: { id: itemId },
           data: { movesDone },

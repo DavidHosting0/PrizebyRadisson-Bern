@@ -8,6 +8,7 @@ import {
   canReuseInvoice,
   filterCreditCardsForReservation,
 } from '../arrival-check/arrival-check-payment-guard';
+import { ensureReservationUnlockedForPosting } from './emma-folio-edit-session';
 import {
   buildEmmaRequestObjectKey,
   buildODataBatchBody,
@@ -269,6 +270,16 @@ export async function chargeEmmaFolioWithVccToken(
 
   const requestObjectKey = buildEmmaRequestObjectKey(hotelId, reservationId);
   const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+
+  await ensureReservationUnlockedForPosting(
+    jar,
+    baseUrl,
+    hotelId,
+    reservationId,
+    employee,
+    sapClient,
+    opts.debug,
+  );
 
   await postChangesetAction(
     jar,

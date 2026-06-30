@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -33,7 +34,7 @@ import {
 } from './emma-reservation-sync';
 import { fetchEmmaReservationDetailFromJar } from './emma-reservation-detail-fetch';
 import { fetchEmmaReservationFolioFromJar } from './emma-reservation-folio-fetch';
-import { moveEmmaFolioChargeFromJar } from './emma-folio-move-charge';
+import { moveEmmaFolioChargeFromJar, moveEmmaFolioChargesFromJar } from './emma-folio-move-charge';
 import {
   settleEmmaFolioWithVcc,
   type EmmaVccPaymentOutcome,
@@ -50,7 +51,11 @@ import { readEmmaMetadata } from './emma-room-status-sync';
 import { EmmaIntegrationAlertService } from './emma-integration-alert.service';
 import { EmmaBackupModeService } from './emma-backup-mode.service';
 import { EmmaPushOutboxService } from './emma-push-outbox.service';
-import type { EmmaMoveFolioChargeParams, EmmaMoveFolioChargeResult } from '@housekeeping/shared';
+import type {
+  EmmaMoveFolioChargeParams,
+  EmmaMoveFolioChargeResult,
+  EmmaMoveFolioChargesParams,
+} from '@housekeeping/shared';
 import { todayIsoDate } from '../reservations/reservation-sensitive';
 
 /**
@@ -714,6 +719,67 @@ export class EmmaService {
     const emmaDebug = createEmmaSyncDebug(this.log);
     return this.mutationLock.run(() =>
       moveEmmaFolioChargeFromJar(jar, baseUrl, {
+        ...params,
+        hotelId: hid,
+        employee: params.employee ?? operatorCode,
+        sapClient,
+        debug: emmaDebug.verbose ? emmaDebug : undefined,
+      }),
+    );
+  }
+
+  /** Move multiple folio charges in one EMMA edit session (arrival check batch). */
+  async moveFolioCharges(
+    params: EmmaMoveFolioChargesParams & { hotelId?: string },
+  ): Promise<EmmaMoveFolioChargeResult[]> {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const operatorCode = creds.operatorCode?.trim();
+    if (!operatorCode) {
+      throw new ForbiddenException(
+        'EMMA Operator-Code fehlt (Admin → EMMA Login). Für MoveCharge erforderlich.',
+      );
+    }
+    if (params.moves.length === 0) {
+      throw new BadRequestException('At least one charge move required');
+    }
+    for (const move of params.moves) {
+      const destReservation = (move.destinationReservationId ?? params.reservationId).trim();
+      if (destReservation && destReservation !== params.reservationId.trim()) {
+        throw new ForbiddenException(
+          `Cross-Reservation-Move nicht erlaubt (${params.reservationId} → ${destReservation}).`,
+        );
+      }
+    }
+    const hid =
+      params.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+
+    let jar = await this.loadEmmaHttpJar();
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[EMMA] HTTP session expired (${probe.reason}) — refresh`);
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    const moveSummary = params.moves
+      .map((m) => `${m.chargeRowId}:${m.sourceFolioId}→${m.destinationFolioId}`)
+      .join(', ');
+    this.log.log(
+      `[EMMA-MOVE-AUDIT] moveFolioCharges requested reservation=${params.reservationId} ` +
+        `moves=${params.moves.length} [${moveSummary}] hotel=${hid}`,
+    );
+
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    return this.mutationLock.run(() =>
+      moveEmmaFolioChargesFromJar(jar, baseUrl, {
         ...params,
         hotelId: hid,
         employee: params.employee ?? operatorCode,

@@ -15,6 +15,17 @@ import {
 
 const log = new Logger('EmmaFolioEditSession');
 
+const EMMA_FOLIO_SETTLE_MS = 600;
+
+function emmaSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Brief pause after folio edits so EMMA can release draft/lock state before invoicing. */
+export async function emmaSettleAfterFolioEdit(): Promise<void> {
+  await emmaSleep(EMMA_FOLIO_SETTLE_MS);
+}
+
 export type EmmaFolioEditSession = {
   requestObjectKey: string;
   hotelId: string;
@@ -175,7 +186,7 @@ export async function releaseEmmaFolioEditSession(
   session: EmmaFolioEditSession,
   debug?: EmmaSyncDebug,
 ): Promise<void> {
-  const unlock = async (forceLock: boolean) => {
+  const unlockOnce = async (forceLock: boolean) => {
     const csrf = await emmaHttpFetchCsrfToken(
       jar,
       baseUrl,
@@ -193,20 +204,71 @@ export async function releaseEmmaFolioEditSession(
     );
   };
 
-  try {
-    await unlock(false);
-    log.log(`[EMMA] folio edit session released for ${session.reservationId}`);
-  } catch (firstErr) {
-    try {
-      await unlock(true);
-      log.log(
-        `[EMMA] folio edit session released for ${session.reservationId} (force unlock)`,
-      );
-    } catch (err) {
-      log.warn(
-        `[EMMA] failed to release folio lock for ${session.reservationId}: ${(err as Error).message}` +
-          (firstErr instanceof Error ? ` (first: ${firstErr.message})` : ''),
-      );
+  for (const forceLock of [false, true]) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await unlockOnce(forceLock);
+        await emmaSleep(250);
+        log.log(
+          forceLock
+            ? `[EMMA] folio edit session released for ${session.reservationId} (force unlock)`
+            : `[EMMA] folio edit session released for ${session.reservationId}`,
+        );
+        return;
+      } catch (err) {
+        if (attempt === 0) await emmaSleep(400);
+        else if (forceLock) {
+          log.warn(
+            `[EMMA] failed to release folio lock for ${session.reservationId}: ${(err as Error).message}`,
+          );
+        }
+      }
     }
   }
+}
+
+/**
+ * Best-effort unlock before CreateInvoice / payment posting.
+ * Uses a fresh request-object key when the folio-edit session key is unknown.
+ */
+export async function ensureReservationUnlockedForPosting(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  hotelId: string,
+  reservationId: string,
+  employee: string,
+  sapClient: string,
+  debug?: EmmaSyncDebug,
+): Promise<void> {
+  const session: Pick<EmmaFolioEditSession, 'requestObjectKey' | 'hotelId' | 'employee'> = {
+    requestObjectKey: buildEmmaRequestObjectKey(hotelId, reservationId),
+    hotelId,
+    employee,
+  };
+
+  for (const forceLock of [false, true]) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+        await postManageLocks(
+          jar,
+          baseUrl,
+          sapClient,
+          csrf,
+          session,
+          { lock: false, unlock: true, forceLock },
+          debug,
+        );
+        await emmaSleep(300);
+        log.log(
+          `[EMMA] reservation ${reservationId} unlocked for posting (force=${forceLock} attempt=${attempt + 1})`,
+        );
+        return;
+      } catch {
+        if (attempt < 2) await emmaSleep(350 * (attempt + 1));
+      }
+    }
+  }
+
+  log.warn(`[EMMA] could not confirm unlock for ${reservationId} before posting`);
 }

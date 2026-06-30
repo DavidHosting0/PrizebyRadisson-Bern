@@ -25,6 +25,23 @@ export type EmmaMoveFolioChargeResult = {
   statusCharge: string | null;
 };
 
+/** One charge move within a batch (same reservation). */
+export type EmmaMoveFolioChargeItem = {
+  sourceFolioId: string;
+  chargeRowId: string;
+  destinationFolioId: string;
+  destinationReservationId?: string;
+};
+
+/** Move multiple charges in a single EMMA folio edit session. */
+export type EmmaMoveFolioChargesParams = {
+  hotelId: string;
+  reservationId: string;
+  moves: EmmaMoveFolioChargeItem[];
+  employee?: string;
+  validate?: boolean;
+};
+
 /** API body for POST /reservations/:id/move-folio-charge */
 export type MoveReservationFolioChargeBody = {
   sourceFolioId: string;
