@@ -19,9 +19,10 @@ module.exports = {
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
-      max_memory_restart: '512M',
+      max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
+        NODE_OPTIONS: '--max-old-space-size=1024',
       },
     },
     {
