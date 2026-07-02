@@ -1040,6 +1040,16 @@ export class ArrivalCheckService implements OnModuleInit {
       };
     }
 
+    const paySensitive = freshSnap
+      ? decryptSensitivePayload(this.cipher, freshSnap.sensitiveEnc)
+      : null;
+    if (paySensitive?.draftStatus?.trim() || paySensitive?.draftLockedBy?.trim()) {
+      this.log.warn(
+        `[ArrivalCheck] ${reservationId}: open EMMA folio draft (${paySensitive.draftStatus ?? '—'} / ${paySensitive.draftLockedBy ?? '—'}) — clearing before VCC`,
+      );
+      await this.emma.clearStaleFolioPostBlock({ hotelId, reservationId });
+    }
+
     const outcome = await this.emma.payFolioWithVcc({
       hotelId,
       reservationId,

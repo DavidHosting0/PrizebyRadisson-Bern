@@ -7,15 +7,17 @@ import {
   buildODataChangesetBatchBody,
   createDraftPath,
   draftCreateBody,
+  draftMergeSaveBody,
   EMMA_ODATA_RSRVS_SRV,
   manageLocksPath,
+  mergeDraftPath,
   parseODataBatchResponse,
   parseODataEntityJson,
 } from './emma-odata-client';
 
 const log = new Logger('EmmaFolioEditSession');
 
-const EMMA_FOLIO_SETTLE_MS = 600;
+const EMMA_FOLIO_SETTLE_MS = 1000;
 
 function emmaSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,15 +42,16 @@ async function postChangeset(
   sapClient: string,
   csrf: string,
   actionPath: string,
-  requestObjectKey: string,
+  requestObjectKey: string | undefined,
   label: string,
   body?: string,
   debug?: EmmaSyncDebug,
+  method: 'POST' | 'MERGE' = 'POST',
 ): Promise<void> {
   const { body: batchBody, contentType } = buildODataChangesetBatchBody(
-    [{ actionPath, body }],
+    [{ actionPath, body, method }],
     csrf,
-    { requestObjectKey },
+    requestObjectKey ? { requestObjectKey } : undefined,
   );
   const raw = await emmaHttpPostBatch(
     jar,
@@ -151,13 +154,14 @@ export async function acquireEmmaFolioEditSession(
     'Draft.create',
     draftCreateBody(hotelId, reservationId),
     debug,
+    'POST',
   );
 
   log.log(`[EMMA] folio edit session opened for ${reservationId} (${requestObjectKey})`);
   return session;
 }
 
-/** Persist draft changes (POST Draft — foliomanagement.com.har after charge moves). */
+/** Commit folio draft (MERGE Draft Saved=true — openfoliomanagement.com.har). */
 export async function saveEmmaFolioDraft(
   jar: EmmaCookieJar,
   baseUrl: string,
@@ -170,11 +174,12 @@ export async function saveEmmaFolioDraft(
     baseUrl,
     session.sapClient,
     csrf,
-    createDraftPath(session.sapClient),
+    mergeDraftPath(session.sapClient, session.hotelId, session.reservationId),
     session.requestObjectKey,
-    'Draft.save',
-    draftCreateBody(session.hotelId, session.reservationId),
+    'Draft.mergeSave',
+    draftMergeSaveBody(baseUrl, session.hotelId, session.reservationId),
     debug,
+    'MERGE',
   );
   log.log(`[EMMA] folio draft saved for ${session.reservationId}`);
 }
@@ -228,10 +233,11 @@ export async function releaseEmmaFolioEditSession(
 }
 
 /**
- * Best-effort unlock before CreateInvoice / payment posting.
- * Uses a fresh request-object key when the folio-edit session key is unknown.
+ * Clear stale folio draft / lock before invoicing (retry path only).
+ * Payment HAR never calls ManageLocks — preemptive unlock with a fresh key can
+ * leave the reservation blocked for CreateInvoice.
  */
-export async function ensureReservationUnlockedForPosting(
+export async function clearStaleEmmaFolioPostBlock(
   jar: EmmaCookieJar,
   baseUrl: string,
   hotelId: string,
@@ -239,36 +245,55 @@ export async function ensureReservationUnlockedForPosting(
   employee: string,
   sapClient: string,
   debug?: EmmaSyncDebug,
+  opts?: { requestObjectKey?: string },
 ): Promise<void> {
+  const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+
+  try {
+    await postChangeset(
+      jar,
+      baseUrl,
+      sapClient,
+      csrf,
+      mergeDraftPath(sapClient, hotelId, reservationId),
+      opts?.requestObjectKey,
+      'Draft.mergeSave.cleanup',
+      draftMergeSaveBody(baseUrl, hotelId, reservationId),
+      debug,
+      'MERGE',
+    );
+    log.log(`[EMMA] cleared stale folio draft for ${reservationId}`);
+  } catch (err) {
+    log.warn(
+      `[EMMA] draft cleanup for ${reservationId} skipped: ${(err as Error).message}`,
+    );
+  }
+
+  if (!opts?.requestObjectKey) return;
+
   const session: Pick<EmmaFolioEditSession, 'requestObjectKey' | 'hotelId' | 'employee'> = {
-    requestObjectKey: buildEmmaRequestObjectKey(hotelId, reservationId),
+    requestObjectKey: opts.requestObjectKey,
     hotelId,
     employee,
   };
 
   for (const forceLock of [false, true]) {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
-        await postManageLocks(
-          jar,
-          baseUrl,
-          sapClient,
-          csrf,
-          session,
-          { lock: false, unlock: true, forceLock },
-          debug,
-        );
-        await emmaSleep(300);
-        log.log(
-          `[EMMA] reservation ${reservationId} unlocked for posting (force=${forceLock} attempt=${attempt + 1})`,
-        );
-        return;
-      } catch {
-        if (attempt < 2) await emmaSleep(350 * (attempt + 1));
-      }
+    try {
+      await postManageLocks(
+        jar,
+        baseUrl,
+        sapClient,
+        csrf,
+        session,
+        { lock: false, unlock: true, forceLock },
+        debug,
+      );
+      log.log(
+        `[EMMA] released folio lock for ${reservationId} (force=${forceLock})`,
+      );
+      return;
+    } catch {
+      // try force unlock next
     }
   }
-
-  log.warn(`[EMMA] could not confirm unlock for ${reservationId} before posting`);
 }

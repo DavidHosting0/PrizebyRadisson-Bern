@@ -35,6 +35,7 @@ import {
 import { fetchEmmaReservationDetailFromJar } from './emma-reservation-detail-fetch';
 import { fetchEmmaReservationFolioFromJar } from './emma-reservation-folio-fetch';
 import { moveEmmaFolioChargeFromJar, moveEmmaFolioChargesFromJar } from './emma-folio-move-charge';
+import { clearStaleEmmaFolioPostBlock } from './emma-folio-edit-session';
 import {
   settleEmmaFolioWithVcc,
   type EmmaVccPaymentOutcome,
@@ -789,8 +790,44 @@ export class EmmaService {
     );
   }
 
+  /** Clear open folio draft / lock before invoicing when EMMA reports draft state. */
+  async clearStaleFolioPostBlock(params: {
+    hotelId?: string;
+    reservationId: string;
+    requestObjectKey?: string;
+  }): Promise<void> {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const operatorCode = creds.operatorCode?.trim();
+    if (!operatorCode) {
+      throw new ForbiddenException('EMMA Operator-Code fehlt.');
+    }
+    const hid =
+      params.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+    const jar = await this.loadEmmaHttpJar();
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    await this.mutationLock.run(() =>
+      clearStaleEmmaFolioPostBlock(
+        jar,
+        baseUrl,
+        hid,
+        params.reservationId.trim(),
+        operatorCode,
+        sapClient,
+        emmaDebug.verbose ? emmaDebug : undefined,
+        params.requestObjectKey ? { requestObjectKey: params.requestObjectKey } : undefined,
+      ),
+    );
+  }
+
   /**
-   * Charge a reservation's stored VCC token to settle a folio (PaymentGateway PG3).
    * Only ever charges a card identified as a VCC — never a personal card.
    */
   async payFolioWithVcc(params: {

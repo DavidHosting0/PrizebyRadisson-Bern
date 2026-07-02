@@ -100,6 +100,8 @@ export type ODataBatchPostPartSpec = {
   /** Relative action path including query string, e.g. MoveCharge?sap-client=100&... */
   actionPath: string;
   body?: string;
+  /** Default POST; folio draft commit uses MERGE (openfoliomanagement.com.har). */
+  method?: 'POST' | 'MERGE';
 };
 
 export type ODataChangesetBatchOpts = {
@@ -129,7 +131,8 @@ export function buildODataChangesetBatchBody(
     body += `--${changesetBoundary}\r\n`;
     body += 'Content-Type: application/http\r\n';
     body += 'Content-Transfer-Encoding: binary\r\n\r\n';
-    body += `POST ${post.actionPath} HTTP/1.1\r\n`;
+    const httpMethod = post.method ?? 'POST';
+    body += `${httpMethod} ${post.actionPath} HTTP/1.1\r\n`;
     if (requestObjectKey) {
       body += `Request-Object-Key: ${requestObjectKey}\r\n`;
       body += `Request-Object-Type: ${requestObjectType}\r\n`;
@@ -322,6 +325,29 @@ export function manageLocksPath(input: {
 
 export function createDraftPath(sapClient: string): string {
   return `Draft?sap-client=${sapClient}`;
+}
+
+/** MERGE Draft — commits folio edits (Saved=true). Matches openfoliomanagement.com.har. */
+export function mergeDraftPath(sapClient: string, hotelId: string, reservationId: string): string {
+  const q = emmaODataStringLiteral;
+  return (
+    `Draft(HotelId=${q(hotelId)},ReservationId=${q(reservationId)})?sap-client=${sapClient}`
+  );
+}
+
+export function draftMergeSaveBody(
+  odataRoot: string,
+  hotelId: string,
+  reservationId: string,
+): string {
+  const q = emmaODataStringLiteral;
+  const root = odataRoot.replace(/\/$/, '');
+  const uri =
+    `${root}/sap/opu/odata/sap/ZEYUI_RSRVS_SRV/Draft(HotelId=${q(hotelId)},ReservationId=${q(reservationId)})`;
+  return JSON.stringify({
+    __metadata: { uri, type: 'ZEYUI_RSRVS_SRV.Draft' },
+    Saved: true,
+  });
 }
 
 /** EMMA decimal action param: `5.34m` (used by Round / PaymentGateway Amount). */

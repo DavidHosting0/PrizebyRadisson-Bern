@@ -8,7 +8,7 @@ import {
   canReuseInvoice,
   filterCreditCardsForReservation,
 } from '../arrival-check/arrival-check-payment-guard';
-import { ensureReservationUnlockedForPosting } from './emma-folio-edit-session';
+import { clearStaleEmmaFolioPostBlock } from './emma-folio-edit-session';
 import {
   buildEmmaRequestObjectKey,
   buildODataBatchBody,
@@ -241,6 +241,64 @@ function tokenSuffix(token: string): string {
   return t.length >= 4 ? t.slice(-4) : '????';
 }
 
+function isEmmaReservationBlockedError(message: string): boolean {
+  return /blocked/i.test(message);
+}
+
+async function createInvoiceOrThrow(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  sapClient: string,
+  csrf: string,
+  hotelId: string,
+  reservationId: string,
+  folioId: string,
+  employee: string,
+  requestObjectKey: string,
+  debug?: EmmaSyncDebug,
+): Promise<string> {
+  const runCreate = async () => {
+    const invoiceRes = await postChangesetAction(
+      jar,
+      baseUrl,
+      sapClient,
+      csrf,
+      createInvoicePath({ sapClient, hotelId, reservationId, folioId }),
+      'CreateInvoice',
+      requestObjectKey,
+      { debug },
+    );
+    const invoiceNumber =
+      invoiceNumberFromSapMessage(invoiceRes.headers) ??
+      String(parseODataEntityJson(invoiceRes.body)?.InvoiceNumber ?? '').trim();
+    if (!invoiceNumber) {
+      throw new Error('EMMA CreateInvoice returned no InvoiceNumber (sap-message header missing)');
+    }
+    return invoiceNumber;
+  };
+
+  try {
+    return await runCreate();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!isEmmaReservationBlockedError(message)) throw err;
+    log.warn(
+      `[EMMA] CreateInvoice blocked for ${reservationId} — clearing stale folio draft and retrying`,
+    );
+    await clearStaleEmmaFolioPostBlock(
+      jar,
+      baseUrl,
+      hotelId,
+      reservationId,
+      employee,
+      sapClient,
+      debug,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return runCreate();
+  }
+}
+
 /**
  * Charge a stored VCC token against a folio invoice.
  * Flow (payment HAR): showInvoicePopup → SetActivityTime(03) → GetEmployeeTillID →
@@ -270,16 +328,6 @@ export async function chargeEmmaFolioWithVccToken(
 
   const requestObjectKey = buildEmmaRequestObjectKey(hotelId, reservationId);
   const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
-
-  await ensureReservationUnlockedForPosting(
-    jar,
-    baseUrl,
-    hotelId,
-    reservationId,
-    employee,
-    sapClient,
-    opts.debug,
-  );
 
   await postChangesetAction(
     jar,
@@ -345,22 +393,18 @@ export async function chargeEmmaFolioWithVccToken(
       `[EMMA] reusing open invoice ${invoiceNumber} on ${reservationId} folio ${folioId} (${chargeAmount} ${currency})`,
     );
   } else {
-    const invoiceRes = await postChangesetAction(
+    invoiceNumber = await createInvoiceOrThrow(
       jar,
       baseUrl,
       sapClient,
       csrf,
-      createInvoicePath({ sapClient, hotelId, reservationId, folioId }),
-      'CreateInvoice',
+      hotelId,
+      reservationId,
+      folioId,
+      employee,
       requestObjectKey,
-      { debug: opts.debug },
+      opts.debug,
     );
-    invoiceNumber =
-      invoiceNumberFromSapMessage(invoiceRes.headers) ??
-      String(parseODataEntityJson(invoiceRes.body)?.InvoiceNumber ?? '').trim();
-    if (!invoiceNumber) {
-      throw new Error('EMMA CreateInvoice returned no InvoiceNumber (sap-message header missing)');
-    }
   }
 
   const invoiceEntity = await fetchInvoiceEntity(
