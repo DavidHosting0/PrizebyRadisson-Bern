@@ -1,3 +1,26 @@
+import { normalizeFolioId } from './folio-charges';
+
+/**
+ * Folio 3 is off-limits for arrival-check automation: never source, never destination,
+ * never selected as the company folio.
+ */
+export const ARRIVAL_CHECK_FORBIDDEN_FOLIO_IDS = ['03'] as const;
+
+export function isArrivalCheckForbiddenFolio(folioId: unknown): boolean {
+  const id = normalizeFolioId(folioId);
+  return (ARRIVAL_CHECK_FORBIDDEN_FOLIO_IDS as readonly string[]).includes(id);
+}
+
+/** True when a planned move involves a forbidden folio as source or destination. */
+export function involvesArrivalCheckForbiddenFolio(
+  sourceFolioId: unknown,
+  destinationFolioId: unknown,
+): boolean {
+  return (
+    isArrivalCheckForbiddenFolio(sourceFolioId) || isArrivalCheckForbiddenFolio(destinationFolioId)
+  );
+}
+
 /** Parameters for EMMA Folio Management MoveCharge (from browser HAR). */
 export type EmmaMoveFolioChargeParams = {
   hotelId: string;

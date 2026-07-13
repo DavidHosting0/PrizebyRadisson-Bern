@@ -4,6 +4,7 @@ import type {
   ReservationFolioCharge,
 } from '@housekeeping/shared';
 import {
+  isArrivalCheckForbiddenFolio,
   isArrivalCheckPrepaymentCharge,
   isArrivalCheckRoomBoardConcept,
   normalizeFolioId,
@@ -149,21 +150,25 @@ function roomBoardFolioIds(folio: ReservationEmmaFolioBundle): string[] {
     if (isArrivalCheckPrepaymentCharge(charge)) continue;
     if (!isArrivalCheckRoomBoardConcept(charge.concept)) continue;
     const fid = normalizeFolioId(charge.folioId);
-    if (fid && fid !== GUEST_FOLIO_ID) ids.add(fid);
+    if (fid && fid !== GUEST_FOLIO_ID && !isArrivalCheckForbiddenFolio(fid)) ids.add(fid);
   }
   return [...ids];
 }
 
-/** Pick the company folio for OTA VCC settlement (the one carrying room/board). */
+/** Pick the company folio for OTA VCC settlement (the one carrying room/board). Folio 3 is never eligible. */
 function pickCompanyFolioId(folio: ReservationEmmaFolioBundle): string | null {
   const roomBoard = roomBoardFolioIds(folio);
-  if (roomBoard.length === 1) return roomBoard[0];
+  if (roomBoard.length === 1) {
+    return isArrivalCheckForbiddenFolio(roomBoard[0]) ? null : roomBoard[0];
+  }
   if (roomBoard.length > 1) {
     const company = roomBoard.find((id) => {
+      if (isArrivalCheckForbiddenFolio(id)) return false;
       const e = folioEntity(folio, id);
       return e ? e.IsCompany === true || String(e.IsCompany) === 'true' : false;
     });
-    return company ?? roomBoard[0];
+    const picked = company ?? roomBoard.find((id) => !isArrivalCheckForbiddenFolio(id)) ?? null;
+    return picked;
   }
   return null;
 }
@@ -194,7 +199,7 @@ export function planVccPayment(input: {
     folioId = findCompanyFolioId(folio.folios ?? []);
   }
 
-  if (!folioId) return null;
+  if (!folioId || isArrivalCheckForbiddenFolio(folioId)) return null;
   const expected = expectedChargeForPlan(decision, folio, folioId);
   if (!expected || expected.amount <= 0) return null;
 

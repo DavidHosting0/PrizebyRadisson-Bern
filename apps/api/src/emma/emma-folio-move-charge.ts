@@ -11,7 +11,6 @@ import { emmaHttpFetchCsrfToken, emmaHttpPostBatch } from './emma-http-auth';
 import type { EmmaSyncDebug } from './emma-sync-debug';
 import {
   acquireEmmaFolioEditSession,
-  emmaSettleAfterFolioEdit,
   releaseEmmaFolioEditSession,
   saveEmmaFolioDraft,
 } from './emma-folio-edit-session';
@@ -284,7 +283,6 @@ export async function moveEmmaFolioChargesFromJar(
     return results;
   } finally {
     await releaseEmmaFolioEditSession(jar, baseUrl, session, opts.debug);
-    await emmaSettleAfterFolioEdit();
   }
 }
 

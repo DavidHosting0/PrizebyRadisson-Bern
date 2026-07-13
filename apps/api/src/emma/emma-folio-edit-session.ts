@@ -17,15 +17,8 @@ import {
 
 const log = new Logger('EmmaFolioEditSession');
 
-const EMMA_FOLIO_SETTLE_MS = 1000;
-
 function emmaSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Brief pause after folio edits so EMMA can release draft/lock state before invoicing. */
-export async function emmaSettleAfterFolioEdit(): Promise<void> {
-  await emmaSleep(EMMA_FOLIO_SETTLE_MS);
 }
 
 export type EmmaFolioEditSession = {

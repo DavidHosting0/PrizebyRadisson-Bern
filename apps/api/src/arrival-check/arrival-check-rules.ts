@@ -5,6 +5,8 @@ import type {
   ReservationEmmaFolioBundle,
 } from '@housekeeping/shared';
 import {
+  involvesArrivalCheckForbiddenFolio,
+  isArrivalCheckForbiddenFolio,
   isArrivalCheckPrepaymentCharge,
   isArrivalCheckRoomBoardConcept,
   isArrivalCheckTaxCharge,
@@ -93,11 +95,12 @@ function chargeRowId(charge: ReservationEmmaFolioBundle['charges'][number]): str
   return String(charge.position ?? charge.id).trim();
 }
 
-/** VCC: room/board Folio 1 → company folio; city/hotel tax → Folio 1. */
+/** VCC: room/board Folio 1 → company folio; city/hotel tax → Folio 1. Folio 3 is never touched. */
 function planVccMoves(
   bundle: ReservationEmmaFolioBundle,
   companyFolioId: string,
 ): FolioChargeMovePlan[] {
+  if (isArrivalCheckForbiddenFolio(companyFolioId)) return [];
   const moves: FolioChargeMovePlan[] = [];
 
   for (const charge of bundle.charges ?? []) {
@@ -106,6 +109,7 @@ function planVccMoves(
     if (!isArrivalCheckRoomBoardConcept(charge.concept)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
+    if (involvesArrivalCheckForbiddenFolio(GUEST_FOLIO_ID, companyFolioId)) continue;
     moves.push({
       chargeRowId: rowId,
       sourceFolioId: GUEST_FOLIO_ID,
@@ -121,8 +125,11 @@ function planVccMoves(
     if (!isArrivalCheckTaxCharge(charge)) continue;
     const src = normalizeFolioId(charge.folioId);
     if (!src || src === GUEST_FOLIO_ID) continue;
+    // Never pull tax (or any charge) off Folio 3.
+    if (isArrivalCheckForbiddenFolio(src)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
+    if (involvesArrivalCheckForbiddenFolio(src, GUEST_FOLIO_ID)) continue;
     moves.push({
       chargeRowId: rowId,
       sourceFolioId: src,
@@ -136,19 +143,22 @@ function planVccMoves(
   return moves;
 }
 
-/** Consolidate: move every non-prepayment charge onto the target folio. */
+/** Consolidate: move every non-prepayment charge onto the target folio. Folio 3 is never touched. */
 function planConsolidateToFolio(
   bundle: ReservationEmmaFolioBundle,
   destinationFolioId: string,
 ): FolioChargeMovePlan[] {
   const dest = normalizeFolioId(destinationFolioId);
+  if (!dest || isArrivalCheckForbiddenFolio(dest)) return [];
   const moves: FolioChargeMovePlan[] = [];
   for (const charge of bundle.charges ?? []) {
     const src = normalizeFolioId(charge.folioId);
     if (!src || src === dest) continue;
+    if (isArrivalCheckForbiddenFolio(src)) continue;
     if (isArrivalCheckPrepaymentCharge(charge)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
+    if (involvesArrivalCheckForbiddenFolio(src, dest)) continue;
     moves.push({
       chargeRowId: rowId,
       sourceFolioId: src,

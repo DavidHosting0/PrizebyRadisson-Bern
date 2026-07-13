@@ -23,7 +23,7 @@ import type {
   ReservationListItem,
 } from '@housekeeping/shared';
 import { ReservationsService } from '../reservations/reservations.service';
-import { arrivalCheckCategoryLabel, formatHotelDateOnly } from '@housekeeping/shared';
+import { arrivalCheckCategoryLabel, formatHotelDateOnly, involvesArrivalCheckForbiddenFolio, isArrivalCheckForbiddenFolio } from '@housekeeping/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
@@ -617,13 +617,28 @@ export class ArrivalCheckService implements OnModuleInit {
    * locally-cached folio bundle for THIS reservation, (b) currently live on
    * the expected source folio, and (c) the bundle's reservation id must match.
    * Anything else means our plan and EMMA's reality disagree — we abort.
+   * Folio 3 is never allowed as source or destination.
    */
   private assertChargeBelongsToReservation(
     folio: ReservationEmmaFolioBundle,
     reservationId: string,
     chargeRowId: string,
     sourceFolioId: string,
+    destinationFolioId?: string,
   ): void {
+    if (
+      destinationFolioId != null &&
+      involvesArrivalCheckForbiddenFolio(sourceFolioId, destinationFolioId)
+    ) {
+      throw new Error(
+        `MANUAL: Folio 3 ist für den Anreise-Check gesperrt (Move ${sourceFolioId}→${destinationFolioId} von Posten ${chargeRowId} abgebrochen).`,
+      );
+    }
+    if (isArrivalCheckForbiddenFolio(sourceFolioId)) {
+      throw new Error(
+        `MANUAL: Folio 3 ist für den Anreise-Check gesperrt (Quelle ${sourceFolioId}, Posten ${chargeRowId}) – Move abgebrochen.`,
+      );
+    }
     const folioRes = String(
       (folio.reservation as { ReservationId?: unknown } | undefined)?.ReservationId ?? '',
     ).trim();
@@ -657,6 +672,11 @@ export class ArrivalCheckService implements OnModuleInit {
     chargeRowId: string,
     destinationFolioId: string,
   ): Promise<EmmaMoveFolioChargeResult> {
+    if (involvesArrivalCheckForbiddenFolio(sourceFolioId, destinationFolioId)) {
+      throw new BadRequestException(
+        `Folio 3 ist für den Anreise-Check gesperrt (${sourceFolioId}→${destinationFolioId}).`,
+      );
+    }
     return this.emma.moveFolioCharge({
       hotelId,
       reservationId,
@@ -676,6 +696,13 @@ export class ArrivalCheckService implements OnModuleInit {
       destinationFolioId: string;
     }>,
   ): Promise<EmmaMoveFolioChargeResult[]> {
+    for (const move of moves) {
+      if (involvesArrivalCheckForbiddenFolio(move.sourceFolioId, move.destinationFolioId)) {
+        throw new BadRequestException(
+          `Folio 3 ist für den Anreise-Check gesperrt (${move.sourceFolioId}→${move.destinationFolioId}, Posten ${move.chargeRowId}).`,
+        );
+      }
+    }
     return this.emma.moveFolioCharges({
       hotelId,
       reservationId,
@@ -783,6 +810,7 @@ export class ArrivalCheckService implements OnModuleInit {
             item.reservationId,
             move.chargeRowId,
             move.sourceFolioId,
+            move.destinationFolioId,
           );
         }
 

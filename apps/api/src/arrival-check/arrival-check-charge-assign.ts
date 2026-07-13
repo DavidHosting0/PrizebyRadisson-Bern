@@ -1,6 +1,8 @@
 import type { ReservationEmmaFolioBundle, ReservationFolioCharge } from '@housekeeping/shared';
 import {
   ARRIVAL_CHECK_COMPANY_FOLIO_CONCEPTS,
+  involvesArrivalCheckForbiddenFolio,
+  isArrivalCheckForbiddenFolio,
   isArrivalCheckPrepaymentCharge,
   normalizeFolioId,
 } from '@housekeeping/shared';
@@ -14,14 +16,14 @@ export type FolioChargeMovePlan = {
   amount: string | null;
 };
 
-/** Company folio: first non-guest folio with a bill holder (EMMA NameHolder / Holder). */
+/** Company folio: first non-guest folio with a bill holder (EMMA NameHolder / Holder). Folio 3 is never eligible. */
 export function findCompanyFolioId(folios: Record<string, unknown>[]): string | null {
   const sorted = [...folios].sort((a, b) =>
     String(a.Id ?? '').localeCompare(String(b.Id ?? ''), undefined, { numeric: true }),
   );
   for (const folio of sorted) {
     const id = normalizeFolioId(folio.Id);
-    if (!id || id === '01') continue;
+    if (!id || id === '01' || isArrivalCheckForbiddenFolio(id)) continue;
     const name = String(folio.NameHolder ?? folio.Holder ?? '').trim();
     if (name) return id;
   }
@@ -52,12 +54,17 @@ export function planGuestToCompanyChargeMoves(
   const guestId = normalizeFolioId(guestFolioId);
   const moves: FolioChargeMovePlan[] = [];
 
+  if (isArrivalCheckForbiddenFolio(companyFolioId) || isArrivalCheckForbiddenFolio(guestId)) {
+    return [];
+  }
+
   for (const charge of bundle.charges ?? []) {
     if (normalizeFolioId(charge.folioId) !== guestId) continue;
     if (isArrivalCheckPrepaymentCharge(charge)) continue;
     if (!isMovableConcept(charge.concept)) continue;
     const rowId = chargeRowId(charge);
     if (!rowId) continue;
+    if (involvesArrivalCheckForbiddenFolio(guestId, companyFolioId)) continue;
     moves.push({
       chargeRowId: rowId,
       sourceFolioId: guestId,
