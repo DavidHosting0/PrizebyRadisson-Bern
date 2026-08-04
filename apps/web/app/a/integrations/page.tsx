@@ -250,9 +250,9 @@ export default function IntegrationsPage() {
           </Field>
 
           <div className="md:col-span-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
-            Der Backend-Server loggt sich mit den Zugangsdaten ein, versucht die interne
-            Swagger-API und holt sonst die Schichtseiten per Headless-Browser. Auf dem Server muss
-            Playwright Chromium installiert sein.
+            Der Server meldet sich per HTTP bei neo.mirus.ch an (wie im Browser: Login mit
+            ReturnUrl, Session-Cookie <code>mirusWeb</code>) und synchronisiert den Schichtplan.
+            Zugangsdaten müssen zu einem Konto ohne MFA/FIDO2 gehören.
           </div>
 
           <div className="md:col-span-2 flex flex-wrap items-center gap-3">

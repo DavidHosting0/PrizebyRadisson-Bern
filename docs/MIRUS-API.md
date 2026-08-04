@@ -38,11 +38,12 @@ Reuse `FavurUserMap` / shift `source: 'favur'` or introduce `source: 'mirus'` if
 
 Server-side sync is implemented in `apps/api/src/favur/mirus-*.ts`:
 
-1. HTTP login to `/Account/Login` (ASP.NET Identity + antiforgery token)
-2. Authenticated fetch of `/swagger/v1/swagger.json` and shift-related REST paths
-3. Fallback: Playwright headless login + per-day shift page scrape
+1. HTTP login to `/Account/Login?ReturnUrl=/webapp/home` (ASP.NET form + antiforgery)
+2. Session cookie is **`mirusWeb`** (not `.AspNetCore.Identity.Application`)
+3. Authenticated fetch of `/swagger/v1/swagger.json` and shift-related REST paths (often 401 for customer accounts)
+4. Shift pages are Blazor: after HTTP login, the sync opens `/webapp/shifts/shift/{date}` with the `mirusWeb` session cookies
 
-Configure username/password in Admin → Integrations (Basis-URL `https://neo.mirus.ch`).
+Configure username/password in Admin → Integrationen (Basis-URL `https://neo.mirus.ch`).
 
 On the production server, Chromium for Playwright must be available (same as Puzzel integration):
 

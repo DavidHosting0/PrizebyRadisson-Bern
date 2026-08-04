@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { chromium, type Browser } from 'playwright';
 import type { FavurShift } from './favur-scraper.service';
 import {
@@ -11,6 +12,8 @@ import {
   MirusCookieJar,
   type MirusSessionStored,
 } from './mirus-http-auth';
+
+const logger = new Logger('MirusShiftSync');
 
 /** In-page scraper (runs inside Playwright evaluate). */
 function scrapeShiftsInBrowser(dateStr: string) {
@@ -211,40 +214,32 @@ async function tryApiPaths(
   return all;
 }
 
-async function playwrightLoginAndScrape(
+async function playwrightScrapeWithSession(
   baseUrl: string,
-  username: string,
-  password: string,
+  jar: MirusCookieJar,
   from: Date,
   to: Date,
-): Promise<{ shifts: FavurShift[]; jar: MirusCookieJar }> {
+): Promise<FavurShift[]> {
   const origin = baseUrl.replace(/\/+$/, '');
   let browser: Browser | null = null;
   try {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ userAgent: BROWSER_UA, locale: 'de-CH' });
-    const page = await context.newPage();
 
-    await page.goto(`${origin}/Account/Login`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.fill('#username, input[name="Model.UserName"]', username);
-    await page.fill('#password, input[name="Model.Password"]', password);
-    await page.click('button[type="submit"], input[type="submit"]');
-    await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => undefined);
-
-    if (page.url().includes('/Account/Login')) {
-      throw new Error('Mirus Playwright login failed — still on login page');
-    }
-
-    const cookies = await context.cookies();
-    const jar = MirusCookieJar.fromJSON(
-      cookies.map((c) => ({
+    // Reuse HTTP login session — do not log in again via the browser form.
+    const host = new URL(origin).hostname;
+    await context.addCookies(
+      jar.toJSON().map((c) => ({
         name: c.name,
         value: c.value,
-        domain: c.domain,
-        path: c.path,
+        domain: c.domain || host,
+        path: c.path || '/',
+        secure: true,
+        httpOnly: /^mirusWeb$/i.test(c.name) || /Antiforgery|ARRAffinity/i.test(c.name),
       })),
     );
 
+    const page = await context.newPage();
     const capturedJson: unknown[] = [];
     page.on('response', async (res) => {
       try {
@@ -260,6 +255,12 @@ async function playwrightLoginAndScrape(
         /* ignore */
       }
     });
+
+    // Confirm session is valid before scraping days.
+    await page.goto(`${origin}/webapp/Home`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    if (page.url().includes('/Account/Login') || (await page.locator('#password').count()) > 0) {
+      throw new Error('Mirus session cookie rejected — re-save credentials and sync again');
+    }
 
     const all: FavurShift[] = [];
     const cursor = new Date(from);
@@ -292,7 +293,7 @@ async function playwrightLoginAndScrape(
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    return { shifts: dedupeShifts(all), jar };
+    return dedupeShifts(all);
   } finally {
     await browser?.close().catch(() => undefined);
   }
@@ -336,35 +337,33 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
 
   if (sessionFresh && opts.session?.cookies?.length) {
     jar = MirusCookieJar.fromJSON(opts.session.cookies);
+    if (!jar.hasAuthCookie()) {
+      jar = await mirusLogin(origin, opts.username, opts.password);
+      logger.log('Mirus HTTP login ok (stale session replaced)');
+    } else {
+      logger.log('Mirus reusing stored HTTP session');
+    }
   } else {
     jar = await mirusLogin(origin, opts.username, opts.password);
+    logger.log('Mirus HTTP login ok');
   }
 
   let shifts: FavurShift[] = [];
 
-  // 1) Try authenticated Swagger REST API
+  // 1) Authenticated Swagger REST (usually unavailable for customer accounts)
   const swagger = await mirusFetchSwagger(jar, origin).catch(() => null);
   if (swagger?.paths.length) {
-    shifts = await tryApiPaths(jar, origin, from, to, swagger.paths);
-    shifts = dedupeShifts(shifts);
+    shifts = dedupeShifts(await tryApiPaths(jar, origin, from, to, swagger.paths));
   }
 
-  // 2) Playwright: login session + intercept JSON + DOM scrape per day
+  // 2) Blazor shift pages: open with the HTTP session cookies (no browser login)
   if (shifts.length === 0) {
-    const pw = await playwrightLoginAndScrape(
-      origin,
-      opts.username,
-      opts.password,
-      from,
-      to,
-    );
-    shifts = pw.shifts;
-    jar = pw.jar;
+    shifts = await playwrightScrapeWithSession(origin, jar, from, to);
   }
 
   if (shifts.length === 0) {
     throw new Error(
-      'Mirus sync found no shifts — check credentials and that the account can view the team shift plan',
+      'Mirus sync found no shifts — login worked, but no shift rows were returned for the sync window',
     );
   }
 
