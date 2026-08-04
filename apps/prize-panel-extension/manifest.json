@@ -2,12 +2,11 @@
   "manifest_version": 3,
   "name": "PrizeBern Panel",
   "version": "1.0.0",
-  "description": "PrizeBern Housekeeping Sidepanel — Schichtübergabe und mehr, auf jeder Website.",
+  "description": "PrizeBern Housekeeping side panel: shift handover checklist on any website.",
+  "homepage_url": "https://prizebern.com/extension-install",
   "permissions": ["storage"],
-  "host_permissions": [
-    "https://prizebern.com/*",
-    "http://localhost:3001/*"
-  ],
+  "host_permissions": ["https://prizebern.com/*"],
+  "optional_host_permissions": ["http://localhost:3001/*"],
   "background": {
     "service_worker": "src/background/index.ts",
     "type": "module"
@@ -26,6 +25,15 @@
     }
   ],
   "icons": {
+    "16": "public/icon-16.png",
+    "48": "public/icon-48.png",
     "128": "public/icon-128.png"
+  },
+  "action": {
+    "default_title": "PrizeBern Panel",
+    "default_icon": {
+      "16": "public/icon-16.png",
+      "48": "public/icon-48.png"
+    }
   }
 }

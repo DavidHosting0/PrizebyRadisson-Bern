@@ -13,6 +13,7 @@ dist/
 .next/
 out/
 *.tsbuildinfo
+apps/prize-panel-extension/chrome-web-store.zip
 
 # Logs & OS
 npm-debug.log*

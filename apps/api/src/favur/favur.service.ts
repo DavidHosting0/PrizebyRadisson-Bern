@@ -20,6 +20,8 @@ import { syncMirusShifts } from './mirus-shift-sync';
 import type { MirusSessionStored } from './mirus-http-auth';
 
 const SINGLETON_ID = 'default';
+/** If a sync lock is older than this, treat it as abandoned (process crash / proxy timeout). */
+const SYNC_LOCK_STALE_MS = 12 * 60_000;
 
 export type FavurConfigDto = {
   id: string;
@@ -65,6 +67,7 @@ export class FavurService {
   // ---------------- config ----------------
 
   async getConfig(includeApiKey = false): Promise<FavurConfigDto> {
+    await this.clearStaleSyncLock();
     const row = await this.ensureRow();
     return this.toDto(row, includeApiKey);
   }
@@ -347,6 +350,7 @@ export class FavurService {
   // ---------------- sync ----------------
 
   async syncNow(triggeredBy: 'manual' | 'cron'): Promise<FavurConfigDto> {
+    await this.clearStaleSyncLock();
     const config = await this.ensureRow();
     if (!config.enabled) {
       throw new BadRequestException(
@@ -355,6 +359,39 @@ export class FavurService {
     }
 
     return this.syncMirusMode(config, triggeredBy);
+  }
+
+  /**
+   * Clear abandoned sync locks so the admin UI does not stay on "Synchronisiert…".
+   * Playwright day loops can take minutes; anything beyond SYNC_LOCK_STALE_MS is stuck.
+   */
+  private async clearStaleSyncLock(): Promise<void> {
+    const row = await this.ensureRow();
+    if (!row.syncInProgress) return;
+
+    // Locks without syncStartedAt are from before this field existed (or a crash
+    // mid-claim) — always clear so the UI cannot stay stuck on "Synchronisiert…".
+    const started = row.syncStartedAt;
+    const age = started ? Date.now() - started.getTime() : Number.POSITIVE_INFINITY;
+    if (started && age < SYNC_LOCK_STALE_MS) return;
+
+    this.logger.warn(
+      started
+        ? `Clearing stale Mirus sync lock (age ${Math.round(age / 1000)}s)`
+        : 'Clearing abandoned Mirus sync lock (no syncStartedAt)',
+    );
+    await this.prisma.favurIntegration.update({
+      where: { id: SINGLETON_ID },
+      data: {
+        syncInProgress: false,
+        syncStartedAt: null,
+        lastSyncStatus: row.lastSyncStatus === 'ok' ? row.lastSyncStatus : 'error',
+        lastSyncError:
+          row.lastSyncError ??
+          'Previous sync was interrupted (timeout or restart). Click sync again.',
+        lastSyncAt: row.lastSyncAt ?? new Date(),
+      },
+    });
   }
 
   /** @deprecated Legacy Favur extension capture replay — kept for reference only. */
@@ -371,7 +408,7 @@ export class FavurService {
 
     const claim = await this.prisma.favurIntegration.updateMany({
       where: { id: SINGLETON_ID, syncInProgress: false },
-      data: { syncInProgress: true },
+      data: { syncInProgress: true, syncStartedAt: new Date() },
     });
     if (claim.count === 0) return this.toDto(await this.ensureRow());
 
@@ -431,14 +468,14 @@ export class FavurService {
     } finally {
       await this.prisma.favurIntegration.update({
         where: { id: SINGLETON_ID },
-        data: { syncInProgress: false },
+        data: { syncInProgress: false, syncStartedAt: null },
       });
     }
 
     return this.toDto(await this.ensureRow());
   }
 
-  /** Mirus NEO: server logs in and fetches shifts (HTTP API + Playwright fallback). */
+  /** Mirus NEO: HTTP login + Dienstplan scrape (Playwright with session cookies). */
   private async syncMirusMode(
     config: FavurIntegration,
     triggeredBy: 'manual' | 'cron',
@@ -457,10 +494,29 @@ export class FavurService {
 
     const claim = await this.prisma.favurIntegration.updateMany({
       where: { id: SINGLETON_ID, syncInProgress: false },
-      data: { syncInProgress: true },
+      data: { syncInProgress: true, syncStartedAt: new Date() },
     });
     if (claim.count === 0) return this.toDto(await this.ensureRow());
 
+    // Manual sync returns immediately so the HTTP request / proxy cannot hang
+    // and leave syncInProgress stuck. Cron waits for completion.
+    if (triggeredBy === 'manual') {
+      void this.runMirusSyncJob(config, username, password, triggeredBy).catch((err) => {
+        this.logger.error(`Mirus background sync crashed: ${(err as Error).message}`);
+      });
+      return this.toDto(await this.ensureRow());
+    }
+
+    await this.runMirusSyncJob(config, username, password, triggeredBy);
+    return this.toDto(await this.ensureRow());
+  }
+
+  private async runMirusSyncJob(
+    config: FavurIntegration,
+    username: string,
+    password: string,
+    triggeredBy: 'manual' | 'cron',
+  ): Promise<void> {
     try {
       const from = startOfDay(new Date());
       const to = addDays(from, config.windowDays);
@@ -505,11 +561,9 @@ export class FavurService {
     } finally {
       await this.prisma.favurIntegration.update({
         where: { id: SINGLETON_ID },
-        data: { syncInProgress: false },
+        data: { syncInProgress: false, syncStartedAt: null },
       });
     }
-
-    return this.toDto(await this.ensureRow());
   }
 
   // ---------------- internals ----------------

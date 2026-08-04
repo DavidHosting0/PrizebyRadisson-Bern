@@ -735,6 +735,8 @@ model FavurIntegration {
   lastSyncCount      Int       @default(0)
   /// True while a sync is currently running (advisory lock).
   syncInProgress     Boolean   @default(false)
+  /// When the current sync claimed the lock (used to clear stale locks).
+  syncStartedAt      DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 }

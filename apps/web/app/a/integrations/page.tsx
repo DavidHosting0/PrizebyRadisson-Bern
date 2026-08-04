@@ -204,7 +204,9 @@ export default function IntegrationsPage() {
               className="h-4 w-4"
             />
             <span className="text-sm font-medium text-ink">Sync aktiviert</span>
-            <span className="ml-auto text-xs text-ink-muted">Cron alle 15 Minuten</span>
+            <span className="ml-auto text-xs text-ink-muted">
+              Cron alle 15 Minuten · manueller Sync läuft im Hintergrund (ca. 1–3 Min.)
+            </span>
           </label>
 
           <Field label="Mirus Benutzername">
@@ -372,7 +374,7 @@ function SyncStatusBadge({ config }: { config: MirusConfig | undefined }) {
         ? 'bg-rose-100 text-rose-900 border-rose-200'
         : 'bg-surface-muted text-ink-muted border-border';
   const label = config.syncInProgress
-    ? 'Sync läuft…'
+    ? 'Sync läuft… (1–3 Min.)'
     : config.lastSyncStatus === 'ok'
       ? `OK · ${config.lastSyncCount} Schichten`
       : config.lastSyncStatus === 'error'

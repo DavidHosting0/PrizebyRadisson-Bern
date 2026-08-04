@@ -16,9 +16,18 @@ export default function ExtensionInstallPage() {
       </div>
 
       <section className="space-y-3 rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-ink">1. Extension herunterladen</h2>
+        <h2 className="text-sm font-semibold text-ink">Empfohlen: Chrome Web Store</h2>
         <p className="text-sm text-ink-muted">
-          Lade die ZIP-Datei herunter (auch in deinem Profil unter „Chrome Extension herunterladen“).
+          Sobald die Extension im Chrome Web Store veröffentlicht ist, installierst du sie dort —
+          Updates kommen dann automatisch. Den Store-Link findest du hier, sobald er freigeschaltet
+          ist.
+        </p>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold text-ink">Manuell (ZIP / Entwickler)</h2>
+        <p className="text-sm text-ink-muted">
+          Lade die ZIP-Datei herunter (auch im Profil unter „Chrome Extension herunterladen“).
         </p>
         <a
           href={extensionDownloadUrl()}
@@ -27,37 +36,37 @@ export default function ExtensionInstallPage() {
         >
           Extension herunterladen (.zip)
         </a>
-      </section>
-
-      <section className="space-y-3 rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-ink">2. In Chrome installieren</h2>
-        <ol className="list-inside list-decimal space-y-2 text-sm text-ink-muted">
-          <li>ZIP-Datei entpacken (Rechtsklick → „Alle extrahieren…“)</li>
+        <ol className="mt-3 list-inside list-decimal space-y-2 text-sm text-ink-muted">
+          <li>ZIP entpacken</li>
           <li>
             Öffne <strong className="text-ink">chrome://extensions</strong>
           </li>
           <li>
-            Aktiviere oben rechts <strong className="text-ink">Entwicklermodus</strong>
+            Aktiviere <strong className="text-ink">Entwicklermodus</strong>
           </li>
           <li>
-            Klicke <strong className="text-ink">Entpackte Erweiterung laden</strong> und wähle den
-            entpackten Ordner <code className="text-ink">dist</code> (oder den Ordner mit{' '}
-            <code className="text-ink">manifest.json</code>)
+            <strong className="text-ink">Entpackte Erweiterung laden</strong> → Ordner mit{' '}
+            <code className="text-ink">manifest.json</code>
           </li>
         </ol>
       </section>
 
       <section className="space-y-3 rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold text-ink">3. Anmelden</h2>
+        <h2 className="text-sm font-semibold text-ink">Anmelden</h2>
         <p className="text-sm text-ink-muted">
-          Auf jeder Website erscheint rechts ein blauer Tab. Klicke darauf, melde dich mit denselben
-          Zugangsdaten wie auf PrizeBern an — die Schichtübergabe ist dann direkt verfügbar.
+          Rechts erscheint das PrizeBern-Panel. Melde dich mit denselben Zugangsdaten wie auf der
+          Website an.
         </p>
       </section>
 
-      <Link href="/login" className="inline-block text-sm font-medium text-ink underline underline-offset-2">
-        Zur Anmeldung
-      </Link>
+      <div className="flex flex-wrap gap-4 text-sm">
+        <Link href="/login" className="font-medium text-ink underline underline-offset-2">
+          Zur Anmeldung
+        </Link>
+        <Link href="/extension-privacy" className="font-medium text-ink-muted underline underline-offset-2">
+          Datenschutz Extension
+        </Link>
+      </div>
     </div>
   );
 }

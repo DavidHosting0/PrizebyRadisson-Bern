@@ -47,6 +47,16 @@ npm run build:extension
 
 Lädt `dist/` — in Chrome als entpackte Erweiterung installieren.
 
+## Chrome Web Store (Auto-Update)
+
+```bash
+npm run build:extension:store
+```
+
+Upload: `apps/prize-panel-extension/chrome-web-store.zip`  
+Guide: [CHROME-WEB-STORE.md](./CHROME-WEB-STORE.md)  
+Privacy policy (for the listing): `https://prizebern.com/extension-privacy`
+
 ## Berechtigungen
 
 Benutzer brauchen `SHIFT_HANDOVER_READ` (Standard für Rezeption), um die Checkliste zu sehen.
