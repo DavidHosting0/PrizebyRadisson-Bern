@@ -339,22 +339,28 @@ async function openDayDetail(page: Page): Promise<boolean> {
 
   // Prefer in-page click — more reliable than Playwright hit-testing on Blazor layouts
   const clicked = await page.evaluate(() => {
-    const el =
-      document.querySelector('.team-color-container') ||
-      document.querySelector('.mud-avatar') ||
-      document.querySelector('.weekCalendarTableContainer');
-    if (!el) return false;
-    (el as HTMLElement).click();
-    return true;
+    const candidates = [
+      document.querySelector('.team-color-container'),
+      document.querySelector('.bg-lightgrey.pointer'),
+      document.querySelector('.card.p-4.card-default .pointer'),
+      document.querySelector('.mud-avatar'),
+      document.querySelector('.weekCalendarTableContainer'),
+    ].filter(Boolean) as HTMLElement[];
+    for (const el of candidates) {
+      el.click();
+      return true;
+    }
+    return false;
   });
   if (clicked) {
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(3500);
     if (await hasDetail()) return true;
   }
 
   const avatars = page.locator('.team-color-container');
-  if ((await avatars.count()) > 0) {
-    await avatars.first().click({ timeout: 10000, force: true }).catch(() => undefined);
+  const n = await avatars.count();
+  for (let i = 0; i < Math.min(n, 5); i++) {
+    await avatars.nth(i).click({ timeout: 10000, force: true }).catch(() => undefined);
     await page.waitForTimeout(3000);
     if (await hasDetail()) return true;
   }
@@ -509,7 +515,11 @@ async function playwrightScrapeWithSession(
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
-    const context = await browser.newContext({ userAgent: BROWSER_UA, locale: 'de-CH' });
+    const context = await browser.newContext({
+      userAgent: BROWSER_UA,
+      locale: 'de-CH',
+      timezoneId: 'Europe/Zurich',
+    });
     const host = new URL(origin).hostname;
     await context.addCookies(
       jar.toJSON().map((c) => ({
@@ -609,23 +619,19 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
   let selfPerson: MirusSelfPerson | null = null;
 
   const swagger = await mirusFetchSwagger(jar, origin).catch(() => null);
+  let apiShifts: MirusShift[] = [];
   if (swagger?.paths.length) {
-    shifts = dedupeShifts(await tryApiPaths(jar, origin, from, to, swagger.paths));
+    apiShifts = dedupeShifts(await tryApiPaths(jar, origin, from, to, swagger.paths));
+    if (apiShifts.length) {
+      logger.log(`Mirus API paths returned ${apiShifts.length} candidate shifts`);
+    }
   }
 
-  // Dienstplan is Blazor UI: open /webapp/shifts/shift/{date} with session cookies,
-  // click avatar strip to expand Arbeitszeit list, scrape cards + own day card.
-  if (shifts.length === 0) {
-    const scraped = await playwrightScrapeWithSession(
-      origin,
-      jar,
-      from,
-      to,
-      opts.username,
-    );
-    shifts = scraped.shifts;
-    selfPerson = scraped.selfPerson;
-  }
+  // Dienstplan is Blazor UI — Playwright is the reliable source. Prefer it whenever
+  // it finds Arbeitszeit rows; only fall back to API JSON if the DOM scrape is empty.
+  const scraped = await playwrightScrapeWithSession(origin, jar, from, to, opts.username);
+  selfPerson = scraped.selfPerson;
+  shifts = scraped.shifts.length > 0 ? scraped.shifts : apiShifts;
 
   if (shifts.length === 0 && !selfPerson) {
     throw new Error(

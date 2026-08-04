@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
@@ -14,6 +14,7 @@ import {
   accountTypeForTitlePrefix,
   userTitlePrefixLabel,
 } from '@/lib/userTitlePrefix';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type CustomRole = { id: string; name: string; color: string; position: number };
 
@@ -383,14 +384,18 @@ function UserUpsertModal({
     onSubmitEdit(body);
   }
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open: true, onClose, containerRef: panelRef });
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
       role="dialog"
-      aria-modal
+      aria-modal="true"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
@@ -593,14 +598,21 @@ function ConfirmDeleteModal({
   onConfirm: () => void;
   submitting: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open: true, onClose, containerRef: panelRef });
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
       role="dialog"
-      aria-modal
+      aria-modal="true"
       onClick={onClose}
     >
-      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lift" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={panelRef}
+        className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lift"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="text-lg font-semibold text-ink">Delete user?</h2>
         <p className="mt-2 text-sm text-ink-muted">
           Remove <span className="font-medium text-ink">{user.name}</span> ({user.email}) permanently. If they have

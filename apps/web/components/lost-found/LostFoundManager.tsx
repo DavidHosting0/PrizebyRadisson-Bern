@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { LOST_FOUND_BOXES } from '@/lib/lostFoundBoxes';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Lf = {
   id: string;
@@ -357,9 +358,17 @@ function ItemDetailModal({
   onPatch: (body: Record<string, unknown>) => void;
   pending: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open: true, onClose, containerRef: panelRef });
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+      >
         <div className="flex items-start justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-ink">Lost & found item</h2>
@@ -469,10 +478,13 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 function AddItemModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [description, setDescription] = useState('');
   const [box, setBox] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useOverlayKeyboard({ open: true, onClose, containerRef: panelRef });
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -523,7 +535,12 @@ function AddItemModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+      >
         <div className="border-b border-border px-5 py-4">
           <h2 className="text-lg font-semibold text-ink">Add lost & found item</h2>
           <p className="mt-1 text-xs text-ink-muted">

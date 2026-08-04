@@ -35,7 +35,7 @@ export function SupervisorMobileModeProvider({ children }: { children: React.Rea
 
   const enterMobile = useCallback(() => {
     persistMobile(true);
-    router.push('/s/m/inspections');
+    router.push('/s/m');
   }, [persistMobile, router]);
 
   const exitMobile = useCallback(() => {
@@ -43,7 +43,6 @@ export function SupervisorMobileModeProvider({ children }: { children: React.Rea
     let dest = '/s';
     if (path.startsWith('/s/m/chat')) dest = '/s/chat';
     else if (path.startsWith('/s/m/requests')) dest = '/s/requests';
-    else if (path.startsWith('/s/m/inspections')) dest = '/s';
     router.replace(dest);
   }, [path, persistMobile, router]);
 

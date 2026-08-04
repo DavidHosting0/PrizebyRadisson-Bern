@@ -220,21 +220,29 @@ export class MirusService {
         session,
       });
 
-      const { persisted, unmapped } = await this.persistShifts(
+      const scraped = result.shifts.length;
+      const { persisted, unmapped, written } = await this.persistShifts(
         result.shifts,
         from,
         to,
         result.selfPerson,
       );
-      const scraped = result.shifts.length;
-      const status =
-        scraped > 0 && persisted === 0
-          ? 'warn'
-          : 'ok';
-      const error =
-        status === 'warn'
-          ? `${scraped} shifts scraped, 0 saved — map ${unmapped} Mirus employee(s) under Integrationen, then sync again`
-          : null;
+      let status: string;
+      let error: string | null;
+      if (scraped === 0) {
+        status = 'warn';
+        error =
+          '0 Schichten aus Mirus gelesen (Absenz-Tage oder Detail-Liste nicht geöffnet). Bestehende Schichten wurden behalten.';
+      } else if (written === 0) {
+        status = 'warn';
+        error = `${scraped} Schichten gelesen, 0 gespeichert — ${unmapped} Mirus-Mitarbeiter noch nicht verknüpft. Unter «Mitarbeiter zuordnen» verknüpfen, dann erneut syncen.`;
+      } else if (unmapped > 0) {
+        status = 'ok';
+        error = `${written} von ${scraped} Schichten gespeichert · ${unmapped} Mitarbeiter noch nicht verknüpft`;
+      } else {
+        status = 'ok';
+        error = null;
+      }
 
       await this.prisma.favurIntegration.update({
         where: { id: SINGLETON_ID },
@@ -248,7 +256,7 @@ export class MirusService {
         },
       });
       this.logger.log(
-        `Mirus sync done: scraped=${scraped} unmappedPersons=${unmapped} persisted=${persisted} status=${status}`,
+        `Mirus sync done: scraped=${scraped} written=${written} unmappedPersons=${unmapped} persisted=${persisted} status=${status}`,
       );
     } catch (err) {
       const msg = (err as Error).message;
@@ -303,13 +311,15 @@ export class MirusService {
 
   /**
    * Upserts employee map rows, then writes Shift rows only for manually mapped users.
+   * Matches mappings by external id OR normalized display name (UUID vs name drift).
+   * Empty scrapes do not wipe existing mirus/favur shifts in the window.
    */
   private async persistShifts(
     shifts: MirusShift[],
     from: Date,
     to: Date,
     selfPerson?: { externalUserId: string; displayName: string } | null,
-  ): Promise<{ persisted: number; unmapped: number }> {
+  ): Promise<{ persisted: number; unmapped: number; written: number }> {
     await this.purgeLegacyEmployees();
 
     const seen = new Map<string, string>();
@@ -328,18 +338,68 @@ export class MirusService {
       });
     }
 
-    const maps = await this.prisma.favurUserMap.findMany({
-      where: { favurUserId: { in: [...seen.keys()] }, userId: { not: null } },
-      select: { favurUserId: true, userId: true },
+    // Copy local userId onto new external ids when the display name already has a mapping
+    // (e.g. mapped under lowercase name, later scraped with Person UUID).
+    const mappedRows = await this.prisma.favurUserMap.findMany({
+      where: { userId: { not: null } },
+      select: { favurUserId: true, favurDisplayName: true, userId: true },
     });
-    const externalToUser = new Map(maps.map((m) => [m.favurUserId, m.userId!]));
-    const unmapped = [...seen.keys()].filter((id) => !externalToUser.has(id)).length;
+    const userIdByNormName = new Map<string, string>();
+    for (const m of mappedRows) {
+      const key = normalizePersonName(m.favurDisplayName ?? '');
+      if (key && m.userId) userIdByNormName.set(key, m.userId);
+    }
+    for (const [externalUserId, displayName] of seen.entries()) {
+      const already = mappedRows.find((m) => m.favurUserId === externalUserId);
+      if (already?.userId) continue;
+      const uid = userIdByNormName.get(normalizePersonName(displayName));
+      if (!uid) continue;
+      await this.prisma.favurUserMap.update({
+        where: { favurUserId: externalUserId },
+        data: { userId: uid },
+      });
+      mappedRows.push({ favurUserId: externalUserId, favurDisplayName: displayName, userId: uid });
+    }
+
+    const byExternalId = new Map(
+      mappedRows.filter((m) => m.userId).map((m) => [m.favurUserId, m.userId!]),
+    );
+    const resolveUserId = (externalUserId: string, displayName: string): string | undefined =>
+      byExternalId.get(externalUserId) ??
+      userIdByNormName.get(normalizePersonName(displayName));
+
+    const unmapped = [...seen.entries()].filter(
+      ([id, name]) => !resolveUserId(id, name),
+    ).length;
 
     const cleanShifts = shifts.filter(
       (s) =>
         !isLegacyOrGarbageEmployee(s.externalUserId, s.displayName) &&
         seen.has(s.externalUserId),
     );
+
+    const toCreate = cleanShifts
+      .map((s) => {
+        const userId = resolveUserId(s.externalUserId, s.displayName);
+        if (!userId) return null;
+        return {
+          userId,
+          startsAt: s.startsAt,
+          endsAt: s.endsAt,
+          source: SHIFT_SOURCE,
+          sourceId: s.sourceId,
+          label: s.label ?? null,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r != null);
+
+    if (toCreate.length === 0) {
+      // Keep previous roster until at least one mapped shift can be written.
+      const persisted = await this.prisma.shift.count({
+        where: { source: SHIFT_SOURCE, startsAt: { gte: from, lt: to } },
+      });
+      return { persisted, unmapped, written: 0 };
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.shift.deleteMany({
@@ -348,25 +408,13 @@ export class MirusService {
           startsAt: { gte: from, lt: to },
         },
       });
-      const toCreate = cleanShifts
-        .filter((s) => externalToUser.has(s.externalUserId))
-        .map((s) => ({
-          userId: externalToUser.get(s.externalUserId)!,
-          startsAt: s.startsAt,
-          endsAt: s.endsAt,
-          source: SHIFT_SOURCE,
-          sourceId: s.sourceId,
-          label: s.label ?? null,
-        }));
-      if (toCreate.length) {
-        await tx.shift.createMany({ data: toCreate, skipDuplicates: true });
-      }
+      await tx.shift.createMany({ data: toCreate, skipDuplicates: true });
     });
 
     const persisted = await this.prisma.shift.count({
       where: { source: SHIFT_SOURCE, startsAt: { gte: from, lt: to } },
     });
-    return { persisted, unmapped };
+    return { persisted, unmapped, written: toCreate.length };
   }
 
   private async toDto(row: FavurIntegration): Promise<MirusConfigDto> {
@@ -465,4 +513,13 @@ function isLegacyOrGarbageEmployee(
     return true;
   }
   return false;
+}
+
+function normalizePersonName(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }

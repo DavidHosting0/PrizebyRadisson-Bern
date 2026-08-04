@@ -5,6 +5,7 @@ import { FormEvent, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Props = {
   open: boolean;
@@ -67,6 +68,9 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
     submit.mutate();
   }
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open, onClose, containerRef: panelRef });
+
   if (!open) return null;
 
   const field =
@@ -74,7 +78,12 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+      >
         <div className="border-b border-border px-5 py-4">
           <h2 className="text-lg font-semibold text-ink">Report lost &amp; found</h2>
           <p className="mt-1 text-sm text-ink-muted">Room {roomNumber}</p>

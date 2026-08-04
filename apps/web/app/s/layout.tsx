@@ -61,7 +61,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated || !user) return;
     if (mobileUi && path.startsWith('/s') && !isSupervisorMobilePath(path)) {
-      router.replace('/s/m/inspections');
+      router.replace('/s/m');
     }
   }, [hydrated, mobileUi, path, router, user]);
 

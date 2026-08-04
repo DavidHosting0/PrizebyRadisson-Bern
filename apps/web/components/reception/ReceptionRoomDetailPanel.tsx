@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -11,6 +12,7 @@ import {
 } from '@/components/rooms/RoomDetailInsights';
 import { RoomOccupancySection } from '@/components/rooms/RoomOccupancyDisplay';
 import type { RoomOccupancy } from '@housekeeping/shared';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type RoomDetail = {
   id: string;
@@ -53,13 +55,20 @@ export function ReceptionRoomDetailPanel({
   });
 
   const assign = roomId ? assignments.find((a) => a.roomId === roomId) : undefined;
+  const panelRef = useRef<HTMLElement>(null);
+  useOverlayKeyboard({ open: open && !!roomId, onClose, containerRef: panelRef });
 
   if (!open || !roomId) return null;
 
   return (
     <>
       <button type="button" className="fixed inset-0 z-40 bg-ink/25" aria-label="Close" onClick={onClose} />
-      <aside className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-lift">
+      <aside
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-lift"
+      >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-xl font-semibold text-ink">

@@ -1,11 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type RoomOpt = { id: string; roomNumber: string };
 type TypeOpt = { id: string; label: string; code: string };
@@ -131,13 +132,18 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
     });
   }
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open, onClose, containerRef: panelRef });
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
       <div
+        ref={panelRef}
         className="w-full max-w-lg rounded-card border border-border bg-surface shadow-lift"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="new-req-title"
       >
         <div className="border-b border-border px-6 py-4">

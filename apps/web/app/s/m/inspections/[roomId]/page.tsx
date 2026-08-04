@@ -63,7 +63,7 @@ export default function SupervisorMobileInspectionRoomPage() {
     <div className="space-y-4 p-4">
       <div className="flex items-center gap-2">
         <Link
-          href="/s/m/inspections"
+          href="/s/m"
           className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-ink shadow-card tap-scale"
           aria-label="Back"
         >
@@ -118,7 +118,7 @@ export default function SupervisorMobileInspectionRoomPage() {
             Report damage
           </Button>
         )}
-        <Button type="button" variant="ghost" className="min-h-[48px] w-full" onClick={() => router.push('/s/m/inspections')}>
+        <Button type="button" variant="ghost" className="min-h-[48px] w-full" onClick={() => router.push('/s/m')}>
           Back to list
         </Button>
       </div>

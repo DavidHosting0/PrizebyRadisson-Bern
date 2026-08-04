@@ -1,10 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
+import { useListKeyboard, useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 export type TimelinePhoto = {
   id: string;
@@ -54,6 +55,8 @@ function formatDay(iso: string) {
 
 export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Props) {
   const [lightbox, setLightbox] = useState<TimelinePhoto | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null);
 
   const { data: photos = [], isLoading } = useQuery({
     queryKey: ['room-photos', roomId],
@@ -72,12 +75,51 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
     return [...map.entries()].sort(([a], [b]) => b.localeCompare(a));
   }, [photos]);
 
+  const viewable = useMemo(() => photos.filter((p) => !!p.url), [photos]);
+  const lightboxIndex = lightbox ? viewable.findIndex((p) => p.id === lightbox.id) : -1;
+
+  const setLightboxIndex = useCallback(
+    (index: number | ((prev: number) => number)) => {
+      const next = typeof index === 'function' ? index(lightboxIndex) : index;
+      const photo = viewable[next];
+      if (photo) setLightbox(photo);
+    },
+    [lightboxIndex, viewable],
+  );
+
+  useOverlayKeyboard({
+    open: open && !!roomId && !lightbox,
+    onClose,
+    containerRef: panelRef,
+  });
+
+  useOverlayKeyboard({
+    open: !!lightbox,
+    onClose: () => setLightbox(null),
+    containerRef: lightboxRef,
+  });
+
+  useListKeyboard({
+    open: !!lightbox && viewable.length > 0,
+    itemCount: viewable.length,
+    activeIndex: Math.max(0, lightboxIndex),
+    setActiveIndex: setLightboxIndex,
+    onActivate: () => undefined,
+    orientation: 'horizontal',
+    force: true,
+  });
+
   if (!open || !roomId) return null;
 
   return (
     <>
       <button type="button" className="fixed inset-0 z-[60] bg-ink/40" aria-label="Close" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 z-[70] max-h-[85vh] w-[min(100vw-1.5rem,720px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-card border border-border bg-surface shadow-lift">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="fixed left-1/2 top-1/2 z-[70] max-h-[85vh] w-[min(100vw-1.5rem,720px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-card border border-border bg-surface shadow-lift"
+      >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
             <h2 className="text-lg font-semibold text-ink">Inspection photo timeline</h2>
@@ -153,7 +195,12 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
             aria-label="Close preview"
             onClick={() => setLightbox(null)}
           />
-          <div className="fixed left-1/2 top-1/2 z-[90] w-[min(96vw,900px)] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black p-2 shadow-lift">
+          <div
+            ref={lightboxRef}
+            role="dialog"
+            aria-modal="true"
+            className="fixed left-1/2 top-1/2 z-[90] w-[min(96vw,900px)] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black p-2 shadow-lift"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={lightbox.url} alt="" className="max-h-[80vh] w-full object-contain" />
             <p className="mt-2 text-center text-sm text-white/90">
@@ -163,6 +210,7 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
             {lightbox.inspection?.notes && (
               <p className="mt-1 text-center text-sm text-white/75">{lightbox.inspection.notes}</p>
             )}
+            <p className="mt-1 text-center text-[11px] text-white/50">← → navigate · Esc close</p>
             <div className="mt-2 flex justify-center">
               <Button type="button" variant="secondary" onClick={() => setLightbox(null)}>
                 Close preview

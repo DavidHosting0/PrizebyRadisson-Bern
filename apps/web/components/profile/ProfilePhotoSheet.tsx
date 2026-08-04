@@ -10,6 +10,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ExtensionDownloadLink } from '@/components/profile/ExtensionDownloadLink';
 import { userTitlePrefixLabel } from '@/lib/userTitlePrefix';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Props = {
   open: boolean;
@@ -94,12 +95,20 @@ export function ProfilePhotoSheet({ open, onClose }: Props) {
     onClose();
   }
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open: open && !!user, onClose: close, containerRef: panelRef });
+
   if (!open || !user) return null;
   const displayUrl = previewUrl ?? user.avatarUrl ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4">
-      <div className="flex max-h-[min(90vh,720px)] w-full max-w-md flex-col overflow-hidden rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        className="flex max-h-[min(90vh,720px)] w-full max-w-md flex-col overflow-hidden rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-base font-semibold text-ink">{t('yourProfile')}</h2>
           <button

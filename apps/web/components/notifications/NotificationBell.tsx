@@ -9,6 +9,7 @@ import type { CSSProperties } from 'react';
 import type { NotificationDto } from '@housekeeping/shared';
 import { IconBell } from '@/components/icons';
 import { useNotifications } from '@/lib/hooks/useNotifications';
+import { useListKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 const MENU_WIDTH = 352;
 const MENU_MIN_HEIGHT = 160;
@@ -105,9 +106,15 @@ export function NotificationBell({ variant = 'default' }: { variant?: 'default' 
   const resolveText = useNotificationText();
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const menuStyle = useMenuPosition(open, buttonRef);
+
+  useEffect(() => {
+    if (open) setActiveIndex(0);
+  }, [open]);
 
   useEffect(() => {
     function onDocDown(e: MouseEvent) {
@@ -125,9 +132,42 @@ export function NotificationBell({ variant = 'default' }: { variant?: 'default' 
     if (n.linkPath) router.push(n.linkPath);
   }
 
+  const activate = useCallback(
+    (index: number) => {
+      const n = notifications[index];
+      if (!n) return;
+      void (async () => {
+        if (!n.readAt) await markRead(n.id);
+        setOpen(false);
+        if (n.linkPath) router.push(n.linkPath);
+      })();
+    },
+    [notifications, markRead, router],
+  );
+
+  useListKeyboard({
+    open,
+    itemCount: notifications.length,
+    activeIndex,
+    setActiveIndex,
+    onActivate: activate,
+    onEscape: () => {
+      setOpen(false);
+      buttonRef.current?.focus();
+    },
+    force: true,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    itemRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open]);
+
   const menu = open ? (
     <div
       ref={menuRef}
+      role="menu"
+      aria-label={t('title')}
       style={menuStyle}
       className="overflow-hidden rounded-xl border border-border bg-surface shadow-lift"
     >
@@ -143,19 +183,25 @@ export function NotificationBell({ variant = 'default' }: { variant?: 'default' 
           </button>
         )}
       </div>
-      <ul className="max-h-80 overflow-y-auto">
+      <ul className="max-h-80 overflow-y-auto" role="none">
         {notifications.length === 0 ? (
           <li className="px-3 py-6 text-center text-sm text-ink-muted">{t('empty')}</li>
         ) : (
-          notifications.map((n) => {
+          notifications.map((n, i) => {
             const { title, body } = resolveText(n);
             return (
-              <li key={n.id}>
+              <li key={n.id} role="none">
                 <button
+                  ref={(el) => {
+                    itemRefs.current[i] = el;
+                  }}
                   type="button"
+                  role="menuitem"
                   onClick={() => void onItemClick(n)}
+                  onMouseEnter={() => setActiveIndex(i)}
                   className={clsx(
-                    'w-full border-b border-border/60 px-3 py-2.5 text-left transition hover:bg-surface-muted',
+                    'w-full border-b border-border/60 px-3 py-2.5 text-left transition',
+                    i === activeIndex ? 'bg-surface-muted' : 'hover:bg-surface-muted',
                     !n.readAt && 'bg-action-muted/20',
                   )}
                 >
@@ -185,6 +231,7 @@ export function NotificationBell({ variant = 'default' }: { variant?: 'default' 
         )}
         aria-label={`${t('title')}${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
         aria-expanded={open}
+        aria-haspopup="menu"
       >
         <IconBell className="h-[18px] w-[18px]" />
         {unreadCount > 0 && (

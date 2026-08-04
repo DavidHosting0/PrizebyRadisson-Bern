@@ -1,16 +1,15 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { CleaningTasksHome } from '@/components/CleaningTasksHome';
 
-export default function SupervisorMobileIndexPage() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace('/s/m/inspections');
-  }, [router]);
+export default function SupervisorMobileHomePage() {
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <p className="text-sm text-ink-muted">Loading…</p>
-    </div>
+    <CleaningTasksHome
+      paths={{
+        room: (id) => `/s/m/room/${id}`,
+        inspect: (id) => `/s/m/inspections/${id}`,
+        requests: '/s/m/requests',
+      }}
+    />
   );
 }

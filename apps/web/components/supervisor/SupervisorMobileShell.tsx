@@ -6,29 +6,15 @@ import clsx from 'clsx';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
-import { IconChat, IconRequests } from '@/components/icons';
+import { IconChat, IconRequests, IconRooms } from '@/components/icons';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
 
-function IconInspections({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9h2m-2 4h2m-5-4h.01M9 16h.01"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 const tabs = [
-  { href: '/s/m/inspections', label: 'Inspections', Icon: IconInspections },
-  { href: '/s/m/requests', label: 'Requests', Icon: IconRequests },
-  { href: '/s/m/chat', label: 'Chat', Icon: IconChat },
+  { href: '/s/m', label: 'Rooms', Icon: IconRooms, home: true },
+  { href: '/s/m/requests', label: 'Requests', Icon: IconRequests, home: false },
+  { href: '/s/m/chat', label: 'Chat', Icon: IconChat, home: false },
 ];
 
 export function SupervisorMobileShell({
@@ -78,7 +64,11 @@ export function SupervisorMobileShell({
       </main>
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
         {tabs.map((t) => {
-          const active = path === t.href || path.startsWith(`${t.href}/`);
+          const active = t.home
+            ? path === '/s/m' ||
+              path.startsWith('/s/m/room') ||
+              path.startsWith('/s/m/inspections')
+            : path === t.href || path.startsWith(`${t.href}/`);
           const Icon = t.Icon;
           return (
             <Link

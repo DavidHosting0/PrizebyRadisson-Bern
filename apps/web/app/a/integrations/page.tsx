@@ -414,7 +414,7 @@ function SyncStatusBadge({ config }: { config: MirusConfig | undefined }) {
     : config.lastSyncStatus === 'ok'
       ? `OK · ${config.lastSyncCount} Schichten`
       : config.lastSyncStatus === 'warn'
-        ? 'Zuordnung fehlt'
+        ? 'Hinweis'
         : config.lastSyncStatus === 'error'
           ? 'Fehler'
           : config.hasMirusPassword
@@ -426,9 +426,15 @@ function SyncStatusBadge({ config }: { config: MirusConfig | undefined }) {
         {label}
       </span>
       <p className="mt-1 text-xs text-ink-muted">Letzter Lauf: {formatDateTime(config.lastSyncAt)}</p>
-      {(config.lastSyncStatus === 'error' || config.lastSyncStatus === 'warn') &&
+      {(config.lastSyncStatus === 'error' || config.lastSyncStatus === 'warn' || config.lastSyncStatus === 'ok') &&
         config.lastSyncError && (
-          <p className="mt-1 max-w-xs text-xs text-rose-700">{config.lastSyncError}</p>
+          <p
+            className={`mt-1 max-w-sm text-xs ${
+              config.lastSyncStatus === 'ok' ? 'text-ink-muted' : 'text-rose-700'
+            }`}
+          >
+            {config.lastSyncError}
+          </p>
         )}
     </div>
   );

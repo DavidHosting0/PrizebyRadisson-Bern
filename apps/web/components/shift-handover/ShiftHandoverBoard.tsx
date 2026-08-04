@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useToast } from '@/components/toast/ToastProvider';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 function parseApiError(raw: string): string {
   try {
@@ -78,6 +79,15 @@ export function ShiftHandoverBoard() {
       data ? data.essentialTotalCount - data.essentialCompletedCount : 0,
     [data],
   );
+
+  const handoverPanelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({
+    open: handoverOpen,
+    onClose: () => {
+      if (!handover.isPending) setHandoverOpen(false);
+    },
+    containerRef: handoverPanelRef,
+  });
 
   const essentialComplete = incompleteEssentialCount === 0;
 
@@ -216,10 +226,11 @@ export function ShiftHandoverBoard() {
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
           role="dialog"
-          aria-modal
+          aria-modal="true"
           onClick={() => !handover.isPending && setHandoverOpen(false)}
         >
           <div
+            ref={handoverPanelRef}
             className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lift"
             onClick={(e) => e.stopPropagation()}
           >

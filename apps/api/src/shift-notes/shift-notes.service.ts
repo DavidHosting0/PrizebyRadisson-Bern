@@ -74,7 +74,7 @@ export class ShiftNotesService {
     const rows = await this.prisma.shiftNote.findMany({
       where,
       include: this.include,
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: 200,
     });
     return rows.map(mapNote);

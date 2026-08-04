@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { api } from '@/lib/api';
@@ -11,6 +11,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { RoleColorPicker } from '@/components/admin/RoleColorPicker';
 import { PermissionCategoryList } from '@/components/admin/roles/PermissionCategoryList';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type RoleSummary = {
   id: string;
@@ -338,6 +339,12 @@ function DisplayTab({
   const [color, setColor] = useState(detail.color);
   const [description, setDescription] = useState(detail.description ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const deletePanelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({
+    open: confirmDelete,
+    onClose: () => setConfirmDelete(false),
+    containerRef: deletePanelRef,
+  });
 
   const dirty =
     name.trim() !== detail.name ||
@@ -448,9 +455,12 @@ function DisplayTab({
       {confirmDelete && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
           onClick={() => setConfirmDelete(false)}
         >
           <div
+            ref={deletePanelRef}
             className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lift"
             onClick={(e) => e.stopPropagation()}
           >

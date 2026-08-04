@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import type {
@@ -53,7 +53,6 @@ export function ShiftNotesBoard() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
   const [err, setErr] = useState<string | null>(null);
-  const scrollerRef = useRef<HTMLDivElement>(null);
   const calendarToday = todayIso();
 
   const handoverQ = useQuery({
@@ -127,13 +126,6 @@ export function ShiftNotesBoard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['shift-notes'] }),
   });
 
-  useEffect(() => {
-    if (mode !== 'today') return;
-    const el = scrollerRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [notes.length, mode, viewingDate]);
-
   function send() {
     const text = body.trim();
     if (!text) return;
@@ -143,13 +135,6 @@ export function ShiftNotesBoard() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     send();
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
   }
 
   const isFuture = forDate > operatingDay;
@@ -197,7 +182,7 @@ export function ShiftNotesBoard() {
         </div>
       </header>
 
-      <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
         {showDayList && (
           <>
             {loading && <p className="py-8 text-center text-sm text-ink-muted">Laden…</p>}
@@ -252,71 +237,83 @@ export function ShiftNotesBoard() {
                 return (
                   <li
                     key={n.id}
-                    className="rounded-xl border border-border bg-surface px-4 py-3 shadow-sm"
+                    className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
                   >
-                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <span className="text-sm font-semibold text-ink">{n.createdBy.name}</span>
-                      <span className="text-[11px] text-ink-muted">
-                        {formatTime(n.createdAt)}
-                        {n.updatedAt !== n.createdAt ? ' · bearbeitet' : ''}
-                      </span>
-                    </div>
-                    {editing ? (
-                      <div className="space-y-2">
-                        <textarea
-                          rows={3}
-                          value={editBody}
-                          onChange={(e) => setEditBody(e.target.value)}
-                          className="w-full resize-y rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
-                          autoFocus
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="action"
-                            disabled={updateMut.isPending || !editBody.trim()}
-                            onClick={() =>
-                              updateMut.mutate({ id: n.id, body: editBody.trim() })
-                            }
-                          >
-                            Speichern
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                              setEditingId(null);
-                              setEditBody('');
-                            }}
-                          >
-                            Abbrechen
-                          </Button>
+                    <div className="flex">
+                      <div className="w-1 shrink-0 bg-action" aria-hidden />
+                      <div className="min-w-0 flex-1 px-4 py-3">
+                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded bg-action/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-action">
+                              Info
+                            </span>
+                            <span className="text-sm font-semibold text-ink">{n.createdBy.name}</span>
+                          </div>
+                          <span className="text-[11px] text-ink-muted">
+                            {formatTime(n.createdAt)}
+                            {n.updatedAt !== n.createdAt ? ' · bearbeitet' : ''}
+                          </span>
                         </div>
+                        {editing ? (
+                          <div className="space-y-2">
+                            <textarea
+                              rows={3}
+                              value={editBody}
+                              onChange={(e) => setEditBody(e.target.value)}
+                              className="w-full resize-y rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                              autoFocus
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant="action"
+                                disabled={updateMut.isPending || !editBody.trim()}
+                                onClick={() =>
+                                  updateMut.mutate({ id: n.id, body: editBody.trim() })
+                                }
+                              >
+                                Speichern
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => {
+                                  setEditingId(null);
+                                  setEditBody('');
+                                }}
+                              >
+                                Abbrechen
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
+                            {n.body}
+                          </p>
+                        )}
+                        {canWrite && mine && !editing && (
+                          <div className="mt-2.5 flex gap-3 border-t border-border/70 pt-2">
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-ink-muted hover:text-action"
+                              onClick={() => {
+                                setEditingId(n.id);
+                                setEditBody(n.body);
+                              }}
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-ink-muted hover:text-danger"
+                              onClick={() => deleteMut.mutate(n.id)}
+                            >
+                              Löschen
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{n.body}</p>
-                    )}
-                    {canWrite && mine && !editing && (
-                      <div className="mt-2.5 flex gap-3 border-t border-border/70 pt-2">
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-ink-muted hover:text-action"
-                          onClick={() => {
-                            setEditingId(n.id);
-                            setEditBody(n.body);
-                          }}
-                        >
-                          Bearbeiten
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-ink-muted hover:text-danger"
-                          onClick={() => deleteMut.mutate(n.id)}
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                    )}
+                    </div>
                   </li>
                 );
               })}
@@ -373,26 +370,31 @@ export function ShiftNotesBoard() {
               </div>
             )}
 
-            <div className="flex items-end gap-2">
-              <textarea
-                rows={2}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                onKeyDown={onKeyDown}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
                 placeholder={
                   isFuture
                     ? `Notiz für ${formatDayShort(forDate)}…`
-                    : 'Informationsnotiz schreiben…'
+                    : 'Notiz schreiben…'
                 }
-                className="max-h-28 min-h-[48px] flex-1 resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                className="h-11 flex-1 rounded-full border border-border bg-surface-muted px-4 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
               />
               <Button
                 type="submit"
                 variant="action"
                 disabled={createMut.isPending || !body.trim()}
-                className="min-h-[48px] shrink-0 px-4"
+                className="h-11 shrink-0 rounded-full px-5"
               >
-                {isFuture ? 'Planen' : 'Speichern'}
+                {isFuture ? 'Planen' : 'Senden'}
               </Button>
             </div>
             {err && <p className="text-xs text-danger">{err}</p>}

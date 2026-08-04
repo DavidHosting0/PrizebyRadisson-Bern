@@ -71,7 +71,7 @@ export class RoomsService {
     const where: Prisma.RoomWhereInput = {};
     if (query.floor != null) where.floor = query.floor;
 
-    if (query.mine && user.role === UserRole.HOUSEKEEPER) {
+    if (query.mine && (user.role === UserRole.HOUSEKEEPER || user.role === UserRole.SUPERVISOR)) {
       where.assignments = {
         some: {
           housekeeperUserId: user.id,
@@ -220,8 +220,8 @@ export class RoomsService {
   }
 
   async markHousekeepingClean(roomId: string, user: RoomViewer) {
-    if (user.role !== UserRole.HOUSEKEEPER) {
-      throw new ForbiddenException('Only housekeepers can mark a room clean');
+    if (user.role !== UserRole.HOUSEKEEPER && user.role !== UserRole.SUPERVISOR) {
+      throw new ForbiddenException('Only assigned cleaning staff can mark a room clean');
     }
     const a = await this.prisma.roomAssignment.findFirst({
       where: {

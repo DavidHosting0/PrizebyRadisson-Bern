@@ -1,8 +1,9 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import clsx from 'clsx';
 import type { DailyCleaningPlanResponse, DailyCleaningTaskDto } from '@housekeeping/shared';
 import { formatFloorLabel, hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
@@ -11,7 +12,6 @@ import { BoardRoomCard, type BoardRoom } from '@/components/supervisor/BoardRoom
 import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 
 type AssignmentRow = {
   id: string;
@@ -21,6 +21,19 @@ type AssignmentRow = {
 };
 
 type Hk = { id: string; name: string; email: string; titlePrefix: string };
+
+type DragState = {
+  room: BoardRoom;
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  active: boolean;
+  isRestant?: boolean;
+  overdueDays?: number | null;
+};
+
+const DRAG_THRESHOLD = 6;
 
 function PublicTaskCard({
   task,
@@ -36,21 +49,21 @@ function PublicTaskCard({
   busy?: boolean;
 }) {
   return (
-    <Card className="space-y-2 border border-dashed border-border bg-surface-muted/40 p-3">
+    <div className="space-y-2 rounded-btn border border-dashed border-white/15 bg-white/5 p-3 backdrop-blur-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-ink">{task.publicAreaName}</p>
+          <p className="truncate text-sm font-semibold text-white">{task.publicAreaName}</p>
           {task.floor != null && (
-            <p className="text-[11px] text-ink-muted">{formatFloorLabel(task.floor)}</p>
+            <p className="text-[11px] text-sidebar-muted">{formatFloorLabel(task.floor)}</p>
           )}
-          <span className="mt-1 inline-block rounded-btn bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-900">
+          <span className="mt-1 inline-block rounded-btn bg-action/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
             Public
           </span>
         </div>
         {!task.completedAt && (
           <Button
             variant="ghost"
-            className="min-h-[36px] shrink-0 px-2 text-xs"
+            className="min-h-[36px] shrink-0 px-2 text-xs text-sidebar-muted hover:text-white"
             disabled={busy}
             onClick={() => onComplete(task.id)}
           >
@@ -59,10 +72,10 @@ function PublicTaskCard({
         )}
       </div>
       {task.completedAt ? (
-        <p className="text-[11px] text-emerald-700">Completed</p>
+        <p className="text-[11px] text-emerald-300">Completed</p>
       ) : (
         <select
-          className="min-h-[36px] w-full rounded-btn border border-border bg-surface px-2 text-xs"
+          className="min-h-[36px] w-full rounded-btn border border-sidebar-border bg-sidebar-hover px-2 text-xs text-white"
           value={task.assigneeUserId ?? ''}
           disabled={busy}
           onChange={(e) => {
@@ -78,7 +91,7 @@ function PublicTaskCard({
           ))}
         </select>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -89,6 +102,19 @@ export default function SupervisorBoardPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [panelRoomId, setPanelRoomId] = useState<string | null>(null);
   const [autoOpen, setAutoOpen] = useState(false);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const dropTargetRef = useRef<string | null>(null);
+  const pendingPointer = useRef<{
+    room: BoardRoom;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    isRestant?: boolean;
+    overdueDays?: number | null;
+  } | null>(null);
 
   const { data: roomsRaw = [] } = useQuery({
     queryKey: ['rooms', 'supervisor', floor],
@@ -261,37 +287,112 @@ export default function SupervisorBoardPage() {
 
   const publicBusy = patchPublic.isPending || completePublic.isPending;
 
-  function onDropColumn(housekeeperId: string) {
-    return (e: React.DragEvent) => {
-      e.preventDefault();
-      const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      try {
-        const { roomId } = JSON.parse(raw) as { roomId: string };
-        if (!roomId) return;
-        assign.mutate({ roomId, housekeeperUserId: housekeeperId });
-      } catch {
-        /* ignore */
+  const finishDrop = useCallback(
+    (roomId: string, target: string | null) => {
+      if (!target) return;
+      if (target === 'unassigned') {
+        unassign.mutate(roomId);
+        return;
       }
-    };
-  }
+      assign.mutate({ roomId, housekeeperUserId: target });
+    },
+    [assign, unassign],
+  );
 
-  function onDropUnassigned(e: React.DragEvent) {
-    e.preventDefault();
-    const raw = e.dataTransfer.getData('application/json');
-    if (!raw) return;
-    try {
-      const { roomId } = JSON.parse(raw) as { roomId: string };
-      if (!roomId) return;
-      unassign.mutate(roomId);
-    } catch {
-      /* ignore */
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const pending = pendingPointer.current;
+      if (pending && !dragRef.current) {
+        const dx = e.clientX - pending.startX;
+        const dy = e.clientY - pending.startY;
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        const next: DragState = {
+          room: pending.room,
+          x: e.clientX,
+          y: e.clientY,
+          offsetX: pending.offsetX,
+          offsetY: pending.offsetY,
+          active: true,
+          isRestant: pending.isRestant,
+          overdueDays: pending.overdueDays,
+        };
+        dragRef.current = next;
+        pendingPointer.current = null;
+        setDrag(next);
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+        return;
+      }
+
+      const current = dragRef.current;
+      if (!current) return;
+      const next = { ...current, x: e.clientX, y: e.clientY };
+      dragRef.current = next;
+      setDrag(next);
+
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const zone = el?.closest('[data-drop-zone]') as HTMLElement | null;
+      const id = zone?.dataset.dropZone ?? null;
+      if (id !== dropTargetRef.current) {
+        dropTargetRef.current = id;
+        setDropTarget(id);
+      }
     }
-  }
 
-  function onDragOver(e: React.DragEvent) {
+    function onUp(e: PointerEvent) {
+      const pending = pendingPointer.current;
+      if (pending && !dragRef.current) {
+        pendingPointer.current = null;
+        // Click without drag → open details
+        setPanelRoomId(pending.room.id);
+        return;
+      }
+
+      const current = dragRef.current;
+      if (!current) return;
+
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const zone = el?.closest('[data-drop-zone]') as HTMLElement | null;
+      const target = zone?.dataset.dropZone ?? dropTargetRef.current;
+      finishDrop(current.room.id, target);
+
+      dragRef.current = null;
+      dropTargetRef.current = null;
+      pendingPointer.current = null;
+      setDrag(null);
+      setDropTarget(null);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [finishDrop]);
+
+  function startRoomDrag(
+    e: React.PointerEvent,
+    room: BoardRoom,
+    meta?: { isRestant?: boolean; overdueDays?: number | null },
+  ) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    pendingPointer.current = {
+      room,
+      startX: e.clientX,
+      startY: e.clientY,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      isRestant: meta?.isRestant,
+      overdueDays: meta?.overdueDays,
+    };
   }
 
   const floors = useMemo(() => {
@@ -303,179 +404,154 @@ export default function SupervisorBoardPage() {
   }, [roomsRaw]);
 
   const canSave = plan?.suggested && plan.status !== 'SAVED';
+  const draggingRoomId = drag?.room.id ?? null;
 
   return (
-    <div className="flex min-w-0 flex-col gap-6 p-4 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Room assignment</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Drag rooms between cleaners or back to Unassigned. Run auto assignment, then save for
-            the day. Scroll sideways for all columns.
-          </p>
-          {plan?.status === 'SAVED' && plan.savedAt && (
-            <p className="mt-1 text-xs font-medium text-emerald-700">
-              Saved for today · {new Date(plan.savedAt).toLocaleString()}
-            </p>
-          )}
-          {canSave && (
-            <p className="mt-1 text-xs font-medium text-amber-800">
-              Auto assignment on the board — save to lock it for today.
-            </p>
-          )}
+    <div className="relative min-w-0">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,_rgba(59,111,160,0.12),_transparent_50%),radial-gradient(ellipse_at_bottom_right,_rgba(26,35,50,0.08),_transparent_45%)]"
+        aria-hidden
+      />
+
+      <div className="flex min-w-0 flex-col gap-6 p-4 md:p-8">
+        <div className="overflow-hidden rounded-card border border-sidebar-border/40 bg-sidebar text-white shadow-lift">
+          <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-5 md:px-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">
+                Housekeeping
+              </p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">
+                Room assignment
+              </h1>
+              <p className="mt-1.5 max-w-xl text-sm text-sidebar-muted">
+                Drag a room — it follows your cursor — onto a cleaner column or back to Unassigned.
+                Run auto assignment, then save for the day.
+              </p>
+              {plan?.status === 'SAVED' && plan.savedAt && (
+                <p className="mt-2 text-xs font-medium text-emerald-300">
+                  Saved for today · {new Date(plan.savedAt).toLocaleString()}
+                </p>
+              )}
+              {canSave && (
+                <p className="mt-2 text-xs font-medium text-amber-200">
+                  Auto assignment on the board — save to lock it for today.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/s/public-areas"
+                className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
+              >
+                Public areas
+              </Link>
+              <Link
+                href="/s/departures"
+                className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
+              >
+                Departures
+              </Link>
+              {canSave && (
+                <Button
+                  variant="secondary"
+                  className="min-h-[48px] shrink-0 border-0 bg-white/10 text-white hover:bg-white/15"
+                  disabled={savePlan.isPending}
+                  onClick={() => savePlan.mutate()}
+                >
+                  {savePlan.isPending ? 'Saving…' : 'Save for today'}
+                </Button>
+              )}
+              <Button
+                variant="action"
+                className="min-h-[48px] shrink-0 shadow-md"
+                onClick={() => setAutoOpen(true)}
+              >
+                Auto room assignment
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/50 px-5 py-3 md:px-6">
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                Floor
+              </label>
+              <select
+                className="mt-1 min-h-[40px] min-w-[120px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              >
+                <option value="">All</option>
+                {floors.map((f) => (
+                  <option key={f} value={String(f)}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                Status
+              </label>
+              <select
+                className="mt-1 min-h-[40px] min-w-[160px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All</option>
+                <option value="DIRTY">Dirty</option>
+                <option value="IN_PROGRESS">In progress</option>
+                <option value="CLEAN">Clean</option>
+                <option value="INSPECTED">Inspected</option>
+              </select>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/s/public-areas"
-            className="inline-flex min-h-[44px] items-center rounded-btn border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-muted"
-          >
-            Public areas
-          </Link>
-          <Link
-            href="/s/departures"
-            className="inline-flex min-h-[44px] items-center rounded-btn border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-muted"
-          >
-            Departures
-          </Link>
-          {canSave && (
-            <Button
-              variant="secondary"
-              className="min-h-[48px] shrink-0"
-              disabled={savePlan.isPending}
-              onClick={() => savePlan.mutate()}
+
+        <div className="-mx-4 min-w-0 overflow-x-scroll overflow-y-visible overscroll-x-contain px-4 pb-6 md:-mx-8 md:px-8">
+          <div className="flex w-max items-start gap-4">
+            <div
+              data-drop-zone="unassigned"
+              className={clsx(
+                'min-h-[280px] w-[300px] shrink-0 overflow-hidden rounded-card border transition-all duration-200',
+                dropTarget === 'unassigned'
+                  ? 'border-action bg-action/10 shadow-[0_0_0_3px_rgba(59,111,160,0.25)]'
+                  : 'border-sidebar-border/50 bg-gradient-to-b from-sidebar to-[#141c28]',
+              )}
             >
-              {savePlan.isPending ? 'Saving…' : 'Save for today'}
-            </Button>
-          )}
-          <Button variant="action" className="min-h-[48px] shrink-0" onClick={() => setAutoOpen(true)}>
-            Auto room assignment
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <div>
-          <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">Floor</label>
-          <select
-            className="mt-1 min-h-[44px] min-w-[120px] rounded-btn border border-border bg-surface px-3 text-sm"
-            value={floor}
-            onChange={(e) => setFloor(e.target.value)}
-          >
-            <option value="">All</option>
-            {floors.map((f) => (
-              <option key={f} value={String(f)}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">Status</label>
-          <select
-            className="mt-1 min-h-[44px] min-w-[160px] rounded-btn border border-border bg-surface px-3 text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">All</option>
-            <option value="DIRTY">Dirty</option>
-            <option value="IN_PROGRESS">In progress</option>
-            <option value="CLEAN">Clean</option>
-            <option value="INSPECTED">Inspected</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="-mx-4 min-w-0 overflow-x-scroll overflow-y-visible overscroll-x-contain px-4 pb-4 md:-mx-8 md:px-8">
-        <div className="flex w-max items-start gap-4">
-          <div
-            className="min-h-[200px] w-[280px] shrink-0 rounded-card border-2 border-dashed border-border bg-surface-muted/50 p-3"
-            onDragOver={onDragOver}
-            onDrop={onDropUnassigned}
-          >
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-              Unassigned queue
-            </h2>
-            <p className="mt-1 text-[11px] text-ink-muted">
-              Drop here to unassign · rooms without an active assignment
-            </p>
-            <ul className="mt-4 space-y-3">
-              {queueRoomsFiltered.map((r) => (
-                <li key={r.id}>
+              <div className="border-b border-white/10 px-3.5 py-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-sidebar-muted">
+                  Unassigned
+                </h2>
+                <p className="mt-0.5 text-[11px] text-sidebar-muted/80">
+                  Drop here to unassign
+                </p>
+              </div>
+              <div className="space-y-2.5 p-3">
+                {queueRoomsFiltered.map((r) => (
                   <BoardRoomCard
+                    key={r.id}
                     room={r}
                     draggable
+                    dragging={draggingRoomId === r.id}
                     onOpen={() => setPanelRoomId(r.id)}
                     isRestant={restantByRoomId.has(r.id)}
                     overdueDays={overdueByRoomId.get(r.id) ?? restantByRoomId.get(r.id)?.overdueDays}
-                  />
-                </li>
-              ))}
-            </ul>
-            {publicByAssignee.unassigned.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                  Public (unassigned)
-                </p>
-                {publicByAssignee.unassigned.map((t) => (
-                  <PublicTaskCard
-                    key={t.id}
-                    task={t}
-                    assignees={reassignOptions}
-                    busy={publicBusy}
-                    onReassign={(taskId, assigneeUserId) =>
-                      patchPublic.mutate({ taskId, assigneeUserId })
+                    onPointerDownDrag={(e, room) =>
+                      startRoomDrag(e, room, {
+                        isRestant: restantByRoomId.has(room.id),
+                        overdueDays:
+                          overdueByRoomId.get(room.id) ?? restantByRoomId.get(room.id)?.overdueDays,
+                      })
                     }
-                    onComplete={(taskId) => completePublic.mutate(taskId)}
                   />
                 ))}
-              </div>
-            )}
-            {queueRoomsFiltered.length === 0 && publicByAssignee.unassigned.length === 0 && (
-              <p className="mt-4 text-sm text-ink-muted">No unassigned rooms.</p>
-            )}
-          </div>
-
-          {boardColumns.map((hk) => {
-            const col = assignments.filter((a) => a.housekeeper.id === hk.id);
-            const publics = publicByAssignee.map.get(hk.id) ?? [];
-            return (
-              <div
-                key={hk.id}
-                className="min-h-[200px] w-[280px] shrink-0 rounded-card border border-border bg-surface p-3 shadow-card"
-                onDragOver={onDragOver}
-                onDrop={onDropColumn(hk.id)}
-              >
-                <h2 className="truncate text-sm font-semibold text-ink">
-                  {formatUserWithTitlePrefix(hk.name, hk.titlePrefix)}
-                </h2>
-                {hk.email ? (
-                  <p className="truncate text-[11px] text-ink-muted">{hk.email}</p>
-                ) : null}
-                <ul className="mt-4 space-y-3">
-                  {col.map((a) => {
-                    const full = roomById[a.roomId];
-                    if (!full) return null;
-                    return (
-                      <li key={a.id}>
-                        <BoardRoomCard
-                          room={full}
-                          draggable
-                          onOpen={() => setPanelRoomId(full.id)}
-                          isRestant={restantByRoomId.has(full.id)}
-                          overdueDays={
-                            overdueByRoomId.get(full.id) ?? restantByRoomId.get(full.id)?.overdueDays
-                          }
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-                {publics.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                      Public areas
+                {publicByAssignee.unassigned.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                      Public (unassigned)
                     </p>
-                    {publics.map((t) => (
+                    {publicByAssignee.unassigned.map((t) => (
                       <PublicTaskCard
                         key={t.id}
                         task={t}
@@ -489,14 +565,153 @@ export default function SupervisorBoardPage() {
                     ))}
                   </div>
                 )}
-                {col.length === 0 && publics.length === 0 && (
-                  <p className="mt-4 text-sm text-ink-muted">No rooms assigned.</p>
+                {queueRoomsFiltered.length === 0 && publicByAssignee.unassigned.length === 0 && (
+                  <p className="py-6 text-center text-sm text-sidebar-muted">No unassigned rooms.</p>
                 )}
               </div>
-            );
-          })}
+            </div>
+
+            {boardColumns.map((hk) => {
+              const col = assignments.filter((a) => a.housekeeper.id === hk.id);
+              const publics = publicByAssignee.map.get(hk.id) ?? [];
+              const active = dropTarget === hk.id;
+              return (
+                <div
+                  key={hk.id}
+                  data-drop-zone={hk.id}
+                  className={clsx(
+                    'min-h-[280px] w-[300px] shrink-0 overflow-hidden rounded-card border bg-surface transition-all duration-200',
+                    active
+                      ? 'border-action shadow-[0_0_0_3px_rgba(59,111,160,0.2)]'
+                      : 'border-border shadow-card',
+                  )}
+                >
+                  <div className="flex items-center gap-3 border-b border-sidebar-border/30 bg-sidebar px-3.5 py-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-action/30 text-xs font-bold text-white ring-1 ring-white/10">
+                      {hk.name
+                        .split(/\s+/)
+                        .map((p) => p[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="truncate text-sm font-semibold text-white">
+                        {formatUserWithTitlePrefix(hk.name, hk.titlePrefix)}
+                      </h2>
+                      <p className="truncate text-[11px] text-sidebar-muted">
+                        {col.length} room{col.length === 1 ? '' : 's'}
+                        {hk.email ? ` · ${hk.email}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="space-y-2.5 p-3">
+                    {col.map((a) => {
+                      const full = roomById[a.roomId];
+                      if (!full) return null;
+                      return (
+                        <li key={a.id}>
+                          <BoardRoomCard
+                            room={full}
+                            draggable
+                            dragging={draggingRoomId === full.id}
+                            onOpen={() => setPanelRoomId(full.id)}
+                            isRestant={restantByRoomId.has(full.id)}
+                            overdueDays={
+                              overdueByRoomId.get(full.id) ??
+                              restantByRoomId.get(full.id)?.overdueDays
+                            }
+                            onPointerDownDrag={(e, room) =>
+                              startRoomDrag(e, room, {
+                                isRestant: restantByRoomId.has(room.id),
+                                overdueDays:
+                                  overdueByRoomId.get(room.id) ??
+                                  restantByRoomId.get(room.id)?.overdueDays,
+                              })
+                            }
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {publics.length > 0 && (
+                    <div className="space-y-2 border-t border-border bg-sidebar/5 px-3 pb-3 pt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                        Public areas
+                      </p>
+                      {publics.map((t) => (
+                        <div
+                          key={t.id}
+                          className="rounded-btn border border-border bg-white p-2.5 shadow-sm"
+                        >
+                          <p className="truncate text-sm font-semibold text-ink">{t.publicAreaName}</p>
+                          {t.floor != null && (
+                            <p className="text-[11px] text-ink-muted">{formatFloorLabel(t.floor)}</p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {!t.completedAt ? (
+                              <>
+                                <select
+                                  className="min-h-[36px] flex-1 rounded-btn border border-border bg-surface px-2 text-xs"
+                                  value={t.assigneeUserId ?? ''}
+                                  disabled={publicBusy}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    if (v) patchPublic.mutate({ taskId: t.id, assigneeUserId: v });
+                                  }}
+                                >
+                                  <option value="">— Reassign —</option>
+                                  {reassignOptions.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                      {formatUserWithTitlePrefix(a.name, a.titlePrefix)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  variant="ghost"
+                                  className="min-h-[36px] px-2 text-xs"
+                                  disabled={publicBusy}
+                                  onClick={() => completePublic.mutate(t.id)}
+                                >
+                                  Done
+                                </Button>
+                              </>
+                            ) : (
+                              <p className="text-[11px] text-emerald-700">Completed</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {col.length === 0 && publics.length === 0 && (
+                    <p className="px-3 pb-4 text-sm text-ink-muted">Drop rooms here</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
+
+      {drag?.active && (
+        <div
+          className="pointer-events-none fixed z-[100] will-change-transform"
+          style={{
+            left: 0,
+            top: 0,
+            transform: `translate3d(${drag.x - drag.offsetX}px, ${drag.y - drag.offsetY}px, 0) rotate(2deg) scale(1.04)`,
+            transition: 'none',
+          }}
+        >
+          <BoardRoomCard
+            room={drag.room}
+            ghost
+            isRestant={drag.isRestant}
+            overdueDays={drag.overdueDays}
+          />
+        </div>
+      )}
 
       <RoomSlideOver roomId={panelRoomId} open={!!panelRoomId} onClose={() => setPanelRoomId(null)} />
       <AutoAssignSetupModal

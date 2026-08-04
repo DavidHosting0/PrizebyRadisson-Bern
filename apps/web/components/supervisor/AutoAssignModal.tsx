@@ -1,11 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DailyCleaningPlanResponse } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
+import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Assignee = DailyCleaningPlanResponse['manualAssignees'][number];
 
@@ -82,6 +83,9 @@ export function AutoAssignSetupModal({
     },
   });
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayKeyboard({ open, onClose, containerRef: panelRef });
+
   function toggleId(list: string[], id: string, set: (v: string[]) => void) {
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   }
@@ -95,8 +99,10 @@ export function AutoAssignSetupModal({
       role="presentation"
     >
       <div
+        ref={panelRef}
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-card border border-border bg-surface shadow-lift"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="auto-assign-setup-title"
         onClick={(e) => e.stopPropagation()}
       >
