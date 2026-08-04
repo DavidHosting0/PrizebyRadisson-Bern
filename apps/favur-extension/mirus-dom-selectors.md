@@ -1,53 +1,45 @@
-# Mirus NEO DOM selectors (shift page)
+# Mirus NEO DOM selectors (Dienstplan)
 
-Source: CSS from `neo.mirus.ch` (`mirus.*.css`) and HAR analysis.
-Live DOM may vary; scraper tries multiple strategies in order.
+Confirmed live against `https://neo.mirus.ch/webapp/shifts/shift` (Aug 2026).
 
 ## URL pattern
 
 - Day view: `https://neo.mirus.ch/webapp/shifts/shift/YYYY-MM-DD`
-- Date is taken from the path segment after `/shift/`.
+- Base (today): `https://neo.mirus.ch/webapp/shifts/shift`
 
-## Primary grid (absence / team plan layout)
+## Interaction (required)
 
-Used when Mirus renders the team grid (shared CSS with absence planning):
+The first paint is a **compact avatar strip** (initials / photos). Shift times are **not** visible until the day detail list is opened:
 
-| Role | Selector |
-|------|----------|
-| Table container | `.absenceplan-table` |
-| Data row | `.absenceplan-table-row` |
-| Employee name (sticky column) | `.absenceplan-sticky-column`, `.absenceplan-team-member` |
-| Team header row | `.absenceplan-team-row`, `.absenceplan-team-name` |
-| Cell data | `.absenceplan-cell`, `.absenceplan-data-cell` |
-| Shift/absence pill | `.absence-plan-data-point` |
+1. Wait for `.team-color-container`
+2. Click the first `.team-color-container`
+3. Wait until body text contains `Arbeitszeit` + a time range
 
-Skip team header rows and absence-only pills when text matches absence keywords.
+## Expanded day list
 
-## Week calendar header (navigation)
+| Role | Selector / text |
+|------|-----------------|
+| Person row | `.card.card-default .row.mb-3` |
+| Full name | `.small.fw-bold` / `.fw-bold` |
+| Cost-center / shift badge | `.badge` (e.g. `K1`, `H`, `F1`) |
+| Work time label | text `Arbeitszeit` |
+| Work time value | sibling `.col-6` → `HH:MM - HH:MM` |
+| Break | text `Pause` (ignored for roster) |
+| Person photo / id | `img[src*="/Persons/{uuid}/"]` `alt` = full name |
+| Section present | heading `Anwesend` |
+| Section absent | heading `Abwesend` (no `Arbeitszeit` → skip) |
 
-| Role | Selector |
-|------|----------|
-| Week strip | `.weekCalendarTable`, `.weekCalendarTableContainer` |
-| Day column height | `.calendar-line` |
+## Time handling
 
-## Telerik Scheduler (fallback)
-
-| Role | Selector |
-|------|----------|
-| Scheduler root | `.k-scheduler`, `[class*="k-scheduler"]` |
-| Event block | `.k-event`, `.k-scheduler-event` |
-
-## MudBlazor table (fallback)
-
-| Role | Selector |
-|------|----------|
-| Table body rows | `.mud-table-body tr`, `table.mud-table tbody tr` |
-
-## Time / absence heuristics
-
-- Shift time: `\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}`
-- Absence keywords (skip): `urlaub`, `krank`, `absence`, `ferien`, `abwesen`, `feiertag`, `frei`
+- Pattern: `\d{1,2}:\d{2}\s*[-–—]\s*\d{1,2}:\d{2}`
+- Overnight shifts (`22:00 - 07:00`): end date = start date + 1 day
+- Absences (`Absenz`, `Ferien`) without `Arbeitszeit` are skipped
 
 ## User ID
 
-No stable Mirus person ID in DOM — use normalized display name as `favurUserId` (lowercase, collapsed whitespace).
+Prefer Person UUID from thumbnail URL `/file/documents/thumbnails/.../Persons/{uuid}/...`.
+Fallback: normalized display name (lowercase, collapsed whitespace).
+
+## Note on browser HARs
+
+Chrome often exports only thumbnail image requests for this page (WebSocket / Blazor frames omitted). The authoritative UI flow is login → `/webapp/shifts/shift/{date}` → click avatar → scrape `Arbeitszeit` cards.

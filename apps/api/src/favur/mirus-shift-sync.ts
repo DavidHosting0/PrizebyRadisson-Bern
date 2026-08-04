@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import type { FavurShift } from './favur-scraper.service';
 import {
   addDaysLocal,
@@ -15,10 +15,11 @@ import {
 
 const logger = new Logger('MirusShiftSync');
 
-/** In-page scraper (runs inside Playwright evaluate). */
+/**
+ * Scrape the expanded Dienstplan day list (after clicking a team avatar).
+ * Structure: `.card.card-default .row.mb-3` with name + "Arbeitszeit" + "HH:MM - HH:MM".
+ */
 function scrapeShiftsInBrowser(dateStr: string) {
-  const ABSENCE =
-    /\b(urlaub|krank|absence|ferien|abwesen|feiertag|frei|krankheit)\b/i;
   const TIME = /(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})/;
 
   function combine(date: string, time: string): string | null {
@@ -45,65 +46,132 @@ function scrapeShiftsInBrowser(dateStr: string) {
   }> = [];
   const seen = new Set<string>();
 
-  const table = document.querySelector('.absenceplan-table');
-  if (table) {
-    for (const row of table.querySelectorAll('.absenceplan-table-row')) {
-      if (row.classList.contains('absenceplan-team-row')) continue;
-      const nameEl =
-        row.querySelector('.absenceplan-team-member') ||
-        row.querySelector('.absenceplan-sticky-column');
-      const displayName = nameEl?.textContent?.trim();
-      if (!displayName || displayName.length < 2) continue;
-      const uid = displayName.toLowerCase().replace(/\s+/g, ' ');
-      for (const cell of row.querySelectorAll(
-        '.absenceplan-cell, .absenceplan-data-cell, .absence-plan-data-point',
-      )) {
-        const text = cell.textContent?.trim() ?? '';
-        if (!text || ABSENCE.test(text)) continue;
-        const m = TIME.exec(text);
-        if (!m) continue;
-        const startsAt = combine(dateStr, m[1]);
-        let endsAt = combine(dateStr, m[2]);
-        if (!startsAt || !endsAt) continue;
-        if (new Date(endsAt) <= new Date(startsAt)) {
-          const end = new Date(endsAt);
-          end.setDate(end.getDate() + 1);
-          endsAt = end.toISOString();
+  const rows = document.querySelectorAll('.card.card-default .row.mb-3, .card .row.mb-3');
+  for (const row of rows) {
+    const text = row.textContent ?? '';
+    if (!/Arbeitszeit/i.test(text)) continue;
+    if (/Absenztyp|Ferien|\bAbsenz\b/i.test(text) && !/Arbeitszeit/i.test(text)) continue;
+
+    const nameEl = row.querySelector('.fw-bold, .small.fw-bold');
+    let displayName = nameEl?.textContent?.trim() || '';
+    if (!displayName) {
+      // Fallback: first substantial line that is not initials-only / labels
+      const lines = text
+        .split(/\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      displayName =
+        lines.find(
+          (l) =>
+            l.length > 3 &&
+            !/^(Arbeitszeit|Pause|Anwesend|Abwesend)$/i.test(l) &&
+            !TIME.test(l) &&
+            !/^[A-Z]{1,4}$/.test(l),
+        ) || '';
+    }
+    if (!displayName || displayName.length < 2) continue;
+
+    const img = row.querySelector('img[src*="/Persons/"]') as HTMLImageElement | null;
+    const personMatch = img?.getAttribute('src')?.match(/\/Persons\/([0-9a-f-]{36})\//i);
+    const favurUserId = (personMatch?.[1] || displayName.toLowerCase().replace(/\s+/g, ' ')).trim();
+
+    let workStart: string | null = null;
+    let workEnd: string | null = null;
+    let label: string | null = null;
+
+    for (const lineRow of row.querySelectorAll('.row.mb-1')) {
+      const cols = lineRow.querySelectorAll('.col-6');
+      if (cols.length < 2) continue;
+      const labelText = cols[0]?.textContent?.trim() ?? '';
+      const valueText = cols[1]?.textContent?.trim() ?? '';
+      if (/^Arbeitszeit$/i.test(labelText)) {
+        const m = TIME.exec(valueText);
+        if (m) {
+          workStart = m[1];
+          workEnd = m[2];
         }
-        const key = `${uid}|${startsAt}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({
-          displayName,
-          favurUserId: uid,
-          startsAt,
-          endsAt,
-          label: text.replace(TIME, '').trim() || null,
-          sourceId: `${uid}-${startsAt}`,
-        });
       }
     }
+
+    if (!workStart || !workEnd) {
+      // Fallback: first time range after "Arbeitszeit" in plain text
+      const idx = text.search(/Arbeitszeit/i);
+      const m = idx >= 0 ? TIME.exec(text.slice(idx)) : TIME.exec(text);
+      if (!m) continue;
+      workStart = m[1];
+      workEnd = m[2];
+    }
+
+    const badge = row.querySelector('.badge')?.textContent?.trim();
+    if (badge) label = badge.replace(/\s+/g, ' ');
+
+    const startsAt = combine(dateStr, workStart);
+    let endsAt = combine(dateStr, workEnd);
+    if (!startsAt || !endsAt) continue;
+    if (new Date(endsAt) <= new Date(startsAt)) {
+      const end = new Date(endsAt);
+      end.setDate(end.getDate() + 1);
+      endsAt = end.toISOString();
+    }
+
+    const key = `${favurUserId}|${startsAt}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      displayName,
+      favurUserId,
+      startsAt,
+      endsAt,
+      label,
+      sourceId: `${favurUserId}-${startsAt}`,
+    });
   }
 
+  // Fallback: parse body text blocks if card markup not found
   if (out.length === 0) {
-    for (const ev of document.querySelectorAll('.k-event, .k-scheduler-event')) {
-      const title = ev.textContent?.trim() ?? '';
-      if (!title || ABSENCE.test(title)) continue;
-      const m = TIME.exec(title);
-      if (!m) continue;
-      const startsAt = combine(dateStr, m[1]);
-      let endsAt = combine(dateStr, m[2]);
-      if (!startsAt || !endsAt) continue;
-      const displayName = title.split(/\d{1,2}:\d{2}/)[0]?.trim() || 'Unknown';
-      const uid = displayName.toLowerCase().replace(/\s+/g, ' ');
-      out.push({
-        displayName,
-        favurUserId: uid,
-        startsAt,
-        endsAt,
-        label: null,
-        sourceId: `${uid}-${startsAt}`,
-      });
+    const body = document.body?.innerText || '';
+    const lines = body.split(/\n/).map((l) => l.trim()).filter(Boolean);
+    let i = 0;
+    while (i < lines.length) {
+      if (lines[i] === 'Arbeitszeit' && lines[i + 1] && TIME.test(lines[i + 1])) {
+        const m = TIME.exec(lines[i + 1])!;
+        let displayName = '';
+        for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+          const l = lines[j];
+          if (/^(Pause|Anwesend|Abwesend|K\d|H|T|F\d)$/i.test(l)) continue;
+          if (/^[A-Z]{1,4}$/.test(l)) continue;
+          if (TIME.test(l)) continue;
+          if (l.length > 3) {
+            displayName = l;
+            break;
+          }
+        }
+        if (displayName) {
+          const favurUserId = displayName.toLowerCase().replace(/\s+/g, ' ');
+          const startsAt = combine(dateStr, m[1]);
+          let endsAt = combine(dateStr, m[2]);
+          if (startsAt && endsAt) {
+            if (new Date(endsAt) <= new Date(startsAt)) {
+              const end = new Date(endsAt);
+              end.setDate(end.getDate() + 1);
+              endsAt = end.toISOString();
+            }
+            const key = `${favurUserId}|${startsAt}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              out.push({
+                displayName,
+                favurUserId,
+                startsAt,
+                endsAt,
+                label: null,
+                sourceId: `${favurUserId}-${startsAt}`,
+              });
+            }
+          }
+        }
+      }
+      i += 1;
     }
   }
 
@@ -129,12 +197,11 @@ function normalizeApiShifts(payload: unknown, dateStr: string): FavurShift[] {
       o.employeeName ??
       o.userName ??
       (typeof o.user === 'object' && o.user
-        ? (o.user as Record<string, unknown>).fullName ??
-          (o.user as Record<string, unknown>).name
+        ? ((o.user as Record<string, unknown>).fullName ??
+          (o.user as Record<string, unknown>).name)
         : undefined) ??
       o.name;
-    const idRaw =
-      o.employeeId ?? o.userId ?? o.personId ?? o.id ?? nameRaw;
+    const idRaw = o.employeeId ?? o.userId ?? o.personId ?? o.id ?? nameRaw;
 
     if (startsRaw && endsRaw && nameRaw) {
       const startsAt = new Date(String(startsRaw));
@@ -151,7 +218,12 @@ function normalizeApiShifts(payload: unknown, dateStr: string): FavurShift[] {
           startsAt,
           endsAt,
           sourceId: String(o.id ?? `${favurUserId}-${startsAt.toISOString()}`),
-          label: o.label != null ? String(o.label) : o.shortDescription != null ? String(o.shortDescription) : null,
+          label:
+            o.label != null
+              ? String(o.label)
+              : o.shortDescription != null
+                ? String(o.shortDescription)
+                : null,
         });
       }
     }
@@ -161,9 +233,7 @@ function normalizeApiShifts(payload: unknown, dateStr: string): FavurShift[] {
     }
   };
   walk(payload);
-  if (out.length === 0 && dateStr) {
-    /* no-op marker for empty API body */
-  }
+  void dateStr;
   return out;
 }
 
@@ -214,6 +284,58 @@ async function tryApiPaths(
   return all;
 }
 
+async function openDayDetail(page: Page): Promise<boolean> {
+  // Compact avatar strip → click opens Anwesend/Arbeitszeit detail list
+  const hasDetail = async () =>
+    page.evaluate(() => /Arbeitszeit\s*\n?\s*\d{1,2}:\d{2}/.test(document.body?.innerText || ''));
+
+  if (await hasDetail()) return true;
+
+  const avatars = page.locator('.team-color-container');
+  if ((await avatars.count()) > 0) {
+    await avatars.first().click({ timeout: 10000 }).catch(() => undefined);
+    await page.waitForTimeout(2500);
+    if (await hasDetail()) return true;
+  }
+
+  // Sometimes the hotel / day header opens the list
+  await page.locator('text=prizeotel').first().click({ timeout: 3000 }).catch(() => undefined);
+  await page.waitForTimeout(2000);
+  return hasDetail();
+}
+
+async function scrapeDay(page: Page, origin: string, dateStr: string): Promise<FavurShift[]> {
+  const url = `${origin}/webapp/shifts/shift/${dateStr}`;
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => undefined);
+  // Blazor needs time to render the avatar strip
+  await page.waitForSelector('.team-color-container, .card.card-default, text=Arbeitszeit', {
+    timeout: 45000,
+  }).catch(() => undefined);
+  await page.waitForTimeout(2000);
+
+  if (page.url().includes('/Account/Login')) {
+    throw new Error('Mirus session expired while opening shift plan');
+  }
+
+  const opened = await openDayDetail(page);
+  if (!opened) {
+    logger.warn(`Mirus day ${dateStr}: detail list with Arbeitszeit not found`);
+  } else {
+    await page.waitForTimeout(1500);
+  }
+
+  const rows = await page.evaluate(scrapeShiftsInBrowser, dateStr);
+  return rows.map((r) => ({
+    favurUserId: r.favurUserId,
+    favurDisplayName: r.displayName,
+    startsAt: new Date(r.startsAt),
+    endsAt: new Date(r.endsAt),
+    sourceId: r.sourceId,
+    label: r.label,
+  }));
+}
+
 async function playwrightScrapeWithSession(
   baseUrl: string,
   jar: MirusCookieJar,
@@ -225,8 +347,6 @@ async function playwrightScrapeWithSession(
   try {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ userAgent: BROWSER_UA, locale: 'de-CH' });
-
-    // Reuse HTTP login session — do not log in again via the browser form.
     const host = new URL(origin).hostname;
     await context.addCookies(
       jar.toJSON().map((c) => ({
@@ -240,23 +360,7 @@ async function playwrightScrapeWithSession(
     );
 
     const page = await context.newPage();
-    const capturedJson: unknown[] = [];
-    page.on('response', async (res) => {
-      try {
-        const ct = res.headers()['content-type'] ?? '';
-        if (!ct.includes('json')) return;
-        if (res.status() < 200 || res.status() >= 300) return;
-        const u = res.url();
-        if (!/shift|schicht|duty|dienst|plan|schedule|team|employee|mitarbeiter/i.test(u)) {
-          return;
-        }
-        capturedJson.push(await res.json());
-      } catch {
-        /* ignore */
-      }
-    });
 
-    // Confirm session is valid before scraping days.
     await page.goto(`${origin}/webapp/Home`, { waitUntil: 'domcontentloaded', timeout: 60000 });
     if (page.url().includes('/Account/Login') || (await page.locator('#password').count()) > 0) {
       throw new Error('Mirus session cookie rejected — re-save credentials and sync again');
@@ -269,27 +373,13 @@ async function playwrightScrapeWithSession(
 
     while (cursor < last) {
       const dateStr = isoDateLocal(cursor);
-      const url = `${origin}/webapp/shifts/shift/${dateStr}`;
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 90000 }).catch(() => undefined);
-      await page.waitForTimeout(2500);
-
-      const rows = await page.evaluate(scrapeShiftsInBrowser, dateStr);
-      for (const r of rows) {
-        all.push({
-          favurUserId: r.favurUserId,
-          favurDisplayName: r.displayName,
-          startsAt: new Date(r.startsAt),
-          endsAt: new Date(r.endsAt),
-          sourceId: r.sourceId,
-          label: r.label,
-        });
+      try {
+        const dayShifts = await scrapeDay(page, origin, dateStr);
+        logger.log(`Mirus ${dateStr}: ${dayShifts.length} shifts`);
+        all.push(...dayShifts);
+      } catch (err) {
+        logger.warn(`Mirus ${dateStr} scrape failed: ${(err as Error).message}`);
       }
-
-      for (const json of capturedJson) {
-        all.push(...normalizeApiShifts(json, dateStr));
-      }
-      capturedJson.length = 0;
-
       cursor.setDate(cursor.getDate() + 1);
     }
 
@@ -350,20 +440,20 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
 
   let shifts: FavurShift[] = [];
 
-  // 1) Authenticated Swagger REST (usually unavailable for customer accounts)
   const swagger = await mirusFetchSwagger(jar, origin).catch(() => null);
   if (swagger?.paths.length) {
     shifts = dedupeShifts(await tryApiPaths(jar, origin, from, to, swagger.paths));
   }
 
-  // 2) Blazor shift pages: open with the HTTP session cookies (no browser login)
+  // Dienstplan is Blazor UI: open /webapp/shifts/shift/{date} with session cookies,
+  // click avatar strip to expand Arbeitszeit list, scrape cards.
   if (shifts.length === 0) {
     shifts = await playwrightScrapeWithSession(origin, jar, from, to);
   }
 
   if (shifts.length === 0) {
     throw new Error(
-      'Mirus sync found no shifts — login worked, but no shift rows were returned for the sync window',
+      'Mirus sync found no shifts — login worked, but no Arbeitszeit rows were found on the Dienstplan',
     );
   }
 
