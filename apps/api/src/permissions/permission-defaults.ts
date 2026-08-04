@@ -48,6 +48,13 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.ROOM_MANAGEMENT_READ,
   PermissionCode.SHIFT_HANDOVER_READ,
   PermissionCode.SHIFT_HANDOVER_WRITE,
+  PermissionCode.SHIFT_NOTES_READ,
+  PermissionCode.SHIFT_NOTES_WRITE,
+  PermissionCode.COMPLAINTS_READ,
+  PermissionCode.COMPLAINTS_WRITE,
+  PermissionCode.LOANS_READ,
+  PermissionCode.LOANS_WRITE,
+  PermissionCode.LOANS_CATALOG_WRITE,
   PermissionCode.ACTIVITY_LOG_READ,
 ];
 
@@ -122,6 +129,12 @@ export function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.GUIDE_READ);
   s.add(PermissionCode.ROOM_MANAGEMENT_READ);
   s.add(PermissionCode.SHIFT_HANDOVER_READ);
+  s.add(PermissionCode.SHIFT_NOTES_READ);
+  s.add(PermissionCode.SHIFT_NOTES_WRITE);
+  s.add(PermissionCode.COMPLAINTS_READ);
+  s.add(PermissionCode.COMPLAINTS_WRITE);
+  s.add(PermissionCode.LOANS_READ);
+  s.add(PermissionCode.LOANS_WRITE);
   return s;
 }
 

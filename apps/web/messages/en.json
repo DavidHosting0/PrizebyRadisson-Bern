@@ -53,7 +53,10 @@
     "lostFound": "Lost & found",
     "damageReports": "Damage reports",
     "guides": "Guides",
-    "shiftHandover": "Shift handover",
+    "todoList": "To-do list",
+    "shiftHandover": "Shift notes",
+    "complaints": "Complaints",
+    "loans": "Loan items",
     "schichtplan": "Roster",
     "puzzle": "Puzzle",
     "monitorMap": "Monitor Map",
@@ -285,7 +288,7 @@
     "loadError": "Could not load roster."
   },
   "shiftHandover": {
-    "title": "Shift handover",
+    "title": "To-do list",
     "subtitle": "Checklist for the current reception shift. Essential tasks must be done before handing over to the next shift.",
     "activeShift": "Active shift",
     "completed": "total done",

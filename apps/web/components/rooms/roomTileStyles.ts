@@ -32,3 +32,20 @@ export function roomPlanCompactClass(status: string): string {
     floorPlanStatusClasses[status] ?? floorPlanDefaultClass,
   );
 }
+
+/** Complaint heatmap intensity (0 = none, higher = more complaints). */
+export function complaintHeatClass(count: number): string {
+  if (count <= 0) {
+    return 'border-2 border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 text-slate-700 shadow-sm';
+  }
+  if (count === 1) {
+    return 'border-2 border-amber-800/40 bg-gradient-to-b from-amber-300 to-amber-400 text-ink shadow-md';
+  }
+  if (count === 2) {
+    return 'border-2 border-orange-900/40 bg-gradient-to-b from-orange-500 to-orange-600 text-white shadow-md';
+  }
+  if (count <= 4) {
+    return 'border-2 border-red-900/40 bg-gradient-to-b from-red-600 to-red-700 text-white shadow-md';
+  }
+  return 'border-2 border-red-950/50 bg-gradient-to-b from-red-800 to-red-950 text-white shadow-md ring-1 ring-inset ring-white/10';
+}

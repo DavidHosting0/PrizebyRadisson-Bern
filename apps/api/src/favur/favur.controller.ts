@@ -90,6 +90,13 @@ export class FavurController {
     return this.favur.syncNow('manual');
   }
 
+  /** Clears a stuck syncInProgress lock without starting a new sync. */
+  @Post('sync/unlock')
+  @RequirePermissions(PermissionCode.SHIFT_MANAGE)
+  unlockSync() {
+    return this.favur.unlockSync();
+  }
+
   // ---------- extension (API-Key) ----------
 
   /**

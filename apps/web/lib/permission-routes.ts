@@ -60,7 +60,13 @@ export const RECEPTION_NAV: NavItem[] = [
 
   { href: '/r/guides', labelKey: 'guides', permission: 'GUIDE_READ' },
 
-  { href: '/r/schichtuebergabe', labelKey: 'shiftHandover', permission: 'SHIFT_HANDOVER_READ' },
+  { href: '/r/todo', labelKey: 'todoList', permission: 'SHIFT_HANDOVER_READ' },
+
+  { href: '/r/schichtuebergabe', labelKey: 'shiftHandover', permission: 'SHIFT_NOTES_READ' },
+
+  { href: '/r/beschwerden', labelKey: 'complaints', permission: 'COMPLAINTS_READ' },
+
+  { href: '/r/leihartikel', labelKey: 'loans', permission: 'LOANS_READ' },
 
   { href: '/r/schichtplan', labelKey: 'schichtplan', permission: 'SHIFT_READ' },
 

@@ -1,5 +1,5 @@
-import { ShiftHandoverBoard } from '@/components/shift-handover/ShiftHandoverBoard';
+import { ShiftNotesBoard } from '@/components/shift-notes/ShiftNotesBoard';
 
-export default function ReceptionShiftHandoverPage() {
-  return <ShiftHandoverBoard />;
+export default function ReceptionShiftNotesPage() {
+  return <ShiftNotesBoard />;
 }

@@ -7,7 +7,7 @@ import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 
 const t = {
-  title: 'Schichtübergabe',
+  title: 'To-Do-Liste',
   essentialBadge: 'Pflicht',
   loading: 'Laden…',
   loadError: 'Laden fehlgeschlagen.',
@@ -129,7 +129,18 @@ export function ShiftHandoverBoard() {
         </div>
       )}
 
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-action">{t.title}</h2>
+      <div className="sticky top-0 z-10 -mx-2.5 border-b border-border/60 bg-sidebar px-2.5 pb-2 pt-0.5">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-sidebar-muted">
+          {new Date().toLocaleDateString('de-CH', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })}
+        </p>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-action">{t.title}</h2>
+        <p className="mt-0.5 text-sm font-semibold text-white">{data.activeShiftLabel}</p>
+      </div>
 
       <Card className={clsx('border', shiftAccent(data.activeShift))} padding>
         <div className="flex items-start justify-between gap-2">

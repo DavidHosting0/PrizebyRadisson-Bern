@@ -95,6 +95,13 @@ export default function IntegrationsPage() {
     },
   });
 
+  const unlockMut = useMutation({
+    mutationFn: () => api<MirusConfig>('/favur/sync/unlock', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mirus-config'] });
+    },
+  });
+
   const mapUserMut = useMutation({
     mutationFn: ({ id, userId }: { id: string; userId: string | null }) =>
       api<ExternalUserMap>(`/favur/users/${id}`, {
@@ -132,7 +139,7 @@ export default function IntegrationsPage() {
   }, [localUsersQuery.data]);
 
   const canSync =
-    config?.enabled &&
+    !!config?.enabled &&
     !config.syncInProgress &&
     !syncMut.isPending &&
     (config.hasMirusPassword || mirusPassword.trim().length > 0);
@@ -273,8 +280,21 @@ export default function IntegrationsPage() {
             >
               {syncMut.isPending || config?.syncInProgress ? 'Synchronisiert…' : 'Jetzt synchronisieren'}
             </button>
+            {config?.syncInProgress && (
+              <button
+                type="button"
+                onClick={() => unlockMut.mutate()}
+                disabled={unlockMut.isPending}
+                className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+              >
+                {unlockMut.isPending ? 'Setzt zurück…' : 'Hängenden Sync freigeben'}
+              </button>
+            )}
             {syncMut.isError && (
               <span className="text-sm text-rose-700">{(syncMut.error as Error).message}</span>
+            )}
+            {unlockMut.isError && (
+              <span className="text-sm text-rose-700">{(unlockMut.error as Error).message}</span>
             )}
             {updateMut.isError && (
               <span className="text-sm text-rose-700">{(updateMut.error as Error).message}</span>

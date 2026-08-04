@@ -23,6 +23,7 @@ const ADMIN_NAV_GROUPS = [
       { href: '/a/floor-plans', labelKey: 'floorPlans' },
       { href: '/a/guides', labelKey: 'guides' },
       { href: '/a/schichtuebergabe', labelKey: 'shiftHandover' },
+      { href: '/a/leihartikel', labelKey: 'loans' },
     ],
   },
   {
@@ -83,7 +84,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     roles: tAdmin('roles'),
     floorPlans: 'Floor plans',
     guides: 'Guides',
-    shiftHandover: 'Schichtübergabe',
+    shiftHandover: 'To-Do-Vorlagen',
+    loans: 'Leihartikel',
     reservationStats: tAdmin('reservationStats'),
     arrivalCheckPreview: 'Anreise-Check Vorschau',
     activityLog: 'Aktivitätsprotokoll',

@@ -8,6 +8,7 @@ import {
 import { ensureSystemRoles } from '../src/permissions/ensure-system-roles';
 import { BERN_TICKET_GUIDE_SLUG, bernTicketGuideMarkdown, bernTicketGuideSummary } from './seed-guides';
 import { seedShiftHandover } from './seed-shift-handover';
+import { seedLoanCatalog } from './seed-loan-catalog';
 
 const prisma = new PrismaClient();
 
@@ -379,6 +380,7 @@ async function main() {
   });
 
   await seedShiftHandover(prisma);
+  await seedLoanCatalog(prisma);
 
   console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
 }

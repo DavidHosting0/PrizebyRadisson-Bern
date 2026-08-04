@@ -13,7 +13,12 @@ import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
 import { RoomOccupancyBadges, RoomOccupancyGuestLine } from '@/components/rooms/RoomOccupancyDisplay';
-import { roomPlanCompactClass, roomTileClass } from '@/components/rooms/roomTileStyles';
+import {
+  complaintHeatClass,
+  roomPlanCompactClass,
+  roomTileClass,
+} from '@/components/rooms/roomTileStyles';
+import clsx from 'clsx';
 
 export type FloorPlanRoom = {
   id: string;
@@ -26,6 +31,8 @@ export type FloorPlanRoom = {
 type Props = {
   rooms: FloorPlanRoom[];
   onRoomClick: (roomId: string) => void;
+  /** When set, tiles use complaint intensity colors instead of housekeeping status. */
+  complaintCountByRoomId?: Record<string, number>;
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -50,49 +57,88 @@ function roomSuffix(roomNumber: string, floor: number): number | null {
   return n;
 }
 
-function roomButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) {
+function roomButton(
+  room: FloorPlanRoom,
+  onRoomClick: (roomId: string) => void,
+  complaintCount?: number,
+) {
+  const heat = complaintCount != null;
+  const count = complaintCount ?? 0;
   return (
     <button
       key={room.id}
       type="button"
-      className={roomTileClass(room.derivedStatus)}
+      className={
+        heat
+          ? clsx(
+              'rounded-xl px-2 py-2 text-center font-medium transition-shadow hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action',
+              complaintHeatClass(count),
+            )
+          : roomTileClass(room.derivedStatus)
+      }
       onClick={() => onRoomClick(room.id)}
+      title={heat ? `Zimmer ${room.roomNumber} · ${count} Beschwerde(n)` : undefined}
     >
       <span className="flex items-center justify-center gap-1 text-sm font-semibold tabular-nums">
         <span>{room.roomNumber}</span>
-        <RoomOccupancyBadges occupancy={room.occupancy} onColor />
+        {!heat && <RoomOccupancyBadges occupancy={room.occupancy} onColor />}
       </span>
-      <RoomOccupancyGuestLine occupancy={room.occupancy} compact onColor />
-      <span className="mt-1 flex justify-center">
-        <StatusBadge status={room.derivedStatus} variant="onColor" />
-      </span>
+      {heat ? (
+        <span className="mt-1 text-xs font-semibold tabular-nums opacity-90">{count}</span>
+      ) : (
+        <>
+          <RoomOccupancyGuestLine occupancy={room.occupancy} compact onColor />
+          <span className="mt-1 flex justify-center">
+            <StatusBadge status={room.derivedStatus} variant="onColor" />
+          </span>
+        </>
+      )}
     </button>
   );
 }
 
-function roomPlanButton(room: FloorPlanRoom, onRoomClick: (roomId: string) => void) {
+function roomPlanButton(
+  room: FloorPlanRoom,
+  onRoomClick: (roomId: string) => void,
+  complaintCount?: number,
+) {
+  const heat = complaintCount != null;
+  const count = complaintCount ?? 0;
   const guest = room.occupancy?.mainGuestName?.trim();
-  const title = guest
-    ? `Room ${room.roomNumber} · ${guest} · ${room.derivedStatus.replace(/_/g, ' ')}`
-    : room.occupancy
-      ? `Room ${room.roomNumber} · belegt · ${room.derivedStatus.replace(/_/g, ' ')}`
-      : `Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`;
+  const title = heat
+    ? `Zimmer ${room.roomNumber} · ${count} Beschwerde(n)`
+    : guest
+      ? `Room ${room.roomNumber} · ${guest} · ${room.derivedStatus.replace(/_/g, ' ')}`
+      : room.occupancy
+        ? `Room ${room.roomNumber} · belegt · ${room.derivedStatus.replace(/_/g, ' ')}`
+        : `Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`;
   return (
     <button
       key={room.id}
       type="button"
       onClick={() => onRoomClick(room.id)}
-      className={`flex h-full w-full flex-col items-center justify-center gap-0.5 px-0.5 py-1 ${roomPlanCompactClass(room.derivedStatus)}`}
+      className={`flex h-full w-full flex-col items-center justify-center gap-0.5 px-0.5 py-1 ${
+        heat
+          ? clsx(
+              'min-h-[2rem] rounded-lg text-center text-sm font-bold tabular-nums leading-tight transition-shadow hover:shadow-lg',
+              complaintHeatClass(count),
+            )
+          : roomPlanCompactClass(room.derivedStatus)
+      }`}
       title={title}
     >
       <span className="inline-flex max-w-full items-center justify-center gap-0.5">
         <span className="shrink-0">{room.roomNumber}</span>
-        <RoomOccupancyBadges occupancy={room.occupancy} onColor size="xs" />
+        {!heat && <RoomOccupancyBadges occupancy={room.occupancy} onColor size="xs" />}
       </span>
-      {room.occupancy && (
-        <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
-          {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
-        </span>
+      {heat ? (
+        <span className="text-[9px] font-semibold tabular-nums opacity-95">{count}</span>
+      ) : (
+        room.occupancy && (
+          <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
+            {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
+          </span>
+        )
       )}
     </button>
   );
@@ -140,7 +186,10 @@ function floorOneToSixPosition(suffix: number): Rect | null {
   return map[suffix] ?? null;
 }
 
-export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
+export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Props) {
+  const heatMode = complaintCountByRoomId != null;
+  const countFor = (roomId: string) =>
+    heatMode ? (complaintCountByRoomId[roomId] ?? 0) : undefined;
   const [activeFloor, setActiveFloor] = useState<number | 'all' | 'unplaced'>('all');
   const activeFloorNumber = typeof activeFloor === 'number' ? activeFloor : null;
 
@@ -288,27 +337,55 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
       </nav>
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border/50 bg-white/70 px-4 py-2.5 text-[11px] shadow-sm backdrop-blur-sm">
-        <span className="font-semibold text-ink">Room status</span>
-        <span className="inline-flex items-center gap-2 text-ink-muted">
-          <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/35 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
-          Dirty
-        </span>
-        <span className="inline-flex items-center gap-2 text-ink-muted">
-          <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/35 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
-          Clean
-        </span>
-        <span className="inline-flex items-center gap-2 text-ink-muted">
-          <span className="h-3.5 w-7 shrink-0 rounded border border-emerald-900/35 bg-gradient-to-b from-emerald-600 to-emerald-700 shadow-sm" />
-          Inspected
-        </span>
-        <span className="inline-flex items-center gap-2 text-ink-muted">
-          <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/45 bg-gradient-to-b from-amber-400 to-amber-500 shadow-sm" />
-          In progress
-        </span>
-        <span className="inline-flex items-center gap-2 text-ink-muted">
-          <span className="h-3.5 w-7 shrink-0 rounded border border-violet-950/40 bg-gradient-to-b from-violet-600 to-violet-700 shadow-sm" />
-          Out of order
-        </span>
+        {heatMode ? (
+          <>
+            <span className="font-semibold text-ink">Beschwerden</span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 shadow-sm" />
+              0
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/40 bg-gradient-to-b from-amber-300 to-amber-400 shadow-sm" />
+              1
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/40 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
+              2
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/40 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
+              3–4
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-red-950/50 bg-gradient-to-b from-red-800 to-red-950 shadow-sm" />
+              5+
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="font-semibold text-ink">Room status</span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/35 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
+              Dirty
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/35 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
+              Clean
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-emerald-900/35 bg-gradient-to-b from-emerald-600 to-emerald-700 shadow-sm" />
+              Inspected
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/45 bg-gradient-to-b from-amber-400 to-amber-500 shadow-sm" />
+              In progress
+            </span>
+            <span className="inline-flex items-center gap-2 text-ink-muted">
+              <span className="h-3.5 w-7 shrink-0 rounded border border-violet-950/40 bg-gradient-to-b from-violet-600 to-violet-700 shadow-sm" />
+              Out of order
+            </span>
+          </>
+        )}
       </div>
 
       <p className="text-xs text-ink-muted">
@@ -329,7 +406,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 gridTemplateColumns: `repeat(${floorPlanGridCols(unplaced.length)}, minmax(0, 1fr))`,
               }}
             >
-              {unplaced.map((r) => roomButton(r, onRoomClick))}
+              {unplaced.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
             </div>
           </section>
         )}
@@ -359,7 +436,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                         className="absolute p-1"
                         style={{ left, top, width, height }}
                       >
-                        {roomPlanButton(room, onRoomClick)}
+                        {roomPlanButton(room, onRoomClick, countFor(room.id))}
                       </div>
                     );
                   }
@@ -446,7 +523,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                       height: `${(rect.h / 14) * 100}%`,
                     }}
                   >
-                    {roomPlanButton(room, onRoomClick)}
+                    {roomPlanButton(room, onRoomClick, countFor(room.id))}
                   </div>
                 ))}
               </div>
@@ -463,7 +540,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                     gridTemplateColumns: `repeat(${floorPlanGridCols(oneToSixLayout.fallback.length)}, minmax(0, 1fr))`,
                   }}
                 >
-                  {oneToSixLayout.fallback.map((r) => roomButton(r, onRoomClick))}
+                  {oneToSixLayout.fallback.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
                 </div>
               </div>
             )}
@@ -488,7 +565,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                     gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                   }}
                 >
-                  {list.map((r) => roomButton(r, onRoomClick))}
+                  {list.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
                 </div>
               </section>
             );
@@ -506,7 +583,7 @@ export function RoomFloorPlan({ rooms, onRoomClick }: Props) {
                 gridTemplateColumns: `repeat(${floorPlanGridCols(unplaced.length)}, minmax(0, 1fr))`,
               }}
             >
-              {unplaced.map((r) => roomButton(r, onRoomClick))}
+              {unplaced.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
             </div>
           </section>
         )}

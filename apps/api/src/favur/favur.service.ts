@@ -20,8 +20,8 @@ import { syncMirusShifts } from './mirus-shift-sync';
 import type { MirusSessionStored } from './mirus-http-auth';
 
 const SINGLETON_ID = 'default';
-/** If a sync lock is older than this, treat it as abandoned (process crash / proxy timeout). */
-const SYNC_LOCK_STALE_MS = 12 * 60_000;
+/** Abandoned sync locks older than this are cleared automatically. */
+const SYNC_LOCK_STALE_MS = 2 * 60_000;
 
 export type FavurConfigDto = {
   id: string;
@@ -363,35 +363,46 @@ export class FavurService {
 
   /**
    * Clear abandoned sync locks so the admin UI does not stay on "Synchronisiert…".
-   * Playwright day loops can take minutes; anything beyond SYNC_LOCK_STALE_MS is stuck.
+   * Also clears inconsistent state (error already written but lock still held).
    */
   private async clearStaleSyncLock(): Promise<void> {
     const row = await this.ensureRow();
     if (!row.syncInProgress) return;
 
-    // Locks without syncStartedAt are from before this field existed (or a crash
-    // mid-claim) — always clear so the UI cannot stay stuck on "Synchronisiert…".
     const started = row.syncStartedAt;
     const age = started ? Date.now() - started.getTime() : Number.POSITIVE_INFINITY;
-    if (started && age < SYNC_LOCK_STALE_MS) return;
+    const finishedAfterStart =
+      !!row.lastSyncAt &&
+      (!started || row.lastSyncAt.getTime() >= started.getTime() - 1000);
+    const staleByAge = !started || age >= SYNC_LOCK_STALE_MS;
+    // lastSync* was updated while lock still held → previous job died after markFailed / mid-write
+    const inconsistent = finishedAfterStart && age >= 30_000;
+
+    if (!staleByAge && !inconsistent) return;
 
     this.logger.warn(
-      started
-        ? `Clearing stale Mirus sync lock (age ${Math.round(age / 1000)}s)`
-        : 'Clearing abandoned Mirus sync lock (no syncStartedAt)',
+      `Clearing Mirus sync lock (age=${started ? Math.round(age / 1000) : 'unknown'}s, inconsistent=${inconsistent})`,
     );
     await this.prisma.favurIntegration.update({
       where: { id: SINGLETON_ID },
       data: {
         syncInProgress: false,
         syncStartedAt: null,
-        lastSyncStatus: row.lastSyncStatus === 'ok' ? row.lastSyncStatus : 'error',
-        lastSyncError:
-          row.lastSyncError ??
-          'Previous sync was interrupted (timeout or restart). Click sync again.',
-        lastSyncAt: row.lastSyncAt ?? new Date(),
       },
     });
+  }
+
+  /** Admin: force-clear the sync lock so the button is usable again. */
+  async unlockSync(): Promise<FavurConfigDto> {
+    await this.prisma.favurIntegration.update({
+      where: { id: SINGLETON_ID },
+      data: {
+        syncInProgress: false,
+        syncStartedAt: null,
+      },
+    });
+    this.logger.warn('Mirus sync lock force-unlocked by admin');
+    return this.toDto(await this.ensureRow());
   }
 
   /** @deprecated Legacy Favur extension capture replay — kept for reference only. */
@@ -583,6 +594,8 @@ export class FavurService {
         lastSyncAt: new Date(),
         lastSyncStatus: 'error',
         lastSyncError: message.slice(0, 1000),
+        syncInProgress: false,
+        syncStartedAt: null,
       },
     });
   }

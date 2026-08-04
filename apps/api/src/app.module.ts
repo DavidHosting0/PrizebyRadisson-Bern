@@ -36,6 +36,9 @@ import { PushModule } from './push/push.module';
 import { RoomManagementModule } from './room-management/room-management.module';
 import { FrontOfficeModule } from './front-office/front-office.module';
 import { ShiftHandoverModule } from './shift-handover/shift-handover.module';
+import { ShiftNotesModule } from './shift-notes/shift-notes.module';
+import { ComplaintsModule } from './complaints/complaints.module';
+import { LoansModule } from './loans/loans.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -81,6 +84,9 @@ import configuration from './config/configuration';
     RoomManagementModule,
     FrontOfficeModule,
     ShiftHandoverModule,
+    ShiftNotesModule,
+    ComplaintsModule,
+    LoansModule,
     ActivityLogModule,
   ],
   providers: [

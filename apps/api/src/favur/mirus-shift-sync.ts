@@ -285,22 +285,39 @@ async function tryApiPaths(
 }
 
 async function openDayDetail(page: Page): Promise<boolean> {
-  // Compact avatar strip → click opens Anwesend/Arbeitszeit detail list
   const hasDetail = async () =>
     page.evaluate(() => /Arbeitszeit\s*\n?\s*\d{1,2}:\d{2}/.test(document.body?.innerText || ''));
 
   if (await hasDetail()) return true;
 
-  const avatars = page.locator('.team-color-container');
-  if ((await avatars.count()) > 0) {
-    await avatars.first().click({ timeout: 10000 }).catch(() => undefined);
-    await page.waitForTimeout(2500);
+  // Prefer in-page click — more reliable than Playwright hit-testing on Blazor layouts
+  const clicked = await page.evaluate(() => {
+    const el =
+      document.querySelector('.team-color-container') ||
+      document.querySelector('.mud-avatar') ||
+      document.querySelector('.weekCalendarTableContainer');
+    if (!el) return false;
+    (el as HTMLElement).click();
+    return true;
+  });
+  if (clicked) {
+    await page.waitForTimeout(3000);
     if (await hasDetail()) return true;
   }
 
-  // Sometimes the hotel / day header opens the list
-  await page.locator('text=prizeotel').first().click({ timeout: 3000 }).catch(() => undefined);
-  await page.waitForTimeout(2000);
+  const avatars = page.locator('.team-color-container');
+  if ((await avatars.count()) > 0) {
+    await avatars.first().click({ timeout: 10000, force: true }).catch(() => undefined);
+    await page.waitForTimeout(3000);
+    if (await hasDetail()) return true;
+  }
+
+  await page.waitForFunction(
+    () => /Arbeitszeit\s*\n?\s*\d{1,2}:\d{2}/.test(document.body?.innerText || ''),
+    null,
+    { timeout: 15000 },
+  ).catch(() => undefined);
+
   return hasDetail();
 }
 
@@ -345,7 +362,10 @@ async function playwrightScrapeWithSession(
   const origin = baseUrl.replace(/\/+$/, '');
   let browser: Browser | null = null;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
     const context = await browser.newContext({ userAgent: BROWSER_UA, locale: 'de-CH' });
     const host = new URL(origin).hostname;
     await context.addCookies(

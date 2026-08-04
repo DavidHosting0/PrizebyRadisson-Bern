@@ -53,7 +53,10 @@
     "lostFound": "Fundsachen",
     "damageReports": "Schadensmeldungen",
     "guides": "Anleitungen",
+    "todoList": "To-Do-Liste",
     "shiftHandover": "Schichtübergabe",
+    "complaints": "Beschwerden",
+    "loans": "Leihartikel",
     "schichtplan": "Schichtplan",
     "puzzle": "Puzzle",
     "monitorMap": "Monitor Map",
@@ -285,7 +288,7 @@
     "loadError": "Schichtplan konnte nicht geladen werden."
   },
   "shiftHandover": {
-    "title": "Schichtübergabe",
+    "title": "To-Do-Liste",
     "subtitle": "Checkliste für die aktuelle Rezeptionsschicht. Pflichtaufgaben müssen erledigt sein, bevor an die nächste Schicht übergeben werden kann.",
     "activeShift": "Aktive Schicht",
     "completed": "gesamt erledigt",

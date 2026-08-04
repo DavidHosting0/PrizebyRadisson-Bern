@@ -74,6 +74,13 @@ enum PermissionCode {
   ROOM_MANAGEMENT_READ
   SHIFT_HANDOVER_READ
   SHIFT_HANDOVER_WRITE
+  SHIFT_NOTES_READ
+  SHIFT_NOTES_WRITE
+  COMPLAINTS_READ
+  COMPLAINTS_WRITE
+  LOANS_READ
+  LOANS_WRITE
+  LOANS_CATALOG_WRITE
   ACTIVITY_LOG_READ
 }
 
@@ -110,6 +117,16 @@ enum ReceptionHandoverShift {
   NIGHT
   MORNING
   LATE
+}
+
+enum GuestComplaintCategory {
+  ROOM
+  OTHER
+}
+
+enum GuestComplaintStatus {
+  OPEN
+  RESOLVED
 }
 
 enum MonitorMapFeedKind {
@@ -344,6 +361,11 @@ model User {
   guidesUpdated            Guide[] @relation("GuideUpdatedBy")
   roomHousekeepingEvents   RoomHousekeepingEvent[]
   activityLogs             ActivityLog[]
+  shiftNotesCreated        ShiftNote[]              @relation("ShiftNoteCreatedBy")
+  complaintsCreated        GuestComplaint[]         @relation("ComplaintCreatedBy")
+  complaintsResolved       GuestComplaint[]         @relation("ComplaintResolvedBy")
+  roomLoansLoaned          RoomLoan[]               @relation("RoomLoanLoanedBy")
+  roomLoansReturned        RoomLoan[]               @relation("RoomLoanReturnedBy")
 }
 
 /**
@@ -475,6 +497,8 @@ model Room {
   housekeepingEvents RoomHousekeepingEvent[]
   emmaStatusPushOutbox EmmaRoomStatusPushOutbox[]
   guestStays         RoomGuestStay[]
+  guestComplaints    GuestComplaint[]
+  roomLoans          RoomLoan[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1107,6 +1131,74 @@ model ShiftHandoverLog {
   createdAt          DateTime               @default(now())
 
   @@index([createdAt])
+}
+
+/// Reception shift notebook entries (separate from the To-Do checklist).
+model ShiftNote {
+  id              String                   @id @default(cuid())
+  forDate         DateTime                 @db.Date
+  shifts          ReceptionHandoverShift[]
+  body            String                   @db.Text
+  createdByUserId String
+  createdBy       User                     @relation("ShiftNoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([forDate])
+  @@index([createdAt])
+}
+
+model GuestComplaint {
+  id                 String                 @id @default(cuid())
+  category           GuestComplaintCategory
+  roomId             String?
+  room               Room?                  @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  description        String                 @db.Text
+  status             GuestComplaintStatus   @default(OPEN)
+  createdByUserId    String
+  createdBy          User                   @relation("ComplaintCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  resolvedAt         DateTime?
+  resolvedByUserId   String?
+  resolvedBy         User?                  @relation("ComplaintResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@index([roomId])
+  @@index([createdAt])
+  @@index([category])
+  @@index([status])
+}
+
+model LoanItemCatalogEntry {
+  id           String     @id @default(cuid())
+  name         String
+  depositCents Int
+  active       Boolean    @default(true)
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  loans        RoomLoan[]
+
+  @@index([active, sortOrder])
+}
+
+model RoomLoan {
+  id              String               @id @default(cuid())
+  roomId          String
+  room            Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  catalogItemId   String
+  catalogItem     LoanItemCatalogEntry @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+  depositCents    Int
+  loanedAt        DateTime             @default(now())
+  loanedByUserId  String
+  loanedBy        User                 @relation("RoomLoanLoanedBy", fields: [loanedByUserId], references: [id], onDelete: Restrict)
+  returnedAt      DateTime?
+  returnedByUserId String?
+  returnedBy      User?                @relation("RoomLoanReturnedBy", fields: [returnedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([returnedAt])
+  @@index([roomId])
+  @@index([catalogItemId])
 }
 
 model Guide {

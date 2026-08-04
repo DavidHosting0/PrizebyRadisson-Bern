@@ -151,17 +151,58 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
   },
   {
     id: 'shift-handover',
-    label: 'Shift handover',
+    label: 'Shift handover / To-Do',
     entries: [
       {
         code: PermissionCode.SHIFT_HANDOVER_READ,
-        title: 'Use shift handover',
-        description: 'Open the shift handover checklist, tick tasks, and hand over to the next shift.',
+        title: 'Use To-Do checklist',
+        description: 'Open the shift To-Do checklist, tick tasks, and hand over to the next shift.',
       },
       {
         code: PermissionCode.SHIFT_HANDOVER_WRITE,
-        title: 'Manage shift handover templates',
+        title: 'Manage To-Do templates',
         description: 'Edit checklist tasks for night, morning, and late reception shifts.',
+      },
+      {
+        code: PermissionCode.SHIFT_NOTES_READ,
+        title: 'Read shift notes',
+        description: 'View reception shift handover notes.',
+      },
+      {
+        code: PermissionCode.SHIFT_NOTES_WRITE,
+        title: 'Write shift notes',
+        description: 'Create and edit reception shift handover notes.',
+      },
+    ],
+  },
+  {
+    id: 'complaints-loans',
+    label: 'Complaints & loans',
+    entries: [
+      {
+        code: PermissionCode.COMPLAINTS_READ,
+        title: 'View complaints',
+        description: 'Open the guest complaints list and heatmap.',
+      },
+      {
+        code: PermissionCode.COMPLAINTS_WRITE,
+        title: 'Manage complaints',
+        description: 'Create and resolve guest complaints.',
+      },
+      {
+        code: PermissionCode.LOANS_READ,
+        title: 'View room loans',
+        description: 'See currently loaned items and deposit amounts.',
+      },
+      {
+        code: PermissionCode.LOANS_WRITE,
+        title: 'Manage room loans',
+        description: 'Loan items to rooms and mark them returned.',
+      },
+      {
+        code: PermissionCode.LOANS_CATALOG_WRITE,
+        title: 'Manage loan catalog',
+        description: 'Edit loanable items and deposit amounts.',
       },
     ],
   },
