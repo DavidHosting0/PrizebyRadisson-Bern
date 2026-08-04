@@ -419,31 +419,25 @@ export default function SupervisorBoardPage() {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:h-full">
-      <div className="shrink-0 border-b border-sidebar-border bg-sidebar text-white">
-        <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4 md:px-5 md:py-4">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">
-              Housekeeping
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight text-white md:text-2xl">
+      <div className="shrink-0 bg-sidebar text-white">
+        {/* Match AppSidebar logo block height (px-4 py-5 + min-h-12) so borders align */}
+        <div className="flex flex-nowrap items-center justify-between gap-3 overflow-x-auto border-b border-sidebar-border px-4 py-5 md:px-5">
+          <div className="flex min-h-12 min-w-0 flex-1 items-center gap-3">
+            <h1 className="truncate text-lg font-semibold tracking-tight text-white md:text-xl">
               Room assignment
             </h1>
-            <p className="mt-1 max-w-xl text-sm text-sidebar-muted">
-              Drag rooms onto cleaners or Unassigned. Dark red = departure · matte yellow = restant ·
-              aqua = public.
-            </p>
             {plan?.status === 'SAVED' && plan.savedAt && (
-              <p className="mt-2 text-xs font-medium text-emerald-300">
-                Saved for today · {new Date(plan.savedAt).toLocaleString()}
-              </p>
+              <span className="hidden truncate text-xs font-medium text-emerald-300 sm:inline">
+                Saved · {new Date(plan.savedAt).toLocaleString()}
+              </span>
             )}
             {canSave && (
-              <p className="mt-2 text-xs font-medium text-amber-200">
-                Auto assignment on the board — save to lock it for today.
-              </p>
+              <span className="hidden truncate text-xs font-medium text-amber-200 sm:inline">
+                Unsaved auto-assign
+              </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <div className="hidden items-center gap-2 md:flex">
               <CommandPaletteTrigger onDark className="min-h-[40px] gap-2 px-3 text-xs" />
               <LanguageSwitcher compact onDark />
@@ -458,20 +452,20 @@ export default function SupervisorBoardPage() {
             </div>
             <Link
               href="/s/public-areas"
-              className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
+              className="inline-flex min-h-[40px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-3 text-sm font-medium text-white transition hover:bg-white/10"
             >
               Public areas
             </Link>
             <Link
               href="/s/departures"
-              className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
+              className="inline-flex min-h-[40px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-3 text-sm font-medium text-white transition hover:bg-white/10"
             >
               Departures
             </Link>
             {canSave && (
               <Button
                 variant="secondary"
-                className="min-h-[48px] shrink-0 border-0 bg-white/10 text-white hover:bg-white/15"
+                className="min-h-[40px] shrink-0 border-0 bg-white/10 text-white hover:bg-white/15"
                 disabled={savePlan.isPending}
                 onClick={() => savePlan.mutate()}
               >
@@ -480,7 +474,7 @@ export default function SupervisorBoardPage() {
             )}
             <Button
               variant="action"
-              className="min-h-[48px] shrink-0 shadow-md"
+              className="min-h-[40px] shrink-0 shadow-md"
               onClick={() => setAutoOpen(true)}
             >
               Auto room assignment
@@ -488,7 +482,7 @@ export default function SupervisorBoardPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/40 px-4 py-3 md:px-5">
+        <div className="flex flex-wrap gap-3 bg-sidebar-hover/40 px-4 py-3 md:px-5">
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
               Floor
