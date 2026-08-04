@@ -28,6 +28,7 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.ANALYTICS_READ,
   PermissionCode.TEAM_CHAT_READ,
   PermissionCode.TEAM_CHAT_POST,
+  PermissionCode.TEAM_CHAT_DELETE,
   PermissionCode.USERS_READ,
   PermissionCode.USERS_READ_HOUSEKEEPERS,
   PermissionCode.USERS_WRITE,
@@ -122,6 +123,7 @@ export function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.FLOOR_PLAN_READ);
   s.add(PermissionCode.TEAM_CHAT_READ);
   s.add(PermissionCode.TEAM_CHAT_POST);
+  s.add(PermissionCode.TEAM_CHAT_DELETE);
   s.add(PermissionCode.SETTINGS_READ);
   s.add(PermissionCode.SHIFT_READ);
   s.add(PermissionCode.RESERVATIONS_READ);

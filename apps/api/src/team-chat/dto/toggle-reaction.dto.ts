@@ -1,7 +1,9 @@
-import { IsEnum } from 'class-validator';
-import { TeamChatReactionType } from '@prisma/client';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 
 export class ToggleReactionDto {
-  @IsEnum(TeamChatReactionType)
-  type!: TeamChatReactionType;
+  /** Unicode emoji or short emoji sequence (e.g. "👍", "❤️"). */
+  @IsString()
+  @MinLength(1)
+  @MaxLength(32)
+  emoji!: string;
 }

@@ -16,20 +16,18 @@ import { userTitlePrefixLabel, formatUserWithTitlePrefix } from '@/lib/userTitle
 import { useDamageTypeLabel } from '@/lib/damageReportTypes';
 import { MentionText } from '@/components/team-chat/MentionText';
 import { MentionComposer } from '@/components/team-chat/MentionComposer';
+import {
+  MessageContextMenu,
+  MessageMenuScrim,
+  menuAnchorFromEvent,
+} from '@/components/team-chat/MessageContextMenu';
 import { useLocale } from '@/lib/locale-context';
 import { useTranslations } from 'next-intl';
 
-const REACTION_TYPES = [
-  { type: 'THUMBS_UP', emoji: '👍', label: 'Thumbs up' },
-  { type: 'CHECK_MARK', emoji: '✅', label: 'Correct' },
-  { type: 'HEART', emoji: '❤️', label: 'Heart' },
-  { type: 'EYES', emoji: '👀', label: 'Eyes' },
-  { type: 'EXCLAMATION_QUESTION', emoji: '⁉️', label: 'Exclamation question mark' },
-] as const;
-
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
+const LONG_PRESS_MS = 480;
 
-type ReactionSummary = { type: string; count: number; me: boolean };
+type ReactionSummary = { emoji: string; count: number; me: boolean };
 
 type ChatAuthor = {
   id: string;
@@ -52,6 +50,7 @@ type ChatMsg = {
     bodyTranslated?: string | null;
     createdAt: string;
     author: ChatAuthor;
+    deleted?: boolean;
   } | null;
   reactions: ReactionSummary[];
   mentions?: ChatAuthor[];
@@ -234,6 +233,7 @@ export function TeamChatView({
   const damageLabel = useDamageTypeLabel();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const canPost = usePermission('TEAM_CHAT_POST');
+  const canDelete = usePermission('TEAM_CHAT_DELETE');
   const canReadDamage = usePermission('DAMAGE_REPORT_READ');
   const canUpdateDamage = usePermission('DAMAGE_REPORT_UPDATE');
   const qc = useQueryClient();
@@ -248,11 +248,18 @@ export function TeamChatView({
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
-  const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{
+    message: ChatMsg;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const touchMsgId = useRef<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+
 
   const { data: messages = [], isLoading: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
@@ -324,6 +331,7 @@ export function TeamChatView({
     const onDmg = () => qc.invalidateQueries({ queryKey: ['damage-reports'] });
     socket.on('team_chat.message', onChat);
     socket.on('team_chat.reaction', onReact);
+    socket.on('team_chat.deleted', onChat);
     socket.on('service_request.created', onReq);
     socket.on('service_request.claimed', onReq);
     socket.on('service_request.resolved', onReq);
@@ -333,6 +341,7 @@ export function TeamChatView({
     return () => {
       socket?.off('team_chat.message', onChat);
       socket?.off('team_chat.reaction', onReact);
+      socket?.off('team_chat.deleted', onChat);
       socket?.off('service_request.created', onReq);
       socket?.off('service_request.claimed', onReq);
       socket?.off('service_request.resolved', onReq);
@@ -439,14 +448,9 @@ export function TeamChatView({
   }, [scrollToBottom, loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline.length, timelineTailKey]);
 
   useEffect(() => {
-    function onDocDown(e: MouseEvent) {
-      const t = e.target as HTMLElement;
-      if (!t.closest?.('[data-chat-reaction-picker]')) {
-        setPickerFor(null);
-      }
-    }
-    document.addEventListener('mousedown', onDocDown);
-    return () => document.removeEventListener('mousedown', onDocDown);
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    };
   }, []);
 
   const send = useMutation({
@@ -471,12 +475,25 @@ export function TeamChatView({
   });
 
   const toggleReaction = useMutation({
-    mutationFn: ({ messageId, type }: { messageId: string; type: string }) =>
+    mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
       api(`/team-chat/messages/${messageId}/reactions`, {
         method: 'POST',
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ emoji }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] }),
+  });
+
+  const deleteMessage = useMutation({
+    mutationFn: (messageId: string) =>
+      api(`/team-chat/messages/${messageId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setMenu(null);
+      qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+      toast.push(tChat('messageDeleted'), 'success');
+    },
+    onError: (e: unknown) => {
+      toast.push(e instanceof Error ? e.message : tChat('deleteFailed'), 'warning');
+    },
   });
 
   const claim = useMutation({
@@ -509,19 +526,67 @@ export function TeamChatView({
     send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds });
   }
 
-  const startReply = useCallback((m: ChatMsg) => {
-    setReplyTo({ id: m.id, body: m.body, author: m.author });
-    setPickerFor(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const openMenu = useCallback((message: ChatMsg, x: number, y: number) => {
+    setMenu({ message, x, y });
   }, []);
 
-  const onMsgTouchStart = useCallback((e: React.TouchEvent, id: string) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    touchMsgId.current = id;
+  const startReply = useCallback((m: ChatMsg) => {
+    setReplyTo({ id: m.id, body: m.body, author: m.author });
+    setMenu(null);
   }, []);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const onMsgTouchStart = useCallback(
+    (e: React.TouchEvent, m: ChatMsg) => {
+      touchStartX.current = e.touches[0].clientX;
+      touchStartY.current = e.touches[0].clientY;
+      touchMsgId.current = m.id;
+      longPressTriggered.current = false;
+      clearLongPress();
+      const touch = e.touches[0];
+      longPressTimer.current = setTimeout(() => {
+        longPressTriggered.current = true;
+        openMenu(m, touch.clientX, touch.clientY);
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try {
+            navigator.vibrate(12);
+          } catch {
+            /* ignore */
+          }
+        }
+      }, LONG_PRESS_MS);
+    },
+    [clearLongPress, openMenu],
+  );
+
+  const onMsgTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartX.current == null || touchStartY.current == null) return;
+      const dx = Math.abs(e.touches[0].clientX - touchStartX.current);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY.current);
+      if (dx > 12 || dy > 12) clearLongPress();
+    },
+    [clearLongPress],
+  );
 
   const onMsgTouchEnd = useCallback(
     (e: React.TouchEvent, m: ChatMsg) => {
+      clearLongPress();
+      if (longPressTriggered.current) {
+        longPressTriggered.current = false;
+        touchStartX.current = null;
+        touchStartY.current = null;
+        touchMsgId.current = null;
+        return;
+      }
       if (touchMsgId.current !== m.id || touchStartX.current == null || touchStartY.current == null) {
         touchStartX.current = null;
         touchMsgId.current = null;
@@ -536,11 +601,30 @@ export function TeamChatView({
       touchStartY.current = null;
       touchMsgId.current = null;
     },
-    [startReply],
+    [clearLongPress, startReply],
+  );
+
+  const onMsgContextMenu = useCallback(
+    (e: React.MouseEvent, m: ChatMsg) => {
+      e.preventDefault();
+      const anchor = menuAnchorFromEvent(e);
+      openMenu(m, anchor.x, anchor.y);
+    },
+    [openMenu],
   );
 
   const isHk = user?.role === 'HOUSEKEEPER';
 
+  const menuLabels = useMemo(
+    () => ({
+      reply: tChat('reply'),
+      delete: tChat('delete'),
+      react: tChat('react'),
+      moreEmojis: tChat('moreEmojis'),
+      close: tCommon('close'),
+    }),
+    [tChat, tCommon],
+  );
   return (
     <div
       className={clsx(
@@ -711,9 +795,13 @@ export function TeamChatView({
                   'group relative flex w-full touch-pan-y',
                   mine ? 'justify-end' : 'justify-start',
                   isHead ? 'mt-3' : 'mt-0.5',
+                  menu?.message.id === m.id && 'z-10',
                 )}
-                onTouchStart={(e) => onMsgTouchStart(e, m.id)}
+                onTouchStart={(e) => onMsgTouchStart(e, m)}
+                onTouchMove={onMsgTouchMove}
                 onTouchEnd={(e) => onMsgTouchEnd(e, m)}
+                onTouchCancel={clearLongPress}
+                onContextMenu={(e) => onMsgContextMenu(e, m)}
               >
                 <div
                   className={clsx(
@@ -730,11 +818,10 @@ export function TeamChatView({
                   <div className="relative min-w-0">
                     <div
                       className={clsx(
-                        'relative min-w-[56px] px-3.5 py-2 text-sm shadow-sm',
+                        'relative min-w-[56px] select-none px-3.5 py-2 text-sm shadow-sm',
                         mine
                           ? 'bg-action-muted text-ink'
                           : 'bg-surface text-ink border border-border/60',
-                        // WhatsApp-ish rounded corners w/ tail:
                         mine
                           ? isTail
                             ? 'rounded-2xl rounded-br-md'
@@ -742,6 +829,7 @@ export function TeamChatView({
                           : isTail
                             ? 'rounded-2xl rounded-bl-md'
                             : 'rounded-2xl',
+                        menu?.message.id === m.id && 'ring-2 ring-action/35',
                       )}
                     >
                       {!mine && isHead && (
@@ -763,7 +851,11 @@ export function TeamChatView({
                           )}
                         >
                           <span className="font-semibold text-ink">{m.replyTo.author.name}</span>
-                          <p className="mt-0.5 truncate text-ink-muted">{truncateBody(m.replyTo.body, 120)}</p>
+                          <p className="mt-0.5 truncate text-ink-muted">
+                            {m.replyTo.deleted
+                              ? tChat('deletedMessage')
+                              : truncateBody(m.replyTo.body, 120)}
+                          </p>
                         </div>
                       )}
 
@@ -777,44 +869,6 @@ export function TeamChatView({
                       >
                         {formatClock(m.createdAt)}
                       </span>
-
-                      {/* hover reply handle (desktop) */}
-                      <button
-                        type="button"
-                        title="Reply"
-                        aria-label="Reply to message"
-                        onClick={() => startReply(m)}
-                        className={clsx(
-                          'absolute top-1 hidden h-7 w-7 items-center justify-center rounded-full border border-border bg-surface text-ink-muted shadow-sm transition-opacity hover:text-ink group-hover:flex',
-                          mine ? '-left-9' : '-right-9',
-                        )}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                          <path
-                            d="M10 9V5L3 12l7 7v-4.1c5 0 8.5 1.6 11 5.1-1-6-4.5-12-11-13z"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
-
-                      {/* reaction add button, floats bottom-corner */}
-                      {canPost && (
-                        <button
-                          type="button"
-                          title="Add reaction"
-                          aria-label="Add reaction"
-                          onClick={() => setPickerFor((id) => (id === m.id ? null : m.id))}
-                          data-chat-reaction-picker
-                          className={clsx(
-                            'absolute -bottom-3 hidden h-7 w-7 items-center justify-center rounded-full border border-border bg-surface text-base shadow-sm transition-opacity group-hover:flex',
-                            mine ? '-left-3' : '-right-3',
-                          )}
-                        >
-                          <span aria-hidden>🙂</span>
-                        </button>
-                      )}
                     </div>
 
                     {(m.reactions ?? []).length > 0 && (
@@ -823,53 +877,25 @@ export function TeamChatView({
                           '-mt-1.5 flex flex-wrap items-center gap-1 px-0.5',
                           mine ? 'justify-end' : 'justify-start',
                         )}
-                        data-chat-reaction-picker
                       >
-                        {(m.reactions ?? []).map((rx) => {
-                          const def = REACTION_TYPES.find((t) => t.type === rx.type);
-                          if (!def) return null;
-                          return (
-                            <button
-                              key={rx.type}
-                              type="button"
-                              title={def.label}
-                              disabled={!canPost || toggleReaction.isPending}
-                              onClick={() => toggleReaction.mutate({ messageId: m.id, type: rx.type })}
-                              className={clsx(
-                                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-sm transition-colors',
-                                rx.me
-                                  ? 'border-action/40 bg-action-muted font-medium text-ink'
-                                  : 'border-border bg-surface text-ink-muted hover:bg-surface-muted',
-                              )}
-                            >
-                              <span>{def.emoji}</span>
-                              <span className="tabular-nums">{rx.count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {pickerFor === m.id && canPost && (
-                      <div
-                        className={clsx(
-                          'absolute z-10 mt-1 flex gap-1 rounded-full border border-border bg-surface p-1 shadow-lift',
-                          mine ? 'right-0' : 'left-0',
-                        )}
-                        data-chat-reaction-picker
-                      >
-                        {REACTION_TYPES.map((rt) => (
+                        {(m.reactions ?? []).map((rx) => (
                           <button
-                            key={rt.type}
+                            key={rx.emoji}
                             type="button"
-                            title={rt.label}
-                            className="flex h-9 w-9 items-center justify-center rounded-full text-xl hover:bg-surface-muted"
-                            onClick={() => {
-                              toggleReaction.mutate({ messageId: m.id, type: rt.type });
-                              setPickerFor(null);
-                            }}
+                            title={rx.emoji}
+                            disabled={!canPost || toggleReaction.isPending}
+                            onClick={() =>
+                              toggleReaction.mutate({ messageId: m.id, emoji: rx.emoji })
+                            }
+                            className={clsx(
+                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-sm transition-colors',
+                              rx.me
+                                ? 'border-action/40 bg-action-muted font-medium text-ink'
+                                : 'border-border bg-surface text-ink-muted hover:bg-surface-muted',
+                            )}
                           >
-                            {rt.emoji}
+                            <span>{rx.emoji}</span>
+                            <span className="tabular-nums">{rx.count}</span>
                           </button>
                         ))}
                       </div>
@@ -979,6 +1005,30 @@ export function TeamChatView({
 
       {canCreateRequest && <NewRequestModal open={newReqOpen} onClose={() => setNewReqOpen(false)} />}
       <ProfilePhotoSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
+
+      <MessageMenuScrim open={!!menu} />
+      <MessageContextMenu
+        open={!!menu}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        canReact={canPost}
+        canDelete={canDelete}
+        labels={menuLabels}
+        onClose={closeMenu}
+        onReply={() => {
+          if (menu) startReply(menu.message);
+        }}
+        onReact={(emoji) => {
+          if (!menu) return;
+          toggleReaction.mutate({ messageId: menu.message.id, emoji });
+          closeMenu();
+        }}
+        onDelete={() => {
+          if (!menu) return;
+          if (!window.confirm(tChat('deleteConfirm'))) return;
+          deleteMessage.mutate(menu.message.id);
+        }}
+      />
     </div>
   );
 }

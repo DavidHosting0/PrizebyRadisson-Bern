@@ -12,6 +12,9 @@ import { BoardRoomCard, boardTileKindForRoom, type BoardRoom, type BoardTileKind
 import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
 import { Button } from '@/components/ui/Button';
+import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
+import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
+import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 
 type AssignmentRow = {
   id: string;
@@ -99,6 +102,7 @@ function PublicTaskCard({
 export default function SupervisorBoardPage() {
   const qc = useQueryClient();
   const today = hotelTodayIso();
+  const { enterMobile } = useSupervisorMobileMode();
   const [floor, setFloor] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [panelRoomId, setPanelRoomId] = useState<string | null>(null);
@@ -127,8 +131,10 @@ export default function SupervisorBoardPage() {
 
   const queueRooms = useMemo(() => {
     return roomsRaw.filter((r) => {
-      if (statusFilter && r.derivedStatus !== statusFilter) return false;
-      return true;
+      if (statusFilter) return r.derivedStatus === statusFilter;
+      // Cleaning assignment queue only — INSPECTED/CLEAN stay for the inspection flow
+      // (still clean from yesterday; need re-inspect, not a cleaner assignment).
+      return r.derivedStatus === 'DIRTY' || r.derivedStatus === 'IN_PROGRESS';
     });
   }, [roomsRaw, statusFilter]);
 
@@ -412,109 +418,115 @@ export default function SupervisorBoardPage() {
   const draggingRoomId = drag?.room.id ?? null;
 
   return (
-    <div className="relative min-w-0">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,_rgba(59,111,160,0.12),_transparent_50%),radial-gradient(ellipse_at_bottom_right,_rgba(26,35,50,0.08),_transparent_45%)]"
-        aria-hidden
-      />
-
-      <div className="flex min-w-0 flex-col gap-6 p-4 md:p-8">
-        <div className="overflow-hidden rounded-card border border-sidebar-border/40 bg-sidebar text-white shadow-lift">
-          <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-5 md:px-6">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">
-                Housekeeping
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:h-full">
+      <div className="shrink-0 border-b border-sidebar-border bg-sidebar text-white">
+        <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-4 md:px-5 md:py-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sidebar-muted">
+              Housekeeping
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight text-white md:text-2xl">
+              Room assignment
+            </h1>
+            <p className="mt-1 max-w-xl text-sm text-sidebar-muted">
+              Drag rooms onto cleaners or Unassigned. Dark red = departure · matte yellow = restant ·
+              aqua = public.
+            </p>
+            {plan?.status === 'SAVED' && plan.savedAt && (
+              <p className="mt-2 text-xs font-medium text-emerald-300">
+                Saved for today · {new Date(plan.savedAt).toLocaleString()}
               </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">
-                Room assignment
-              </h1>
-              <p className="mt-1.5 max-w-xl text-sm text-sidebar-muted">
-                Drag a room — it follows your cursor — onto a cleaner column or back to Unassigned.
-                Tile colors: dark red = departure, matte yellow = restant, aqua = public.
+            )}
+            {canSave && (
+              <p className="mt-2 text-xs font-medium text-amber-200">
+                Auto assignment on the board — save to lock it for today.
               </p>
-              {plan?.status === 'SAVED' && plan.savedAt && (
-                <p className="mt-2 text-xs font-medium text-emerald-300">
-                  Saved for today · {new Date(plan.savedAt).toLocaleString()}
-                </p>
-              )}
-              {canSave && (
-                <p className="mt-2 text-xs font-medium text-amber-200">
-                  Auto assignment on the board — save to lock it for today.
-                </p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/s/public-areas"
-                className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
-              >
-                Public areas
-              </Link>
-              <Link
-                href="/s/departures"
-                className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
-              >
-                Departures
-              </Link>
-              {canSave && (
-                <Button
-                  variant="secondary"
-                  className="min-h-[48px] shrink-0 border-0 bg-white/10 text-white hover:bg-white/15"
-                  disabled={savePlan.isPending}
-                  onClick={() => savePlan.mutate()}
-                >
-                  {savePlan.isPending ? 'Saving…' : 'Save for today'}
-                </Button>
-              )}
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="hidden items-center gap-2 md:flex">
+              <CommandPaletteTrigger onDark className="min-h-[40px] gap-2 px-3 text-xs" />
+              <LanguageSwitcher compact onDark />
               <Button
-                variant="action"
-                className="min-h-[48px] shrink-0 shadow-md"
-                onClick={() => setAutoOpen(true)}
+                type="button"
+                variant="ghost"
+                className="min-h-[40px] border border-sidebar-border bg-transparent px-3 text-xs text-sidebar-muted hover:bg-white/10 hover:text-white"
+                onClick={enterMobile}
               >
-                Auto room assignment
+                Mobile view
               </Button>
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/50 px-5 py-3 md:px-6">
-            <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                Floor
-              </label>
-              <select
-                className="mt-1 min-h-[40px] min-w-[120px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
-                value={floor}
-                onChange={(e) => setFloor(e.target.value)}
+            <Link
+              href="/s/public-areas"
+              className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              Public areas
+            </Link>
+            <Link
+              href="/s/departures"
+              className="inline-flex min-h-[44px] items-center rounded-btn border border-sidebar-border bg-sidebar-hover px-4 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              Departures
+            </Link>
+            {canSave && (
+              <Button
+                variant="secondary"
+                className="min-h-[48px] shrink-0 border-0 bg-white/10 text-white hover:bg-white/15"
+                disabled={savePlan.isPending}
+                onClick={() => savePlan.mutate()}
               >
-                <option value="">All</option>
-                {floors.map((f) => (
-                  <option key={f} value={String(f)}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                Status
-              </label>
-              <select
-                className="mt-1 min-h-[40px] min-w-[160px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="DIRTY">Dirty</option>
-                <option value="IN_PROGRESS">In progress</option>
-                <option value="CLEAN">Clean</option>
-                <option value="INSPECTED">Inspected</option>
-              </select>
-            </div>
+                {savePlan.isPending ? 'Saving…' : 'Save for today'}
+              </Button>
+            )}
+            <Button
+              variant="action"
+              className="min-h-[48px] shrink-0 shadow-md"
+              onClick={() => setAutoOpen(true)}
+            >
+              Auto room assignment
+            </Button>
           </div>
         </div>
 
-        <div className="-mx-4 min-w-0 overflow-x-scroll overflow-y-visible overscroll-x-contain px-4 pb-6 md:-mx-8 md:px-8">
-          <div className="flex w-max items-start gap-4">
+        <div className="flex flex-wrap gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/40 px-4 py-3 md:px-5">
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+              Floor
+            </label>
+            <select
+              className="mt-1 min-h-[40px] min-w-[120px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
+              value={floor}
+              onChange={(e) => setFloor(e.target.value)}
+            >
+              <option value="">All</option>
+              {floors.map((f) => (
+                <option key={f} value={String(f)}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+              Status
+            </label>
+            <select
+              className="mt-1 min-h-[40px] min-w-[160px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">All (cleaning)</option>
+              <option value="DIRTY">Dirty</option>
+              <option value="IN_PROGRESS">In progress</option>
+              <option value="CLEAN">Clean</option>
+              <option value="INSPECTED">Inspected</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-x-contain bg-[#121a26] [background-image:radial-gradient(ellipse_at_top,_rgba(59,111,160,0.14),_transparent_55%)]">
+        <div className="flex w-max items-stretch gap-3 p-3 md:gap-4 md:p-4">
             <div
               data-drop-zone="unassigned"
               className={clsx(
@@ -529,7 +541,7 @@ export default function SupervisorBoardPage() {
                   Unassigned
                 </h2>
                 <p className="mt-0.5 text-[11px] text-sidebar-muted/80">
-                  Drop here to unassign
+                  Dirty / in progress only · drop here to unassign
                 </p>
               </div>
               <div className="space-y-2.5 p-3">
@@ -666,7 +678,6 @@ export default function SupervisorBoardPage() {
             })}
           </div>
         </div>
-      </div>
 
       {drag?.active && (
         <div

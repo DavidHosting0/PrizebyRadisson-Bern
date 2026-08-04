@@ -116,6 +116,44 @@ export class InspectionQueueService {
     });
   }
 
+  /**
+   * Ensure CLEAN / overnight-INSPECTED rooms appear on today's shared inspection queue
+   * when inspectors are on duty (without resetting CLAIMED/DONE).
+   */
+  async ensurePendingForRooms(roomIds: string[], dateIso = hotelTodayIso()) {
+    const date = dateOnlyFromIso(dateIso);
+    const dutyCount = await this.prisma.dailyInspectionDuty.count({ where: { date } });
+    if (dutyCount === 0 || roomIds.length === 0) return;
+
+    for (const roomId of roomIds) {
+      const existing = await this.prisma.dailyInspectionTask.findUnique({
+        where: { date_roomId: { date, roomId } },
+      });
+      if (
+        existing &&
+        (existing.status === DailyInspectionTaskStatus.PENDING ||
+          existing.status === DailyInspectionTaskStatus.CLAIMED ||
+          existing.status === DailyInspectionTaskStatus.DONE)
+      ) {
+        continue;
+      }
+      await this.prisma.dailyInspectionTask.upsert({
+        where: { date_roomId: { date, roomId } },
+        create: {
+          date,
+          roomId,
+          status: DailyInspectionTaskStatus.PENDING,
+        },
+        update: {
+          status: DailyInspectionTaskStatus.PENDING,
+          claimedByUserId: null,
+          claimedAt: null,
+          completedInspectionId: null,
+        },
+      });
+    }
+  }
+
   async cancelOpenTaskForRoom(roomId: string, dateIso = hotelTodayIso()) {
     await this.prisma.dailyInspectionTask.updateMany({
       where: {

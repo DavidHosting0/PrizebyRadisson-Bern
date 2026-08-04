@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { PermissionCode, User } from '@prisma/client';
 import { TeamChatService } from './team-chat.service';
 import { PostTeamChatDto } from './dto/post-team-chat.dto';
@@ -37,6 +37,12 @@ export class TeamChatController {
     @Body() dto: ToggleReactionDto,
     @CurrentUser() user: User,
   ) {
-    return this.svc.toggleReaction(messageId, dto.type, user);
+    return this.svc.toggleReaction(messageId, dto.emoji, user);
+  }
+
+  @Delete('messages/:messageId')
+  @RequirePermissions(PermissionCode.TEAM_CHAT_DELETE)
+  deleteMessage(@Param('messageId') messageId: string, @CurrentUser() user: User) {
+    return this.svc.softDelete(messageId, user);
   }
 }

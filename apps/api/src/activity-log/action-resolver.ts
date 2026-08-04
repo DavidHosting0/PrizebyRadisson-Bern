@@ -94,6 +94,7 @@ const RULES: RouteRule[] = [
   // Team chat
   { method: 'POST', pattern: /^\/team-chat\/messages$/, action: 'team_chat.message.create', label: 'Chat-Nachricht gesendet', category: ActivityLogCategory.TEAM_CHAT },
   { method: 'POST', pattern: /^\/team-chat\/messages\/([^/]+)\/reactions$/, action: 'team_chat.reaction', label: 'Chat-Reaktion gesetzt', category: ActivityLogCategory.TEAM_CHAT, resourceType: 'team_chat_message', resourceIndex: 1 },
+  { method: 'DELETE', pattern: /^\/team-chat\/messages\/([^/]+)$/, action: 'team_chat.message.delete', label: 'Chat-Nachricht gelöscht', category: ActivityLogCategory.TEAM_CHAT, resourceType: 'team_chat_message', resourceIndex: 1 },
 
   // Mirus / shifts
   { method: 'PUT', pattern: /^\/mirus\/config$/, action: 'mirus.config.update', label: 'Mirus-Konfiguration geändert', category: ActivityLogCategory.SHIFT },

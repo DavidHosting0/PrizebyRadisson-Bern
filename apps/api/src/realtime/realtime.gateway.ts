@@ -62,6 +62,10 @@ export class RealtimeGateway implements OnGatewayConnection {
     this.server?.emit('team_chat.reaction', payload);
   }
 
+  emitTeamChatDeleted(payload: unknown) {
+    this.server?.emit('team_chat.deleted', payload);
+  }
+
   emitDamageReport(event: string, payload: unknown) {
     this.server?.emit(event, payload);
   }

@@ -102,6 +102,11 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     entries: [
       { code: PermissionCode.TEAM_CHAT_READ, title: 'Read team chat', description: 'See team chat messages.' },
       { code: PermissionCode.TEAM_CHAT_POST, title: 'Send messages', description: 'Post messages and reactions.' },
+      {
+        code: PermissionCode.TEAM_CHAT_DELETE,
+        title: 'Delete messages',
+        description: 'Delete team chat messages (reception moderation).',
+      },
     ],
   },
   {

@@ -22,6 +22,7 @@ import {
   DailyCleaningTaskKind,
   DailyCleaningTaskSource,
   DailyCleaningWorkType,
+  DailyInspectionTaskStatus,
   PublicAreaKind,
   User,
   UserRole,
@@ -301,6 +302,33 @@ export class DailyCleaningService implements OnModuleInit {
     return items;
   }
 
+  /**
+   * CLEAN + overnight INSPECTED rooms are not cleaning work — they go on the inspection queue
+   * when inspectors are scheduled for the day.
+   */
+  private async syncInspectReadyRooms(dateIso: string) {
+    const rooms = await this.prisma.room.findMany({
+      include: {
+        checklistStates: { take: 1, include: { tasks: true } },
+        inspections: { orderBy: { inspectedAt: 'desc' }, take: 3 },
+      },
+    });
+    const readyIds: string[] = [];
+    for (const room of rooms) {
+      if (room.outOfOrder) continue;
+      const emma = readEmmaMetadata(room.metadata);
+      const tasks = room.checklistStates[0]?.tasks ?? [];
+      const status = this.roomStatus.derive(room, tasks, room.inspections, emma);
+      if (
+        status === DerivedRoomStatus.CLEAN ||
+        status === DerivedRoomStatus.INSPECTED
+      ) {
+        readyIds.push(room.id);
+      }
+    }
+    await this.inspectionQueue.ensurePendingForRooms(readyIds, dateIso);
+  }
+
   private async buildPublicWork(dateIso: string) {
     const areas = await this.prisma.publicArea.findMany({ where: { isActive: true } });
     return areas
@@ -439,6 +467,7 @@ export class DailyCleaningService implements OnModuleInit {
       }
     }
     await this.syncWorkItems(dateIso);
+    await this.syncInspectReadyRooms(dateIso);
     const plan = await this.loadPlan(dateIso);
     if (!plan) throw new NotFoundException('Plan not found');
 
@@ -516,6 +545,7 @@ export class DailyCleaningService implements OnModuleInit {
 
     if (options.inspectorUserIds !== undefined) {
       await this.inspectionQueue.setInspectorsForDate(dateIso, options.inspectorUserIds);
+      await this.syncInspectReadyRooms(dateIso);
     }
 
     const lateIds = new Set(options.lateShiftUserIds ?? []);

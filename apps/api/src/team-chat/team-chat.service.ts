@@ -1,9 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import {
-  PermissionCode,
-  TeamChatReactionType,
-  User,
-} from '@prisma/client';
+import { PermissionCode, User } from '@prisma/client';
 import { isSupportedLocale, resolveLocale, type SupportedLocale } from '@housekeeping/shared';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,10 +17,11 @@ const messageInclude = {
       id: true,
       body: true,
       createdAt: true,
+      deletedAt: true,
       author: { select: userPublicSelect },
     },
   },
-  reactions: { select: { userId: true, type: true } },
+  reactions: { select: { userId: true, emoji: true } },
   mentions: {
     include: {
       user: { select: userPublicSelect },
@@ -53,9 +50,10 @@ type MessageRow = {
     id: string;
     body: string;
     createdAt: Date;
+    deletedAt: Date | null;
     author: AuthorRow;
   } | null;
-  reactions: { userId: string; type: TeamChatReactionType }[];
+  reactions: { userId: string; emoji: string }[];
   mentions: MentionRow[];
 };
 
@@ -107,32 +105,31 @@ export class TeamChatService {
   }
 
   private summarizeReactions(
-    reactions: { userId: string; type: TeamChatReactionType }[],
+    reactions: { userId: string; emoji: string }[],
     viewerId: string,
-  ): { type: TeamChatReactionType; count: number; me: boolean }[] {
-    const order: TeamChatReactionType[] = [
-      TeamChatReactionType.THUMBS_UP,
-      TeamChatReactionType.CHECK_MARK,
-      TeamChatReactionType.HEART,
-      TeamChatReactionType.EYES,
-      TeamChatReactionType.EXCLAMATION_QUESTION,
-    ];
-    const map = new Map<TeamChatReactionType, { count: number; me: boolean }>();
-    for (const t of order) {
-      map.set(t, { count: 0, me: false });
-    }
+  ): { emoji: string; count: number; me: boolean }[] {
+    const map = new Map<string, { count: number; me: boolean }>();
     for (const r of reactions) {
-      const cur = map.get(r.type) ?? { count: 0, me: false };
+      const cur = map.get(r.emoji) ?? { count: 0, me: false };
       cur.count++;
       if (r.userId === viewerId) cur.me = true;
-      map.set(r.type, cur);
+      map.set(r.emoji, cur);
     }
-    return order
-      .map((type) => {
-        const s = map.get(type)!;
-        return { type, count: s.count, me: s.me };
-      })
-      .filter((x) => x.count > 0);
+    return [...map.entries()]
+      .map(([emoji, s]) => ({ emoji, count: s.count, me: s.me }))
+      .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
+  }
+
+  private normalizeEmoji(raw: string): string {
+    const emoji = raw.trim();
+    if (!emoji || emoji.length > 32) {
+      throw new BadRequestException('Invalid emoji');
+    }
+    // Block obvious non-emoji payloads (urls, long ascii words).
+    if (/https?:\/\//i.test(emoji) || /^[a-zA-Z0-9_\-.]{3,}$/.test(emoji)) {
+      throw new BadRequestException('Invalid emoji');
+    }
+    return emoji;
   }
 
   private async buildAvatarUrlMap(rows: MessageRow[]): Promise<Map<string, string>> {
@@ -240,21 +237,33 @@ export class TeamChatService {
 
     let replyTo = null;
     if (row.replyTo) {
-      const replyMentions: MentionRow[] = [];
-      const replyTranslation = await this.resolveTranslatedBody(
-        row.replyTo.id,
-        row.replyTo.body,
-        null,
-        replyMentions,
-        targetLocale,
-      );
-      replyTo = {
-        id: row.replyTo.id,
-        body: replyTranslation.displayBody,
-        bodyTranslated: replyTranslation.isTranslated ? row.replyTo.body : null,
-        createdAt: row.replyTo.createdAt,
-        author: this.authorDto(row.replyTo.author, urls),
-      };
+      if (row.replyTo.deletedAt) {
+        replyTo = {
+          id: row.replyTo.id,
+          body: '',
+          bodyTranslated: null,
+          createdAt: row.replyTo.createdAt,
+          author: this.authorDto(row.replyTo.author, urls),
+          deleted: true,
+        };
+      } else {
+        const replyMentions: MentionRow[] = [];
+        const replyTranslation = await this.resolveTranslatedBody(
+          row.replyTo.id,
+          row.replyTo.body,
+          null,
+          replyMentions,
+          targetLocale,
+        );
+        replyTo = {
+          id: row.replyTo.id,
+          body: replyTranslation.displayBody,
+          bodyTranslated: replyTranslation.isTranslated ? row.replyTo.body : null,
+          createdAt: row.replyTo.createdAt,
+          author: this.authorDto(row.replyTo.author, urls),
+          deleted: false,
+        };
+      }
     }
 
     const sourceLocale = isSupportedLocale(row.sourceLocale)
@@ -280,6 +289,7 @@ export class TeamChatService {
     const targetLocale = resolveLocale(lang, viewer.preferredLocale);
     const rows = (await this.prisma.teamChatMessage.findMany({
       take,
+      where: { deletedAt: null },
       orderBy: { createdAt: 'asc' },
       include: messageInclude,
     })) as unknown as MessageRow[];
@@ -369,7 +379,7 @@ export class TeamChatService {
       const parent = await this.prisma.teamChatMessage.findUnique({
         where: { id: replyToId },
       });
-      if (!parent) throw new BadRequestException('Reply target not found');
+      if (!parent || parent.deletedAt) throw new BadRequestException('Reply target not found');
     }
 
     const validMentionIds = await this.validateMentionUserIds(mentionUserIds);
@@ -418,13 +428,16 @@ export class TeamChatService {
     return mapped;
   }
 
-  async toggleReaction(messageId: string, type: TeamChatReactionType, user: User) {
-    const msg = await this.prisma.teamChatMessage.findUnique({ where: { id: messageId } });
+  async toggleReaction(messageId: string, emojiRaw: string, user: User) {
+    const emoji = this.normalizeEmoji(emojiRaw);
+    const msg = await this.prisma.teamChatMessage.findFirst({
+      where: { id: messageId, deletedAt: null },
+    });
     if (!msg) throw new NotFoundException();
 
     const existing = await this.prisma.teamChatMessageReaction.findUnique({
       where: {
-        messageId_userId_type: { messageId, userId: user.id, type },
+        messageId_userId_emoji: { messageId, userId: user.id, emoji },
       },
     });
 
@@ -432,7 +445,7 @@ export class TeamChatService {
       await this.prisma.teamChatMessageReaction.delete({ where: { id: existing.id } });
     } else {
       await this.prisma.teamChatMessageReaction.create({
-        data: { messageId, userId: user.id, type },
+        data: { messageId, userId: user.id, emoji },
       });
     }
 
@@ -444,5 +457,20 @@ export class TeamChatService {
       messageId,
       reactions: this.summarizeReactions(reactions, user.id),
     };
+  }
+
+  async softDelete(messageId: string, user: User) {
+    const msg = await this.prisma.teamChatMessage.findFirst({
+      where: { id: messageId, deletedAt: null },
+    });
+    if (!msg) throw new NotFoundException();
+
+    await this.prisma.teamChatMessage.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date(), deletedByUserId: user.id },
+    });
+
+    this.realtime.emitTeamChatDeleted({ messageId });
+    return { messageId, deleted: true };
   }
 }

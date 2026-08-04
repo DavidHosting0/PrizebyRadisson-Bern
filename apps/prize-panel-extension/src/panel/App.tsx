@@ -1,7 +1,14 @@
-import { useState, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState, useMemo, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
+import type {
+  GuestComplaintDto,
+  RoomLoanDto,
+  ShiftHandoverStateDto,
+  ShiftNoteDto,
+} from '@housekeeping/shared';
 import { AuthProvider, useAuth, usePermission } from '@/lib/auth-context';
+import { api } from '@/lib/api';
 import { PANEL_MESSAGE } from '@/lib/storage';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Avatar } from '@/components/Avatar';
@@ -11,6 +18,7 @@ import { ShiftHandoverBoard } from '@/components/ShiftHandoverBoard';
 import { ShiftNotesBoard } from '@/components/ShiftNotesBoard';
 import { ComplaintsBoard } from '@/components/ComplaintsBoard';
 import { LoansBoard } from '@/components/LoansBoard';
+import { TeamChatBoard } from '@/components/TeamChatBoard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,7 +26,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type PanelView = 'home' | 'todo' | 'notes' | 'complaints' | 'loans';
+type PanelView = 'home' | 'todo' | 'notes' | 'complaints' | 'loans' | 'chat';
 
 function IconButton({
   label,
@@ -119,13 +127,13 @@ function CategoryIcon({ children }: { children: ReactNode }) {
 
 function CategoryTile({
   title,
-  hint,
+  info,
   onClick,
   disabled,
   icon,
 }: {
   title: string;
-  hint: string;
+  info: string;
   onClick: () => void;
   disabled?: boolean;
   icon: ReactNode;
@@ -145,7 +153,14 @@ function CategoryTile({
       <CategoryIcon>{icon}</CategoryIcon>
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-semibold tracking-tight text-white">{title}</span>
-        <span className="mt-0.5 block text-[10px] text-sidebar-muted">{hint}</span>
+        <span
+          className={clsx(
+            'mt-0.5 block truncate text-[11px] font-medium',
+            disabled ? 'text-sidebar-muted' : 'text-sky-200/90',
+          )}
+        >
+          {info}
+        </span>
       </span>
       {!disabled && (
         <svg
@@ -165,13 +180,110 @@ function CategoryTile({
   );
 }
 
+function calendarTodayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isoDateLocal(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => void }) {
   const canTodo = usePermission('SHIFT_HANDOVER_READ');
   const canNotes = usePermission('SHIFT_NOTES_READ');
   const canComplaints = usePermission('COMPLAINTS_READ');
   const canLoans = usePermission('LOANS_READ');
+  const canChat = usePermission('TEAM_CHAT_READ');
+  const calendarToday = calendarTodayIso();
 
-  const any = canTodo || canNotes || canComplaints || canLoans;
+  const any = canTodo || canNotes || canComplaints || canLoans || canChat;
+
+  const handoverQ = useQuery({
+    queryKey: ['shift-handover'],
+    queryFn: () => api<ShiftHandoverStateDto>('/shift-handover'),
+    enabled: canTodo || canNotes,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const operatingDay = handoverQ.data?.activeDate ?? calendarToday;
+
+  const notesQ = useQuery({
+    queryKey: ['shift-notes', 'day', operatingDay],
+    queryFn: () => api<ShiftNoteDto[]>(`/shift-notes?date=${operatingDay}`),
+    enabled: canNotes && Boolean(operatingDay),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const complaintsQ = useQuery({
+    queryKey: ['complaints', 'all-for-stats'],
+    queryFn: () => api<GuestComplaintDto[]>('/complaints'),
+    enabled: canComplaints,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const loansQ = useQuery({
+    queryKey: ['loans', 'all-for-stats'],
+    queryFn: () => api<RoomLoanDto[]>('/loans'),
+    enabled: canLoans,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const chatQ = useQuery({
+    queryKey: ['team-chat-messages', 'stats'],
+    queryFn: () => api<{ createdAt: string }[]>('/team-chat/messages?limit=200'),
+    enabled: canChat,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const todoInfo = useMemo(() => {
+    if (!canTodo) return 'Keine Berechtigung';
+    const data = handoverQ.data;
+    if (handoverQ.isLoading || !data) return 'Laden…';
+    const open = data.totalCount - data.completedCount;
+    if (data.totalCount === 0) return 'Keine Aufgaben';
+    if (open === 0) return `Alles erledigt · ${data.activeShiftLabel}`;
+    return `${open} offen · ${data.activeShiftLabel}`;
+  }, [canTodo, handoverQ.data, handoverQ.isLoading]);
+
+  const notesInfo = useMemo(() => {
+    if (!canNotes) return 'Keine Berechtigung';
+    if (notesQ.isLoading || handoverQ.isLoading) return 'Laden…';
+    const n = notesQ.data?.length ?? 0;
+    if (n === 0) return 'Keine Notizen heute';
+    return n === 1 ? '1 Notiz heute' : `${n} Notizen heute`;
+  }, [canNotes, notesQ.data, notesQ.isLoading, handoverQ.isLoading]);
+
+  const complaintsInfo = useMemo(() => {
+    if (!canComplaints) return 'Keine Berechtigung';
+    if (complaintsQ.isLoading) return 'Laden…';
+    const n = (complaintsQ.data ?? []).filter((c) => isoDateLocal(c.createdAt) === calendarToday)
+      .length;
+    if (n === 0) return 'Keine Beschwerden heute';
+    return n === 1 ? '1 Beschwerde heute' : `${n} Beschwerden heute`;
+  }, [canComplaints, complaintsQ.data, complaintsQ.isLoading, calendarToday]);
+
+  const loansInfo = useMemo(() => {
+    if (!canLoans) return 'Keine Berechtigung';
+    if (loansQ.isLoading) return 'Laden…';
+    const n = (loansQ.data ?? []).filter((l) => isoDateLocal(l.loanedAt) === calendarToday).length;
+    if (n === 0) return 'Keine Ausleihen heute';
+    return n === 1 ? '1 Ausleihe heute' : `${n} Ausleihen heute`;
+  }, [canLoans, loansQ.data, loansQ.isLoading, calendarToday]);
+
+  const chatInfo = useMemo(() => {
+    if (!canChat) return 'Keine Berechtigung';
+    if (chatQ.isLoading) return 'Laden…';
+    const n = (chatQ.data ?? []).filter((m) => isoDateLocal(m.createdAt) === calendarToday).length;
+    if (n === 0) return 'Keine Nachrichten heute';
+    return n === 1 ? '1 Nachricht heute' : `${n} Nachrichten heute`;
+  }, [canChat, chatQ.data, chatQ.isLoading, calendarToday]);
 
   if (!any) {
     return (
@@ -191,8 +303,23 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
       </div>
       <div className="flex flex-col gap-2 p-2.5">
         <CategoryTile
+          title="Chat"
+          info={chatInfo}
+          disabled={!canChat}
+          onClick={() => onOpen('chat')}
+          icon={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+              <path
+                d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          }
+        />
+        <CategoryTile
           title="To-Do-Liste"
-          hint={canTodo ? 'Schicht-Checkliste' : 'Keine Berechtigung'}
+          info={todoInfo}
           disabled={!canTodo}
           onClick={() => onOpen('todo')}
           icon={
@@ -203,18 +330,18 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
         />
         <CategoryTile
           title="Schichtübergabe"
-          hint={canNotes ? 'Chat & Notizen' : 'Keine Berechtigung'}
+          info={notesInfo}
           disabled={!canNotes}
           onClick={() => onOpen('notes')}
           icon={
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           }
         />
         <CategoryTile
           title="Beschwerden"
-          hint={canComplaints ? 'Gästebeschwerden' : 'Keine Berechtigung'}
+          info={complaintsInfo}
           disabled={!canComplaints}
           onClick={() => onOpen('complaints')}
           icon={
@@ -225,7 +352,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
         />
         <CategoryTile
           title="Leihartikel"
-          hint={canLoans ? 'Ausleihen & Pfand' : 'Keine Berechtigung'}
+          info={loansInfo}
           disabled={!canLoans}
           onClick={() => onOpen('loans')}
           icon={
@@ -257,6 +384,7 @@ function PanelBody({
   }
 
   if (view === 'home') return <CategoryHome onOpen={onOpen} />;
+  if (view === 'chat') return <TeamChatBoard />;
   if (view === 'todo') return <ShiftHandoverBoard />;
   if (view === 'notes') return <ShiftNotesBoard />;
   if (view === 'complaints') return <ComplaintsBoard />;
@@ -268,7 +396,7 @@ function AppInner() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [view, setView] = useState<PanelView>('home');
   const isLogin = !loading && !user;
-  const fillHeight = view === 'home' || view === 'todo' || view === 'notes';
+  const fillHeight = view === 'home' || view === 'todo' || view === 'notes' || view === 'chat';
 
   function collapsePanel() {
     window.parent.postMessage({ type: PANEL_MESSAGE.toggle }, '*');

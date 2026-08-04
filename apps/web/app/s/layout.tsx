@@ -126,11 +126,14 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isBoard = path === '/s/board' || path.startsWith('/s/board/');
+  const isChat = path === '/s/chat';
+
   return (
     <div
       className={clsx(
         'flex flex-col bg-surface-muted md:h-dvh md:flex-row md:overflow-hidden',
-        path === '/s/chat' ? 'h-dvh overflow-hidden' : 'min-h-screen',
+        isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
       <NotificationsRuntime />
@@ -168,9 +171,10 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
       <div
         className={clsx(
           'flex min-h-0 min-w-0 flex-1 flex-col md:h-dvh',
-          path === '/s/chat' ? 'h-full overflow-hidden' : 'md:overflow-hidden',
+          isChat ? 'h-full overflow-hidden' : 'md:overflow-hidden',
         )}
       >
+        {/* Board is full-bleed under the sidebar; keep chrome only on other pages / mobile. */}
         <header
           className={clsx(
             'flex items-center justify-between gap-3 px-5 py-3 md:hidden',
@@ -187,23 +191,26 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </header>
-        <header
-          className={clsx(
-            'hidden items-center justify-end gap-2 px-8 py-3 md:flex',
-            APP_TOP_BAR_CLASS,
-          )}
-        >
-          <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
-          <LanguageSwitcher compact onDark />
-          <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
-            {t('mobileView')}
-          </Button>
-        </header>
+        {!isBoard && (
+          <header
+            className={clsx(
+              'hidden items-center justify-end gap-2 px-8 py-3 md:flex',
+              APP_TOP_BAR_CLASS,
+            )}
+          >
+            <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
+            <LanguageSwitcher compact onDark />
+            <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
+              {t('mobileView')}
+            </Button>
+          </header>
+        )}
         <PushPermissionBanner />
         <main
           className={clsx(
             'min-h-0 min-w-0 flex-1',
-            path === '/s/chat' ? 'flex h-full flex-col overflow-hidden' : 'overflow-y-auto',
+            isChat ? 'flex h-full flex-col overflow-hidden' : 'overflow-y-auto',
+            isBoard && 'bg-sidebar md:overflow-hidden',
           )}
         >
           {children}

@@ -54,6 +54,7 @@ enum PermissionCode {
   ANALYTICS_READ
   TEAM_CHAT_READ
   TEAM_CHAT_POST
+  TEAM_CHAT_DELETE
   USERS_READ
   USERS_READ_HOUSEKEEPERS
   USERS_WRITE
@@ -238,14 +239,6 @@ enum RoomGuestStaySource {
   BACKFILL
 }
 
-enum TeamChatReactionType {
-  THUMBS_UP
-  CHECK_MARK
-  HEART
-  EYES
-  EXCLAMATION_QUESTION
-}
-
 enum NotificationType {
   SERVICE_REQUEST_CREATED
   TEAM_CHAT_MENTION
@@ -386,6 +379,7 @@ model User {
   // Admin can maintain custom floor-plan layouts.
   floorPlansUpdated  FloorPlan[]
   teamChatMessages         TeamChatMessage[]
+  teamChatMessagesDeleted  TeamChatMessage[] @relation("TeamChatMessageDeletedBy")
   teamChatMessageReactions TeamChatMessageReaction[]
   teamChatMentions         TeamChatMessageMention[]
   notifications            Notification[]
@@ -1010,9 +1004,14 @@ model TeamChatMessage {
   mentions  TeamChatMessageMention[]
   translations TeamChatMessageTranslation[]
   createdAt DateTime @default(now())
+  /// Soft-delete (reception moderation). Hidden from timeline when set.
+  deletedAt DateTime?
+  deletedByUserId String?
+  deletedBy User? @relation("TeamChatMessageDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([replyToId])
+  @@index([deletedAt])
 }
 
 model TeamChatMessageTranslation {
@@ -1069,15 +1068,16 @@ model PushSubscription {
 }
 
 model TeamChatMessageReaction {
-  id        String               @id @default(cuid())
+  id        String          @id @default(cuid())
   messageId String
-  message   TeamChatMessage      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message   TeamChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   userId    String
-  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      TeamChatReactionType
-  createdAt DateTime             @default(now())
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Unicode emoji (or short emoji sequence), e.g. "👍"
+  emoji     String          @db.VarChar(32)
+  createdAt DateTime        @default(now())
 
-  @@unique([messageId, userId, type])
+  @@unique([messageId, userId, emoji])
   @@index([messageId])
 }
 
