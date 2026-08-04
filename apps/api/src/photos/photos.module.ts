@@ -3,13 +3,13 @@ import { PhotosService } from './photos.service';
 import { PhotosController } from './photos.controller';
 import { RoomsModule } from '../rooms/rooms.module';
 import { EmmaModule } from '../emma/emma.module';
-import { AssignmentsModule } from '../assignments/assignments.module';
+import { InspectionQueueModule } from '../assignments/inspection-queue.module';
 
 @Module({
   imports: [
     forwardRef(() => RoomsModule),
     forwardRef(() => EmmaModule),
-    AssignmentsModule,
+    InspectionQueueModule,
   ],
   controllers: [PhotosController],
   providers: [PhotosService],
