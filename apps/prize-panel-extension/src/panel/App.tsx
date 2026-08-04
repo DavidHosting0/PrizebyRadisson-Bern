@@ -6,12 +6,17 @@ import { BrandLogo } from '@/components/BrandLogo';
 import { LoginForm } from '@/components/LoginForm';
 import { SettingsDialog } from '@/components/SettingsDialog';
 import { ShiftHandoverBoard } from '@/components/ShiftHandoverBoard';
+import { ShiftNotesBoard } from '@/components/ShiftNotesBoard';
+import { ComplaintsBoard } from '@/components/ComplaintsBoard';
+import { LoansBoard } from '@/components/LoansBoard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1 },
   },
 });
+
+type PanelView = 'home' | 'todo' | 'notes' | 'complaints' | 'loans';
 
 function IconButton({
   label,
@@ -39,22 +44,35 @@ function PanelHeader({
   onSettings,
   onCollapse,
   onLogout,
+  onBack,
+  showBack,
 }: {
   onSettings: () => void;
   onCollapse: () => void;
   onLogout: () => void;
+  onBack?: () => void;
+  showBack?: boolean;
 }) {
   const { user } = useAuth();
 
   return (
     <header className="flex shrink-0 items-center justify-between gap-1.5 border-b border-sidebar-border bg-sidebar px-2.5 py-2">
-      <div className="min-w-0 flex-1">
-        <BrandLogo compact onDark />
-        {user && (
-          <p className="mt-0.5 truncate text-[10px] text-sidebar-muted" title={user.email}>
-            {user.name}
-          </p>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {showBack && onBack && (
+          <IconButton label="Zurück" onClick={onBack}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </IconButton>
         )}
+        <div className="min-w-0 flex-1">
+          <BrandLogo compact onDark />
+          {user && (
+            <p className="mt-0.5 truncate text-[10px] text-sidebar-muted" title={user.email}>
+              {user.name}
+            </p>
+          )}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {user && (
@@ -82,9 +100,88 @@ function PanelHeader({
   );
 }
 
-function PanelBody() {
+function CategoryTile({
+  title,
+  hint,
+  onClick,
+  disabled,
+}: {
+  title: string;
+  hint: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={
+        disabled
+          ? 'rounded-lg border border-border/40 bg-surface-muted/40 px-3 py-3 text-left opacity-50'
+          : 'rounded-lg border border-border bg-surface px-3 py-3 text-left shadow-sm transition hover:border-action/40 hover:bg-action/5'
+      }
+    >
+      <p className="text-sm font-semibold text-ink">{title}</p>
+      <p className="mt-0.5 text-[10px] text-ink-muted">{hint}</p>
+    </button>
+  );
+}
+
+function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => void }) {
+  const canTodo = usePermission('SHIFT_HANDOVER_READ');
+  const canNotes = usePermission('SHIFT_NOTES_READ');
+  const canComplaints = usePermission('COMPLAINTS_READ');
+  const canLoans = usePermission('LOANS_READ');
+
+  const any = canTodo || canNotes || canComplaints || canLoans;
+
+  if (!any) {
+    return (
+      <div className="p-3">
+        <p className="text-xs text-ink-muted">Keine Berechtigung für Panel-Kategorien.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-2 p-2.5">
+      <CategoryTile
+        title="To-Do-Liste"
+        hint={canTodo ? 'Schicht-Checkliste' : 'Keine Berechtigung'}
+        disabled={!canTodo}
+        onClick={() => onOpen('todo')}
+      />
+      <CategoryTile
+        title="Schichtübergabe"
+        hint={canNotes ? 'Notizbuch' : 'Keine Berechtigung'}
+        disabled={!canNotes}
+        onClick={() => onOpen('notes')}
+      />
+      <CategoryTile
+        title="Beschwerden"
+        hint={canComplaints ? 'Gästebeschwerden' : 'Keine Berechtigung'}
+        disabled={!canComplaints}
+        onClick={() => onOpen('complaints')}
+      />
+      <CategoryTile
+        title="Leihartikel"
+        hint={canLoans ? 'Ausleihen & Pfand' : 'Keine Berechtigung'}
+        disabled={!canLoans}
+        onClick={() => onOpen('loans')}
+      />
+    </div>
+  );
+}
+
+function PanelBody({
+  view,
+  onOpen,
+}: {
+  view: PanelView;
+  onOpen: (v: Exclude<PanelView, 'home'>) => void;
+}) {
   const { user, loading } = useAuth();
-  const canReadHandover = usePermission('SHIFT_HANDOVER_READ');
 
   if (loading) {
     return <p className="p-3 text-xs text-ink-muted">Wird geladen…</p>;
@@ -94,20 +191,17 @@ function PanelBody() {
     return <LoginForm />;
   }
 
-  if (!canReadHandover) {
-    return (
-      <div className="p-3">
-        <p className="text-xs text-ink-muted">Keine Berechtigung für die Schichtübergabe.</p>
-      </div>
-    );
-  }
-
-  return <ShiftHandoverBoard />;
+  if (view === 'home') return <CategoryHome onOpen={onOpen} />;
+  if (view === 'todo') return <ShiftHandoverBoard />;
+  if (view === 'notes') return <ShiftNotesBoard />;
+  if (view === 'complaints') return <ComplaintsBoard />;
+  return <LoansBoard />;
 }
 
 function AppInner() {
   const { logout, user, loading } = useAuth();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [view, setView] = useState<PanelView>('home');
   const isLogin = !loading && !user;
 
   function collapsePanel() {
@@ -120,15 +214,11 @@ function AppInner() {
         onSettings={() => setSettingsOpen(true)}
         onCollapse={collapsePanel}
         onLogout={logout}
+        showBack={Boolean(user) && view !== 'home'}
+        onBack={() => setView('home')}
       />
-      <main
-        className={
-          isLogin
-            ? 'min-h-0 flex-1 overflow-y-auto bg-sidebar'
-            : 'min-h-0 flex-1 overflow-y-auto rounded-bl-[18px] bg-surface'
-        }
-      >
-        <PanelBody />
+      <main className={`min-h-0 flex-1 overflow-y-auto ${isLogin ? 'bg-sidebar' : 'bg-surface-muted'}`}>
+        <PanelBody view={user ? view : 'home'} onOpen={setView} />
       </main>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
