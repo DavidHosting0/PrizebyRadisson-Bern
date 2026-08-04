@@ -11,6 +11,6 @@ import { RoomOccupancyService } from './room-occupancy.service';
   imports: [forwardRef(() => EmmaModule), forwardRef(() => ReservationsModule), CryptoModule],
   controllers: [RoomsController],
   providers: [RoomsService, RoomStatusService, RoomOccupancyService],
-  exports: [RoomsService, RoomStatusService],
+  exports: [RoomsService, RoomStatusService, RoomOccupancyService],
 })
 export class RoomsModule {}

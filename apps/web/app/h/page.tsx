@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { MyDailyTaskDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -36,9 +37,21 @@ export default function HousekeeperRoomsPage() {
     queryKey: ['rooms', 'mine'],
     queryFn: () => api<RoomRow[]>('/rooms?mine=1'),
   });
+  const { data: daily } = useQuery({
+    queryKey: ['assignments', 'my-daily-tasks'],
+    queryFn: () => api<{ date: string; tasks: MyDailyTaskDto[] }>('/assignments/my-daily-tasks'),
+  });
   const { data: requests, isLoading: reqLoading } = useQuery({
     queryKey: ['service-requests'],
     queryFn: () => api<Req[]>('/service-requests'),
+  });
+
+  const completePublic = useMutation({
+    mutationFn: (taskId: string) =>
+      api(`/assignments/daily-plan/tasks/${taskId}/complete`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
+    },
   });
 
   const rows = requests ?? [];
@@ -47,6 +60,15 @@ export default function HousekeeperRoomsPage() {
     (r) =>
       r.claimedBy?.id === user?.id &&
       (r.status === 'CLAIMED' || r.status === 'IN_PROGRESS'),
+  );
+
+  const overdueByRoom = new Map(
+    (daily?.tasks ?? [])
+      .filter((t) => t.roomId && t.overdueDays && t.overdueDays > 0)
+      .map((t) => [t.roomId!, t.overdueDays!]),
+  );
+  const publicTasks = (daily?.tasks ?? []).filter(
+    (t) => t.kind === 'PUBLIC_AREA' && !t.completedAt,
   );
 
   if (roomsLoading) {
@@ -79,6 +101,12 @@ export default function HousekeeperRoomsPage() {
                       {r.floor != null && (
                         <p className="mt-0.5 text-xs text-ink-muted">Floor {r.floor}</p>
                       )}
+                      {overdueByRoom.has(r.id) && (
+                        <p className="mt-1 text-xs font-semibold text-red-600">
+                          Overdue {overdueByRoom.get(r.id)} day
+                          {overdueByRoom.get(r.id) === 1 ? '' : 's'}
+                        </p>
+                      )}
                     </div>
                     <StatusBadge status={r.derivedStatus} />
                   </div>
@@ -92,6 +120,36 @@ export default function HousekeeperRoomsPage() {
           <p className="mt-2 text-sm text-ink-muted">No rooms assigned right now.</p>
         )}
       </section>
+
+      {publicTasks.length > 0 && (
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+            Public areas
+          </h2>
+          <ul className="mt-3 space-y-3">
+            {publicTasks.map((t) => (
+              <li key={t.id}>
+                <Card className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink">{t.publicAreaName}</p>
+                    {t.floor != null && (
+                      <p className="text-xs text-ink-muted">Floor {t.floor}</p>
+                    )}
+                  </div>
+                  <Button
+                    variant="primary"
+                    className="min-h-[44px] px-4 py-2 text-sm"
+                    disabled={completePublic.isPending}
+                    onClick={() => completePublic.mutate(t.id)}
+                  >
+                    Mark done
+                  </Button>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Open requests</h2>

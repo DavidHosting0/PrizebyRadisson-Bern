@@ -27,6 +27,7 @@ export * from './occupancy';
 export * from './monitor-map';
 export * from './guides';
 export * from './departures';
+export * from './daily-cleaning';
 export * from './locale';
 export * from './room-management';
 export * from './front-office-backup';

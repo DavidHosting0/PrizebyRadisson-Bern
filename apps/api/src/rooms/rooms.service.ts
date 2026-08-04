@@ -242,6 +242,10 @@ export class RoomsService {
           kind: RoomHousekeepingEventKind.MARKED_CLEAN,
         },
       }),
+      this.prisma.roomCleaningDeferral.updateMany({
+        where: { roomId, clearedAt: null },
+        data: { clearedAt: cleaningDeclaredAt },
+      }),
     ]);
 
     await this.emma?.pushRoomStatus(roomId, 'CLEAN', {

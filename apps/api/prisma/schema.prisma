@@ -82,6 +82,7 @@ enum PermissionCode {
   LOANS_WRITE
   LOANS_CATALOG_WRITE
   ACTIVITY_LOG_READ
+  PUBLIC_AREA_MANAGE
 }
 
 enum ActivityLogCategory {
@@ -183,6 +184,35 @@ enum AssignmentStatus {
   ACTIVE
   COMPLETED
   CANCELLED
+}
+
+enum DailyCleaningPlanStatus {
+  DRAFT
+  SAVED
+}
+
+enum DailyCleaningTaskKind {
+  ROOM
+  PUBLIC_AREA
+}
+
+enum DailyCleaningWorkType {
+  DIRTY
+  RESTANT
+  PUBLIC
+}
+
+enum DailyCleaningTaskSource {
+  AUTO
+  MANUAL
+}
+
+enum PublicAreaKind {
+  corridor
+  glass
+  elevator
+  staff
+  custom
 }
 
 enum PhotoUploadStatus {
@@ -366,6 +396,9 @@ model User {
   complaintsResolved       GuestComplaint[]         @relation("ComplaintResolvedBy")
   roomLoansLoaned          RoomLoan[]               @relation("RoomLoanLoanedBy")
   roomLoansReturned        RoomLoan[]               @relation("RoomLoanReturnedBy")
+  dailyCleaningPlansSaved  DailyCleaningPlan[]      @relation("DailyCleaningPlanSavedBy")
+  dailyCleaningTasksAssigned DailyCleaningTask[]    @relation("DailyCleaningTaskAssignee")
+  lateShiftOverrides       DailyLateShiftOverride[]
 }
 
 /**
@@ -499,6 +532,8 @@ model Room {
   guestStays         RoomGuestStay[]
   guestComplaints    GuestComplaint[]
   roomLoans          RoomLoan[]
+  dailyCleaningTasks DailyCleaningTask[]
+  cleaningDeferrals  RoomCleaningDeferral[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -808,6 +843,94 @@ model RoomAssignment {
 
   @@index([roomId])
   @@index([housekeeperUserId])
+}
+
+/// Day-scoped cleaning plan (draft until supervisor saves).
+model DailyCleaningPlan {
+  id             String                   @id @default(cuid())
+  date           DateTime                 @unique @db.Date
+  status         DailyCleaningPlanStatus  @default(DRAFT)
+  savedAt        DateTime?
+  savedByUserId  String?
+  savedBy        User?                    @relation("DailyCleaningPlanSavedBy", fields: [savedByUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  tasks          DailyCleaningTask[]
+  lateOverrides  DailyLateShiftOverride[]
+}
+
+model DailyCleaningTask {
+  id              String                   @id @default(cuid())
+  planId          String
+  plan            DailyCleaningPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  kind            DailyCleaningTaskKind
+  workType        DailyCleaningWorkType
+  roomId          String?
+  room            Room?                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  publicAreaId    String?
+  publicArea      PublicArea?              @relation(fields: [publicAreaId], references: [id], onDelete: Cascade)
+  assigneeUserId  String?
+  assignee        User?                    @relation("DailyCleaningTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  pinned          Boolean                  @default(false)
+  source          DailyCleaningTaskSource  @default(AUTO)
+  overdueDays     Int?
+  completedAt     DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@unique([planId, roomId])
+  @@unique([planId, publicAreaId])
+  @@index([planId])
+  @@index([assigneeUserId])
+}
+
+/// Non-room cleaning locations (corridors, glass, elevators, staff rooms, …).
+model PublicArea {
+  id              String         @id @default(cuid())
+  /// Stable key for floor-plan sync, e.g. "3:corridor:North".
+  key             String         @unique
+  name            String
+  floor           Int?
+  kind            PublicAreaKind
+  frequencyDays   Int            @default(1)
+  lastCompletedOn DateTime?      @db.Date
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  tasks           DailyCleaningTask[]
+
+  @@index([isActive, floor])
+}
+
+/// Room deferred from cleaning today → appear tomorrow with overdue days.
+model RoomCleaningDeferral {
+  id              String    @id @default(cuid())
+  roomId          String
+  room            Room      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  firstDeferredOn DateTime  @db.Date
+  deferredUntil   DateTime  @db.Date
+  clearedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([roomId, clearedAt])
+  @@index([deferredUntil, clearedAt])
+}
+
+/// Supervisor override for late-shift detection on a given day.
+model DailyLateShiftOverride {
+  id          String            @id @default(cuid())
+  date        DateTime          @db.Date
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isLateShift Boolean
+  planId      String?
+  plan        DailyCleaningPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([date, userId])
+  @@index([date])
 }
 
 model AnalyticsDaily {

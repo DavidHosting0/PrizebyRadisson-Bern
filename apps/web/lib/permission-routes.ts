@@ -108,6 +108,8 @@ export const SUPERVISOR_NAV: NavItem[] = [
 
   { href: '/s/room-tasks', labelKey: 'roomTasks', permission: 'ROOMS_READ' },
 
+  { href: '/s/public-areas', labelKey: 'publicAreas', permission: 'PUBLIC_AREA_MANAGE' },
+
   { href: '/s/requests', labelKey: 'requests', permission: 'SERVICE_REQUEST_READ' },
 
   { href: '/s/chat', labelKey: 'chat', permission: 'TEAM_CHAT_READ' },

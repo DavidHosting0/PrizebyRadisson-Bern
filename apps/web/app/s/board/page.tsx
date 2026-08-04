@@ -100,10 +100,16 @@ export default function SupervisorBoardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Room assignment</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Drag the grip handle to move a room to a housekeeper column. Use departures for auto-assign by floor.
+            Drag rooms to a cleaner, or open daily assignment to run a suggestion and save for the day.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/s/public-areas"
+            className="inline-flex min-h-[44px] items-center rounded-btn border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-muted"
+          >
+            Public areas
+          </Link>
           <Link
             href="/s/departures"
             className="inline-flex min-h-[44px] items-center rounded-btn border border-border bg-surface px-4 text-sm font-medium text-ink hover:bg-surface-muted"
@@ -111,7 +117,7 @@ export default function SupervisorBoardPage() {
             Departures
           </Link>
           <Button variant="action" className="min-h-[48px] shrink-0" onClick={() => setAutoOpen(true)}>
-            Auto-assign
+            Daily assignment
           </Button>
         </div>
       </div>

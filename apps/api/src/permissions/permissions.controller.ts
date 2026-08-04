@@ -63,6 +63,7 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       { code: PermissionCode.ASSIGNMENT_CREATE, title: 'Assign rooms', description: 'Assign rooms to housekeepers.' },
       { code: PermissionCode.ASSIGNMENT_SUGGESTIONS, title: 'See auto-assign suggestions', description: 'View suggested assignments.' },
       { code: PermissionCode.ASSIGNMENT_RUN_AUTO, title: 'Run auto-assign', description: 'Trigger the auto-assign job.' },
+      { code: PermissionCode.PUBLIC_AREA_MANAGE, title: 'Manage public areas', description: 'Configure public-area cleaning frequencies.' },
       { code: PermissionCode.INSPECTION_CREATE, title: 'Log inspections', description: 'Record supervisor inspections.' },
     ],
   },

@@ -4,58 +4,31 @@ import {
   Inject,
   Injectable,
   Logger,
-  OnModuleInit,
   Optional,
   forwardRef,
 } from '@nestjs/common';
 import type { AssignmentSuggestionsResponse, RunAutoAssignResponse } from '@housekeeping/shared';
-import { hotelTodayIso } from '@housekeeping/shared';
 import { AssignmentStatus, User, UserRole } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
-import { DeparturesService } from '../departures/departures.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { EmmaService } from '../emma/emma.service';
-import { balanceDepartureAssignments } from './assignment-balancer';
+import { DailyCleaningService } from './daily-cleaning.service';
 
 @Injectable()
-export class AssignmentsService implements OnModuleInit {
+export class AssignmentsService {
   private readonly logger = new Logger(AssignmentsService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
-    private readonly departures: DeparturesService,
+    private readonly daily: DailyCleaningService,
     @Optional()
     @Inject(forwardRef(() => EmmaService))
     private readonly emma?: EmmaService,
   ) {}
-
-  onModuleInit() {
-    this.releaseInactiveHousekeeperAssignments().catch((e) =>
-      this.logger.warn(`Failed to release inactive housekeeper assignments: ${(e as Error).message}`),
-    );
-    const intervalMs = parseInt(process.env.AUTO_ASSIGN_INTERVAL_MS ?? '60000', 10);
-    setInterval(() => {
-      this.runAutoAssignment().catch((e) => this.logger.error(e));
-    }, intervalMs);
-  }
-
-  /** Drop stale assignments left on deactivated housekeeper accounts. */
-  private async releaseInactiveHousekeeperAssignments() {
-    const result = await this.prisma.roomAssignment.updateMany({
-      where: {
-        status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] },
-        housekeeper: { isActive: false },
-      },
-      data: { status: AssignmentStatus.CANCELLED },
-    });
-    if (result.count > 0) {
-      this.logger.log(`Released ${result.count} assignment(s) from inactive housekeepers`);
-    }
-  }
 
   async list() {
     return this.prisma.roomAssignment.findMany({
@@ -76,11 +49,19 @@ export class AssignmentsService implements OnModuleInit {
       throw new ForbiddenException();
     }
     const housekeeper = await this.prisma.user.findFirst({
-      where: { id: housekeeperUserId, role: UserRole.HOUSEKEEPER, isActive: true },
+      where: {
+        id: housekeeperUserId,
+        isActive: true,
+        OR: [
+          { role: UserRole.HOUSEKEEPER },
+          { role: UserRole.SUPERVISOR },
+          { role: UserRole.ADMIN },
+        ],
+      },
       select: { id: true },
     });
     if (!housekeeper) {
-      throw new BadRequestException('Housekeeper not found or inactive');
+      throw new BadRequestException('Assignee not found or inactive');
     }
     await this.prisma.roomAssignment.updateMany({
       where: { roomId, status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
@@ -98,94 +79,80 @@ export class AssignmentsService implements OnModuleInit {
         housekeeper: { select: userPublicSelect },
       },
     });
+
+    // Keep daily plan in sync when board drag-drops
+    try {
+      const dateIso = this.daily.resolveDate();
+      await this.daily.syncWorkItems(dateIso);
+      const plan = await this.prisma.dailyCleaningPlan.findFirst({
+        where: { date: new Date(`${dateIso}T00:00:00.000Z`) },
+        include: { tasks: true },
+      });
+      const task = plan?.tasks.find((t) => t.roomId === roomId);
+      if (task) {
+        await this.daily.patchTask(
+          task.id,
+          { assigneeUserId: housekeeperUserId, pinned: true },
+          assigner,
+        );
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to sync daily plan after manual assign: ${(e as Error).message}`);
+    }
+
     const room = await this.rooms.findOne(roomId);
     this.realtime.emitRoomStatus(room);
     this.emma?.scheduleRoomStatusSync('assignments.manualAssign');
     return row;
   }
 
-  private resolveDate(date?: string): string {
-    return date?.trim() || hotelTodayIso();
-  }
-
-  private async eligibleHousekeepers() {
-    const now = new Date();
-    const onShift = await this.prisma.shift.findMany({
-      where: { startsAt: { lte: now }, endsAt: { gte: now } },
-      select: { userId: true },
-    });
-    const shiftUserIds = new Set(onShift.map((s) => s.userId));
-    const housekeepers = await this.prisma.user.findMany({
-      where: { role: UserRole.HOUSEKEEPER, isActive: true },
-      select: { id: true },
-    });
-    return housekeepers.filter((h) => shiftUserIds.size === 0 || shiftUserIds.has(h.id));
-  }
-
-  private async buildDeparturePlan(date?: string) {
-    const resolvedDate = this.resolveDate(date);
-    const departureRooms = await this.departures.listAssignableDepartureRooms(resolvedDate);
-    const eligible = await this.eligibleHousekeepers();
-    const loads = await Promise.all(
-      eligible.map(async (u) => ({
-        housekeeperId: u.id,
-        currentCount: await this.prisma.roomAssignment.count({
-          where: { housekeeperUserId: u.id, status: AssignmentStatus.ACTIVE },
-        }),
-      })),
-    );
-    const { assignments, summaries } = balanceDepartureAssignments(
-      departureRooms.map((r) => ({
-        roomId: r.roomId,
-        roomNumber: r.roomNumber,
-        floor: r.floor,
-      })),
-      loads,
-    );
-    return { resolvedDate, departureRooms, assignments, summaries };
-  }
-
+  /** @deprecated Prefer daily-plan suggest — kept for API compatibility. */
   async suggestions(date?: string): Promise<AssignmentSuggestionsResponse> {
-    const { resolvedDate, departureRooms, assignments, summaries } = await this.buildDeparturePlan(date);
+    const plan = await this.daily.suggest(date);
+    const roomSuggestions = plan.tasks
+      .filter((t) => t.kind === 'ROOM' && t.assigneeUserId)
+      .map((t) => ({
+        roomId: t.roomId!,
+        roomNumber: t.roomNumber ?? '',
+        floor: t.floor,
+        suggestedHousekeeperId: t.assigneeUserId!,
+      }));
     return {
-      date: resolvedDate,
-      departureRooms: departureRooms.length,
-      suggestions: assignments.map((a) => ({
-        roomId: a.roomId,
-        roomNumber: a.roomNumber,
-        floor: a.floor,
-        suggestedHousekeeperId: a.housekeeperId,
+      date: plan.date,
+      departureRooms: roomSuggestions.length,
+      suggestions: roomSuggestions,
+      summaries: plan.summaries.map((s) => ({
+        housekeeperId: s.housekeeperId,
+        count: s.roomCount + s.restantCount,
+        floors: s.floors,
       })),
-      summaries,
     };
   }
 
+  /** @deprecated Prefer daily-plan save — kept for API compatibility. */
   async runAutoAssignment(date?: string, assigner?: User): Promise<RunAutoAssignResponse> {
-    const { resolvedDate, assignments, summaries } = await this.buildDeparturePlan(date);
-    if (!assignments.length) return { date: resolvedDate, assigned: 0, summaries };
-
-    let assigned = 0;
-    for (const row of assignments) {
-      await this.prisma.roomAssignment.updateMany({
-        where: { roomId: row.roomId, status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
-        data: { status: AssignmentStatus.CANCELLED },
-      });
-      await this.prisma.roomAssignment.create({
-        data: {
-          roomId: row.roomId,
-          housekeeperUserId: row.housekeeperId,
-          assignedByUserId: assigner?.id,
-          status: AssignmentStatus.ACTIVE,
-        },
-      });
-      const r = await this.rooms.findOne(row.roomId);
-      this.realtime.emitRoomStatus(r);
-      assigned += 1;
+    await this.daily.suggest(date);
+    if (assigner) {
+      const saved = await this.daily.save(date, assigner);
+      return {
+        date: saved.date,
+        assigned: saved.tasks.filter((t) => t.kind === 'ROOM' && t.assigneeUserId).length,
+        summaries: saved.summaries.map((s) => ({
+          housekeeperId: s.housekeeperId,
+          count: s.roomCount + s.restantCount,
+          floors: s.floors,
+        })),
+      };
     }
-
-    if (assigned > 0) {
-      this.emma?.scheduleRoomStatusSync('assignments.autoAssign');
-    }
-    return { date: resolvedDate, assigned, summaries };
+    const plan = await this.daily.getDailyPlan(date);
+    return {
+      date: plan.date,
+      assigned: 0,
+      summaries: plan.summaries.map((s) => ({
+        housekeeperId: s.housekeeperId,
+        count: s.roomCount + s.restantCount,
+        floors: s.floors,
+      })),
+    };
   }
 }

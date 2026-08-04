@@ -97,7 +97,7 @@ export default function SupervisorDeparturesPage() {
             </Button>
           )}
           <Button variant="action" className="min-h-[44px]" onClick={() => setAutoOpen(true)}>
-            Auto-assign departures
+            Daily assignment
           </Button>
         </div>
       </div>

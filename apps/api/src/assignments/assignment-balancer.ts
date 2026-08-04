@@ -1,183 +1,301 @@
-import { compareRoomNumbers, floorFromRoomNumber } from '@housekeeping/shared';
-import type { HousekeeperAssignSummary } from '@housekeeping/shared';
+import { compareRoomNumbers, floorFromRoomNumber, HOTEL_TIME_ZONE } from '@housekeeping/shared';
+import type { DailyCleaningSummary } from '@housekeeping/shared';
 
-export type AssignableRoom = {
-  roomId: string;
-  roomNumber: string;
+export type WorkItemKind = 'ROOM' | 'PUBLIC_AREA';
+export type WorkItemType = 'DIRTY' | 'RESTANT' | 'PUBLIC';
+
+export type BalanceWorkItem = {
+  key: string;
+  kind: WorkItemKind;
+  workType: WorkItemType;
+  roomId?: string;
+  roomNumber?: string;
   floor: number | null;
+  publicAreaId?: string;
+  pinned: boolean;
+  assigneeUserId: string | null;
 };
 
-export type HousekeeperSlot = {
+export type EligibleCleaner = {
   housekeeperId: string;
-  currentCount: number;
+  isLateShift: boolean;
+  /** Relative room capacity: 1 = normal, ~0.55 = late shift. */
+  roomWeight: number;
 };
 
 export type BalancedAssignment = {
-  roomId: string;
-  roomNumber: string;
-  floor: number | null;
+  key: string;
   housekeeperId: string;
 };
 
-type FloorChunk = {
-  floor: number;
-  rooms: AssignableRoom[];
-};
+const LATE_ROOM_WEIGHT = 0.55;
 
-type AssigneeState = {
-  housekeeperId: string;
-  rooms: AssignableRoom[];
-  baseCount: number;
-  target: number;
-};
-
-function roomFloor(room: AssignableRoom): number {
-  return room.floor ?? floorFromRoomNumber(room.roomNumber) ?? 9999;
+function roomFloor(item: BalanceWorkItem): number {
+  if (item.floor != null) return item.floor;
+  if (item.roomNumber) return floorFromRoomNumber(item.roomNumber) ?? 9999;
+  return 9999;
 }
 
-function groupIntoFloorChunks(rooms: AssignableRoom[]): FloorChunk[] {
-  const byFloor = new Map<number, AssignableRoom[]>();
-  for (const room of rooms) {
-    const floor = roomFloor(room);
-    const list = byFloor.get(floor) ?? [];
-    list.push(room);
-    byFloor.set(floor, list);
+function summarize(
+  cleaners: EligibleCleaner[],
+  assigned: Map<string, string>,
+  items: BalanceWorkItem[],
+): DailyCleaningSummary[] {
+  const byHk = new Map<string, DailyCleaningSummary>();
+  for (const c of cleaners) {
+    byHk.set(c.housekeeperId, {
+      housekeeperId: c.housekeeperId,
+      roomCount: 0,
+      restantCount: 0,
+      publicCount: 0,
+      floors: [],
+    });
   }
-  const chunks: FloorChunk[] = [];
-  for (const [floor, floorRooms] of byFloor) {
-    floorRooms.sort((a, b) => compareRoomNumbers(a.roomNumber, b.roomNumber));
-    chunks.push({ floor, rooms: floorRooms });
-  }
-  return chunks;
-}
-
-function splitChunk(chunk: FloorChunk, maxSize: number): FloorChunk[] {
-  if (chunk.rooms.length <= maxSize) return [chunk];
-  const out: FloorChunk[] = [];
-  for (let i = 0; i < chunk.rooms.length; i += maxSize) {
-    out.push({ floor: chunk.floor, rooms: chunk.rooms.slice(i, i + maxSize) });
-  }
-  return out;
-}
-
-function totalCount(state: AssigneeState): number {
-  return state.baseCount + state.rooms.length;
-}
-
-function pickAssignee(states: AssigneeState[], chunkSize: number): number {
-  let best = -1;
-  let bestTotal = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < states.length; i++) {
-    const state = states[i]!;
-    const next = totalCount(state) + chunkSize;
-    const cap = state.baseCount + state.target + 1;
-    if (next > cap) continue;
-    const t = totalCount(state);
-    if (t < bestTotal) {
-      bestTotal = t;
-      best = i;
+  const floorsByHk = new Map<string, Set<number>>();
+  for (const item of items) {
+    const hkId = assigned.get(item.key) ?? item.assigneeUserId;
+    if (!hkId) continue;
+    let row = byHk.get(hkId);
+    if (!row) {
+      row = {
+        housekeeperId: hkId,
+        roomCount: 0,
+        restantCount: 0,
+        publicCount: 0,
+        floors: [],
+      };
+      byHk.set(hkId, row);
+    }
+    if (item.workType === 'RESTANT') row.restantCount += 1;
+    else if (item.workType === 'PUBLIC') row.publicCount += 1;
+    else row.roomCount += 1;
+    const floor = roomFloor(item);
+    if (floor !== 9999) {
+      const set = floorsByHk.get(hkId) ?? new Set<number>();
+      set.add(floor);
+      floorsByHk.set(hkId, set);
     }
   }
-  if (best >= 0) return best;
-  let fallback = 0;
-  for (let i = 1; i < states.length; i++) {
-    if (totalCount(states[i]!) < totalCount(states[fallback]!)) fallback = i;
+  for (const [hkId, floors] of floorsByHk) {
+    const row = byHk.get(hkId);
+    if (row) row.floors = [...floors].sort((a, b) => a - b);
   }
-  return fallback;
-}
-
-function summarize(states: AssigneeState[]): HousekeeperAssignSummary[] {
-  return states.map((s) => {
-    const floors = [...new Set(s.rooms.map((r) => roomFloor(r)).filter((f) => f !== 9999))].sort(
-      (a, b) => a - b,
-    );
-    return {
-      housekeeperId: s.housekeeperId,
-      count: s.rooms.length,
-      floors,
-    };
-  });
-}
-
-function rebalance(states: AssigneeState[]): void {
-  for (let pass = 0; pass < 50; pass++) {
-    const totals = states.map(totalCount);
-    const max = Math.max(...totals);
-    const min = Math.min(...totals);
-    if (max - min <= 1) break;
-
-    const fromIdx = totals.indexOf(max);
-    const toIdx = totals.indexOf(min);
-    const from = states[fromIdx];
-    if (!from || from.rooms.length === 0) break;
-
-    const movable = [...from.rooms].sort((a, b) => {
-      const fa = roomFloor(a);
-      const fb = roomFloor(b);
-      if (fa !== fb) return fa - fb;
-      return compareRoomNumbers(a.roomNumber, b.roomNumber);
-    });
-    const room = movable[0];
-    if (!room) break;
-    from.rooms = from.rooms.filter((r) => r.roomId !== room.roomId);
-    states[toIdx]?.rooms.push(room);
-  }
+  return [...byHk.values()];
 }
 
 /**
- * Assign departure rooms to housekeepers with balanced counts and floor locality.
+ * Multi-type daily balancer:
+ * - pinned / already-assigned stay fixed
+ * - all RESTANT items go to one non-late cleaner when possible
+ * - DIRTY rooms balance by floor with late shift getting fewer rooms
+ * - PUBLIC areas prefer late shift first
  */
-export function balanceDepartureAssignments(
-  rooms: AssignableRoom[],
-  housekeepers: HousekeeperSlot[],
-): { assignments: BalancedAssignment[]; summaries: HousekeeperAssignSummary[] } {
-  if (housekeepers.length === 0 || rooms.length === 0) {
-    return { assignments: [], summaries: [] };
+export function balanceDailyCleaningAssignments(
+  items: BalanceWorkItem[],
+  cleaners: EligibleCleaner[],
+): { assignments: BalancedAssignment[]; summaries: DailyCleaningSummary[] } {
+  const assigned = new Map<string, string>();
+
+  for (const item of items) {
+    if (item.pinned && item.assigneeUserId) {
+      assigned.set(item.key, item.assigneeUserId);
+    } else if (item.assigneeUserId && item.pinned) {
+      assigned.set(item.key, item.assigneeUserId);
+    }
   }
-
-  const n = housekeepers.length;
-  const total = rooms.length;
-  const base = Math.floor(total / n);
-  const remainder = total % n;
-  const softCap = base + (remainder > 0 ? 1 : 0);
-
-  const states: AssigneeState[] = housekeepers.map((hk, i) => ({
-    housekeeperId: hk.housekeeperId,
-    rooms: [],
-    baseCount: hk.currentCount,
-    target: base + (i < remainder ? 1 : 0),
-  }));
-
-  let chunks = groupIntoFloorChunks(rooms);
-  chunks = chunks.flatMap((c) => splitChunk(c, Math.max(softCap, 1)));
-  chunks.sort((a, b) => b.rooms.length - a.rooms.length || a.floor - b.floor);
-
-  for (const chunk of chunks) {
-    const idx = pickAssignee(states, chunk.rooms.length);
-    states[idx]!.rooms.push(...chunk.rooms);
-  }
-
-  rebalance(states);
-
-  const assignments: BalancedAssignment[] = [];
-  for (const state of states) {
-    for (const room of state.rooms) {
-      assignments.push({
-        roomId: room.roomId,
-        roomNumber: room.roomNumber,
-        floor: room.floor ?? floorFromRoomNumber(room.roomNumber),
-        housekeeperId: state.housekeeperId,
-      });
+  // Preserve any pinned assignee (including when pinned after manual set).
+  for (const item of items) {
+    if (item.pinned && item.assigneeUserId) {
+      assigned.set(item.key, item.assigneeUserId);
     }
   }
 
-  assignments.sort((a, b) => {
-    if (a.housekeeperId !== b.housekeeperId) return a.housekeeperId.localeCompare(b.housekeeperId);
-    const fa = a.floor ?? 9999;
-    const fb = b.floor ?? 9999;
-    if (fa !== fb) return fa - fb;
-    return compareRoomNumbers(a.roomNumber, b.roomNumber);
-  });
+  if (cleaners.length === 0) {
+    return {
+      assignments: [...assigned.entries()].map(([key, housekeeperId]) => ({ key, housekeeperId })),
+      summaries: summarize(cleaners, assigned, items),
+    };
+  }
 
-  return { assignments, summaries: summarize(states) };
+  const roomLoad = new Map<string, number>();
+  const publicLoad = new Map<string, number>();
+  for (const c of cleaners) {
+    roomLoad.set(c.housekeeperId, 0);
+    publicLoad.set(c.housekeeperId, 0);
+  }
+  for (const item of items) {
+    const hk = assigned.get(item.key);
+    if (!hk) continue;
+    if (item.workType === 'PUBLIC') {
+      publicLoad.set(hk, (publicLoad.get(hk) ?? 0) + 1);
+    } else {
+      roomLoad.set(hk, (roomLoad.get(hk) ?? 0) + 1);
+    }
+  }
+
+  // --- Restant bundle → one cleaner ---
+  const restants = items.filter((i) => i.workType === 'RESTANT' && !assigned.has(i.key));
+  if (restants.length > 0) {
+    const nonLate = cleaners.filter((c) => !c.isLateShift);
+    const pool = nonLate.length > 0 ? nonLate : cleaners;
+    let best = pool[0]!;
+    for (const c of pool) {
+      if ((roomLoad.get(c.housekeeperId) ?? 0) < (roomLoad.get(best.housekeeperId) ?? 0)) {
+        best = c;
+      }
+    }
+    for (const item of restants) {
+      assigned.set(item.key, best.housekeeperId);
+      roomLoad.set(best.housekeeperId, (roomLoad.get(best.housekeeperId) ?? 0) + 1);
+    }
+  }
+
+  // --- Dirty rooms: weighted floor balance ---
+  const dirty = items.filter((i) => i.workType === 'DIRTY' && !assigned.has(i.key));
+  if (dirty.length > 0) {
+    const weightSum = cleaners.reduce((s, c) => s + c.roomWeight, 0) || cleaners.length;
+    const targets = new Map<string, number>();
+    let allocated = 0;
+    for (const c of cleaners) {
+      const t = Math.floor((dirty.length * c.roomWeight) / weightSum);
+      targets.set(c.housekeeperId, t);
+      allocated += t;
+    }
+    let rem = dirty.length - allocated;
+    const ordered = [...cleaners].sort((a, b) => b.roomWeight - a.roomWeight);
+    for (const c of ordered) {
+      if (rem <= 0) break;
+      targets.set(c.housekeeperId, (targets.get(c.housekeeperId) ?? 0) + 1);
+      rem -= 1;
+    }
+
+    const byFloor = new Map<number, BalanceWorkItem[]>();
+    for (const item of dirty) {
+      const f = roomFloor(item);
+      const list = byFloor.get(f) ?? [];
+      list.push(item);
+      byFloor.set(f, list);
+    }
+    for (const list of byFloor.values()) {
+      list.sort((a, b) => compareRoomNumbers(a.roomNumber ?? '', b.roomNumber ?? ''));
+    }
+    const floors = [...byFloor.keys()].sort((a, b) => a - b);
+
+    for (const floor of floors) {
+      const rooms = byFloor.get(floor) ?? [];
+      for (const item of rooms) {
+        let best: EligibleCleaner | null = null;
+        let bestScore = Number.POSITIVE_INFINITY;
+        for (const c of cleaners) {
+          const load = roomLoad.get(c.housekeeperId) ?? 0;
+          const target = targets.get(c.housekeeperId) ?? 0;
+          const over = Math.max(0, load - target);
+          const score = load / Math.max(c.roomWeight, 0.1) + over * 10;
+          if (score < bestScore) {
+            bestScore = score;
+            best = c;
+          }
+        }
+        if (!best) continue;
+        assigned.set(item.key, best.housekeeperId);
+        roomLoad.set(best.housekeeperId, (roomLoad.get(best.housekeeperId) ?? 0) + 1);
+      }
+    }
+  }
+
+  // --- Public areas: prefer late shift ---
+  const publics = items.filter((i) => i.workType === 'PUBLIC' && !assigned.has(i.key));
+  if (publics.length > 0) {
+    const late = cleaners.filter((c) => c.isLateShift);
+    const early = cleaners.filter((c) => !c.isLateShift);
+    const order = [...late, ...early];
+    let idx = 0;
+    for (const item of publics) {
+      // Prefer late with lowest public load, else round-robin among late, then early.
+      let best = order[0]!;
+      if (late.length > 0) {
+        best = late[0]!;
+        for (const c of late) {
+          if ((publicLoad.get(c.housekeeperId) ?? 0) < (publicLoad.get(best.housekeeperId) ?? 0)) {
+            best = c;
+          }
+        }
+      } else {
+        best = order[idx % order.length]!;
+        idx += 1;
+        for (const c of early) {
+          if ((publicLoad.get(c.housekeeperId) ?? 0) < (publicLoad.get(best.housekeeperId) ?? 0)) {
+            best = c;
+          }
+        }
+      }
+      assigned.set(item.key, best.housekeeperId);
+      publicLoad.set(best.housekeeperId, (publicLoad.get(best.housekeeperId) ?? 0) + 1);
+    }
+  }
+
+  return {
+    assignments: [...assigned.entries()].map(([key, housekeeperId]) => ({ key, housekeeperId })),
+    summaries: summarize(cleaners, assigned, items),
+  };
+}
+
+export { LATE_ROOM_WEIGHT };
+
+/** Local minutes since midnight in hotel TZ. */
+export function hotelLocalMinutes(d: Date, timeZone = HOTEL_TIME_ZONE): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+  const minute = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+  const h = hour === 24 ? 0 : hour;
+  return h * 60 + minute;
+}
+
+/** Detect ~11:00–20:00 late shift from raw shift window. */
+export function isLateShiftWindow(startsAt: Date, endsAt: Date, timeZone = HOTEL_TIME_ZONE): boolean {
+  const start = hotelLocalMinutes(startsAt, timeZone);
+  const end = hotelLocalMinutes(endsAt, timeZone);
+  const startOk = start >= 10 * 60 + 30 && start <= 11 * 60 + 30;
+  const endOk = end >= 19 * 60 + 30 && end <= 20 * 60 + 30;
+  return startOk && endOk;
+}
+
+export function daysBetweenIso(fromIso: string, toIso: string): number {
+  const a = Date.parse(`${fromIso}T00:00:00.000Z`);
+  const b = Date.parse(`${toIso}T00:00:00.000Z`);
+  return Math.round((b - a) / (24 * 60 * 60 * 1000));
+}
+
+export function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function isPublicAreaDue(opts: {
+  lastCompletedOn: string | null;
+  frequencyDays: number;
+  dateIso: string;
+}): boolean {
+  if (opts.frequencyDays < 1) return true;
+  if (!opts.lastCompletedOn) return true;
+  return daysBetweenIso(opts.lastCompletedOn, opts.dateIso) >= opts.frequencyDays;
+}
+
+export function dayBoundsFromIso(iso: string): { from: Date; to: Date } {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error(`Invalid date ${iso}`);
+  const from = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  return { from, to };
+}
+
+export function dateOnlyFromIso(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
 }

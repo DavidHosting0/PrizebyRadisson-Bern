@@ -299,6 +299,7 @@ export const SUPERVISOR_NAV_ICONS: Record<string, NavIcon> = {
   '/s/board': IconBoard,
   '/s/departures': IconDepartures,
   '/s/room-tasks': IconTasks,
+  '/s/public-areas': IconMap,
   '/s/requests': IconInbox,
   '/s/chat': IconChat,
   '/s/lost': IconPackage,

@@ -56,6 +56,7 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.LOANS_WRITE,
   PermissionCode.LOANS_CATALOG_WRITE,
   PermissionCode.ACTIVITY_LOG_READ,
+  PermissionCode.PUBLIC_AREA_MANAGE,
 ];
 
 export function addCleanerBase(s: Set<PermissionCode>) {
@@ -173,6 +174,7 @@ export function buildSupervisorSet(): Set<PermissionCode> {
   s.add(PermissionCode.SHIFT_READ);
   s.add(PermissionCode.RESERVATIONS_READ);
   s.add(PermissionCode.ROOM_MANAGEMENT_READ);
+  s.add(PermissionCode.PUBLIC_AREA_MANAGE);
   return s;
 }
 
