@@ -8,7 +8,7 @@ import type { DailyCleaningPlanResponse, DailyCleaningTaskDto } from '@housekeep
 import { formatFloorLabel, hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
-import { BoardRoomCard, type BoardRoom } from '@/components/supervisor/BoardRoomCard';
+import { BoardRoomCard, boardTileKindForRoom, type BoardRoom, type BoardTileKind } from '@/components/supervisor/BoardRoomCard';
 import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
 import { Button } from '@/components/ui/Button';
@@ -29,6 +29,7 @@ type DragState = {
   offsetX: number;
   offsetY: number;
   active: boolean;
+  tileKind: BoardTileKind;
   isRestant?: boolean;
   overdueDays?: number | null;
 };
@@ -49,21 +50,21 @@ function PublicTaskCard({
   busy?: boolean;
 }) {
   return (
-    <div className="space-y-2 rounded-btn border border-dashed border-white/15 bg-white/5 p-3 backdrop-blur-sm">
+    <div className="space-y-2 rounded-card border border-teal-950/40 bg-[#0D5C63] p-3 shadow-[0_1px_2px_rgba(13,92,99,0.35)] transition hover:brightness-110">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-white">{task.publicAreaName}</p>
+          <p className="truncate text-sm font-semibold text-teal-50">{task.publicAreaName}</p>
           {task.floor != null && (
-            <p className="text-[11px] text-sidebar-muted">{formatFloorLabel(task.floor)}</p>
+            <p className="text-[11px] text-teal-100/75">{formatFloorLabel(task.floor)}</p>
           )}
-          <span className="mt-1 inline-block rounded-btn bg-action/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-200">
+          <span className="mt-1 inline-block rounded-btn bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-50">
             Public
           </span>
         </div>
         {!task.completedAt && (
           <Button
             variant="ghost"
-            className="min-h-[36px] shrink-0 px-2 text-xs text-sidebar-muted hover:text-white"
+            className="min-h-[36px] shrink-0 px-2 text-xs text-teal-100 hover:bg-black/20 hover:text-white"
             disabled={busy}
             onClick={() => onComplete(task.id)}
           >
@@ -72,10 +73,10 @@ function PublicTaskCard({
         )}
       </div>
       {task.completedAt ? (
-        <p className="text-[11px] text-emerald-300">Completed</p>
+        <p className="text-[11px] text-emerald-200">Completed</p>
       ) : (
         <select
-          className="min-h-[36px] w-full rounded-btn border border-sidebar-border bg-sidebar-hover px-2 text-xs text-white"
+          className="min-h-[36px] w-full rounded-btn border border-teal-950/50 bg-teal-950/40 px-2 text-xs text-teal-50"
           value={task.assigneeUserId ?? ''}
           disabled={busy}
           onChange={(e) => {
@@ -112,6 +113,7 @@ export default function SupervisorBoardPage() {
     startY: number;
     offsetX: number;
     offsetY: number;
+    tileKind: BoardTileKind;
     isRestant?: boolean;
     overdueDays?: number | null;
   } | null>(null);
@@ -313,6 +315,7 @@ export default function SupervisorBoardPage() {
           offsetX: pending.offsetX,
           offsetY: pending.offsetY,
           active: true,
+          tileKind: pending.tileKind,
           isRestant: pending.isRestant,
           overdueDays: pending.overdueDays,
         };
@@ -384,13 +387,15 @@ export default function SupervisorBoardPage() {
   ) {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const isRestant = meta?.isRestant;
     pendingPointer.current = {
       room,
       startX: e.clientX,
       startY: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
-      isRestant: meta?.isRestant,
+      tileKind: boardTileKindForRoom(room, isRestant),
+      isRestant,
       overdueDays: meta?.overdueDays,
     };
   }
@@ -425,7 +430,7 @@ export default function SupervisorBoardPage() {
               </h1>
               <p className="mt-1.5 max-w-xl text-sm text-sidebar-muted">
                 Drag a room — it follows your cursor — onto a cleaner column or back to Unassigned.
-                Run auto assignment, then save for the day.
+                Tile colors: dark red = departure, matte yellow = restant, aqua = public.
               </p>
               {plan?.status === 'SAVED' && plan.savedAt && (
                 <p className="mt-2 text-xs font-medium text-emerald-300">
@@ -640,47 +645,16 @@ export default function SupervisorBoardPage() {
                         Public areas
                       </p>
                       {publics.map((t) => (
-                        <div
+                        <PublicTaskCard
                           key={t.id}
-                          className="rounded-btn border border-border bg-white p-2.5 shadow-sm"
-                        >
-                          <p className="truncate text-sm font-semibold text-ink">{t.publicAreaName}</p>
-                          {t.floor != null && (
-                            <p className="text-[11px] text-ink-muted">{formatFloorLabel(t.floor)}</p>
-                          )}
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {!t.completedAt ? (
-                              <>
-                                <select
-                                  className="min-h-[36px] flex-1 rounded-btn border border-border bg-surface px-2 text-xs"
-                                  value={t.assigneeUserId ?? ''}
-                                  disabled={publicBusy}
-                                  onChange={(e) => {
-                                    const v = e.target.value;
-                                    if (v) patchPublic.mutate({ taskId: t.id, assigneeUserId: v });
-                                  }}
-                                >
-                                  <option value="">— Reassign —</option>
-                                  {reassignOptions.map((a) => (
-                                    <option key={a.id} value={a.id}>
-                                      {formatUserWithTitlePrefix(a.name, a.titlePrefix)}
-                                    </option>
-                                  ))}
-                                </select>
-                                <Button
-                                  variant="ghost"
-                                  className="min-h-[36px] px-2 text-xs"
-                                  disabled={publicBusy}
-                                  onClick={() => completePublic.mutate(t.id)}
-                                >
-                                  Done
-                                </Button>
-                              </>
-                            ) : (
-                              <p className="text-[11px] text-emerald-700">Completed</p>
-                            )}
-                          </div>
-                        </div>
+                          task={t}
+                          assignees={reassignOptions}
+                          busy={publicBusy}
+                          onReassign={(taskId, assigneeUserId) =>
+                            patchPublic.mutate({ taskId, assigneeUserId })
+                          }
+                          onComplete={(taskId) => completePublic.mutate(taskId)}
+                        />
                       ))}
                     </div>
                   )}
@@ -707,6 +681,7 @@ export default function SupervisorBoardPage() {
           <BoardRoomCard
             room={drag.room}
             ghost
+            tileKind={drag.tileKind}
             isRestant={drag.isRestant}
             overdueDays={drag.overdueDays}
           />

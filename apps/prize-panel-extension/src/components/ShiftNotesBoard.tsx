@@ -326,18 +326,46 @@ export function ShiftNotesBoard() {
               type="button"
               onClick={() => setShowSchedule((v) => !v)}
               className={clsx(
-                'rounded-md border px-1.5 py-0.5 text-[9px] font-semibold',
+                'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-semibold transition',
                 showSchedule || isFuture
-                  ? 'border-sky-400/40 bg-sky-500/15 text-sky-200'
-                  : 'border-white/15 text-sidebar-muted',
+                  ? 'bg-warning text-white shadow-sm shadow-warning/20'
+                  : 'bg-warning/15 text-warning ring-1 ring-warning/35 hover:bg-warning/25',
               )}
             >
-              {isFuture ? formatDayShort(forDate) : 'Für später…'}
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                className="h-3 w-3 shrink-0 opacity-90"
+                aria-hidden
+              >
+                <rect
+                  x="3"
+                  y="4.5"
+                  width="14"
+                  height="12"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M3 8.5h14M7 3v3M13 3v3"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              {isFuture ? (
+                <span>
+                  · <span className="font-bold">{formatDayShort(forDate)}</span>
+                </span>
+              ) : (
+                'Vormerken'
+              )}
             </button>
             {isFuture && (
               <button
                 type="button"
-                className="text-[9px] text-sidebar-muted underline"
+                className="rounded-full px-1.5 py-0.5 text-[9px] font-medium text-sidebar-muted ring-1 ring-white/15 hover:text-white"
                 onClick={() => {
                   setForDate(operatingDay);
                   setShowSchedule(false);
@@ -349,11 +377,14 @@ export function ShiftNotesBoard() {
           </div>
 
           {showSchedule && (
-            <div className="mb-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5">
+            <div className="mb-1.5 rounded-xl border border-warning/30 bg-warning/10 px-2 py-1.5">
+              <p className="mb-1 text-[8px] font-semibold uppercase tracking-wide text-warning">
+                Zieltag
+              </p>
               <input
                 type="date"
                 min={operatingDay}
-                className="w-full rounded-md border border-white/15 bg-white/5 px-1.5 py-1 text-[10px] text-white"
+                className="w-full rounded-lg border border-warning/30 bg-black/20 px-1.5 py-1 text-[10px] text-white"
                 value={forDate}
                 onChange={(e) => setForDate(e.target.value || operatingDay)}
               />

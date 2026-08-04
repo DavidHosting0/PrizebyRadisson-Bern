@@ -333,40 +333,79 @@ export function ShiftNotesBoard() {
                 type="button"
                 onClick={() => setShowSchedule((v) => !v)}
                 className={clsx(
-                  'rounded-btn border px-2.5 py-1 text-xs font-medium transition',
+                  'group inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition',
                   showSchedule || isFuture
-                    ? 'border-action/40 bg-action/10 text-action'
-                    : 'border-border text-ink-muted hover:bg-surface-muted',
+                    ? 'bg-warning text-white shadow-sm shadow-warning/25 ring-2 ring-warning/25'
+                    : 'bg-warning-muted text-warning ring-1 ring-warning/25 hover:bg-warning/15',
                 )}
               >
-                {isFuture ? `Für ${formatDayShort(forDate)}` : 'Für später…'}
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  className="h-3.5 w-3.5 shrink-0 opacity-90"
+                  aria-hidden
+                >
+                  <rect
+                    x="3"
+                    y="4.5"
+                    width="14"
+                    height="12"
+                    rx="2"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M3 8.5h14M7 3v3M13 3v3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {isFuture ? (
+                  <span>
+                    Geplant · <span className="font-bold">{formatDayShort(forDate)}</span>
+                  </span>
+                ) : (
+                  'Vormerken'
+                )}
+                <span
+                  className={clsx(
+                    'text-[10px] transition',
+                    showSchedule ? 'rotate-180 opacity-80' : 'opacity-60 group-hover:opacity-90',
+                  )}
+                >
+                  ▾
+                </span>
               </button>
               {isFuture && (
                 <button
                   type="button"
-                  className="text-xs text-ink-muted underline-offset-2 hover:underline"
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-muted ring-1 ring-border transition hover:bg-surface-muted hover:text-ink"
                   onClick={() => {
                     setForDate(operatingDay);
                     setShowSchedule(false);
                   }}
                 >
-                  Zurück auf heute
+                  Heute
                 </button>
               )}
             </div>
 
             {showSchedule && (
-              <div className="rounded-xl border border-border bg-surface-muted/60 px-3 py-2.5">
-                <label className="text-xs">
-                  <span className="font-medium text-ink">Datum</span>
+              <div className="rounded-2xl border border-warning/20 bg-warning-muted px-3.5 py-3 shadow-sm">
+                <label className="block text-xs">
+                  <span className="font-semibold text-warning">Zieltag wählen</span>
                   <input
                     type="date"
                     min={operatingDay}
-                    className="mt-1 block rounded-btn border border-border bg-surface px-2 py-1.5 text-sm"
+                    className="mt-1.5 block w-full max-w-xs rounded-xl border border-warning/25 bg-white px-3 py-2 text-sm text-ink shadow-sm focus:border-warning focus:outline-none focus:ring-2 focus:ring-warning/20"
                     value={forDate}
                     onChange={(e) => setForDate(e.target.value || operatingDay)}
                   />
                 </label>
+                <p className="mt-2 text-[11px] text-warning/80">
+                  Die Notiz erscheint erst am gewählten Tag.
+                </p>
               </div>
             )}
 
