@@ -61,10 +61,38 @@ export function ShiftHandoverBoard() {
         method: 'PATCH',
         body: JSON.stringify({ completed }),
       }),
+    onMutate: async ({ taskId, completed }) => {
+      await qc.cancelQueries({ queryKey: ['shift-handover'] });
+      const prev = qc.getQueryData<ShiftHandoverStateDto>(['shift-handover']);
+      if (prev) {
+        const tasks = prev.tasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                completed,
+                completedAt: completed ? new Date().toISOString() : null,
+                completedBy: completed ? task.completedBy : null,
+              }
+            : task,
+        );
+        const completedCount = tasks.filter((t) => t.completed).length;
+        const essentialCompletedCount = tasks.filter((t) => t.essential && t.completed).length;
+        qc.setQueryData<ShiftHandoverStateDto>(['shift-handover'], {
+          ...prev,
+          tasks,
+          completedCount,
+          essentialCompletedCount,
+        });
+      }
+      return { prev };
+    },
+    onError: (err: Error, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['shift-handover'], ctx.prev);
+      setToast({ msg: parseApiError(err.message), kind: 'warning' });
+    },
     onSuccess: (next) => {
       qc.setQueryData(['shift-handover'], next);
     },
-    onError: (err: Error) => setToast({ msg: parseApiError(err.message), kind: 'warning' }),
   });
 
   const handover = useMutation({
@@ -190,7 +218,9 @@ export function ShiftHandoverBoard() {
                   type="checkbox"
                   className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/20 accent-sky-400"
                   checked={task.completed}
-                  disabled={toggleTask.isPending}
+                  disabled={
+                    toggleTask.isPending && toggleTask.variables?.taskId === task.id
+                  }
                   onChange={(e) =>
                     toggleTask.mutate({ taskId: task.id, completed: e.target.checked })
                   }

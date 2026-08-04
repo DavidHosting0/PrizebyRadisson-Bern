@@ -11,6 +11,7 @@ import type {
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
+import { DateInput } from '@/components/ui/DateInput';
 
 function todayIso() {
   const d = new Date();
@@ -119,6 +120,63 @@ export function ShiftNotesBoard() {
       qc.invalidateQueries({ queryKey: ['shift-notes'] });
     },
     onError: (e: Error) => setErr(e.message),
+  });
+
+  const toggleCompleteMut = useMutation({
+    mutationFn: (payload: { id: string; completed: boolean }) =>
+      api<ShiftNoteDto>(`/shift-notes/${payload.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ completed: payload.completed }),
+      }),
+    onMutate: async ({ id, completed }) => {
+      await qc.cancelQueries({ queryKey: ['shift-notes', 'day', viewingDate] });
+      const key = ['shift-notes', 'day', viewingDate] as const;
+      const prev = qc.getQueryData<ShiftNoteDto[]>(key);
+      if (prev) {
+        qc.setQueryData<ShiftNoteDto[]>(
+          key,
+          prev
+            .map((n) =>
+              n.id === id
+                ? {
+                    ...n,
+                    completed,
+                    completedAt: completed ? new Date().toISOString() : null,
+                    completedBy: completed
+                      ? { id: user?.id ?? '', name: user?.name ?? '' }
+                      : null,
+                  }
+                : n,
+            )
+            .sort((a, b) => {
+              if (a.completed !== b.completed) return a.completed ? 1 : -1;
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }),
+        );
+      }
+      return { prev, key };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev && ctx.key) qc.setQueryData(ctx.key, ctx.prev);
+      setErr(e.message);
+    },
+    onSuccess: (note) => {
+      const key = ['shift-notes', 'day', note.forDate] as const;
+      const prev = qc.getQueryData<ShiftNoteDto[]>(key);
+      if (prev) {
+        qc.setQueryData(
+          key,
+          prev
+            .map((n) => (n.id === note.id ? note : n))
+            .sort((a, b) => {
+              if (a.completed !== b.completed) return a.completed ? 1 : -1;
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }),
+        );
+      } else {
+        qc.invalidateQueries({ queryKey: ['shift-notes'] });
+      }
+    },
   });
 
   const deleteMut = useMutation({
@@ -234,84 +292,131 @@ export function ShiftNotesBoard() {
               {notes.map((n) => {
                 const mine = user?.id === n.createdBy.id;
                 const editing = editingId === n.id;
+                const toggling =
+                  toggleCompleteMut.isPending && toggleCompleteMut.variables?.id === n.id;
                 return (
                   <li
                     key={n.id}
-                    className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+                    className={clsx(
+                      'overflow-hidden rounded-xl border shadow-sm transition-colors',
+                      n.completed
+                        ? 'border-success/25 bg-success/5'
+                        : 'border-border bg-surface',
+                    )}
                   >
                     <div className="flex">
-                      <div className="w-1 shrink-0 bg-action" aria-hidden />
-                      <div className="min-w-0 flex-1 px-4 py-3">
-                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded bg-action/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-action">
-                              Info
-                            </span>
-                            <span className="text-sm font-semibold text-ink">{n.createdBy.name}</span>
-                          </div>
-                          <span className="text-[11px] text-ink-muted">
-                            {formatTime(n.createdAt)}
-                            {n.updatedAt !== n.createdAt ? ' · bearbeitet' : ''}
-                          </span>
-                        </div>
-                        {editing ? (
-                          <div className="space-y-2">
-                            <textarea
-                              rows={3}
-                              value={editBody}
-                              onChange={(e) => setEditBody(e.target.value)}
-                              className="w-full resize-y rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
-                              autoFocus
+                      <div
+                        className={clsx(
+                          'w-1 shrink-0',
+                          n.completed ? 'bg-success' : 'bg-action',
+                        )}
+                        aria-hidden
+                      />
+                      <div className="flex min-w-0 flex-1 gap-3 px-4 py-3">
+                        {canWrite && (
+                          <label className="mt-0.5 flex shrink-0 cursor-pointer items-start">
+                            <input
+                              type="checkbox"
+                              className="h-5 w-5 rounded border-border accent-action"
+                              checked={n.completed}
+                              disabled={toggling}
+                              aria-label={n.completed ? 'Als offen markieren' : 'Als erledigt markieren'}
+                              onChange={(e) =>
+                                toggleCompleteMut.mutate({
+                                  id: n.id,
+                                  completed: e.target.checked,
+                                })
+                              }
                             />
-                            <div className="flex flex-wrap gap-2">
-                              <Button
-                                type="button"
-                                variant="action"
-                                disabled={updateMut.isPending || !editBody.trim()}
-                                onClick={() =>
-                                  updateMut.mutate({ id: n.id, body: editBody.trim() })
-                                }
+                          </label>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={clsx(
+                                  'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                                  n.completed
+                                    ? 'bg-success/15 text-success'
+                                    : 'bg-action/10 text-action',
+                                )}
                               >
-                                Speichern
-                              </Button>
-                              <Button
+                                {n.completed ? 'Erledigt' : 'Info'}
+                              </span>
+                              <span className="text-sm font-semibold text-ink">{n.createdBy.name}</span>
+                            </div>
+                            <span className="text-[11px] text-ink-muted">
+                              {formatTime(n.createdAt)}
+                              {n.updatedAt !== n.createdAt && !n.completed ? ' · bearbeitet' : ''}
+                              {n.completed && n.completedBy
+                                ? ` · erledigt von ${n.completedBy.name}`
+                                : ''}
+                            </span>
+                          </div>
+                          {editing ? (
+                            <div className="space-y-2">
+                              <textarea
+                                rows={3}
+                                value={editBody}
+                                onChange={(e) => setEditBody(e.target.value)}
+                                className="w-full resize-y rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                                autoFocus
+                              />
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant="action"
+                                  disabled={updateMut.isPending || !editBody.trim()}
+                                  onClick={() =>
+                                    updateMut.mutate({ id: n.id, body: editBody.trim() })
+                                  }
+                                >
+                                  Speichern
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    setEditingId(null);
+                                    setEditBody('');
+                                  }}
+                                >
+                                  Abbrechen
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p
+                              className={clsx(
+                                'whitespace-pre-wrap text-sm leading-relaxed',
+                                n.completed ? 'text-ink-muted line-through' : 'text-ink',
+                              )}
+                            >
+                              {n.body}
+                            </p>
+                          )}
+                          {canWrite && mine && !editing && (
+                            <div className="mt-2.5 flex gap-3 border-t border-border/70 pt-2">
+                              <button
                                 type="button"
-                                variant="secondary"
+                                className="text-xs font-medium text-ink-muted hover:text-action"
                                 onClick={() => {
-                                  setEditingId(null);
-                                  setEditBody('');
+                                  setEditingId(n.id);
+                                  setEditBody(n.body);
                                 }}
                               >
-                                Abbrechen
-                              </Button>
+                                Bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-ink-muted hover:text-danger"
+                                onClick={() => deleteMut.mutate(n.id)}
+                              >
+                                Löschen
+                              </button>
                             </div>
-                          </div>
-                        ) : (
-                          <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">
-                            {n.body}
-                          </p>
-                        )}
-                        {canWrite && mine && !editing && (
-                          <div className="mt-2.5 flex gap-3 border-t border-border/70 pt-2">
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-ink-muted hover:text-action"
-                              onClick={() => {
-                                setEditingId(n.id);
-                                setEditBody(n.body);
-                              }}
-                            >
-                              Bearbeiten
-                            </button>
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-ink-muted hover:text-danger"
-                              onClick={() => deleteMut.mutate(n.id)}
-                            >
-                              Löschen
-                            </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   </li>
@@ -395,13 +500,13 @@ export function ShiftNotesBoard() {
               <div className="rounded-2xl border border-warning/20 bg-warning-muted px-3.5 py-3 shadow-sm">
                 <label className="block text-xs">
                   <span className="font-semibold text-warning">Zieltag wählen</span>
-                  <input
-                    type="date"
-                    min={operatingDay}
-                    className="mt-1.5 block w-full max-w-xs rounded-xl border border-warning/25 bg-white px-3 py-2 text-sm text-ink shadow-sm focus:border-warning focus:outline-none focus:ring-2 focus:ring-warning/20"
-                    value={forDate}
-                    onChange={(e) => setForDate(e.target.value || operatingDay)}
-                  />
+                  <div className="mt-1.5 max-w-xs">
+                    <DateInput
+                      min={operatingDay}
+                      value={forDate}
+                      onChange={(e) => setForDate(e.target.value || operatingDay)}
+                    />
+                  </div>
                 </label>
                 <p className="mt-2 text-[11px] text-warning/80">
                   Die Notiz erscheint erst am gewählten Tag.

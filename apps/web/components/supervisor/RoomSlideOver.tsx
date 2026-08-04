@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { DateInput } from '@/components/ui/DateInput';
 import {
   RoomDetailInsights,
   type LastCleaningDto,
@@ -209,12 +210,13 @@ export function RoomSlideOver({
                 </label>
                 <label className="mt-3 block text-xs font-medium text-ink-muted">
                   Expected back in service
-                  <input
-                    type="datetime-local"
-                    className="mt-1 min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink"
-                    value={oooUntilLocal}
-                    onChange={(e) => setOooUntilLocal(e.target.value)}
-                  />
+                  <div className="mt-1">
+                    <DateInput
+                      type="datetime-local"
+                      value={oooUntilLocal}
+                      onChange={(e) => setOooUntilLocal(e.target.value)}
+                    />
+                  </div>
                 </label>
                 <Button
                   variant="secondary"

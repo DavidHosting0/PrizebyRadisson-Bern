@@ -16,6 +16,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { Card } from '@/components/ui/Card';
 import { PageHeader, PageShell } from '@/components/ui/PageShell';
 import { Button } from '@/components/ui/Button';
+import { DateInput } from '@/components/ui/DateInput';
 
 type TabId = 'overview' | 'guests' | 'cleaning' | 'photos' | 'damages' | 'lostFound';
 
@@ -224,21 +225,15 @@ export function RoomManagementDetail({ roomId, listPath, reservationsPath = '/r/
           <div className="flex flex-wrap gap-3">
             <div>
               <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">{t('dateFrom')}</label>
-              <input
-                type="date"
-                className="mt-1 block min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-                value={guestFrom}
-                onChange={(e) => setGuestFrom(e.target.value)}
-              />
+              <div className="mt-1 min-w-[11rem]">
+                <DateInput value={guestFrom} onChange={(e) => setGuestFrom(e.target.value)} />
+              </div>
             </div>
             <div>
               <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">{t('dateTo')}</label>
-              <input
-                type="date"
-                className="mt-1 block min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-                value={guestTo}
-                onChange={(e) => setGuestTo(e.target.value)}
-              />
+              <div className="mt-1 min-w-[11rem]">
+                <DateInput value={guestTo} onChange={(e) => setGuestTo(e.target.value)} />
+              </div>
             </div>
           </div>
           {data.guestStays.length === 0 ? (

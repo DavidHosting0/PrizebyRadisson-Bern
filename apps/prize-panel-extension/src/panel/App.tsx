@@ -255,9 +255,11 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
   const notesInfo = useMemo(() => {
     if (!canNotes) return 'Keine Berechtigung';
     if (notesQ.isLoading || handoverQ.isLoading) return 'Laden…';
-    const n = notesQ.data?.length ?? 0;
-    if (n === 0) return 'Keine Notizen heute';
-    return n === 1 ? '1 Notiz heute' : `${n} Notizen heute`;
+    const list = notesQ.data ?? [];
+    const open = list.filter((n) => !n.completed).length;
+    if (list.length === 0) return 'Keine Notizen heute';
+    if (open === 0) return `Alles erledigt · ${list.length}`;
+    return open === 1 ? '1 offen' : `${open} offen`;
   }, [canNotes, notesQ.data, notesQ.isLoading, handoverQ.isLoading]);
 
   const complaintsInfo = useMemo(() => {

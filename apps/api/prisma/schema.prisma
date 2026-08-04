@@ -393,6 +393,7 @@ model User {
   roomHousekeepingEvents   RoomHousekeepingEvent[]
   activityLogs             ActivityLog[]
   shiftNotesCreated        ShiftNote[]              @relation("ShiftNoteCreatedBy")
+  shiftNotesCompleted      ShiftNote[]              @relation("ShiftNoteCompletedBy")
   complaintsCreated        GuestComplaint[]         @relation("ComplaintCreatedBy")
   complaintsResolved       GuestComplaint[]         @relation("ComplaintResolvedBy")
   roomLoansLoaned          RoomLoan[]               @relation("RoomLoanLoanedBy")
@@ -1302,11 +1303,15 @@ model ShiftNote {
   body            String                   @db.Text
   createdByUserId String
   createdBy       User                     @relation("ShiftNoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  completedAt     DateTime?
+  completedByUserId String?
+  completedBy     User?                    @relation("ShiftNoteCompletedBy", fields: [completedByUserId], references: [id], onDelete: SetNull)
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 
   @@index([forDate])
   @@index([createdAt])
+  @@index([completedAt])
 }
 
 model GuestComplaint {

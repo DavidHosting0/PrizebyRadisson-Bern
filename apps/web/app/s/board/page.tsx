@@ -532,8 +532,8 @@ export default function SupervisorBoardPage() {
               className={clsx(
                 'min-h-[280px] w-[300px] shrink-0 overflow-hidden rounded-card border transition-all duration-200',
                 dropTarget === 'unassigned'
-                  ? 'border-action bg-action/10 shadow-[0_0_0_3px_rgba(59,111,160,0.25)]'
-                  : 'border-sidebar-border/50 bg-gradient-to-b from-sidebar to-[#141c28]',
+                  ? 'border-action bg-[#1A2332] shadow-[0_0_0_3px_rgba(59,111,160,0.25)]'
+                  : 'border-sidebar-border/50 bg-[#1A2332]',
               )}
             >
               <div className="border-b border-white/10 px-3.5 py-3">
@@ -597,13 +597,13 @@ export default function SupervisorBoardPage() {
                   key={hk.id}
                   data-drop-zone={hk.id}
                   className={clsx(
-                    'min-h-[280px] w-[300px] shrink-0 overflow-hidden rounded-card border bg-surface transition-all duration-200',
+                    'flex min-h-[280px] w-[300px] shrink-0 flex-col overflow-hidden rounded-card border transition-all duration-200',
                     active
-                      ? 'border-action shadow-[0_0_0_3px_rgba(59,111,160,0.2)]'
-                      : 'border-border shadow-card',
+                      ? 'border-action bg-[#1A2332] shadow-[0_0_0_3px_rgba(59,111,160,0.25)]'
+                      : 'border-sidebar-border/50 bg-[#1A2332]',
                   )}
                 >
-                  <div className="flex items-center gap-3 border-b border-sidebar-border/30 bg-sidebar px-3.5 py-3">
+                  <div className="flex items-center gap-3 border-b border-white/10 bg-[#15202e] px-3.5 py-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-action/30 text-xs font-bold text-white ring-1 ring-white/10">
                       {hk.name
                         .split(/\s+/)
@@ -652,8 +652,8 @@ export default function SupervisorBoardPage() {
                     })}
                   </ul>
                   {publics.length > 0 && (
-                    <div className="space-y-2 border-t border-border bg-sidebar/5 px-3 pb-3 pt-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                    <div className="space-y-2 border-t border-white/10 bg-black/20 px-3 pb-3 pt-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
                         Public areas
                       </p>
                       {publics.map((t) => (
@@ -671,7 +671,11 @@ export default function SupervisorBoardPage() {
                     </div>
                   )}
                   {col.length === 0 && publics.length === 0 && (
-                    <p className="px-3 pb-4 text-sm text-ink-muted">Drop rooms here</p>
+                    <div className="flex flex-1 items-center justify-center px-3 py-8">
+                      <p className="rounded-lg border border-dashed border-white/15 bg-[#141c28] px-4 py-6 text-center text-sm text-sidebar-muted">
+                        Drop rooms here
+                      </p>
+                    </div>
                   )}
                 </div>
               );

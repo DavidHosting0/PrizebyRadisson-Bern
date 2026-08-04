@@ -361,8 +361,16 @@ function MessageMenu({
                   className="flex h-8 w-8 items-center justify-center rounded-full text-sidebar-muted hover:bg-white/10"
                   onClick={() => setShowMore(true)}
                   title="Mehr"
+                  aria-label="Mehr Emojis"
                 >
-                  ⊕
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path
+                      d="M12 5v14M5 12h14"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
                 </button>
               </div>
             ) : (

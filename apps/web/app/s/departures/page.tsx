@@ -11,6 +11,7 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { KpiStat } from '@/components/supervisor/KpiStat';
 import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { Button } from '@/components/ui/Button';
+import { DateInput } from '@/components/ui/DateInput';
 
 function formatSyncedAt(iso: string | null): string {
   if (!iso) return 'Never';
@@ -105,12 +106,7 @@ export default function SupervisorDeparturesPage() {
       <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">Date</span>
-          <input
-            type="date"
-            className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <DateInput value={date} onChange={(e) => setDate(e.target.value)} className="min-w-[11rem]" />
         </label>
         {data && (
           <p className="text-sm text-ink-muted">

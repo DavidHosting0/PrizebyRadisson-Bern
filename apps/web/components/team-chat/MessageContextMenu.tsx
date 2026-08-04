@@ -146,12 +146,17 @@ export function MessageContextMenu({
                   role="menuitem"
                   title={labels.moreEmojis}
                   aria-label={labels.moreEmojis}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-ink-muted transition hover:bg-surface-muted"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted"
                   onClick={() => setShowMore(true)}
                 >
-                  <span aria-hidden className="text-xl leading-none">
-                    ⊕
-                  </span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path
+                      d="M12 5v14M5 12h14"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
                 </button>
               </div>
             ) : (

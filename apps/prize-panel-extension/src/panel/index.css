@@ -50,3 +50,32 @@ body {
 *::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Dark-blue date fields (DarkDateInput) */
+.date-input-shell .date-input {
+  color-scheme: dark;
+}
+
+.date-input-shell .date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+  filter: invert(0.85) sepia(0.15) saturate(0.6) hue-rotate(180deg);
+}
+
+.date-input-shell .date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.date-input-shell .date-input::-webkit-datetime-edit-text {
+  color: #94a3b8;
+  padding: 0 1px;
+}
+
+.date-input-shell .date-input::-webkit-datetime-edit-month-field,
+.date-input-shell .date-input::-webkit-datetime-edit-day-field,
+.date-input-shell .date-input::-webkit-datetime-edit-year-field,
+.date-input-shell .date-input::-webkit-datetime-edit-hour-field,
+.date-input-shell .date-input::-webkit-datetime-edit-minute-field {
+  color: #f1f5f9;
+}
+

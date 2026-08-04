@@ -17,6 +17,7 @@ import { CheckInRateChart } from '@/components/admin/reservation-stats/CheckInRa
 import { PipelineAreaChart } from '@/components/admin/reservation-stats/PipelineAreaChart';
 import { DailySummaryChart } from '@/components/admin/reservation-stats/DailySummaryChart';
 import { BreakdownTable } from '@/components/admin/reservation-stats/BreakdownTable';
+import { DateInput } from '@/components/ui/DateInput';
 
 function todayIso(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich' }).format(new Date());
@@ -99,11 +100,10 @@ export default function AdminReservationStatsPage() {
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
             {t('businessDate')}
           </span>
-          <input
-            type="date"
+          <DateInput
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink shadow-card"
+            className="min-w-[11rem] shadow-card"
           />
         </label>
       </header>

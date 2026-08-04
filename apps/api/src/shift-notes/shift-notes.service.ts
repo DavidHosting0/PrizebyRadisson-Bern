@@ -27,20 +27,30 @@ function formatDateOnly(d: Date): string {
 
 const ALL_SHIFTS = [...RECEPTION_HANDOVER_SHIFTS] as ReceptionHandoverShift[];
 
+const noteInclude = {
+  createdBy: { select: { id: true, name: true } },
+  completedBy: { select: { id: true, name: true } },
+} as const;
+
 function mapNote(row: {
   id: string;
   forDate: Date;
   shifts: ReceptionHandoverShift[];
   body: string;
+  completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: { id: string; name: string };
+  completedBy: { id: string; name: string } | null;
 }): ShiftNoteDto {
   return {
     id: row.id,
     forDate: formatDateOnly(row.forDate),
     shifts: row.shifts as ShiftNoteDto['shifts'],
     body: row.body,
+    completed: row.completedAt != null,
+    completedAt: row.completedAt?.toISOString() ?? null,
+    completedBy: row.completedBy,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -50,8 +60,6 @@ function mapNote(row: {
 @Injectable()
 export class ShiftNotesService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private include = { createdBy: { select: { id: true, name: true } } } as const;
 
   async list(params: { date?: string }) {
     const where: Prisma.ShiftNoteWhereInput = {};
@@ -73,11 +81,17 @@ export class ShiftNotesService {
     }
     const rows = await this.prisma.shiftNote.findMany({
       where,
-      include: this.include,
-      orderBy: { createdAt: 'desc' },
+      include: noteInclude,
+      orderBy: [{ completedAt: 'asc' }, { createdAt: 'desc' }],
       take: 200,
     });
-    return rows.map(mapNote);
+    // Open notes first (completedAt null sorts first with asc in Postgres? Actually nulls first/last varies)
+    // Sort in JS for consistent open-first ordering.
+    const mapped = rows.map(mapNote);
+    return mapped.sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
   }
 
   /** Distinct days that already have notes (newest first). */
@@ -99,7 +113,7 @@ export class ShiftNotesService {
     const rows = await this.prisma.shiftNote.findMany({
       take: take + 1,
       ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
-      include: this.include,
+      include: noteInclude,
       orderBy: [{ forDate: 'desc' }, { createdAt: 'desc' }],
     });
     const hasMore = rows.length > take;
@@ -127,12 +141,12 @@ export class ShiftNotesService {
         body: dto.body.trim(),
         createdByUserId: user.id,
       },
-      include: this.include,
+      include: noteInclude,
     });
     return mapNote(row);
   }
 
-  private assertCanMutate(note: { createdByUserId: string }, user: AuthenticatedUser) {
+  private assertCanEditBody(note: { createdByUserId: string }, user: AuthenticatedUser) {
     if (user.role === UserRole.ADMIN) return;
     if (note.createdByUserId !== user.id) {
       throw new ForbiddenException('Nur der Autor darf diese Notiz bearbeiten');
@@ -142,7 +156,13 @@ export class ShiftNotesService {
   async update(id: string, dto: UpdateShiftNotePayload, user: AuthenticatedUser) {
     const existing = await this.prisma.shiftNote.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Note not found');
-    this.assertCanMutate(existing, user);
+
+    const touchesContent =
+      dto.body !== undefined || dto.forDate !== undefined || dto.shifts !== undefined;
+    if (touchesContent) {
+      this.assertCanEditBody(existing, user);
+    }
+
     if (dto.shifts) {
       for (const s of dto.shifts) {
         if (!RECEPTION_HANDOVER_SHIFTS.includes(s)) {
@@ -150,13 +170,24 @@ export class ShiftNotesService {
         }
       }
     }
+
+    const data: Prisma.ShiftNoteUpdateInput = {
+      ...(dto.forDate ? { forDate: toDateOnly(dto.forDate) } : {}),
+      ...(dto.body !== undefined ? { body: dto.body.trim() } : {}),
+    };
+
+    if (dto.completed === true) {
+      data.completedAt = existing.completedAt ?? new Date();
+      data.completedBy = { connect: { id: user.id } };
+    } else if (dto.completed === false) {
+      data.completedAt = null;
+      data.completedBy = { disconnect: true };
+    }
+
     const row = await this.prisma.shiftNote.update({
       where: { id },
-      data: {
-        ...(dto.forDate ? { forDate: toDateOnly(dto.forDate) } : {}),
-        ...(dto.body !== undefined ? { body: dto.body.trim() } : {}),
-      },
-      include: this.include,
+      data,
+      include: noteInclude,
     });
     return mapNote(row);
   }
@@ -164,7 +195,7 @@ export class ShiftNotesService {
   async remove(id: string, user: AuthenticatedUser) {
     const existing = await this.prisma.shiftNote.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Note not found');
-    this.assertCanMutate(existing, user);
+    this.assertCanEditBody(existing, user);
     await this.prisma.shiftNote.delete({ where: { id } });
     return { ok: true as const };
   }

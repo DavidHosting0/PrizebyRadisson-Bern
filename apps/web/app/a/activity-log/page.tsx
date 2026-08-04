@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { DateInput } from '@/components/ui/DateInput';
 
 type ActivityLogRow = {
   id: string;
@@ -192,21 +193,15 @@ export default function ActivityLogPage() {
         <form onSubmit={onSearch} className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           <label className="block text-sm">
             <span className="font-medium text-ink">Von</span>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="mt-1 w-full min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
-            />
+            <div className="mt-1">
+              <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
           </label>
           <label className="block text-sm">
             <span className="font-medium text-ink">Bis</span>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="mt-1 w-full min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
-            />
+            <div className="mt-1">
+              <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
           </label>
           <label className="block text-sm">
             <span className="font-medium text-ink">Kategorie</span>

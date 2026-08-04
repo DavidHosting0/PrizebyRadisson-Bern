@@ -1,4 +1,4 @@
-import { IsArray, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 import { ReceptionHandoverShift } from '@prisma/client';
 
 export class CreateShiftNoteDto {
@@ -29,4 +29,8 @@ export class UpdateShiftNoteDto {
   @IsString()
   @MinLength(1)
   body?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  completed?: boolean;
 }

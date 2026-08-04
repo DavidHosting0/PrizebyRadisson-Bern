@@ -6,6 +6,9 @@ export type ShiftNoteDto = {
   /** Kept for API compat; notes are day-scoped (all shifts). */
   shifts: ReceptionHandoverShift[];
   body: string;
+  completed: boolean;
+  completedAt: string | null;
+  completedBy: { id: string; name: string } | null;
   createdBy: { id: string; name: string };
   createdAt: string;
   updatedAt: string;
@@ -22,6 +25,8 @@ export type UpdateShiftNotePayload = {
   forDate?: string;
   body?: string;
   shifts?: ReceptionHandoverShift[];
+  /** Mark note done / reopen. Any SHIFT_NOTES_WRITE user may toggle. */
+  completed?: boolean;
 };
 
 export type ShiftNoteDaySummaryDto = {

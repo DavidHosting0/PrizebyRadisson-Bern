@@ -9,6 +9,7 @@ import type {
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
+import { DarkDateInput } from './ui/DarkDateInput';
 
 function todayIso() {
   const d = new Date();
@@ -115,6 +116,63 @@ export function ShiftNotesBoard() {
       qc.invalidateQueries({ queryKey: ['shift-notes'] });
     },
     onError: (e: Error) => setErr(e.message),
+  });
+
+  const toggleCompleteMut = useMutation({
+    mutationFn: (payload: { id: string; completed: boolean }) =>
+      api<ShiftNoteDto>(`/shift-notes/${payload.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ completed: payload.completed }),
+      }),
+    onMutate: async ({ id, completed }) => {
+      await qc.cancelQueries({ queryKey: ['shift-notes', 'day', viewingDate] });
+      const key = ['shift-notes', 'day', viewingDate] as const;
+      const prev = qc.getQueryData<ShiftNoteDto[]>(key);
+      if (prev) {
+        qc.setQueryData<ShiftNoteDto[]>(
+          key,
+          prev
+            .map((n) =>
+              n.id === id
+                ? {
+                    ...n,
+                    completed,
+                    completedAt: completed ? new Date().toISOString() : null,
+                    completedBy: completed
+                      ? { id: user?.id ?? '', name: user?.name ?? '' }
+                      : null,
+                  }
+                : n,
+            )
+            .sort((a, b) => {
+              if (a.completed !== b.completed) return a.completed ? 1 : -1;
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }),
+        );
+      }
+      return { prev, key };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.prev && ctx.key) qc.setQueryData(ctx.key, ctx.prev);
+      setErr(e.message);
+    },
+    onSuccess: (note) => {
+      const key = ['shift-notes', 'day', note.forDate] as const;
+      const prev = qc.getQueryData<ShiftNoteDto[]>(key);
+      if (prev) {
+        qc.setQueryData(
+          key,
+          prev
+            .map((n) => (n.id === note.id ? note : n))
+            .sort((a, b) => {
+              if (a.completed !== b.completed) return a.completed ? 1 : -1;
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }),
+        );
+      } else {
+        qc.invalidateQueries({ queryKey: ['shift-notes'] });
+      }
+    },
   });
 
   const deleteMut = useMutation({
@@ -228,87 +286,134 @@ export function ShiftNotesBoard() {
               {notes.map((n) => {
                 const mine = user?.id === n.createdBy.id;
                 const editing = editingId === n.id;
+                const toggling =
+                  toggleCompleteMut.isPending && toggleCompleteMut.variables?.id === n.id;
                 return (
                   <li
                     key={n.id}
-                    className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.07]"
+                    className={clsx(
+                      'overflow-hidden rounded-lg border',
+                      n.completed
+                        ? 'border-success/30 bg-success/10'
+                        : 'border-white/10 bg-white/[0.07]',
+                    )}
                   >
                     <div className="flex">
-                      <div className="w-1 shrink-0 bg-action" aria-hidden />
-                      <div className="min-w-0 flex-1 px-2.5 py-2">
-                        <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2">
-                          <div className="flex items-center gap-1.5">
-                            <span className="rounded bg-action/20 px-1 py-px text-[8px] font-bold uppercase tracking-wide text-sky-200">
-                              Info
-                            </span>
-                            <span className="text-[10px] font-semibold text-slate-100">
-                              {n.createdBy.name}
+                      <div
+                        className={clsx('w-1 shrink-0', n.completed ? 'bg-success' : 'bg-action')}
+                        aria-hidden
+                      />
+                      <div className="flex min-w-0 flex-1 gap-2 px-2.5 py-2">
+                        {canWrite && (
+                          <label className="mt-0.5 flex shrink-0 cursor-pointer items-start">
+                            <input
+                              type="checkbox"
+                              className="h-3.5 w-3.5 rounded border-white/20 accent-sky-400"
+                              checked={n.completed}
+                              disabled={toggling}
+                              aria-label={n.completed ? 'Als offen markieren' : 'Als erledigt markieren'}
+                              onChange={(e) =>
+                                toggleCompleteMut.mutate({
+                                  id: n.id,
+                                  completed: e.target.checked,
+                                })
+                              }
+                            />
+                          </label>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={clsx(
+                                  'rounded px-1 py-px text-[8px] font-bold uppercase tracking-wide',
+                                  n.completed
+                                    ? 'bg-success/25 text-emerald-200'
+                                    : 'bg-action/20 text-sky-200',
+                                )}
+                              >
+                                {n.completed ? 'Erledigt' : 'Info'}
+                              </span>
+                              <span className="text-[10px] font-semibold text-slate-100">
+                                {n.createdBy.name}
+                              </span>
+                            </div>
+                            <span className="text-[8px] text-sidebar-muted">
+                              {formatTime(n.createdAt)}
+                              {n.completed && n.completedBy
+                                ? ` · ${n.completedBy.name.split(' ')[0]}`
+                                : n.updatedAt !== n.createdAt
+                                  ? ' · bearb.'
+                                  : ''}
                             </span>
                           </div>
-                          <span className="text-[8px] text-sidebar-muted">
-                            {formatTime(n.createdAt)}
-                            {n.updatedAt !== n.createdAt ? ' · bearb.' : ''}
-                          </span>
-                        </div>
-                        {editing ? (
-                          <div className="space-y-1.5">
-                            <textarea
-                              rows={3}
-                              value={editBody}
-                              onChange={(e) => setEditBody(e.target.value)}
-                              className="w-full resize-y rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-[11px] text-white focus:border-action focus:outline-none"
-                              autoFocus
-                            />
-                            <div className="flex gap-1.5">
-                              <Button
-                                type="button"
-                                variant="action"
-                                disabled={updateMut.isPending || !editBody.trim()}
-                                className="min-h-[24px] px-2 text-[10px]"
-                                onClick={() =>
-                                  updateMut.mutate({ id: n.id, body: editBody.trim() })
-                                }
-                              >
-                                Speichern
-                              </Button>
+                          {editing ? (
+                            <div className="space-y-1.5">
+                              <textarea
+                                rows={3}
+                                value={editBody}
+                                onChange={(e) => setEditBody(e.target.value)}
+                                className="w-full resize-y rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-[11px] text-white focus:border-action focus:outline-none"
+                                autoFocus
+                              />
+                              <div className="flex gap-1.5">
+                                <Button
+                                  type="button"
+                                  variant="action"
+                                  disabled={updateMut.isPending || !editBody.trim()}
+                                  className="min-h-[24px] px-2 text-[10px]"
+                                  onClick={() =>
+                                    updateMut.mutate({ id: n.id, body: editBody.trim() })
+                                  }
+                                >
+                                  Speichern
+                                </Button>
+                                <button
+                                  type="button"
+                                  className="text-[9px] text-sidebar-muted hover:text-white"
+                                  onClick={() => {
+                                    setEditingId(null);
+                                    setEditBody('');
+                                  }}
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p
+                              className={clsx(
+                                'whitespace-pre-wrap text-[11px] leading-snug',
+                                n.completed
+                                  ? 'text-sidebar-muted line-through'
+                                  : 'text-slate-100',
+                              )}
+                            >
+                              {n.body}
+                            </p>
+                          )}
+                          {canWrite && mine && !editing && (
+                            <div className="mt-1.5 flex gap-2.5 border-t border-white/10 pt-1.5">
                               <button
                                 type="button"
-                                className="text-[9px] text-sidebar-muted hover:text-white"
+                                className="text-[9px] font-medium text-sidebar-muted hover:text-sky-300"
                                 onClick={() => {
-                                  setEditingId(null);
-                                  setEditBody('');
+                                  setEditingId(n.id);
+                                  setEditBody(n.body);
                                 }}
                               >
-                                Abbrechen
+                                Bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                className="text-[9px] font-medium text-sidebar-muted hover:text-red-300"
+                                onClick={() => deleteMut.mutate(n.id)}
+                              >
+                                Löschen
                               </button>
                             </div>
-                          </div>
-                        ) : (
-                          <p className="whitespace-pre-wrap text-[11px] leading-snug text-slate-100">
-                            {n.body}
-                          </p>
-                        )}
-                        {canWrite && mine && !editing && (
-                          <div className="mt-1.5 flex gap-2.5 border-t border-white/10 pt-1.5">
-                            <button
-                              type="button"
-                              className="text-[9px] font-medium text-sidebar-muted hover:text-sky-300"
-                              onClick={() => {
-                                setEditingId(n.id);
-                                setEditBody(n.body);
-                              }}
-                            >
-                              Bearbeiten
-                            </button>
-                            <button
-                              type="button"
-                              className="text-[9px] font-medium text-sidebar-muted hover:text-red-300"
-                              onClick={() => deleteMut.mutate(n.id)}
-                            >
-                              Löschen
-                            </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   </li>
@@ -381,10 +486,8 @@ export function ShiftNotesBoard() {
               <p className="mb-1 text-[8px] font-semibold uppercase tracking-wide text-warning">
                 Zieltag
               </p>
-              <input
-                type="date"
+              <DarkDateInput
                 min={operatingDay}
-                className="w-full rounded-lg border border-warning/30 bg-black/20 px-1.5 py-1 text-[10px] text-white"
                 value={forDate}
                 onChange={(e) => setForDate(e.target.value || operatingDay)}
               />
