@@ -1,12 +1,13 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LoanCatalogItemDto, RoomLoanDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { DarkSelect } from './ui/DarkSelect';
 
 type RoomOpt = { id: string; roomNumber: string };
 
@@ -38,6 +39,24 @@ export function LoansBoard() {
     queryFn: () => api<RoomOpt[]>('/rooms'),
     enabled: showForm,
   });
+
+  const roomOptions = useMemo(
+    () =>
+      [...(roomsQ.data ?? [])]
+        .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'de', { numeric: true }))
+        .map((r) => ({ value: r.id, label: r.roomNumber })),
+    [roomsQ.data],
+  );
+
+  const catalogOptions = useMemo(
+    () =>
+      (catalogQ.data ?? []).map((i) => ({
+        value: i.id,
+        label: i.name,
+        hint: formatChf(i.depositCents),
+      })),
+    [catalogQ.data],
+  );
 
   const selected = (catalogQ.data ?? []).find((i) => i.id === catalogItemId);
 
@@ -77,7 +96,7 @@ export function LoansBoard() {
         <Button
           type="button"
           variant={showForm ? 'secondary' : 'action'}
-          className={`min-h-[28px] w-full text-xs${showForm ? ' border-white/15 bg-white/5 text-slate-200' : ''}`}
+          className="min-h-[28px] w-full text-xs"
           onClick={() => setShowForm((v) => !v)}
         >
           {showForm ? 'Abbrechen' : 'Ausleihen'}
@@ -87,32 +106,19 @@ export function LoansBoard() {
       {showForm && canWrite && (
         <Card padding>
           <form className="space-y-2" onSubmit={onSubmit}>
-            <select
-              className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
+            <DarkSelect
               value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-              required
-            >
-              <option value="">Zimmer…</option>
-              {(roomsQ.data ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.roomNumber}
-                </option>
-              ))}
-            </select>
-            <select
-              className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
+              onChange={setRoomId}
+              options={roomOptions}
+              placeholder="Zimmer suchen…"
+            />
+            <DarkSelect
               value={catalogItemId}
-              onChange={(e) => setCatalogItemId(e.target.value)}
-              required
-            >
-              <option value="">Artikel…</option>
-              {(catalogQ.data ?? []).map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.name} ({formatChf(i.depositCents)})
-                </option>
-              ))}
-            </select>
+              onChange={setCatalogItemId}
+              options={catalogOptions}
+              placeholder="Artikel suchen…"
+              maxListHeight={140}
+            />
             {selected && (
               <p className="text-[10px] text-sidebar-muted">Pfand {formatChf(selected.depositCents)}</p>
             )}

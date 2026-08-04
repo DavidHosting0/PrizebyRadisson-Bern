@@ -4,6 +4,7 @@ import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from '
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
+  RECEPTION_HANDOVER_SHIFTS,
   SHIFT_HANDOVER_LABELS_DE,
   type ReceptionHandoverShift,
   type ShiftHandoverStateDto,
@@ -45,6 +46,9 @@ export function ShiftNotesBoard() {
   const qc = useQueryClient();
   const [feed, setFeed] = useState<'today' | 'all'>('today');
   const [body, setBody] = useState('');
+  const [forDate, setForDate] = useState(todayIso);
+  const [targetShifts, setTargetShifts] = useState<ReceptionHandoverShift[]>([]);
+  const [showSchedule, setShowSchedule] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const today = todayIso();
@@ -54,6 +58,14 @@ export function ShiftNotesBoard() {
     queryFn: () => api<ShiftHandoverStateDto>('/shift-handover'),
     staleTime: 60_000,
   });
+
+  const activeShift = handoverQ.data?.activeShift as ReceptionHandoverShift | undefined;
+
+  useEffect(() => {
+    if (targetShifts.length === 0 && activeShift) {
+      setTargetShifts([activeShift]);
+    }
+  }, [activeShift, targetShifts.length]);
 
   const todayQ = useQuery({
     queryKey: ['shift-notes', 'today', today],
@@ -69,8 +81,6 @@ export function ShiftNotesBoard() {
     refetchInterval: 30_000,
   });
 
-  const activeShift = handoverQ.data?.activeShift as ReceptionHandoverShift | undefined;
-
   const notesChrono = useMemo(() => {
     const raw = feed === 'today' ? todayQ.data ?? [] : browseQ.data?.items ?? [];
     return [...raw].sort(
@@ -79,19 +89,25 @@ export function ShiftNotesBoard() {
   }, [feed, todayQ.data, browseQ.data]);
 
   const createMut = useMutation({
-    mutationFn: (text: string) =>
+    mutationFn: (payload: { text: string; date: string; shifts: ReceptionHandoverShift[] }) =>
       api<ShiftNoteDto>('/shift-notes', {
         method: 'POST',
         body: JSON.stringify({
-          forDate: today,
-          shifts: activeShift ? [activeShift] : (['NIGHT', 'MORNING', 'LATE'] as ReceptionHandoverShift[]),
-          body: text,
+          forDate: payload.date,
+          shifts: payload.shifts,
+          body: payload.text,
         }),
       }),
-    onSuccess: () => {
+    onSuccess: (_note, vars) => {
       setBody('');
       setErr(null);
       qc.invalidateQueries({ queryKey: ['shift-notes'] });
+      if (vars.date !== today) {
+        setFeed('all');
+        setShowSchedule(false);
+        setForDate(today);
+        if (activeShift) setTargetShifts([activeShift]);
+      }
     },
     onError: (e: Error) => setErr(e.message),
   });
@@ -107,10 +123,26 @@ export function ShiftNotesBoard() {
     el.scrollTop = el.scrollHeight;
   }, [notesChrono.length, feed]);
 
+  function toggleShift(s: ReceptionHandoverShift) {
+    setTargetShifts((prev) => {
+      if (prev.includes(s)) {
+        const next = prev.filter((x) => x !== s);
+        return next.length ? next : prev;
+      }
+      return [...prev, s];
+    });
+  }
+
   function send() {
     const text = body.trim();
     if (!text) return;
-    createMut.mutate(text);
+    const shifts =
+      targetShifts.length > 0
+        ? targetShifts
+        : activeShift
+          ? [activeShift]
+          : ([...RECEPTION_HANDOVER_SHIFTS] as ReceptionHandoverShift[]);
+    createMut.mutate({ text, date: forDate || today, shifts });
   }
 
   function onSubmit(e: FormEvent) {
@@ -126,6 +158,7 @@ export function ShiftNotesBoard() {
   }
 
   const loading = feed === 'today' ? todayQ.isLoading : browseQ.isLoading;
+  const isFuture = forDate > today;
   let lastDay = '';
 
   return (
@@ -239,25 +272,102 @@ export function ShiftNotesBoard() {
           onSubmit={onSubmit}
           className="shrink-0 border-t border-border bg-surface px-3 py-2.5 md:px-6"
         >
-          <div className="mx-auto flex max-w-2xl items-end gap-2">
-            <textarea
-              rows={1}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Nachricht schreiben… (Enter senden)"
-              className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
-            />
-            <Button
-              type="submit"
-              variant="action"
-              disabled={createMut.isPending || !body.trim()}
-              className="min-h-[40px] shrink-0 px-4"
-            >
-              Senden
-            </Button>
+          <div className="mx-auto max-w-2xl space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSchedule((v) => !v);
+                  if (!showSchedule) {
+                    setTargetShifts([...RECEPTION_HANDOVER_SHIFTS]);
+                  }
+                }}
+                className={clsx(
+                  'rounded-btn border px-2.5 py-1 text-xs font-medium transition',
+                  showSchedule || isFuture
+                    ? 'border-action/40 bg-action/10 text-action'
+                    : 'border-border text-ink-muted hover:bg-surface-muted',
+                )}
+              >
+                {isFuture ? `Für ${formatDayLabel(forDate)}` : 'Für später…'}
+              </button>
+              {isFuture && (
+                <button
+                  type="button"
+                  className="text-xs text-ink-muted underline-offset-2 hover:underline"
+                  onClick={() => {
+                    setForDate(today);
+                    setShowSchedule(false);
+                    if (activeShift) setTargetShifts([activeShift]);
+                  }}
+                >
+                  Zurück auf heute
+                </button>
+              )}
+            </div>
+
+            {showSchedule && (
+              <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface-muted/60 px-3 py-2.5">
+                <label className="text-xs">
+                  <span className="font-medium text-ink">Datum</span>
+                  <input
+                    type="date"
+                    min={today}
+                    className="mt-1 block rounded-btn border border-border bg-surface px-2 py-1.5 text-sm"
+                    value={forDate}
+                    onChange={(e) => setForDate(e.target.value || today)}
+                  />
+                </label>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium text-ink">Schichten</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {RECEPTION_HANDOVER_SHIFTS.map((s) => {
+                      const on = targetShifts.includes(s);
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => toggleShift(s)}
+                          className={clsx(
+                            'rounded-full px-2.5 py-1 text-[11px] font-medium',
+                            on
+                              ? 'bg-action text-white'
+                              : 'border border-border bg-surface text-ink-muted',
+                          )}
+                        >
+                          {SHIFT_HANDOVER_LABELS_DE[s]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-end gap-2">
+              <textarea
+                rows={1}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder={
+                  isFuture
+                    ? `Notiz für ${formatDayLabel(forDate)}…`
+                    : 'Nachricht schreiben… (Enter senden)'
+                }
+                className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+              />
+              <Button
+                type="submit"
+                variant="action"
+                disabled={createMut.isPending || !body.trim()}
+                className="min-h-[40px] shrink-0 px-4"
+              >
+                {isFuture ? 'Planen' : 'Senden'}
+              </Button>
+            </div>
+            {err && <p className="text-xs text-danger">{err}</p>}
           </div>
-          {err && <p className="mx-auto mt-1.5 max-w-2xl text-xs text-danger">{err}</p>}
         </form>
       )}
     </div>

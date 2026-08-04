@@ -73,6 +73,7 @@ export class MirusService {
   }
 
   async listUsers() {
+    await this.purgeLegacyEmployees();
     const rows = await this.prisma.favurUserMap.findMany({
       orderBy: [{ favurDisplayName: 'asc' }],
       include: {
@@ -278,6 +279,24 @@ export class MirusService {
   }
 
   /**
+   * Remove legacy Favur employee rows (numeric portal IDs) and scrape garbage
+   * (weekday/date strings). Keeps only Mirus-recognized persons.
+   */
+  async purgeLegacyEmployees(): Promise<{ deleted: number }> {
+    const rows = await this.prisma.favurUserMap.findMany({
+      select: { id: true, favurUserId: true, favurDisplayName: true },
+    });
+    const toDelete = rows.filter((r) => isLegacyOrGarbageEmployee(r.favurUserId, r.favurDisplayName));
+    if (toDelete.length) {
+      await this.prisma.favurUserMap.deleteMany({
+        where: { id: { in: toDelete.map((r) => r.id) } },
+      });
+      this.logger.log(`Purged ${toDelete.length} legacy Favur / garbage employee map rows`);
+    }
+    return { deleted: toDelete.length };
+  }
+
+  /**
    * Upserts employee map rows, then writes Shift rows only for manually mapped users.
    */
   private async persistShifts(
@@ -285,8 +304,13 @@ export class MirusService {
     from: Date,
     to: Date,
   ): Promise<{ persisted: number; unmapped: number }> {
+    await this.purgeLegacyEmployees();
+
     const seen = new Map<string, string>();
-    for (const s of shifts) seen.set(s.externalUserId, s.displayName);
+    for (const s of shifts) {
+      if (isLegacyOrGarbageEmployee(s.externalUserId, s.displayName)) continue;
+      seen.set(s.externalUserId, s.displayName);
+    }
     for (const [externalUserId, displayName] of seen.entries()) {
       await this.prisma.favurUserMap.upsert({
         where: { favurUserId: externalUserId },
@@ -302,6 +326,12 @@ export class MirusService {
     const externalToUser = new Map(maps.map((m) => [m.favurUserId, m.userId!]));
     const unmapped = [...seen.keys()].filter((id) => !externalToUser.has(id)).length;
 
+    const cleanShifts = shifts.filter(
+      (s) =>
+        !isLegacyOrGarbageEmployee(s.externalUserId, s.displayName) &&
+        seen.has(s.externalUserId),
+    );
+
     await this.prisma.$transaction(async (tx) => {
       await tx.shift.deleteMany({
         where: {
@@ -309,7 +339,7 @@ export class MirusService {
           startsAt: { gte: from, lt: to },
         },
       });
-      const toCreate = shifts
+      const toCreate = cleanShifts
         .filter((s) => externalToUser.has(s.externalUserId))
         .map((s) => ({
           userId: externalToUser.get(s.externalUserId)!,
@@ -402,4 +432,28 @@ function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
+}
+
+/** Old Favur portal used numeric employee ids; Mirus uses names or Person UUIDs. */
+function isLegacyOrGarbageEmployee(
+  externalId: string,
+  displayName: string | null | undefined,
+): boolean {
+  const id = (externalId ?? '').trim();
+  const name = (displayName ?? '').trim();
+  if (/^\d+$/.test(id)) return true;
+  const label = name || id;
+  if (
+    /^(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/i.test(label)
+  ) {
+    return true;
+  }
+  if (
+    /\b\d{1,2}\.\s*(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\b/i.test(
+      label,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }

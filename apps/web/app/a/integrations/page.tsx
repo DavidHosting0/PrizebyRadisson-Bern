@@ -309,8 +309,8 @@ export default function IntegrationsPage() {
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
         <h2 className="text-lg font-semibold text-ink">Mitarbeiter zuordnen</h2>
         <p className="text-sm text-ink-muted">
-          Mirus-Mitarbeiter aus dem letzten Sync. Nur verknüpfte Personen erscheinen nach dem nächsten
-          Sync im Schichtplan.
+          Nur Mirus-Personen aus dem letzten Sync (alte Favur-Einträge werden entfernt). Nur
+          verknüpfte Personen erscheinen nach dem nächsten Sync im Schichtplan.
           {config != null && (
             <>
               {' '}

@@ -3,15 +3,18 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'action';
 
+/** Dark-panel friendly variants — hover never washes out to light/white. */
 const styles: Record<Variant, string> = {
   primary:
-    'bg-sidebar text-white shadow-sm hover:bg-sidebar-hover active:bg-sidebar/95 disabled:opacity-50',
+    'bg-sidebar-hover text-white border border-white/10 hover:bg-[#2c3b52] active:bg-[#334560] disabled:opacity-50',
   action:
-    'bg-action text-white shadow-sm hover:bg-action/90 active:bg-action/95 disabled:opacity-50',
+    'bg-action text-white shadow-sm hover:bg-[#4a82b5] active:bg-[#3570a0] disabled:opacity-50',
   secondary:
-    'bg-surface text-ink border border-border shadow-card hover:bg-surface-muted active:bg-surface-muted/80',
-  danger: 'bg-danger-muted text-danger border border-danger/20 hover:bg-danger/10',
-  ghost: 'text-ink-muted border border-transparent hover:bg-surface-muted/80 hover:border-border',
+    'border border-white/15 bg-white/[0.06] text-slate-100 hover:bg-white/[0.12] hover:border-white/25 active:bg-white/[0.16] disabled:opacity-50',
+  danger:
+    'border border-red-400/30 bg-red-500/15 text-red-100 hover:bg-red-500/25 active:bg-red-500/30 disabled:opacity-50',
+  ghost:
+    'text-sidebar-muted border border-transparent hover:bg-white/10 hover:text-white disabled:opacity-50',
 };
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {

@@ -46,6 +46,21 @@ function scrapeShiftsInBrowser(dateStr: string) {
   }> = [];
   const seen = new Set<string>();
 
+  const WEEKDAY_DATE =
+    /^(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b/i;
+  const LOOKS_LIKE_CALENDAR =
+    /\b\d{1,2}\.\s*(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\b/i;
+
+  function isPersonName(name: string): boolean {
+    const n = name.trim();
+    if (n.length < 3) return false;
+    if (WEEKDAY_DATE.test(n)) return false;
+    if (LOOKS_LIKE_CALENDAR.test(n)) return false;
+    if (/^(Arbeitszeit|Pause|Anwesend|Abwesend|Absenz|Ferien)$/i.test(n)) return false;
+    if (/^[A-Z]{1,4}$/.test(n)) return false;
+    return true;
+  }
+
   const rows = document.querySelectorAll('.card.card-default .row.mb-3, .card .row.mb-3');
   for (const row of rows) {
     const text = row.textContent ?? '';
@@ -55,7 +70,6 @@ function scrapeShiftsInBrowser(dateStr: string) {
     const nameEl = row.querySelector('.fw-bold, .small.fw-bold');
     let displayName = nameEl?.textContent?.trim() || '';
     if (!displayName) {
-      // Fallback: first substantial line that is not initials-only / labels
       const lines = text
         .split(/\n/)
         .map((l) => l.trim())
@@ -63,13 +77,11 @@ function scrapeShiftsInBrowser(dateStr: string) {
       displayName =
         lines.find(
           (l) =>
-            l.length > 3 &&
-            !/^(Arbeitszeit|Pause|Anwesend|Abwesend)$/i.test(l) &&
-            !TIME.test(l) &&
-            !/^[A-Z]{1,4}$/.test(l),
+            isPersonName(l) &&
+            !TIME.test(l),
         ) || '';
     }
-    if (!displayName || displayName.length < 2) continue;
+    if (!isPersonName(displayName)) continue;
 
     const img = row.querySelector('img[src*="/Persons/"]') as HTMLImageElement | null;
     const personMatch = img?.getAttribute('src')?.match(/\/Persons\/([0-9a-f-]{36})\//i);
@@ -141,12 +153,13 @@ function scrapeShiftsInBrowser(dateStr: string) {
           if (/^(Pause|Anwesend|Abwesend|K\d|H|T|F\d)$/i.test(l)) continue;
           if (/^[A-Z]{1,4}$/.test(l)) continue;
           if (TIME.test(l)) continue;
+          if (!isPersonName(l)) continue;
           if (l.length > 3) {
             displayName = l;
             break;
           }
         }
-        if (displayName) {
+        if (displayName && isPersonName(displayName)) {
           const externalUserId = displayName.toLowerCase().replace(/\s+/g, ' ');
           const startsAt = combine(dateStr, m[1]);
           let endsAt = combine(dateStr, m[2]);

@@ -267,7 +267,7 @@ export function ShiftHandoverBoard() {
               <Button
                 type="button"
                 variant="secondary"
-                className="min-h-[30px] border-white/15 bg-white/5 px-2.5 text-slate-200"
+                className="min-h-[30px] px-2.5"
                 disabled={handover.isPending}
                 onClick={() => setHandoverOpen(false)}
               >

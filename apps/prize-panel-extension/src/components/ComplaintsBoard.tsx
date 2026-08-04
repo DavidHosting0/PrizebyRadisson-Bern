@@ -1,13 +1,13 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import clsx from 'clsx';
 import type { GuestComplaintCategory, GuestComplaintDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
+import { DarkSelect } from './ui/DarkSelect';
 
 type RoomOpt = { id: string; roomNumber: string };
 
@@ -30,6 +30,14 @@ export function ComplaintsBoard() {
     queryFn: () => api<RoomOpt[]>('/rooms'),
     enabled: showForm && category === 'ROOM',
   });
+
+  const roomOptions = useMemo(
+    () =>
+      [...(roomsQ.data ?? [])]
+        .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'de', { numeric: true }))
+        .map((r) => ({ value: r.id, label: r.roomNumber })),
+    [roomsQ.data],
+  );
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -74,10 +82,7 @@ export function ComplaintsBoard() {
         <Button
           type="button"
           variant={showForm ? 'secondary' : 'action'}
-          className={clsx(
-            'min-h-[28px] w-full text-xs',
-            showForm && 'border-white/15 bg-white/5 text-slate-200',
-          )}
+          className="min-h-[28px] w-full text-xs"
           onClick={() => setShowForm((v) => !v)}
         >
           {showForm ? 'Abbrechen' : 'Neue Beschwerde'}
@@ -109,19 +114,12 @@ export function ComplaintsBoard() {
               ))}
             </div>
             {category === 'ROOM' && (
-              <select
-                className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
+              <DarkSelect
                 value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                required
-              >
-                <option value="">Zimmer…</option>
-                {(roomsQ.data ?? []).map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.roomNumber}
-                  </option>
-                ))}
-              </select>
+                onChange={setRoomId}
+                options={roomOptions}
+                placeholder="Zimmer suchen…"
+              />
             )}
             <textarea
               className="min-h-[70px] w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"

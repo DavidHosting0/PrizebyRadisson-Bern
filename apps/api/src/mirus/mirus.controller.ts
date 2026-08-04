@@ -26,6 +26,13 @@ export class MirusController {
     return this.mirus.listUsers();
   }
 
+  /** Deletes legacy Favur numeric IDs and date-junk rows from the mapping list. */
+  @Post('users/purge-legacy')
+  @RequirePermissions(PermissionCode.SHIFT_MANAGE)
+  purgeLegacy() {
+    return this.mirus.purgeLegacyEmployees();
+  }
+
   @Put('users/:id')
   @RequirePermissions(PermissionCode.SHIFT_MANAGE)
   mapUser(@Param('id') id: string, @Body() dto: MapMirusUserDto) {
