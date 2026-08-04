@@ -12,4 +12,9 @@ export class CreateInspectionDto {
   @IsOptional()
   @IsBoolean()
   passed?: boolean;
+
+  /** READY room photo uploaded before create (required). */
+  @IsString()
+  @IsNotEmpty()
+  photoId!: string;
 }

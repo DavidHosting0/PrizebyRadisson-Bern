@@ -7,13 +7,14 @@ import {
   Optional,
   forwardRef,
 } from '@nestjs/common';
-import { PhotoUploadStatus, Prisma, User, UserRole } from '@prisma/client';
+import { PhotoUploadStatus, Prisma, User } from '@prisma/client';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3Service } from '../storage/s3.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RoomsService } from '../rooms/rooms.service';
 import { EmmaService } from '../emma/emma.service';
+import { InspectionQueueService } from '../assignments/inspection-queue.service';
 
 @Injectable()
 export class PhotosService {
@@ -22,18 +23,19 @@ export class PhotosService {
     private readonly s3: S3Service,
     private readonly realtime: RealtimeGateway,
     private readonly rooms: RoomsService,
+    private readonly inspectionQueue: InspectionQueueService,
     @Optional()
     @Inject(forwardRef(() => EmmaService))
     private readonly emma?: EmmaService,
   ) {}
 
-  private assertInspectionPhotoUploader(user: User) {
-    if (user.role === UserRole.SUPERVISOR || user.role === UserRole.ADMIN) return;
-    throw new ForbiddenException('Only supervisors can upload inspection photos');
+  private async assertInspectionPhotoUploader(user: User, roomId: string) {
+    if (await this.inspectionQueue.canUploadInspectionPhoto(user, roomId)) return;
+    throw new ForbiddenException('Not allowed to upload inspection photos for this room');
   }
 
   async presign(roomId: string, user: User, contentType: string) {
-    this.assertInspectionPhotoUploader(user);
+    await this.assertInspectionPhotoUploader(user, roomId);
     await this.rooms.ensureChecklistState(roomId);
     const mime = contentType || 'image/jpeg';
     const ext = mime.includes('png') ? 'png' : 'jpg';
@@ -62,7 +64,7 @@ export class PhotosService {
       roomInspectionId?: string;
     },
   ) {
-    this.assertInspectionPhotoUploader(user);
+    await this.assertInspectionPhotoUploader(user, roomId);
     const { photoId } = dto;
     const photo = await this.prisma.roomPhoto.findFirst({
       where: { id: photoId, roomId, uploadedByUserId: user.id },

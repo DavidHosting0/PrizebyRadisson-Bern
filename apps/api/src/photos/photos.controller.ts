@@ -11,7 +11,8 @@ export class PhotosController {
   constructor(private readonly photos: PhotosService) {}
 
   @Post('presign')
-  @RequirePermissions(PermissionCode.PHOTO_UPLOAD)
+  /** Claimed duty inspectors may lack PHOTO_UPLOAD; service enforces access. */
+  @RequirePermissions(PermissionCode.ROOMS_READ)
   presign(
     @Param('roomId') roomId: string,
     @CurrentUser() user: User,
@@ -21,7 +22,7 @@ export class PhotosController {
   }
 
   @Post('complete')
-  @RequirePermissions(PermissionCode.PHOTO_UPLOAD)
+  @RequirePermissions(PermissionCode.ROOMS_READ)
   complete(@Param('roomId') roomId: string, @CurrentUser() user: User, @Body() dto: CompletePhotoDto) {
     return this.photos.completePhoto(roomId, user, dto);
   }

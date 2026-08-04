@@ -2,18 +2,21 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { PermissionCode, User } from '@prisma/client';
 import { AssignmentsService } from './assignments.service';
 import { DailyCleaningService } from './daily-cleaning.service';
+import { InspectionQueueService } from './inspection-queue.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
 import { PatchDailyTaskDto } from './dto/patch-daily-task.dto';
 import { SkipRoomDto } from './dto/skip-room.dto';
 import { LateShiftOverrideDto } from './dto/late-shift-override.dto';
+import { RunAutoAssignDto } from './dto/run-auto-assign.dto';
 
 @Controller('assignments')
 export class AssignmentsController {
   constructor(
     private readonly assignments: AssignmentsService,
     private readonly daily: DailyCleaningService,
+    private readonly inspectionQueue: InspectionQueueService,
   ) {}
 
   @Get()
@@ -34,10 +37,43 @@ export class AssignmentsController {
     return this.daily.myDailyTasks(user);
   }
 
+  @Get('my-inspection-tasks')
+  @RequirePermissions(PermissionCode.ROOMS_READ)
+  myInspectionTasks(@CurrentUser() user: User, @Query('date') date?: string) {
+    return this.inspectionQueue.listQueueForUser(user, date);
+  }
+
+  @Post('inspection-tasks/:id/claim')
+  @RequirePermissions(PermissionCode.ROOMS_READ)
+  claimInspection(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.inspectionQueue.claim(id, user);
+  }
+
+  @Post('inspection-tasks/:id/release')
+  @RequirePermissions(PermissionCode.ROOMS_READ)
+  releaseInspection(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.inspectionQueue.release(id, user);
+  }
+
   @Post('daily-plan/suggest')
   @RequirePermissions(PermissionCode.ASSIGNMENT_SUGGESTIONS)
-  suggest(@Query('date') date?: string) {
-    return this.daily.suggest(date);
+  suggest(@Query('date') date?: string, @CurrentUser() user?: User) {
+    return this.daily.runAutoAssign(date, {}, user);
+  }
+
+  @Post('daily-plan/run')
+  @RequirePermissions(PermissionCode.ASSIGNMENT_RUN_AUTO)
+  run(@Body() dto: RunAutoAssignDto, @CurrentUser() user: User) {
+    return this.daily.runAutoAssign(
+      dto.date,
+      {
+        restantAssigneeUserId: dto.restantAssigneeUserId,
+        lateShiftUserIds: dto.lateShiftUserIds,
+        publicAssigneeUserIds: dto.publicAssigneeUserIds,
+        inspectorUserIds: dto.inspectorUserIds,
+      },
+      user,
+    );
   }
 
   @Post('daily-plan/save')
@@ -90,10 +126,16 @@ export class AssignmentsController {
     return this.assignments.manualAssign(dto.roomId, dto.housekeeperUserId, user);
   }
 
+  @Delete('room/:roomId')
+  @RequirePermissions(PermissionCode.ASSIGNMENT_CREATE)
+  unassign(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.daily.unassignRoom(roomId, user);
+  }
+
   @Post('suggestions')
   @RequirePermissions(PermissionCode.ASSIGNMENT_SUGGESTIONS)
-  suggestions(@Query('date') date?: string) {
-    return this.assignments.suggestions(date);
+  suggestions(@Query('date') date?: string, @CurrentUser() user?: User) {
+    return this.assignments.suggestions(date, user);
   }
 
   @Post('run-auto')

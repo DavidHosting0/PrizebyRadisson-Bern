@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MyDailyTaskDto } from '@housekeeping/shared';
+import type { InspectionQueueResponse, MyDailyTaskDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -41,6 +41,10 @@ export default function HousekeeperRoomsPage() {
     queryKey: ['assignments', 'my-daily-tasks'],
     queryFn: () => api<{ date: string; tasks: MyDailyTaskDto[] }>('/assignments/my-daily-tasks'),
   });
+  const { data: inspectionQueue } = useQuery({
+    queryKey: ['assignments', 'my-inspection-tasks'],
+    queryFn: () => api<InspectionQueueResponse>('/assignments/my-inspection-tasks'),
+  });
   const { data: requests, isLoading: reqLoading } = useQuery({
     queryKey: ['service-requests'],
     queryFn: () => api<Req[]>('/service-requests'),
@@ -51,6 +55,24 @@ export default function HousekeeperRoomsPage() {
       api(`/assignments/daily-plan/tasks/${taskId}/complete`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
+    },
+  });
+
+  const claimInspection = useMutation({
+    mutationFn: (id: string) =>
+      api<InspectionQueueResponse>(`/assignments/inspection-tasks/${id}/claim`, { method: 'POST' }),
+    onSuccess: (data) => {
+      qc.setQueryData(['assignments', 'my-inspection-tasks'], data);
+    },
+  });
+
+  const releaseInspection = useMutation({
+    mutationFn: (id: string) =>
+      api<InspectionQueueResponse>(`/assignments/inspection-tasks/${id}/release`, {
+        method: 'POST',
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(['assignments', 'my-inspection-tasks'], data);
     },
   });
 
@@ -70,6 +92,7 @@ export default function HousekeeperRoomsPage() {
   const publicTasks = (daily?.tasks ?? []).filter(
     (t) => t.kind === 'PUBLIC_AREA' && !t.completedAt,
   );
+  const inspectionTasks = inspectionQueue?.onDuty ? inspectionQueue.tasks : [];
 
   if (roomsLoading) {
     return (
@@ -148,6 +171,81 @@ export default function HousekeeperRoomsPage() {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {inspectionQueue?.onDuty && (
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+            Inspections
+          </h2>
+          <p className="mt-1 text-xs text-ink-muted">
+            Claim a cleaned room, then inspect. Shared with today’s other inspectors.
+          </p>
+          {inspectionTasks.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-muted">No rooms waiting for inspection.</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {inspectionTasks.map((t) => {
+                const mine = t.claimedByUserId === user?.id;
+                const claimed = t.status === 'CLAIMED';
+                return (
+                  <li key={t.id}>
+                    <Card>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold tabular-nums text-ink">
+                            Room {t.roomNumber}
+                          </p>
+                          {t.floor != null && (
+                            <p className="mt-0.5 text-xs text-ink-muted">Floor {t.floor}</p>
+                          )}
+                          {claimed && t.claimedByName && (
+                            <p className="mt-1 text-xs text-ink-muted">
+                              Claimed by {t.claimedByName}
+                            </p>
+                          )}
+                        </div>
+                        <StatusBadge status="CLEAN" />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {!claimed && (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            className="min-h-[44px]"
+                            disabled={claimInspection.isPending}
+                            onClick={() => claimInspection.mutate(t.id)}
+                          >
+                            Claim
+                          </Button>
+                        )}
+                        {mine && (
+                          <>
+                            <Link
+                              href={`/h/inspect/${t.roomId}`}
+                              className="inline-flex min-h-[44px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white"
+                            >
+                              Inspect
+                            </Link>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="min-h-[44px]"
+                              disabled={releaseInspection.isPending}
+                              onClick={() => releaseInspection.mutate(t.id)}
+                            >
+                              Release
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
       )}
 

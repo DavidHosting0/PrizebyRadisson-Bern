@@ -9,15 +9,18 @@ import {
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
+  DailyInspectionTaskStatus,
   RoomHousekeepingEventKind,
   User,
   UserRole,
 } from '@prisma/client';
+import { hotelTodayIso } from '@housekeeping/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { UpdateChecklistTaskDto } from './dto/update-checklist-task.dto';
 import { EmmaService } from '../emma/emma.service';
+import { dateOnlyFromIso } from '../assignments/assignment-balancer';
 
 @Injectable()
 export class ChecklistsService {
@@ -74,6 +77,20 @@ export class ChecklistsService {
         where: { id: roomId },
         data: { cleaningDeclaredAt: null },
       });
+      await this.prisma.dailyInspectionTask.updateMany({
+        where: {
+          roomId,
+          date: dateOnlyFromIso(hotelTodayIso()),
+          status: {
+            in: [DailyInspectionTaskStatus.PENDING, DailyInspectionTaskStatus.CLAIMED],
+          },
+        },
+        data: {
+          status: DailyInspectionTaskStatus.CANCELLED,
+          claimedByUserId: null,
+          claimedAt: null,
+        },
+      });
     }
 
     const room = await this.rooms.findOne(roomId, user);
@@ -104,6 +121,20 @@ export class ChecklistsService {
           roomId,
           userId: user.id,
           kind: RoomHousekeepingEventKind.CHECKLIST_REOPENED,
+        },
+      }),
+      this.prisma.dailyInspectionTask.updateMany({
+        where: {
+          roomId,
+          date: dateOnlyFromIso(hotelTodayIso()),
+          status: {
+            in: [DailyInspectionTaskStatus.PENDING, DailyInspectionTaskStatus.CLAIMED],
+          },
+        },
+        data: {
+          status: DailyInspectionTaskStatus.CANCELLED,
+          claimedByUserId: null,
+          claimedAt: null,
         },
       }),
       ...state.tasks.map((t) =>

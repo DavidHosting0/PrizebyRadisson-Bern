@@ -3,9 +3,10 @@ import { InspectionsService } from './inspections.service';
 import { InspectionsController } from './inspections.controller';
 import { RoomsModule } from '../rooms/rooms.module';
 import { EmmaModule } from '../emma/emma.module';
+import { AssignmentsModule } from '../assignments/assignments.module';
 
 @Module({
-  imports: [RoomsModule, forwardRef(() => EmmaModule)],
+  imports: [RoomsModule, AssignmentsModule, forwardRef(() => EmmaModule)],
   controllers: [InspectionsController],
   providers: [InspectionsService],
 })

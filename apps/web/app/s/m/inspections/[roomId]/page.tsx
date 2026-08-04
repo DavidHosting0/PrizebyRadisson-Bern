@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import type { InspectionQueueResponse } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -23,6 +25,7 @@ type RoomDetail = {
 export default function SupervisorMobileInspectionRoomPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const roomId = params.roomId as string;
   const [inspectOpen, setInspectOpen] = useState(false);
   const [lostOpen, setLostOpen] = useState(false);
@@ -33,6 +36,20 @@ export default function SupervisorMobileInspectionRoomPage() {
     queryKey: ['room', roomId],
     queryFn: () => api<RoomDetail>(`/rooms/${roomId}`),
   });
+
+  const queueQ = useQuery({
+    queryKey: ['assignments', 'my-inspection-tasks'],
+    queryFn: () => api<InspectionQueueResponse>('/assignments/my-inspection-tasks'),
+  });
+
+  const useQueue = (queueQ.data?.duties.length ?? 0) > 0;
+  const task = queueQ.data?.tasks.find((t) => t.roomId === roomId);
+  const claimedByMe = task?.claimedByUserId === user?.id && task?.status === 'CLAIMED';
+  const isSupervisor = user?.role === 'SUPERVISOR' || user?.role === 'ADMIN';
+  const canInspect =
+    !useQueue ||
+    claimedByMe ||
+    (isSupervisor && (!task || task.status === 'PENDING'));
 
   if (isLoading || !data) {
     return (
@@ -65,6 +82,11 @@ export default function SupervisorMobileInspectionRoomPage() {
         <div className="mt-2">
           <StatusBadge status={data.derivedStatus} />
         </div>
+        {useQueue && !claimedByMe && (
+          <p className="mt-3 text-sm text-ink-muted">
+            Claim this room on the inspections list before starting the inspection.
+          </p>
+        )}
         {data.derivedStatus !== 'CLEAN' && (
           <p className="mt-3 text-sm text-ink-muted">
             This room is not in &quot;clean&quot; status. You can still inspect, report lost &amp; found, or report damage if
@@ -74,7 +96,13 @@ export default function SupervisorMobileInspectionRoomPage() {
       </Card>
 
       <div className="flex flex-col gap-3">
-        <Button type="button" variant="action" className="min-h-[52px] w-full" onClick={() => setInspectOpen(true)}>
+        <Button
+          type="button"
+          variant="action"
+          className="min-h-[52px] w-full"
+          disabled={!canInspect}
+          onClick={() => setInspectOpen(true)}
+        >
           Inspect room
         </Button>
         <Button type="button" variant="secondary" className="min-h-[52px] w-full" onClick={() => setLostOpen(true)}>

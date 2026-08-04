@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { usePermission } from '@/lib/auth-context';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { KpiStat } from '@/components/supervisor/KpiStat';
-import { AutoAssignModal } from '@/components/supervisor/AutoAssignModal';
+import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { Button } from '@/components/ui/Button';
 
 function formatSyncedAt(iso: string | null): string {
@@ -97,7 +97,7 @@ export default function SupervisorDeparturesPage() {
             </Button>
           )}
           <Button variant="action" className="min-h-[44px]" onClick={() => setAutoOpen(true)}>
-            Daily assignment
+            Auto room assignment
           </Button>
         </div>
       </div>
@@ -229,7 +229,7 @@ export default function SupervisorDeparturesPage() {
         to adjust assignments manually.
       </p>
 
-      <AutoAssignModal open={autoOpen} onClose={() => setAutoOpen(false)} date={date} />
+      <AutoAssignSetupModal open={autoOpen} onClose={() => setAutoOpen(false)} date={date} />
     </div>
   );
 }

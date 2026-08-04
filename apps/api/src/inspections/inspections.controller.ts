@@ -10,7 +10,8 @@ export class InspectionsController {
   constructor(private readonly inspections: InspectionsService) {}
 
   @Post()
-  @RequirePermissions(PermissionCode.INSPECTION_CREATE)
+  /** Duty inspectors may lack INSPECTION_CREATE; service enforces claim/duty. */
+  @RequirePermissions(PermissionCode.ROOMS_READ)
   create(@Body() dto: CreateInspectionDto, @CurrentUser() user: User) {
     return this.inspections.create(dto, user);
   }

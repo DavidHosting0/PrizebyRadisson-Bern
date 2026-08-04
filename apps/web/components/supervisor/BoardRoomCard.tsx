@@ -21,10 +21,14 @@ export function BoardRoomCard({
   room,
   onOpen,
   draggable,
+  isRestant,
+  overdueDays,
 }: {
   room: BoardRoom;
   onOpen: () => void;
   draggable?: boolean;
+  isRestant?: boolean;
+  overdueDays?: number | null;
 }) {
   const total = room.checklist?.tasks.length ?? 0;
   const done = room.checklist?.tasks.filter((t) => t.status === 'COMPLETED').length ?? 0;
@@ -62,6 +66,20 @@ export function BoardRoomCard({
             <span className="text-lg font-semibold text-ink">{room.roomNumber}</span>
             <StatusBadge status={room.derivedStatus} />
           </div>
+          {(isRestant || (overdueDays != null && overdueDays > 0)) && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {isRestant && (
+                <span className="rounded-btn bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900">
+                  Restant
+                </span>
+              )}
+              {overdueDays != null && overdueDays > 0 && (
+                <span className="rounded-btn bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+                  Overdue {overdueDays}d
+                </span>
+              )}
+            </div>
+          )}
           <RoomOccupancyGuestLine occupancy={room.occupancy} />
           <RoomOccupancyBadges occupancy={room.occupancy} />
           <div className="mt-3">

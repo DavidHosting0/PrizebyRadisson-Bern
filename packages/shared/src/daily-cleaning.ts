@@ -47,8 +47,47 @@ export type DailyCleaningPlanResponse = {
   eligibleCleaners: DailyCleaningAssignee[];
   /** Cleaners on shift plus supervisors (for manual restant assignment). */
   manualAssignees: DailyCleaningAssignee[];
+  /** Housekeeping staff eligible to inspect (CLEANER + supervisors; excludes HTC). */
+  inspectorCandidates: DailyCleaningAssignee[];
+  /** Who is on inspection duty for this date. */
+  inspectorsToday: DailyCleaningAssignee[];
   tasks: DailyCleaningTaskDto[];
   summaries: DailyCleaningSummary[];
+};
+
+/** Options chosen in the board auto-assign setup dialog. */
+export type AutoAssignRunOptions = {
+  date?: string;
+  /** Who cleans all restant rooms today (cleaner or housekeeping supervisor). */
+  restantAssigneeUserId?: string | null;
+  /** User ids marked as late shift (fewer rooms). */
+  lateShiftUserIds?: string[];
+  /** Who gets public-area cleaning today. */
+  publicAssigneeUserIds?: string[];
+  /** Who inspects cleaned rooms today (CLEANER + supervisors; not HTC). */
+  inspectorUserIds?: string[];
+};
+
+export type DailyInspectionTaskStatus = 'PENDING' | 'CLAIMED' | 'DONE' | 'CANCELLED';
+
+export type InspectionQueueTaskDto = {
+  id: string;
+  date: string;
+  roomId: string;
+  roomNumber: string;
+  floor: number | null;
+  status: DailyInspectionTaskStatus;
+  claimedByUserId: string | null;
+  claimedByName: string | null;
+  claimedAt: string | null;
+  createdAt: string;
+};
+
+export type InspectionQueueResponse = {
+  date: string;
+  onDuty: boolean;
+  duties: Array<{ id: string; name: string; titlePrefix: string }>;
+  tasks: InspectionQueueTaskDto[];
 };
 
 export type PublicAreaDto = {

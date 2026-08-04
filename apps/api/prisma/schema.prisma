@@ -215,6 +215,13 @@ enum PublicAreaKind {
   custom
 }
 
+enum DailyInspectionTaskStatus {
+  PENDING
+  CLAIMED
+  DONE
+  CANCELLED
+}
+
 enum PhotoUploadStatus {
   PENDING
   READY
@@ -399,6 +406,8 @@ model User {
   dailyCleaningPlansSaved  DailyCleaningPlan[]      @relation("DailyCleaningPlanSavedBy")
   dailyCleaningTasksAssigned DailyCleaningTask[]    @relation("DailyCleaningTaskAssignee")
   lateShiftOverrides       DailyLateShiftOverride[]
+  inspectionDuties         DailyInspectionDuty[]
+  inspectionTasksClaimed   DailyInspectionTask[]    @relation("InspectionTaskClaimedBy")
 }
 
 /**
@@ -534,6 +543,7 @@ model Room {
   roomLoans          RoomLoan[]
   dailyCleaningTasks DailyCleaningTask[]
   cleaningDeferrals  RoomCleaningDeferral[]
+  inspectionTasks    DailyInspectionTask[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -931,6 +941,39 @@ model DailyLateShiftOverride {
 
   @@unique([date, userId])
   @@index([date])
+}
+
+/// Who is on inspection duty for a hotel day (from auto-assign).
+model DailyInspectionDuty {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([date, userId])
+  @@index([date])
+  @@index([userId])
+}
+
+/// Shared inspection queue: one task per room per day after mark-clean.
+model DailyInspectionTask {
+  id                     String                     @id @default(cuid())
+  date                   DateTime                   @db.Date
+  roomId                 String
+  room                   Room                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  status                 DailyInspectionTaskStatus  @default(PENDING)
+  claimedByUserId        String?
+  claimedBy              User?                      @relation("InspectionTaskClaimedBy", fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  claimedAt              DateTime?
+  completedInspectionId  String?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  @@unique([date, roomId])
+  @@index([date, status])
+  @@index([claimedByUserId])
+  @@index([roomId])
 }
 
 model AnalyticsDaily {

@@ -9,6 +9,7 @@ import {
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
+  DailyInspectionTaskStatus,
   PermissionCode,
   PhotoUploadStatus,
   Prisma,
@@ -17,6 +18,7 @@ import {
   UserRole,
 } from '@prisma/client';
 import type { RoomOccupancy } from '@housekeeping/shared';
+import { hotelTodayIso } from '@housekeeping/shared';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoomStatusService } from './room-status.service';
@@ -27,6 +29,7 @@ import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
 import { EmmaService } from '../emma/emma.service';
 import { readEmmaMetadata } from '../emma/emma-room-status-sync';
 import { ReservationsService } from '../reservations/reservations.service';
+import { dateOnlyFromIso } from '../assignments/assignment-balancer';
 
 type RoomViewer = User & { effectivePermissions?: PermissionCode[] };
 
@@ -248,10 +251,26 @@ export class RoomsService {
       }),
     ]);
 
-    await this.emma?.pushRoomStatus(roomId, 'CLEAN', {
-      actionAt: cleaningDeclaredAt,
-      source: 'rooms.markHousekeepingClean',
-    });
+    // Local CLEAN only — Emma gets INSPECTED after a passed inspection.
+    const today = hotelTodayIso();
+    const date = dateOnlyFromIso(today);
+    const duties = await this.prisma.dailyInspectionDuty.count({ where: { date } });
+    if (duties > 0) {
+      await this.prisma.dailyInspectionTask.upsert({
+        where: { date_roomId: { date, roomId } },
+        create: {
+          date,
+          roomId,
+          status: DailyInspectionTaskStatus.PENDING,
+        },
+        update: {
+          status: DailyInspectionTaskStatus.PENDING,
+          claimedByUserId: null,
+          claimedAt: null,
+          completedInspectionId: null,
+        },
+      });
+    }
 
     const out = await this.findOne(roomId, user);
     this.realtime.emitRoomStatus(out);

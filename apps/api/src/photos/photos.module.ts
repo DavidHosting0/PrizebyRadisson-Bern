@@ -3,9 +3,14 @@ import { PhotosService } from './photos.service';
 import { PhotosController } from './photos.controller';
 import { RoomsModule } from '../rooms/rooms.module';
 import { EmmaModule } from '../emma/emma.module';
+import { AssignmentsModule } from '../assignments/assignments.module';
 
 @Module({
-  imports: [forwardRef(() => RoomsModule), forwardRef(() => EmmaModule)],
+  imports: [
+    forwardRef(() => RoomsModule),
+    forwardRef(() => EmmaModule),
+    AssignmentsModule,
+  ],
   controllers: [PhotosController],
   providers: [PhotosService],
   exports: [PhotosService],

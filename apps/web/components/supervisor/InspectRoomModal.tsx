@@ -1,10 +1,13 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import imageCompression from 'browser-image-compression';
 import { FormEvent, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { useDamageTypeLabel } from '@/lib/damageReportTypes';
+import { usePermission } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
+import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
 
 type Props = {
   open: boolean;
@@ -13,7 +16,15 @@ type Props = {
   roomNumber: string;
 };
 
-async function uploadInspectionPhoto(roomId: string, file: File, roomInspectionId: string) {
+type DamageRow = {
+  id: string;
+  damageType: string;
+  description: string;
+  status: string;
+  photoUrl: string;
+};
+
+async function uploadInspectionPhoto(roomId: string, file: File): Promise<string> {
   const compressed = await imageCompression(file, { maxSizeMB: 0.6, maxWidthOrHeight: 1600 });
   const contentType = compressed.type?.trim() ? compressed.type : 'image/jpeg';
   const presign = await api<{ uploadUrl: string; photoId: string }>(`/rooms/${roomId}/photos/presign`, {
@@ -35,37 +46,51 @@ async function uploadInspectionPhoto(roomId: string, file: File, roomInspectionI
       photoId: presign.photoId,
       mime: contentType,
       bytes: Math.max(0, Math.round(compressed.size)),
-      roomInspectionId,
     }),
   });
+  return presign.photoId;
 }
 
 export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
   const qc = useQueryClient();
+  const damageLabel = useDamageTypeLabel();
+  const canReportDamage = usePermission('DAMAGE_REPORT_CREATE');
+  const canReadDamage = usePermission('DAMAGE_REPORT_READ');
   const fileRef = useRef<HTMLInputElement>(null);
   const [passed, setPassed] = useState(true);
   const [notes, setNotes] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [damageOpen, setDamageOpen] = useState(false);
+
+  const damagesQ = useQuery({
+    queryKey: ['damage-reports', 'room', roomId],
+    queryFn: () => api<DamageRow[]>(`/damage-reports?roomId=${encodeURIComponent(roomId)}`),
+    enabled: open && canReadDamage,
+  });
+
+  const openDamages = (damagesQ.data ?? []).filter((d) => d.status !== 'RESOLVED');
 
   const submit = useMutation({
     mutationFn: async () => {
-      const result = await api<{ inspection: { id: string } }>('/inspections', {
+      if (!photoFile) throw new Error('Inspection photo is required');
+      const photoId = await uploadInspectionPhoto(roomId, photoFile);
+      await api<{ inspection: { id: string } }>('/inspections', {
         method: 'POST',
         body: JSON.stringify({
           roomId,
           passed,
           notes: notes.trim() || undefined,
+          photoId,
         }),
       });
-      if (photoFile) {
-        await uploadInspectionPhoto(roomId, photoFile, result.inspection.id);
-      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['rooms'] });
       qc.invalidateQueries({ queryKey: ['room', roomId] });
       qc.invalidateQueries({ queryKey: ['room-photos', roomId] });
+      qc.invalidateQueries({ queryKey: ['assignments', 'my-inspection-tasks'] });
+      qc.invalidateQueries({ queryKey: ['damage-reports'] });
       setNotes('');
       setPassed(true);
       setPhotoFile(null);
@@ -77,6 +102,7 @@ export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!photoFile) return;
     submit.mutate();
   }
 
@@ -100,9 +126,60 @@ export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
           <p className="mt-1 text-sm text-ink-muted">Room {roomNumber}</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-5">
+          {canReadDamage && (
+            <div>
+              <p className="text-sm font-medium text-ink">Known damage (Mängel)</p>
+              <p className="mt-1 text-xs text-ink-muted">
+                Open reports for this room — avoid filing duplicates.
+              </p>
+              {damagesQ.isLoading && (
+                <p className="mt-2 text-xs text-ink-muted">Loading…</p>
+              )}
+              {!damagesQ.isLoading && openDamages.length === 0 && (
+                <p className="mt-2 text-xs text-ink-muted">No open damage reports.</p>
+              )}
+              {openDamages.length > 0 && (
+                <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+                  {openDamages.map((d) => (
+                    <li
+                      key={d.id}
+                      className="flex gap-2 rounded-btn border border-border bg-surface-muted/40 p-2"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={d.photoUrl}
+                        alt=""
+                        className="h-14 w-14 shrink-0 rounded object-cover"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink">{damageLabel(d.damageType)}</p>
+                        <p className="line-clamp-2 text-xs text-ink-muted">{d.description}</p>
+                        <p className="mt-0.5 text-[10px] uppercase tracking-wide text-ink-muted">
+                          {d.status}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canReportDamage && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-2 min-h-[40px] w-full"
+                  onClick={() => setDamageOpen(true)}
+                >
+                  Report damage
+                </Button>
+              )}
+            </div>
+          )}
+
           <div>
-            <p className="text-sm font-medium text-ink">Inspection photo</p>
-            <p className="mt-1 text-xs text-ink-muted">Take a photo of the room during inspection.</p>
+            <p className="text-sm font-medium text-ink">
+              Inspection photo <span className="text-danger">*</span>
+            </p>
+            <p className="mt-1 text-xs text-ink-muted">Required before you can save the inspection.</p>
             <input
               ref={fileRef}
               type="file"
@@ -171,7 +248,12 @@ export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
             <p className="text-sm text-danger">{submit.error instanceof Error ? submit.error.message : 'Failed'}</p>
           )}
           <div className="flex flex-wrap gap-3 pt-2">
-            <Button type="submit" variant="action" className="min-h-[48px]" disabled={submit.isPending}>
+            <Button
+              type="submit"
+              variant="action"
+              className="min-h-[48px]"
+              disabled={submit.isPending || !photoFile}
+            >
               {submit.isPending ? 'Saving…' : 'Save inspection'}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -180,6 +262,16 @@ export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
           </div>
         </form>
       </div>
+
+      <DamageReportModal
+        open={damageOpen}
+        onClose={() => {
+          setDamageOpen(false);
+          qc.invalidateQueries({ queryKey: ['damage-reports', 'room', roomId] });
+        }}
+        roomId={roomId}
+        roomNumber={roomNumber}
+      />
     </div>
   );
 }

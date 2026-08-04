@@ -34,6 +34,7 @@ import { RoomOccupancyService } from '../rooms/room-occupancy.service';
 import { RoomStatusService } from '../rooms/room-status.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { InspectionQueueService } from './inspection-queue.service';
 import {
   LATE_ROOM_WEIGHT,
   addDaysIso,
@@ -59,6 +60,7 @@ export class DailyCleaningService implements OnModuleInit {
     private readonly occupancy: RoomOccupancyService,
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
+    private readonly inspectionQueue: InspectionQueueService,
   ) {}
 
   onModuleInit() {
@@ -441,6 +443,8 @@ export class DailyCleaningService implements OnModuleInit {
     if (!plan) throw new NotFoundException('Plan not found');
 
     const { eligible, manual, warnings } = await this.listEligibleCleaners(dateIso);
+    const inspectorCandidates = await this.inspectionQueue.listInspectorCandidates();
+    const inspectorsToday = await this.inspectionQueue.listInspectorsForDate(dateIso);
     const tasks = plan.tasks.map((t) => this.toTaskDto(t));
 
     const { summaries } = balanceDailyCleaningAssignments(
@@ -470,22 +474,128 @@ export class DailyCleaningService implements OnModuleInit {
       warnings,
       eligibleCleaners: eligible,
       manualAssignees: manual,
+      inspectorCandidates,
+      inspectorsToday,
       tasks,
       summaries,
     };
   }
 
   async suggest(date?: string): Promise<DailyCleaningPlanResponse> {
+    return this.runAutoAssign(date, {});
+  }
+
+  /**
+   * Run auto-assign with supervisor choices for restant / late shift / public cleaning.
+   * Writes RoomAssignments so the board updates immediately; Save locks the day.
+   */
+  async runAutoAssign(
+    date: string | undefined,
+    options: {
+      restantAssigneeUserId?: string | null;
+      lateShiftUserIds?: string[];
+      publicAssigneeUserIds?: string[];
+      inspectorUserIds?: string[];
+    },
+    assigner?: User,
+  ): Promise<DailyCleaningPlanResponse> {
     const dateIso = this.resolveDate(date);
     await this.syncWorkItems(dateIso);
-    const plan = await this.loadPlan(dateIso);
+    let plan = await this.loadPlan(dateIso);
     if (!plan) throw new NotFoundException('Plan not found');
 
-    const { eligible, warnings } = await this.listEligibleCleaners(dateIso);
-    if (eligible.length === 0) {
-      // Still return plan; warnings explain empty pool
-      return this.getDailyPlan(dateIso);
+    // Re-running unlocks the day until they save again
+    if (plan.status === DailyCleaningPlanStatus.SAVED) {
+      await this.prisma.dailyCleaningPlan.update({
+        where: { id: plan.id },
+        data: { status: DailyCleaningPlanStatus.DRAFT, savedAt: null, savedByUserId: null },
+      });
+      plan = await this.loadPlan(dateIso);
+      if (!plan) throw new NotFoundException('Plan not found');
     }
+
+    if (options.inspectorUserIds !== undefined) {
+      await this.inspectionQueue.setInspectorsForDate(dateIso, options.inspectorUserIds);
+    }
+
+    const lateIds = new Set(options.lateShiftUserIds ?? []);
+    const { eligible } = await this.listEligibleCleaners(dateIso);
+
+    // Apply late-shift overrides for everyone we know about today
+    const allKnownIds = new Set([
+      ...eligible.map((e) => e.id),
+      ...(options.lateShiftUserIds ?? []),
+      ...(options.publicAssigneeUserIds ?? []),
+      options.restantAssigneeUserId,
+    ].filter(Boolean) as string[]);
+
+    for (const userId of allKnownIds) {
+      await this.prisma.dailyLateShiftOverride.upsert({
+        where: { date_userId: { date: dateOnlyFromIso(dateIso), userId } },
+        create: {
+          date: dateOnlyFromIso(dateIso),
+          userId,
+          isLateShift: lateIds.has(userId),
+          planId: plan.id,
+        },
+        update: { isLateShift: lateIds.has(userId), planId: plan.id },
+      });
+    }
+
+    // Refresh eligible with overrides applied
+    const refreshed = await this.listEligibleCleaners(dateIso);
+    plan = await this.loadPlan(dateIso);
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    // Reset unpinned AUTO tasks so re-run redistributes; keep MANUAL pins
+    for (const task of plan.tasks) {
+      if (task.pinned || task.source === DailyCleaningTaskSource.MANUAL) continue;
+      if (task.completedAt) continue;
+      await this.prisma.dailyCleaningTask.update({
+        where: { id: task.id },
+        data: { assigneeUserId: null, source: DailyCleaningTaskSource.AUTO },
+      });
+    }
+    plan = await this.loadPlan(dateIso);
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    // Pin restant + public from supervisor choices before balancing dirty rooms
+    if (options.restantAssigneeUserId) {
+      for (const task of plan.tasks) {
+        if (task.workType !== DailyCleaningWorkType.RESTANT || task.completedAt) continue;
+        if (task.pinned && task.source === DailyCleaningTaskSource.MANUAL) continue;
+        await this.prisma.dailyCleaningTask.update({
+          where: { id: task.id },
+          data: {
+            assigneeUserId: options.restantAssigneeUserId,
+            pinned: true,
+            source: DailyCleaningTaskSource.AUTO,
+          },
+        });
+      }
+    }
+
+    const publicIds = options.publicAssigneeUserIds?.filter(Boolean) ?? [];
+    if (publicIds.length > 0) {
+      let idx = 0;
+      for (const task of plan.tasks) {
+        if (task.workType !== DailyCleaningWorkType.PUBLIC || task.completedAt) continue;
+        if (task.pinned && task.source === DailyCleaningTaskSource.MANUAL) continue;
+        const hk = publicIds[idx % publicIds.length]!;
+        idx += 1;
+        await this.prisma.dailyCleaningTask.update({
+          where: { id: task.id },
+          data: {
+            assigneeUserId: hk,
+            pinned: true,
+            source: DailyCleaningTaskSource.AUTO,
+          },
+        });
+      }
+    }
+
+    plan = await this.loadPlan(dateIso);
+    if (!plan) throw new NotFoundException('Plan not found');
 
     const items: BalanceWorkItem[] = plan.tasks
       .filter((t) => !t.completedAt)
@@ -501,29 +611,46 @@ export class DailyCleaningService implements OnModuleInit {
         assigneeUserId: t.assigneeUserId,
       }));
 
-    const cleaners: EligibleCleaner[] = eligible.map((e) => ({
+    const cleaners: EligibleCleaner[] = refreshed.eligible.map((e) => ({
       housekeeperId: e.id,
       isLateShift: e.isLateShift,
       roomWeight: e.isLateShift ? LATE_ROOM_WEIGHT : 1,
     }));
 
-    const { assignments } = balanceDailyCleaningAssignments(items, cleaners);
+    const { assignments } = balanceDailyCleaningAssignments(items, cleaners, {
+      preferredRestantId: options.restantAssigneeUserId,
+      publicAssigneeIds: publicIds,
+    });
     const byKey = new Map(assignments.map((a) => [a.key, a.housekeeperId]));
 
     for (const task of plan.tasks) {
-      if (task.pinned || task.completedAt) continue;
+      if (task.completedAt) continue;
       const hk = byKey.get(task.id);
       if (!hk) continue;
+      // Don't move manual pins
+      if (task.pinned && task.source === DailyCleaningTaskSource.MANUAL && task.assigneeUserId) {
+        continue;
+      }
       await this.prisma.dailyCleaningTask.update({
         where: { id: task.id },
         data: {
           assigneeUserId: hk,
-          source: DailyCleaningTaskSource.AUTO,
+          source:
+            task.workType === DailyCleaningWorkType.DIRTY
+              ? DailyCleaningTaskSource.AUTO
+              : task.source,
+          pinned:
+            task.workType === DailyCleaningWorkType.RESTANT ||
+            task.workType === DailyCleaningWorkType.PUBLIC
+              ? true
+              : task.pinned,
         },
       });
     }
 
-    void warnings;
+    // Preview on board immediately
+    await this.syncRoomAssignmentsFromPlan(dateIso, assigner?.id ?? null);
+
     return this.getDailyPlan(dateIso);
   }
 
@@ -548,7 +675,7 @@ export class DailyCleaningService implements OnModuleInit {
     return this.getDailyPlan(dateIso);
   }
 
-  private async syncRoomAssignmentsFromPlan(dateIso: string, assignerId: string) {
+  private async syncRoomAssignmentsFromPlan(dateIso: string, assignerId: string | null) {
     const plan = await this.loadPlan(dateIso);
     if (!plan) return;
 
@@ -557,7 +684,7 @@ export class DailyCleaningService implements OnModuleInit {
     );
     const assignedRoomIds = new Set(roomTasks.map((t) => t.roomId!));
 
-    // Cancel all active assignments not in today's saved plan
+    // Cancel all active assignments not in today's plan
     const active = await this.prisma.roomAssignment.findMany({
       where: { status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
     });
@@ -599,6 +726,40 @@ export class DailyCleaningService implements OnModuleInit {
         /* ignore */
       }
     }
+  }
+
+  async unassignRoom(roomId: string, user: User) {
+    if (user.role !== UserRole.SUPERVISOR && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException();
+    }
+    await this.prisma.roomAssignment.updateMany({
+      where: { roomId, status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] } },
+      data: { status: AssignmentStatus.CANCELLED },
+    });
+
+    const dateIso = hotelTodayIso();
+    const plan = await this.loadPlan(dateIso);
+    if (plan) {
+      const task = plan.tasks.find((t) => t.roomId === roomId);
+      if (task) {
+        await this.prisma.dailyCleaningTask.update({
+          where: { id: task.id },
+          data: {
+            assigneeUserId: null,
+            pinned: false,
+            source: DailyCleaningTaskSource.MANUAL,
+          },
+        });
+      }
+    }
+
+    try {
+      const room = await this.rooms.findOne(roomId);
+      this.realtime.emitRoomStatus(room);
+    } catch {
+      /* ignore */
+    }
+    return { ok: true, roomId };
   }
 
   async patchTask(

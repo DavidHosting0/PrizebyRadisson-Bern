@@ -106,9 +106,9 @@ export class AssignmentsService {
     return row;
   }
 
-  /** @deprecated Prefer daily-plan suggest — kept for API compatibility. */
-  async suggestions(date?: string): Promise<AssignmentSuggestionsResponse> {
-    const plan = await this.daily.suggest(date);
+  /** @deprecated Prefer daily-plan run — kept for API compatibility. */
+  async suggestions(date?: string, user?: User): Promise<AssignmentSuggestionsResponse> {
+    const plan = await this.daily.runAutoAssign(date, {}, user);
     const roomSuggestions = plan.tasks
       .filter((t) => t.kind === 'ROOM' && t.assigneeUserId)
       .map((t) => ({
@@ -129,9 +129,9 @@ export class AssignmentsService {
     };
   }
 
-  /** @deprecated Prefer daily-plan save — kept for API compatibility. */
+  /** @deprecated Prefer daily-plan run + save — kept for API compatibility. */
   async runAutoAssignment(date?: string, assigner?: User): Promise<RunAutoAssignResponse> {
-    await this.daily.suggest(date);
+    const plan = await this.daily.runAutoAssign(date, {}, assigner);
     if (assigner) {
       const saved = await this.daily.save(date, assigner);
       return {
@@ -144,10 +144,9 @@ export class AssignmentsService {
         })),
       };
     }
-    const plan = await this.daily.getDailyPlan(date);
     return {
       date: plan.date,
-      assigned: 0,
+      assigned: plan.tasks.filter((t) => t.kind === 'ROOM' && t.assigneeUserId).length,
       summaries: plan.summaries.map((s) => ({
         housekeeperId: s.housekeeperId,
         count: s.roomCount + s.restantCount,
