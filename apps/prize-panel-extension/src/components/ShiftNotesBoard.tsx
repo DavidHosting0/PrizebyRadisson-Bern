@@ -1,17 +1,14 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import type { ReceptionHandoverShift, ShiftHandoverStateDto, ShiftNoteDto } from '@housekeeping/shared';
+import type {
+  ShiftHandoverStateDto,
+  ShiftNoteDaySummaryDto,
+  ShiftNoteDto,
+} from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
-
-const ALL_SHIFTS: ReceptionHandoverShift[] = ['NIGHT', 'MORNING', 'LATE'];
-const SHIFT_LABELS: Record<ReceptionHandoverShift, string> = {
-  NIGHT: 'Nacht',
-  MORNING: 'Früh',
-  LATE: 'Spät',
-};
 
 function todayIso() {
   const d = new Date();
@@ -25,31 +22,35 @@ function formatTime(iso: string) {
 function formatDayLabel(dateIso: string) {
   const [y, m, d] = dateIso.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+function formatDayShort(dateIso: string) {
+  const [y, m, d] = dateIso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
   });
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
-}
-
 export function ShiftNotesBoard() {
   const { user } = useAuth();
   const canWrite = usePermission('SHIFT_NOTES_WRITE');
   const qc = useQueryClient();
-  const [feed, setFeed] = useState<'today' | 'all'>('today');
+  const [mode, setMode] = useState<'today' | 'browse'>('today');
+  const [browseDate, setBrowseDate] = useState<string | null>(null);
   const [body, setBody] = useState('');
   const [forDate, setForDate] = useState(todayIso);
-  const [targetShifts, setTargetShifts] = useState<ReceptionHandoverShift[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const today = todayIso();
+  const calendarToday = todayIso();
 
   const handoverQ = useQuery({
     queryKey: ['shift-handover'],
@@ -57,55 +58,62 @@ export function ShiftNotesBoard() {
     staleTime: 60_000,
   });
 
-  const activeShift = handoverQ.data?.activeShift as ReceptionHandoverShift | undefined;
+  const operatingDay = handoverQ.data?.activeDate ?? calendarToday;
+  const viewingDate = mode === 'today' ? operatingDay : browseDate;
 
   useEffect(() => {
-    if (targetShifts.length === 0 && activeShift) {
-      setTargetShifts([activeShift]);
+    if (handoverQ.data?.activeDate && !showSchedule) {
+      setForDate(handoverQ.data.activeDate);
     }
-  }, [activeShift, targetShifts.length]);
+  }, [handoverQ.data?.activeDate, showSchedule]);
 
-  const todayQ = useQuery({
-    queryKey: ['shift-notes', 'today', today],
-    queryFn: () => api<ShiftNoteDto[]>(`/shift-notes?date=${today}`),
-    enabled: feed === 'today',
-    refetchInterval: 15_000,
-  });
-
-  const browseQ = useQuery({
-    queryKey: ['shift-notes', 'browse'],
-    queryFn: () => api<{ items: ShiftNoteDto[]; nextCursor: string | null }>('/shift-notes/browse?limit=60'),
-    enabled: feed === 'all',
+  const daysQ = useQuery({
+    queryKey: ['shift-notes', 'days'],
+    queryFn: () => api<ShiftNoteDaySummaryDto[]>('/shift-notes/days'),
+    enabled: mode === 'browse',
     refetchInterval: 30_000,
   });
 
-  const notesChrono = useMemo(() => {
-    const raw = feed === 'today' ? todayQ.data ?? [] : browseQ.data?.items ?? [];
-    return [...raw].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
-  }, [feed, todayQ.data, browseQ.data]);
+  const notesQ = useQuery({
+    queryKey: ['shift-notes', 'day', viewingDate],
+    queryFn: () => api<ShiftNoteDto[]>(`/shift-notes?date=${viewingDate}`),
+    enabled: Boolean(viewingDate),
+    refetchInterval: mode === 'today' ? 15_000 : 30_000,
+  });
+
+  const notes = notesQ.data ?? [];
 
   const createMut = useMutation({
-    mutationFn: (payload: { text: string; date: string; shifts: ReceptionHandoverShift[] }) =>
+    mutationFn: (payload: { text: string; date: string }) =>
       api<ShiftNoteDto>('/shift-notes', {
         method: 'POST',
-        body: JSON.stringify({
-          forDate: payload.date,
-          shifts: payload.shifts,
-          body: payload.text,
-        }),
+        body: JSON.stringify({ forDate: payload.date, body: payload.text }),
       }),
     onSuccess: (_note, vars) => {
       setBody('');
       setErr(null);
       qc.invalidateQueries({ queryKey: ['shift-notes'] });
-      if (vars.date !== today) {
-        setFeed('all');
+      if (vars.date !== operatingDay) {
+        setMode('browse');
+        setBrowseDate(vars.date);
         setShowSchedule(false);
-        setForDate(today);
-        if (activeShift) setTargetShifts([activeShift]);
+        setForDate(operatingDay);
       }
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (payload: { id: string; body: string }) =>
+      api<ShiftNoteDto>(`/shift-notes/${payload.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body: payload.body }),
+      }),
+    onSuccess: () => {
+      setEditingId(null);
+      setEditBody('');
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ['shift-notes'] });
     },
     onError: (e: Error) => setErr(e.message),
   });
@@ -116,31 +124,16 @@ export function ShiftNotesBoard() {
   });
 
   useEffect(() => {
+    if (mode !== 'today') return;
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [notesChrono.length, feed]);
-
-  function toggleShift(s: ReceptionHandoverShift) {
-    setTargetShifts((prev) => {
-      if (prev.includes(s)) {
-        const next = prev.filter((x) => x !== s);
-        return next.length ? next : prev;
-      }
-      return [...prev, s];
-    });
-  }
+  }, [notes.length, mode, viewingDate]);
 
   function send() {
     const text = body.trim();
     if (!text) return;
-    const shifts =
-      targetShifts.length > 0
-        ? targetShifts
-        : activeShift
-          ? [activeShift]
-          : ALL_SHIFTS;
-    createMut.mutate({ text, date: forDate || today, shifts });
+    createMut.mutate({ text, date: forDate || operatingDay });
   }
 
   function onSubmit(e: FormEvent) {
@@ -155,9 +148,10 @@ export function ShiftNotesBoard() {
     }
   }
 
-  const loading = feed === 'today' ? todayQ.isLoading : browseQ.isLoading;
-  const isFuture = forDate > today;
-  let lastDay = '';
+  const isFuture = forDate > operatingDay;
+  const showComposer = canWrite && mode === 'today';
+  const showDayList = mode === 'browse' && !browseDate;
+  const loading = showDayList ? daysQ.isLoading : notesQ.isLoading;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
@@ -165,23 +159,30 @@ export function ShiftNotesBoard() {
         <div className="min-w-0">
           <p className="truncate text-[11px] font-semibold text-white">Schichtübergabe</p>
           <p className="truncate text-[9px] text-sidebar-muted">
-            {handoverQ.data?.activeShiftLabel ?? '…'} · {formatDayLabel(today)}
+            {mode === 'today'
+              ? `${handoverQ.data?.activeShiftLabel ?? '…'} · ${formatDayShort(operatingDay)}`
+              : browseDate
+                ? formatDayShort(browseDate)
+                : 'Tage mit Notizen'}
           </p>
         </div>
         <div className="flex shrink-0 rounded-md border border-white/10 bg-white/5 p-0.5">
           {(
             [
               ['today', 'Heute'],
-              ['all', 'Verlauf'],
+              ['browse', 'Durchsuchen'],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               type="button"
-              onClick={() => setFeed(id)}
+              onClick={() => {
+                setMode(id);
+                if (id === 'today') setBrowseDate(null);
+              }}
               className={clsx(
                 'rounded px-1.5 py-0.5 text-[9px] font-semibold',
-                feed === id ? 'bg-white/15 text-white' : 'text-sidebar-muted',
+                mode === id ? 'bg-white/15 text-white' : 'text-sidebar-muted',
               )}
             >
               {label}
@@ -191,85 +192,144 @@ export function ShiftNotesBoard() {
       </header>
 
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-        {loading && <p className="py-4 text-center text-[11px] text-sidebar-muted">Laden…</p>}
-        {!loading && notesChrono.length === 0 && (
-          <p className="py-6 text-center text-[11px] text-sidebar-muted">Noch keine Nachrichten.</p>
-        )}
-        <ul className="flex flex-col gap-2">
-          {notesChrono.map((n) => {
-            const mine = user?.id === n.createdBy.id;
-            const showDay = n.forDate !== lastDay;
-            lastDay = n.forDate;
-            return (
-              <li key={n.id}>
-                {showDay && feed === 'all' && (
-                  <p className="mb-1.5 text-center text-[9px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                    {formatDayLabel(n.forDate)}
-                  </p>
-                )}
-                <div className={clsx('flex gap-1.5', mine ? 'flex-row-reverse' : 'flex-row')}>
-                  <div
-                    className={clsx(
-                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[8px] font-bold',
-                      mine ? 'bg-action text-white' : 'bg-white/15 text-white',
-                    )}
+        {showDayList && (
+          <>
+            {loading && <p className="py-4 text-center text-[11px] text-sidebar-muted">Laden…</p>}
+            {!loading && (daysQ.data?.length ?? 0) === 0 && (
+              <p className="py-6 text-center text-[11px] text-sidebar-muted">Noch keine Tage.</p>
+            )}
+            <ul className="flex flex-col gap-1.5">
+              {(daysQ.data ?? []).map((day) => (
+                <li key={day.date}>
+                  <button
+                    type="button"
+                    onClick={() => setBrowseDate(day.date)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-2.5 py-2 text-left transition hover:bg-white/[0.1]"
                   >
-                    {initials(n.createdBy.name)}
-                  </div>
-                  <div className="min-w-0 max-w-[85%]">
-                    <div
-                      className={clsx(
-                        'mb-0.5 flex flex-wrap items-baseline gap-x-1',
-                        mine ? 'justify-end' : 'justify-start',
-                      )}
-                    >
-                      <span className="text-[10px] font-semibold text-slate-100">{n.createdBy.name}</span>
-                      <span className="text-[8px] text-sidebar-muted">{formatTime(n.createdAt)}</span>
+                    <span className="text-[11px] font-medium text-slate-100">
+                      {formatDayLabel(day.date)}
+                    </span>
+                    <span className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold text-sidebar-muted">
+                      {day.count}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {!showDayList && (
+          <>
+            {mode === 'browse' && browseDate && (
+              <div className="mb-2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBrowseDate(null)}
+                  className="text-[10px] font-semibold text-sky-300 hover:underline"
+                >
+                  ← Tage
+                </button>
+                <span className="text-[9px] text-sidebar-muted">{formatDayShort(browseDate)}</span>
+              </div>
+            )}
+            {loading && <p className="py-4 text-center text-[11px] text-sidebar-muted">Laden…</p>}
+            {!loading && notes.length === 0 && (
+              <p className="py-6 text-center text-[11px] text-sidebar-muted">
+                Keine Notizen für diesen Tag.
+              </p>
+            )}
+            <ul className="flex flex-col gap-2">
+              {notes.map((n) => {
+                const mine = user?.id === n.createdBy.id;
+                const editing = editingId === n.id;
+                return (
+                  <li
+                    key={n.id}
+                    className="rounded-lg border border-white/10 bg-white/[0.07] px-2.5 py-2"
+                  >
+                    <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2">
+                      <span className="text-[10px] font-semibold text-slate-100">
+                        {n.createdBy.name}
+                      </span>
+                      <span className="text-[8px] text-sidebar-muted">
+                        {formatTime(n.createdAt)}
+                        {n.updatedAt !== n.createdAt ? ' · bearb.' : ''}
+                      </span>
                     </div>
-                    <div
-                      className={clsx(
-                        'rounded-xl px-2.5 py-1.5 text-[11px] leading-snug',
-                        mine
-                          ? 'rounded-tr-sm bg-action text-white'
-                          : 'rounded-tl-sm border border-white/10 bg-white/[0.08] text-slate-100',
-                      )}
-                    >
-                      <p className="whitespace-pre-wrap">{n.body}</p>
-                      <p
-                        className={clsx(
-                          'mt-0.5 text-[8px]',
-                          mine ? 'text-white/70' : 'text-sidebar-muted',
-                        )}
-                      >
-                        {n.shifts.map((s) => SHIFT_LABELS[s]).join(' · ')}
+                    {editing ? (
+                      <div className="space-y-1.5">
+                        <textarea
+                          rows={3}
+                          value={editBody}
+                          onChange={(e) => setEditBody(e.target.value)}
+                          className="w-full resize-y rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-[11px] text-white focus:border-action focus:outline-none"
+                          autoFocus
+                        />
+                        <div className="flex gap-1.5">
+                          <Button
+                            type="button"
+                            variant="action"
+                            disabled={updateMut.isPending || !editBody.trim()}
+                            className="min-h-[24px] px-2 text-[10px]"
+                            onClick={() =>
+                              updateMut.mutate({ id: n.id, body: editBody.trim() })
+                            }
+                          >
+                            Speichern
+                          </Button>
+                          <button
+                            type="button"
+                            className="text-[9px] text-sidebar-muted hover:text-white"
+                            onClick={() => {
+                              setEditingId(null);
+                              setEditBody('');
+                            }}
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-[11px] leading-snug text-slate-100">
+                        {n.body}
                       </p>
-                    </div>
-                    {canWrite && mine && (
-                      <button
-                        type="button"
-                        className="mt-0.5 text-[8px] text-sidebar-muted hover:text-red-300"
-                        onClick={() => deleteMut.mutate(n.id)}
-                      >
-                        Löschen
-                      </button>
                     )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    {canWrite && mine && !editing && (
+                      <div className="mt-1.5 flex gap-2.5 border-t border-white/10 pt-1.5">
+                        <button
+                          type="button"
+                          className="text-[9px] font-medium text-sidebar-muted hover:text-sky-300"
+                          onClick={() => {
+                            setEditingId(n.id);
+                            setEditBody(n.body);
+                          }}
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[9px] font-medium text-sidebar-muted hover:text-red-300"
+                          onClick={() => deleteMut.mutate(n.id)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
       </div>
 
-      {canWrite && (
+      {showComposer && (
         <form onSubmit={onSubmit} className="shrink-0 border-t border-sidebar-border px-2 py-1.5">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
             <button
               type="button"
-              onClick={() => {
-                setShowSchedule((v) => !v);
-                if (!showSchedule) setTargetShifts([...ALL_SHIFTS]);
-              }}
+              onClick={() => setShowSchedule((v) => !v)}
               className={clsx(
                 'rounded-md border px-1.5 py-0.5 text-[9px] font-semibold',
                 showSchedule || isFuture
@@ -277,16 +337,15 @@ export function ShiftNotesBoard() {
                   : 'border-white/15 text-sidebar-muted',
               )}
             >
-              {isFuture ? formatDayLabel(forDate) : 'Für später…'}
+              {isFuture ? formatDayShort(forDate) : 'Für später…'}
             </button>
             {isFuture && (
               <button
                 type="button"
                 className="text-[9px] text-sidebar-muted underline"
                 onClick={() => {
-                  setForDate(today);
+                  setForDate(operatingDay);
                   setShowSchedule(false);
-                  if (activeShift) setTargetShifts([activeShift]);
                 }}
               >
                 Heute
@@ -295,49 +354,31 @@ export function ShiftNotesBoard() {
           </div>
 
           {showSchedule && (
-            <div className="mb-1.5 space-y-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5">
+            <div className="mb-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5">
               <input
                 type="date"
-                min={today}
+                min={operatingDay}
                 className="w-full rounded-md border border-white/15 bg-white/5 px-1.5 py-1 text-[10px] text-white"
                 value={forDate}
-                onChange={(e) => setForDate(e.target.value || today)}
+                onChange={(e) => setForDate(e.target.value || operatingDay)}
               />
-              <div className="flex flex-wrap gap-1">
-                {ALL_SHIFTS.map((s) => {
-                  const on = targetShifts.includes(s);
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => toggleShift(s)}
-                      className={clsx(
-                        'rounded-full px-2 py-0.5 text-[9px] font-semibold',
-                        on ? 'bg-action text-white' : 'border border-white/15 text-sidebar-muted',
-                      )}
-                    >
-                      {SHIFT_LABELS[s]}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
           )}
 
           <div className="flex items-end gap-1.5">
             <textarea
-              rows={1}
+              rows={2}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder={isFuture ? `Für ${formatDayLabel(forDate)}…` : 'Nachricht… Enter senden'}
-              className="max-h-20 min-h-[32px] flex-1 resize-none rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-[11px] text-white placeholder:text-sidebar-muted focus:border-action focus:outline-none"
+              placeholder={isFuture ? `Für ${formatDayShort(forDate)}…` : 'Notiz…'}
+              className="max-h-20 min-h-[36px] flex-1 resize-none rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-[11px] text-white placeholder:text-sidebar-muted focus:border-action focus:outline-none"
             />
             <Button
               type="submit"
               variant="action"
               disabled={createMut.isPending || !body.trim()}
-              className="min-h-[32px] shrink-0 px-2.5 text-[11px]"
+              className="min-h-[36px] shrink-0 px-2.5 text-[11px]"
             >
               {isFuture ? '✓' : '→'}
             </Button>

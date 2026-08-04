@@ -15,11 +15,22 @@ import {
 
 const logger = new Logger('MirusShiftSync');
 
+export type MirusSelfPerson = {
+  externalUserId: string;
+  displayName: string;
+};
+
 /**
- * Scrape the expanded Dienstplan day list (after clicking a team avatar).
- * Structure: `.card.card-default .row.mb-3` with name + "Arbeitszeit" + "HH:MM - HH:MM".
+ * Scrape the expanded Dienstplan day list (after clicking a team avatar),
+ * plus the logged-in user's own day card (shown above the team avatar strip).
+ * Structure (team): `.card.card-default .row.mb-3` with name + "Arbeitszeit" + "HH:MM - HH:MM".
+ * Structure (self): day card header with initials + badge; `Arbeitszeit` in `.card-text.small` (col-4/col-8).
  */
-function scrapeShiftsInBrowser(dateStr: string) {
+function scrapeShiftsInBrowser(args: {
+  dateStr: string;
+  selfPerson: MirusSelfPerson | null;
+}) {
+  const { dateStr, selfPerson } = args;
   const TIME = /(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})/;
 
   function combine(date: string, time: string): string | null {
@@ -61,6 +72,80 @@ function scrapeShiftsInBrowser(dateStr: string) {
     return true;
   }
 
+  function pushShift(
+    displayName: string,
+    externalUserId: string,
+    workStart: string,
+    workEnd: string,
+    label: string | null,
+  ) {
+    const startsAt = combine(dateStr, workStart);
+    let endsAt = combine(dateStr, workEnd);
+    if (!startsAt || !endsAt) return;
+    if (new Date(endsAt) <= new Date(startsAt)) {
+      const end = new Date(endsAt);
+      end.setDate(end.getDate() + 1);
+      endsAt = end.toISOString();
+    }
+    const key = `${externalUserId}|${startsAt}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      displayName,
+      externalUserId,
+      startsAt,
+      endsAt,
+      label,
+      sourceId: `${externalUserId}-${startsAt}`,
+    });
+  }
+
+  function extractArbeitszeit(root: Element): { start: string; end: string } | null {
+    for (const lineRow of root.querySelectorAll('.row.mb-1')) {
+      const cols = lineRow.querySelectorAll('[class*="col-"]');
+      if (cols.length < 2) continue;
+      const labelText = cols[0]?.textContent?.trim() ?? '';
+      const valueText = cols[1]?.textContent?.trim() ?? '';
+      if (!/^Arbeitszeit$/i.test(labelText)) continue;
+      const m = TIME.exec(valueText);
+      if (m) return { start: m[1], end: m[2] };
+    }
+    const text = root.textContent ?? '';
+    const idx = text.search(/Arbeitszeit/i);
+    if (idx < 0) return null;
+    const m = TIME.exec(text.slice(idx));
+    return m ? { start: m[1], end: m[2] } : null;
+  }
+
+  // --- Own day card (logged-in user; not in team avatar strip) ---
+  if (selfPerson) {
+    const dayCards = document.querySelectorAll('.card.card-default.shadow.p-2, .card.card-default.shadow.mb-5');
+    for (const dayCard of dayCards) {
+      const subtitle = dayCard.querySelector('.card-subtitle')?.textContent?.trim() ?? '';
+      if (!subtitle && !dayCard.querySelector(':scope > .row.mb-2 .mud-avatar')) continue;
+      // Own schedule lives in `.card-text.small` that is NOT inside the nested team card.
+      for (const block of dayCard.querySelectorAll('.card-text.small')) {
+        if (block.closest('.card.p-4')) continue;
+        if (block.querySelector('.team-color-container')) continue;
+        const text = block.textContent ?? '';
+        if (!/Arbeitszeit/i.test(text)) continue;
+        if (/Absenztyp/i.test(text) && !/Arbeitszeit/i.test(text)) continue;
+        const times = extractArbeitszeit(block);
+        if (!times) continue;
+        const badge =
+          dayCard.querySelector(':scope > .row.mb-2 .badge, .row.mb-2 .badge')?.textContent?.trim() ||
+          null;
+        pushShift(
+          selfPerson.displayName,
+          selfPerson.externalUserId,
+          times.start,
+          times.end,
+          badge ? badge.replace(/\s+/g, ' ') : null,
+        );
+      }
+    }
+  }
+
   const rows = document.querySelectorAll('.card.card-default .row.mb-3, .card .row.mb-3');
   for (const row of rows) {
     const text = row.textContent ?? '';
@@ -87,56 +172,17 @@ function scrapeShiftsInBrowser(dateStr: string) {
     const personMatch = img?.getAttribute('src')?.match(/\/Persons\/([0-9a-f-]{36})\//i);
     const externalUserId = (personMatch?.[1] || displayName.toLowerCase().replace(/\s+/g, ' ')).trim();
 
-    let workStart: string | null = null;
-    let workEnd: string | null = null;
-    let label: string | null = null;
-
-    for (const lineRow of row.querySelectorAll('.row.mb-1')) {
-      const cols = lineRow.querySelectorAll('.col-6');
-      if (cols.length < 2) continue;
-      const labelText = cols[0]?.textContent?.trim() ?? '';
-      const valueText = cols[1]?.textContent?.trim() ?? '';
-      if (/^Arbeitszeit$/i.test(labelText)) {
-        const m = TIME.exec(valueText);
-        if (m) {
-          workStart = m[1];
-          workEnd = m[2];
-        }
-      }
-    }
-
-    if (!workStart || !workEnd) {
-      // Fallback: first time range after "Arbeitszeit" in plain text
-      const idx = text.search(/Arbeitszeit/i);
-      const m = idx >= 0 ? TIME.exec(text.slice(idx)) : TIME.exec(text);
-      if (!m) continue;
-      workStart = m[1];
-      workEnd = m[2];
-    }
+    const times = extractArbeitszeit(row);
+    if (!times) continue;
 
     const badge = row.querySelector('.badge')?.textContent?.trim();
-    if (badge) label = badge.replace(/\s+/g, ' ');
-
-    const startsAt = combine(dateStr, workStart);
-    let endsAt = combine(dateStr, workEnd);
-    if (!startsAt || !endsAt) continue;
-    if (new Date(endsAt) <= new Date(startsAt)) {
-      const end = new Date(endsAt);
-      end.setDate(end.getDate() + 1);
-      endsAt = end.toISOString();
-    }
-
-    const key = `${externalUserId}|${startsAt}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
+    pushShift(
       displayName,
       externalUserId,
-      startsAt,
-      endsAt,
-      label,
-      sourceId: `${externalUserId}-${startsAt}`,
-    });
+      times.start,
+      times.end,
+      badge ? badge.replace(/\s+/g, ' ') : null,
+    );
   }
 
   // Fallback: parse body text blocks if card markup not found
@@ -160,28 +206,16 @@ function scrapeShiftsInBrowser(dateStr: string) {
           }
         }
         if (displayName && isPersonName(displayName)) {
-          const externalUserId = displayName.toLowerCase().replace(/\s+/g, ' ');
-          const startsAt = combine(dateStr, m[1]);
-          let endsAt = combine(dateStr, m[2]);
-          if (startsAt && endsAt) {
-            if (new Date(endsAt) <= new Date(startsAt)) {
-              const end = new Date(endsAt);
-              end.setDate(end.getDate() + 1);
-              endsAt = end.toISOString();
-            }
-            const key = `${externalUserId}|${startsAt}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              out.push({
-                displayName,
-                externalUserId,
-                startsAt,
-                endsAt,
-                label: null,
-                sourceId: `${externalUserId}-${startsAt}`,
-              });
-            }
-          }
+          pushShift(
+            displayName,
+            displayName.toLowerCase().replace(/\s+/g, ' '),
+            m[1],
+            m[2],
+            null,
+          );
+        } else if (selfPerson) {
+          // Own Arbeitszeit line without a name above it (self day card)
+          pushShift(selfPerson.displayName, selfPerson.externalUserId, m[1], m[2], null);
         }
       }
       i += 1;
@@ -334,14 +368,109 @@ async function openDayDetail(page: Page): Promise<boolean> {
   return hasDetail();
 }
 
-async function scrapeDay(page: Page, origin: string, dateStr: string): Promise<MirusShift[]> {
+async function resolveSelfPerson(page: Page, origin: string, loginHint: string): Promise<MirusSelfPerson | null> {
+  const fromHeader = await page.evaluate(() => {
+    const img = document.querySelector('.userProfileMenu img');
+    const alt = img?.getAttribute('alt')?.trim() || '';
+    const email = alt.includes('@') ? alt : '';
+    return { email };
+  });
+
+  let personId: string | null = null;
+  let displayName = '';
+
+  try {
+    await page.goto(`${origin}/webapp/common/settings`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
+    });
+    await page.waitForLoadState('networkidle', { timeout: 45000 }).catch(() => undefined);
+    await page.waitForTimeout(2500);
+
+    const fromSettings = await page.evaluate(() => {
+      const personImg = document.querySelector(
+        'img[src*="/Persons/"]',
+      ) as HTMLImageElement | null;
+      const uuid =
+        personImg?.getAttribute('src')?.match(/\/Persons\/([0-9a-f-]{36})\//i)?.[1] ?? null;
+      const alt = personImg?.getAttribute('alt')?.trim() || '';
+
+      const body = document.body?.innerText || '';
+      const lines = body
+        .split(/\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      let first = '';
+      let last = '';
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (/^vorname$/i.test(l) && lines[i + 1]) first = lines[i + 1];
+        if (/^nachname$/i.test(l) && lines[i + 1]) last = lines[i + 1];
+        if (/^name$/i.test(l) && lines[i + 1] && !first) first = lines[i + 1];
+      }
+
+      const inputs = [...document.querySelectorAll('input, textarea')];
+      const byLabel = (re: RegExp): string => {
+        for (const el of inputs) {
+          const id = el.getAttribute('id') || '';
+          const name = el.getAttribute('name') || '';
+          const aria = el.getAttribute('aria-label') || '';
+          const placeholder = el.getAttribute('placeholder') || '';
+          const hay = `${id} ${name} ${aria} ${placeholder}`;
+          if (!re.test(hay)) continue;
+          const v = (el as HTMLInputElement).value?.trim();
+          if (v) return v;
+        }
+        return '';
+      };
+      if (!first) first = byLabel(/first|vorname|given/i);
+      if (!last) last = byLabel(/last|nachname|family|surname/i);
+
+      const composed = [first, last].filter(Boolean).join(' ').trim();
+      const name =
+        (alt && alt.length > 2 && !alt.includes('@') ? alt : '') ||
+        composed ||
+        '';
+
+      return { uuid, name };
+    });
+
+    personId = fromSettings.uuid;
+    displayName = fromSettings.name;
+  } catch (err) {
+    logger.warn(`Mirus settings probe failed: ${(err as Error).message}`);
+  }
+
+  const email = fromHeader.email || (loginHint.includes('@') ? loginHint.trim() : '');
+  if (!displayName) {
+    displayName = email || loginHint.trim() || 'Mirus-Konto (eigene Schicht)';
+  }
+  if (!personId) {
+    personId = email ? email.toLowerCase() : loginHint.trim().toLowerCase();
+  }
+  if (!personId) return null;
+
+  logger.log(`Mirus self person: ${displayName} (${personId})`);
+  return { externalUserId: personId, displayName };
+}
+
+async function scrapeDay(
+  page: Page,
+  origin: string,
+  dateStr: string,
+  selfPerson: MirusSelfPerson | null,
+): Promise<MirusShift[]> {
   const url = `${origin}/webapp/shifts/shift/${dateStr}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => undefined);
-  // Blazor needs time to render the avatar strip
-  await page.waitForSelector('.team-color-container, .card.card-default, text=Arbeitszeit', {
-    timeout: 45000,
-  }).catch(() => undefined);
+  // Blazor needs time to render the avatar strip / own day card
+  await page.waitForSelector(
+    '.team-color-container, .card.card-default, text=Arbeitszeit, text=Absenz',
+    {
+      timeout: 45000,
+    },
+  ).catch(() => undefined);
   await page.waitForTimeout(2000);
 
   if (page.url().includes('/Account/Login')) {
@@ -355,7 +484,7 @@ async function scrapeDay(page: Page, origin: string, dateStr: string): Promise<M
     await page.waitForTimeout(1500);
   }
 
-  const rows = await page.evaluate(scrapeShiftsInBrowser, dateStr);
+  const rows = await page.evaluate(scrapeShiftsInBrowser, { dateStr, selfPerson });
   return rows.map((r) => ({
     externalUserId: r.externalUserId,
     displayName: r.displayName,
@@ -371,7 +500,8 @@ async function playwrightScrapeWithSession(
   jar: MirusCookieJar,
   from: Date,
   to: Date,
-): Promise<MirusShift[]> {
+  loginHint: string,
+): Promise<{ shifts: MirusShift[]; selfPerson: MirusSelfPerson | null }> {
   const origin = baseUrl.replace(/\/+$/, '');
   let browser: Browser | null = null;
   try {
@@ -399,6 +529,8 @@ async function playwrightScrapeWithSession(
       throw new Error('Mirus session cookie rejected — re-save credentials and sync again');
     }
 
+    const selfPerson = await resolveSelfPerson(page, origin, loginHint);
+
     const all: MirusShift[] = [];
     const cursor = new Date(from);
     cursor.setHours(0, 0, 0, 0);
@@ -407,7 +539,7 @@ async function playwrightScrapeWithSession(
     while (cursor < last) {
       const dateStr = isoDateLocal(cursor);
       try {
-        const dayShifts = await scrapeDay(page, origin, dateStr);
+        const dayShifts = await scrapeDay(page, origin, dateStr, selfPerson);
         logger.log(`Mirus ${dateStr}: ${dayShifts.length} shifts`);
         all.push(...dayShifts);
       } catch (err) {
@@ -416,7 +548,7 @@ async function playwrightScrapeWithSession(
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    return dedupeShifts(all);
+    return { shifts: dedupeShifts(all), selfPerson };
   } finally {
     await browser?.close().catch(() => undefined);
   }
@@ -445,6 +577,8 @@ export type MirusSyncOpts = {
 export type MirusSyncResult = {
   shifts: MirusShift[];
   session: MirusSessionStored;
+  /** Logged-in Mirus account (own day card) — always upsert into employee map. */
+  selfPerson: MirusSelfPerson | null;
 };
 
 export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncResult> {
@@ -472,6 +606,7 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
   }
 
   let shifts: MirusShift[] = [];
+  let selfPerson: MirusSelfPerson | null = null;
 
   const swagger = await mirusFetchSwagger(jar, origin).catch(() => null);
   if (swagger?.paths.length) {
@@ -479,12 +614,20 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
   }
 
   // Dienstplan is Blazor UI: open /webapp/shifts/shift/{date} with session cookies,
-  // click avatar strip to expand Arbeitszeit list, scrape cards.
+  // click avatar strip to expand Arbeitszeit list, scrape cards + own day card.
   if (shifts.length === 0) {
-    shifts = await playwrightScrapeWithSession(origin, jar, from, to);
+    const scraped = await playwrightScrapeWithSession(
+      origin,
+      jar,
+      from,
+      to,
+      opts.username,
+    );
+    shifts = scraped.shifts;
+    selfPerson = scraped.selfPerson;
   }
 
-  if (shifts.length === 0) {
+  if (shifts.length === 0 && !selfPerson) {
     throw new Error(
       'Mirus sync found no shifts — login worked, but no Arbeitszeit rows were found on the Dienstplan',
     );
@@ -492,6 +635,7 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
 
   return {
     shifts,
+    selfPerson,
     session: {
       cookies: jar.toJSON(),
       savedAt: new Date().toISOString(),

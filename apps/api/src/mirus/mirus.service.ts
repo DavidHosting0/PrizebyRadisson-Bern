@@ -220,7 +220,12 @@ export class MirusService {
         session,
       });
 
-      const { persisted, unmapped } = await this.persistShifts(result.shifts, from, to);
+      const { persisted, unmapped } = await this.persistShifts(
+        result.shifts,
+        from,
+        to,
+        result.selfPerson,
+      );
       const scraped = result.shifts.length;
       const status =
         scraped > 0 && persisted === 0
@@ -303,10 +308,14 @@ export class MirusService {
     shifts: MirusShift[],
     from: Date,
     to: Date,
+    selfPerson?: { externalUserId: string; displayName: string } | null,
   ): Promise<{ persisted: number; unmapped: number }> {
     await this.purgeLegacyEmployees();
 
     const seen = new Map<string, string>();
+    if (selfPerson?.externalUserId) {
+      seen.set(selfPerson.externalUserId, selfPerson.displayName);
+    }
     for (const s of shifts) {
       if (isLegacyOrGarbageEmployee(s.externalUserId, s.displayName)) continue;
       seen.set(s.externalUserId, s.displayName);

@@ -1,14 +1,12 @@
 'use client';
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import {
-  RECEPTION_HANDOVER_SHIFTS,
-  SHIFT_HANDOVER_LABELS_DE,
-  type ReceptionHandoverShift,
-  type ShiftHandoverStateDto,
-  type ShiftNoteDto,
+import type {
+  ShiftHandoverStateDto,
+  ShiftNoteDaySummaryDto,
+  ShiftNoteDto,
 } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
@@ -27,31 +25,36 @@ function formatDayLabel(dateIso: string) {
   const [y, m, d] = dateIso.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return date.toLocaleDateString('de-CH', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatDayShort(dateIso: string) {
+  const [y, m, d] = dateIso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
   });
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
-}
-
 export function ShiftNotesBoard() {
   const { user } = useAuth();
   const canWrite = usePermission('SHIFT_NOTES_WRITE');
   const qc = useQueryClient();
-  const [feed, setFeed] = useState<'today' | 'all'>('today');
+  const [mode, setMode] = useState<'today' | 'browse'>('today');
+  const [browseDate, setBrowseDate] = useState<string | null>(null);
   const [body, setBody] = useState('');
   const [forDate, setForDate] = useState(todayIso);
-  const [targetShifts, setTargetShifts] = useState<ReceptionHandoverShift[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editBody, setEditBody] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const today = todayIso();
+  const calendarToday = todayIso();
 
   const handoverQ = useQuery({
     queryKey: ['shift-handover'],
@@ -59,55 +62,62 @@ export function ShiftNotesBoard() {
     staleTime: 60_000,
   });
 
-  const activeShift = handoverQ.data?.activeShift as ReceptionHandoverShift | undefined;
+  const operatingDay = handoverQ.data?.activeDate ?? calendarToday;
+  const viewingDate = mode === 'today' ? operatingDay : browseDate;
 
   useEffect(() => {
-    if (targetShifts.length === 0 && activeShift) {
-      setTargetShifts([activeShift]);
+    if (handoverQ.data?.activeDate && !showSchedule) {
+      setForDate(handoverQ.data.activeDate);
     }
-  }, [activeShift, targetShifts.length]);
+  }, [handoverQ.data?.activeDate, showSchedule]);
 
-  const todayQ = useQuery({
-    queryKey: ['shift-notes', 'today', today],
-    queryFn: () => api<ShiftNoteDto[]>(`/shift-notes?date=${today}`),
-    enabled: feed === 'today',
-    refetchInterval: 15_000,
-  });
-
-  const browseQ = useQuery({
-    queryKey: ['shift-notes', 'browse'],
-    queryFn: () => api<{ items: ShiftNoteDto[]; nextCursor: string | null }>('/shift-notes/browse?limit=80'),
-    enabled: feed === 'all',
+  const daysQ = useQuery({
+    queryKey: ['shift-notes', 'days'],
+    queryFn: () => api<ShiftNoteDaySummaryDto[]>('/shift-notes/days'),
+    enabled: mode === 'browse',
     refetchInterval: 30_000,
   });
 
-  const notesChrono = useMemo(() => {
-    const raw = feed === 'today' ? todayQ.data ?? [] : browseQ.data?.items ?? [];
-    return [...raw].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
-  }, [feed, todayQ.data, browseQ.data]);
+  const notesQ = useQuery({
+    queryKey: ['shift-notes', 'day', viewingDate],
+    queryFn: () => api<ShiftNoteDto[]>(`/shift-notes?date=${viewingDate}`),
+    enabled: Boolean(viewingDate),
+    refetchInterval: mode === 'today' ? 15_000 : 30_000,
+  });
+
+  const notes = notesQ.data ?? [];
 
   const createMut = useMutation({
-    mutationFn: (payload: { text: string; date: string; shifts: ReceptionHandoverShift[] }) =>
+    mutationFn: (payload: { text: string; date: string }) =>
       api<ShiftNoteDto>('/shift-notes', {
         method: 'POST',
-        body: JSON.stringify({
-          forDate: payload.date,
-          shifts: payload.shifts,
-          body: payload.text,
-        }),
+        body: JSON.stringify({ forDate: payload.date, body: payload.text }),
       }),
     onSuccess: (_note, vars) => {
       setBody('');
       setErr(null);
       qc.invalidateQueries({ queryKey: ['shift-notes'] });
-      if (vars.date !== today) {
-        setFeed('all');
+      if (vars.date !== operatingDay) {
+        setMode('browse');
+        setBrowseDate(vars.date);
         setShowSchedule(false);
-        setForDate(today);
-        if (activeShift) setTargetShifts([activeShift]);
+        setForDate(operatingDay);
       }
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (payload: { id: string; body: string }) =>
+      api<ShiftNoteDto>(`/shift-notes/${payload.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body: payload.body }),
+      }),
+    onSuccess: () => {
+      setEditingId(null);
+      setEditBody('');
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ['shift-notes'] });
     },
     onError: (e: Error) => setErr(e.message),
   });
@@ -118,31 +128,16 @@ export function ShiftNotesBoard() {
   });
 
   useEffect(() => {
+    if (mode !== 'today') return;
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [notesChrono.length, feed]);
-
-  function toggleShift(s: ReceptionHandoverShift) {
-    setTargetShifts((prev) => {
-      if (prev.includes(s)) {
-        const next = prev.filter((x) => x !== s);
-        return next.length ? next : prev;
-      }
-      return [...prev, s];
-    });
-  }
+  }, [notes.length, mode, viewingDate]);
 
   function send() {
     const text = body.trim();
     if (!text) return;
-    const shifts =
-      targetShifts.length > 0
-        ? targetShifts
-        : activeShift
-          ? [activeShift]
-          : ([...RECEPTION_HANDOVER_SHIFTS] as ReceptionHandoverShift[]);
-    createMut.mutate({ text, date: forDate || today, shifts });
+    createMut.mutate({ text, date: forDate || operatingDay });
   }
 
   function onSubmit(e: FormEvent) {
@@ -157,9 +152,10 @@ export function ShiftNotesBoard() {
     }
   }
 
-  const loading = feed === 'today' ? todayQ.isLoading : browseQ.isLoading;
-  const isFuture = forDate > today;
-  let lastDay = '';
+  const isFuture = forDate > operatingDay;
+  const showComposer = canWrite && mode === 'today';
+  const showDayList = mode === 'browse' && !browseDate;
+  const loading = showDayList ? daysQ.isLoading : notesQ.isLoading;
 
   return (
     <div className="flex h-[calc(100dvh-5.5rem)] min-h-[420px] flex-col bg-surface-muted md:h-[calc(100dvh-4rem)]">
@@ -167,25 +163,32 @@ export function ShiftNotesBoard() {
         <div className="min-w-0">
           <h1 className="text-base font-semibold tracking-tight text-ink">Schichtübergabe</h1>
           <p className="truncate text-xs text-ink-muted">
-            {handoverQ.data
-              ? `${handoverQ.data.activeShiftLabel} · ${formatDayLabel(today)}`
-              : formatDayLabel(today)}
+            {mode === 'today'
+              ? handoverQ.data
+                ? `${handoverQ.data.activeShiftLabel} · ${formatDayShort(operatingDay)}`
+                : formatDayShort(operatingDay)
+              : browseDate
+                ? formatDayShort(browseDate)
+                : 'Tage mit Notizen'}
           </p>
         </div>
         <div className="flex shrink-0 rounded-btn border border-border bg-surface-muted p-0.5">
           {(
             [
               ['today', 'Heute'],
-              ['all', 'Verlauf'],
+              ['browse', 'Durchsuchen'],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               type="button"
-              onClick={() => setFeed(id)}
+              onClick={() => {
+                setMode(id);
+                if (id === 'today') setBrowseDate(null);
+              }}
               className={clsx(
                 'rounded-[6px] px-2.5 py-1 text-xs font-medium transition',
-                feed === id ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
+                mode === id ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
               )}
             >
               {label}
@@ -195,79 +198,134 @@ export function ShiftNotesBoard() {
       </header>
 
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
-        {loading && <p className="py-8 text-center text-sm text-ink-muted">Laden…</p>}
-        {!loading && notesChrono.length === 0 && (
-          <p className="py-10 text-center text-sm text-ink-muted">
-            Noch keine Nachrichten. Schreib die erste Übergabe-Notiz.
-          </p>
-        )}
-        <ul className="mx-auto flex max-w-2xl flex-col gap-3">
-          {notesChrono.map((n) => {
-            const mine = user?.id === n.createdBy.id;
-            const showDay = n.forDate !== lastDay;
-            lastDay = n.forDate;
-            return (
-              <li key={n.id}>
-                {showDay && feed === 'all' && (
-                  <div className="mb-3 flex items-center gap-2">
-                    <div className="h-px flex-1 bg-border" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-                      {formatDayLabel(n.forDate)}
-                    </span>
-                    <div className="h-px flex-1 bg-border" />
-                  </div>
-                )}
-                <div className={clsx('flex gap-2.5', mine ? 'flex-row-reverse' : 'flex-row')}>
-                  <div
-                    className={clsx(
-                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
-                      mine ? 'bg-action text-white' : 'bg-sidebar text-white',
-                    )}
-                    title={n.createdBy.name}
+        {showDayList && (
+          <>
+            {loading && <p className="py-8 text-center text-sm text-ink-muted">Laden…</p>}
+            {!loading && (daysQ.data?.length ?? 0) === 0 && (
+              <p className="py-10 text-center text-sm text-ink-muted">
+                Noch keine Tage mit Notizen.
+              </p>
+            )}
+            <ul className="mx-auto flex max-w-2xl flex-col gap-2">
+              {(daysQ.data ?? []).map((day) => (
+                <li key={day.date}>
+                  <button
+                    type="button"
+                    onClick={() => setBrowseDate(day.date)}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition hover:border-action/40 hover:bg-surface-muted/40"
                   >
-                    {initials(n.createdBy.name)}
-                  </div>
-                  <div className={clsx('min-w-0 max-w-[min(100%,28rem)]', mine ? 'items-end' : 'items-start')}>
-                    <div
-                      className={clsx(
-                        'mb-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5',
-                        mine ? 'justify-end' : 'justify-start',
-                      )}
-                    >
-                      <span className="text-xs font-semibold text-ink">{n.createdBy.name}</span>
-                      <span className="text-[10px] text-ink-muted">{formatTime(n.createdAt)}</span>
-                      <span className="text-[10px] text-ink-muted">
-                        {n.shifts.map((s) => SHIFT_HANDOVER_LABELS_DE[s]).join(' · ')}
+                    <span className="text-sm font-medium text-ink">{formatDayLabel(day.date)}</span>
+                    <span className="shrink-0 rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-medium text-ink-muted">
+                      {day.count} {day.count === 1 ? 'Notiz' : 'Notizen'}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {!showDayList && (
+          <>
+            {mode === 'browse' && browseDate && (
+              <div className="mx-auto mb-3 flex max-w-2xl items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBrowseDate(null)}
+                  className="text-xs font-medium text-action hover:underline"
+                >
+                  ← Alle Tage
+                </button>
+                <span className="text-xs text-ink-muted">{formatDayLabel(browseDate)}</span>
+              </div>
+            )}
+            {loading && <p className="py-8 text-center text-sm text-ink-muted">Laden…</p>}
+            {!loading && notes.length === 0 && (
+              <p className="py-10 text-center text-sm text-ink-muted">
+                Noch keine Notizen für diesen Tag.
+              </p>
+            )}
+            <ul className="mx-auto flex max-w-2xl flex-col gap-3">
+              {notes.map((n) => {
+                const mine = user?.id === n.createdBy.id;
+                const editing = editingId === n.id;
+                return (
+                  <li
+                    key={n.id}
+                    className="rounded-xl border border-border bg-surface px-4 py-3 shadow-sm"
+                  >
+                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="text-sm font-semibold text-ink">{n.createdBy.name}</span>
+                      <span className="text-[11px] text-ink-muted">
+                        {formatTime(n.createdAt)}
+                        {n.updatedAt !== n.createdAt ? ' · bearbeitet' : ''}
                       </span>
                     </div>
-                    <div
-                      className={clsx(
-                        'rounded-2xl px-3.5 py-2 text-sm leading-snug shadow-sm',
-                        mine
-                          ? 'rounded-tr-md bg-action text-white'
-                          : 'rounded-tl-md border border-border bg-surface text-ink',
-                      )}
-                    >
-                      <p className="whitespace-pre-wrap">{n.body}</p>
-                    </div>
-                    {canWrite && mine && (
-                      <button
-                        type="button"
-                        className="mt-0.5 text-[10px] text-ink-muted hover:text-danger"
-                        onClick={() => deleteMut.mutate(n.id)}
-                      >
-                        Löschen
-                      </button>
+                    {editing ? (
+                      <div className="space-y-2">
+                        <textarea
+                          rows={3}
+                          value={editBody}
+                          onChange={(e) => setEditBody(e.target.value)}
+                          className="w-full resize-y rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                          autoFocus
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="action"
+                            disabled={updateMut.isPending || !editBody.trim()}
+                            onClick={() =>
+                              updateMut.mutate({ id: n.id, body: editBody.trim() })
+                            }
+                          >
+                            Speichern
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              setEditingId(null);
+                              setEditBody('');
+                            }}
+                          >
+                            Abbrechen
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{n.body}</p>
                     )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    {canWrite && mine && !editing && (
+                      <div className="mt-2.5 flex gap-3 border-t border-border/70 pt-2">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-ink-muted hover:text-action"
+                          onClick={() => {
+                            setEditingId(n.id);
+                            setEditBody(n.body);
+                          }}
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-ink-muted hover:text-danger"
+                          onClick={() => deleteMut.mutate(n.id)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
       </div>
 
-      {canWrite && (
+      {showComposer && (
         <form
           onSubmit={onSubmit}
           className="shrink-0 border-t border-border bg-surface px-3 py-2.5 md:px-6"
@@ -276,12 +334,7 @@ export function ShiftNotesBoard() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowSchedule((v) => !v);
-                  if (!showSchedule) {
-                    setTargetShifts([...RECEPTION_HANDOVER_SHIFTS]);
-                  }
-                }}
+                onClick={() => setShowSchedule((v) => !v)}
                 className={clsx(
                   'rounded-btn border px-2.5 py-1 text-xs font-medium transition',
                   showSchedule || isFuture
@@ -289,16 +342,15 @@ export function ShiftNotesBoard() {
                     : 'border-border text-ink-muted hover:bg-surface-muted',
                 )}
               >
-                {isFuture ? `Für ${formatDayLabel(forDate)}` : 'Für später…'}
+                {isFuture ? `Für ${formatDayShort(forDate)}` : 'Für später…'}
               </button>
               {isFuture && (
                 <button
                   type="button"
                   className="text-xs text-ink-muted underline-offset-2 hover:underline"
                   onClick={() => {
-                    setForDate(today);
+                    setForDate(operatingDay);
                     setShowSchedule(false);
-                    if (activeShift) setTargetShifts([activeShift]);
                   }}
                 >
                   Zurück auf heute
@@ -307,63 +359,40 @@ export function ShiftNotesBoard() {
             </div>
 
             {showSchedule && (
-              <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface-muted/60 px-3 py-2.5">
+              <div className="rounded-xl border border-border bg-surface-muted/60 px-3 py-2.5">
                 <label className="text-xs">
                   <span className="font-medium text-ink">Datum</span>
                   <input
                     type="date"
-                    min={today}
+                    min={operatingDay}
                     className="mt-1 block rounded-btn border border-border bg-surface px-2 py-1.5 text-sm"
                     value={forDate}
-                    onChange={(e) => setForDate(e.target.value || today)}
+                    onChange={(e) => setForDate(e.target.value || operatingDay)}
                   />
                 </label>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-ink">Schichten</p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {RECEPTION_HANDOVER_SHIFTS.map((s) => {
-                      const on = targetShifts.includes(s);
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => toggleShift(s)}
-                          className={clsx(
-                            'rounded-full px-2.5 py-1 text-[11px] font-medium',
-                            on
-                              ? 'bg-action text-white'
-                              : 'border border-border bg-surface text-ink-muted',
-                          )}
-                        >
-                          {SHIFT_HANDOVER_LABELS_DE[s]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
             )}
 
             <div className="flex items-end gap-2">
               <textarea
-                rows={1}
+                rows={2}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder={
                   isFuture
-                    ? `Notiz für ${formatDayLabel(forDate)}…`
-                    : 'Nachricht schreiben… (Enter senden)'
+                    ? `Notiz für ${formatDayShort(forDate)}…`
+                    : 'Informationsnotiz schreiben…'
                 }
-                className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                className="max-h-28 min-h-[48px] flex-1 resize-none rounded-xl border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
               />
               <Button
                 type="submit"
                 variant="action"
                 disabled={createMut.isPending || !body.trim()}
-                className="min-h-[40px] shrink-0 px-4"
+                className="min-h-[48px] shrink-0 px-4"
               >
-                {isFuture ? 'Planen' : 'Senden'}
+                {isFuture ? 'Planen' : 'Speichern'}
               </Button>
             </div>
             {err && <p className="text-xs text-danger">{err}</p>}

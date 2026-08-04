@@ -118,15 +118,23 @@ export function ShiftHandoverBoard() {
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <header className="shrink-0 border-b border-sidebar-border px-2.5 py-2">
         <p className="text-[10px] font-medium uppercase tracking-wide text-sidebar-muted">
-          {new Date().toLocaleDateString('de-CH', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          })}
+          {(() => {
+            const [y, m, d] = data.activeDate.split('-').map(Number);
+            return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            });
+          })()}
         </p>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-sky-300">{t.title}</h2>
         <p className="mt-0.5 text-sm font-semibold text-white">{data.activeShiftLabel}</p>
+        {data.nextHandoverAdvancesDay && (
+          <p className="mt-0.5 text-[9px] text-sidebar-muted">
+            Nächste Übergabe → neuer Tag ({data.nextShiftLabel})
+          </p>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2.5 py-2.5 pb-3">

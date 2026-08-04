@@ -1,6 +1,7 @@
 export type ReceptionHandoverShift = 'NIGHT' | 'MORNING' | 'LATE';
 
-export const RECEPTION_HANDOVER_SHIFTS: ReceptionHandoverShift[] = ['NIGHT', 'MORNING', 'LATE'];
+/** Order within one calendar day: Früh → Spät → Nacht, then next day. */
+export const RECEPTION_HANDOVER_SHIFTS: ReceptionHandoverShift[] = ['MORNING', 'LATE', 'NIGHT'];
 
 export const SHIFT_HANDOVER_LABELS_DE: Record<ReceptionHandoverShift, string> = {
   NIGHT: 'Nachtschicht',
@@ -9,9 +10,14 @@ export const SHIFT_HANDOVER_LABELS_DE: Record<ReceptionHandoverShift, string> = 
 };
 
 export function nextHandoverShift(shift: ReceptionHandoverShift): ReceptionHandoverShift {
-  if (shift === 'NIGHT') return 'MORNING';
   if (shift === 'MORNING') return 'LATE';
-  return 'NIGHT';
+  if (shift === 'LATE') return 'NIGHT';
+  return 'MORNING';
+}
+
+/** Day advances only after Nachtschicht → Frühschicht. */
+export function handoverAdvancesCalendarDay(fromShift: ReceptionHandoverShift): boolean {
+  return fromShift === 'NIGHT';
 }
 
 export type ShiftHandoverTaskDto = {
@@ -26,10 +32,14 @@ export type ShiftHandoverTaskDto = {
 };
 
 export type ShiftHandoverStateDto = {
+  /** Operating calendar day for the active shift (YYYY-MM-DD). Advances only after Nacht → Früh. */
+  activeDate: string;
   activeShift: ReceptionHandoverShift;
   activeShiftLabel: string;
   nextShift: ReceptionHandoverShift;
   nextShiftLabel: string;
+  /** True when the next handover will roll activeDate to the following day. */
+  nextHandoverAdvancesDay: boolean;
   tasks: ShiftHandoverTaskDto[];
   completedCount: number;
   totalCount: number;
@@ -55,6 +65,8 @@ export type ShiftHandoverTemplateDto = {
 export type ShiftHandoverHandoverResultDto = {
   fromShift: ReceptionHandoverShift;
   toShift: ReceptionHandoverShift;
+  fromDate: string;
+  toDate: string;
   incompleteCount: number;
   handedOverAt: string;
 };

@@ -40,6 +40,24 @@ The first paint is a **compact avatar strip** (initials / photos). Shift times a
 Prefer Person UUID from thumbnail URL `/file/documents/thumbnails/.../Persons/{uuid}/...`.
 Fallback: normalized display name (lowercase, collapsed whitespace).
 
+## Own day card (logged-in account)
+
+The sync login user is **not** in the team avatar strip. Their day sits in the outer
+`.card.card-default.shadow.p-2.mb-5` above `prize Schweiz GmbH` / `.team-color-container`:
+
+| Role | Selector / text |
+|------|-----------------|
+| Initials avatar | `.row.mb-2 .mud-avatar` (e.g. `CE`) |
+| Status badge | `.row.mb-2 .badge` (`Absenz`, cost center, …) |
+| Own details | `.card-text.small` **outside** nested `.card.p-4` |
+| Work time | label `Arbeitszeit` in `col-4` / value in `col-8` |
+| Absence | `Absenztyp` (no shift persisted) |
+
+Identity for mapping: profile `img.userProfileMenu[alt]` (email) and/or
+`/webapp/common/settings` (name + optional `/Persons/{uuid}/` photo). The self person
+is always upserted into the employee map even on Absenz-only days.
+
 ## Note on browser HARs
 
-Chrome often exports only thumbnail image requests for this page (WebSocket / Blazor frames omitted). The authoritative UI flow is login → `/webapp/shifts/shift/{date}` → click avatar → scrape `Arbeitszeit` cards.
+Chrome often exports only thumbnail image requests for this page (WebSocket / Blazor frames omitted). The authoritative UI flow is login → `/webapp/shifts/shift/{date}` → click avatar → scrape `Arbeitszeit` cards (team) + own day card.
+

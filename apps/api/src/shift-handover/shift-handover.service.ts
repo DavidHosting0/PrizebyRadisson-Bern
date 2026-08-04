@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ReceptionHandoverShift } from '@prisma/client';
 import {
+  handoverAdvancesCalendarDay,
   nextHandoverShift,
   RECEPTION_HANDOVER_SHIFTS,
   SHIFT_HANDOVER_LABELS_DE,
@@ -52,6 +53,19 @@ function slugifyCode(label: string): string {
   return base || `task_${Date.now()}`;
 }
 
+/** Local calendar day as UTC midnight (DATE column). */
+function calendarDateOnly(d = new Date()): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
+function formatDateOnly(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function addCalendarDays(d: Date, days: number): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days));
+}
+
 @Injectable()
 export class ShiftHandoverService {
   constructor(private readonly prisma: PrismaService) {}
@@ -61,7 +75,8 @@ export class ShiftHandoverService {
       where: { id: 'singleton' },
       create: {
         id: 'singleton',
-        activeShift: ReceptionHandoverShift.NIGHT,
+        activeShift: ReceptionHandoverShift.MORNING,
+        activeDate: calendarDateOnly(),
         completions: {},
       },
       update: {},
@@ -123,10 +138,12 @@ export class ShiftHandoverService {
     const nextShift = nextHandoverShift(activeShift);
 
     return {
+      activeDate: formatDateOnly(state.activeDate),
       activeShift,
       activeShiftLabel: shiftLabel(state.activeShift),
       nextShift,
       nextShiftLabel: shiftLabel(nextShift as ReceptionHandoverShift),
+      nextHandoverAdvancesDay: handoverAdvancesCalendarDay(activeShift),
       tasks,
       completedCount,
       totalCount: tasks.length,
@@ -214,6 +231,10 @@ export class ShiftHandoverService {
 
     const incompleteCount = snapshot.filter((t) => !t.completed).length;
     const now = new Date();
+    const fromDate = state.activeDate;
+    const toDate = handoverAdvancesCalendarDay(activeShift)
+      ? addCalendarDays(fromDate, 1)
+      : fromDate;
 
     await this.prisma.$transaction([
       this.prisma.shiftHandoverLog.create({
@@ -229,6 +250,7 @@ export class ShiftHandoverService {
         where: { id: 'singleton' },
         data: {
           activeShift: nextShift as ReceptionHandoverShift,
+          activeDate: toDate,
           completions: {},
           lastHandoverAt: now,
           lastHandoverByUserId: user.id,
@@ -239,6 +261,8 @@ export class ShiftHandoverService {
     return {
       fromShift: activeShift,
       toShift: nextShift,
+      fromDate: formatDateOnly(fromDate),
+      toDate: formatDateOnly(toDate),
       incompleteCount,
       handedOverAt: now.toISOString(),
     };

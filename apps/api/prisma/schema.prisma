@@ -1107,7 +1107,9 @@ model ShiftHandoverTemplateTask {
 
 model ShiftHandoverState {
   id                   String                 @id @default("singleton")
-  activeShift          ReceptionHandoverShift @default(NIGHT)
+  activeShift          ReceptionHandoverShift @default(MORNING)
+  /// Operating day for the checklist; advances only after Nacht → Früh.
+  activeDate           DateTime               @db.Date
   completions          Json                   @default("{}")
   lastHandoverAt       DateTime?
   lastHandoverByUserId String?

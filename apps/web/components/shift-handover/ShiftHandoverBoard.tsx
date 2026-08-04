@@ -113,6 +113,20 @@ export function ShiftHandoverBoard() {
           <div>
             <p className="text-xs font-medium uppercase tracking-wide opacity-80">{t('activeShift')}</p>
             <p className="text-2xl font-semibold">{data.activeShiftLabel}</p>
+            <p className="mt-0.5 text-sm text-ink-muted">
+              {(() => {
+                const [y, m, d] = data.activeDate.split('-').map(Number);
+                return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                });
+              })()}
+              {data.nextHandoverAdvancesDay
+                ? ` · nächste Übergabe startet den Folgetag (${data.nextShiftLabel})`
+                : ''}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-bold tabular-nums">

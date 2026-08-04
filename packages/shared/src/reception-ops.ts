@@ -3,6 +3,7 @@ import type { ReceptionHandoverShift } from './shift-handover';
 export type ShiftNoteDto = {
   id: string;
   forDate: string;
+  /** Kept for API compat; notes are day-scoped (all shifts). */
   shifts: ReceptionHandoverShift[];
   body: string;
   createdBy: { id: string; name: string };
@@ -12,14 +13,20 @@ export type ShiftNoteDto = {
 
 export type CreateShiftNotePayload = {
   forDate: string;
-  shifts: ReceptionHandoverShift[];
   body: string;
+  /** Optional; server defaults to all shifts for the day. */
+  shifts?: ReceptionHandoverShift[];
 };
 
 export type UpdateShiftNotePayload = {
   forDate?: string;
-  shifts?: ReceptionHandoverShift[];
   body?: string;
+  shifts?: ReceptionHandoverShift[];
+};
+
+export type ShiftNoteDaySummaryDto = {
+  date: string;
+  count: number;
 };
 
 export type GuestComplaintCategory = 'ROOM' | 'OTHER';

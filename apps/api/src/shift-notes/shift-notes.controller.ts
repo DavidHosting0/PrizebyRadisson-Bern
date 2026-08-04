@@ -12,8 +12,14 @@ export class ShiftNotesController {
 
   @Get()
   @RequirePermissions(PermissionCode.SHIFT_NOTES_READ)
-  list(@Query('date') date?: string, @Query('shift') shift?: string) {
-    return this.notes.list({ date, shift });
+  list(@Query('date') date?: string) {
+    return this.notes.list({ date });
+  }
+
+  @Get('days')
+  @RequirePermissions(PermissionCode.SHIFT_NOTES_READ)
+  days() {
+    return this.notes.listDays();
   }
 
   @Get('browse')
@@ -31,13 +37,17 @@ export class ShiftNotesController {
 
   @Patch(':id')
   @RequirePermissions(PermissionCode.SHIFT_NOTES_WRITE)
-  update(@Param('id') id: string, @Body() dto: UpdateShiftNoteDto) {
-    return this.notes.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateShiftNoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.notes.update(id, dto, user);
   }
 
   @Delete(':id')
   @RequirePermissions(PermissionCode.SHIFT_NOTES_WRITE)
-  remove(@Param('id') id: string) {
-    return this.notes.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.notes.remove(id, user);
   }
 }

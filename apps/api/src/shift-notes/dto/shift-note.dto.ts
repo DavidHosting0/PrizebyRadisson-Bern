@@ -5,9 +5,10 @@ export class CreateShiftNoteDto {
   @IsString()
   forDate!: string;
 
+  @IsOptional()
   @IsArray()
   @IsEnum(ReceptionHandoverShift, { each: true })
-  shifts!: ReceptionHandoverShift[];
+  shifts?: ReceptionHandoverShift[];
 
   @IsString()
   @MinLength(1)
