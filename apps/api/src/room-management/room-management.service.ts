@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PermissionCode, RoomGuestStaySource, UserRole } from '@prisma/client';
 import { hotelTodayIso } from '@housekeeping/shared';
 import type { RoomManagementDetailDto } from '@housekeeping/shared';
@@ -23,11 +24,19 @@ export class RoomManagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rooms: RoomsService,
-    private readonly photos: PhotosService,
     private readonly damageReports: DamageReportsService,
     private readonly lostFound: LostFoundService,
     private readonly cipher: SecretCipherService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  private photosService(): PhotosService | null {
+    try {
+      return this.moduleRef.get(PhotosService, { strict: false });
+    } catch {
+      return null;
+    }
+  }
 
   async getDetail(
     roomId: string,
@@ -50,7 +59,7 @@ export class RoomManagementService {
         this.loadInspections(roomId),
         this.loadHousekeepingEvents(roomId),
         this.loadAssignments(roomId),
-        canViewPhotos ? this.photos.timeline(roomId) : Promise.resolve([]),
+        canViewPhotos ? this.photosService()?.timeline(roomId) ?? Promise.resolve([]) : Promise.resolve([]),
         canViewDamages ? this.damageReports.list({ roomId }) : Promise.resolve([]),
         canViewLostFound ? this.lostFound.list({ roomId }) : Promise.resolve([]),
       ]);

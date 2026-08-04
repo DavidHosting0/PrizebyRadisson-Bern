@@ -22,6 +22,7 @@ export class PhotosService {
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
     private readonly realtime: RealtimeGateway,
+    @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
     private readonly inspectionQueue: InspectionQueueService,
     @Optional()
