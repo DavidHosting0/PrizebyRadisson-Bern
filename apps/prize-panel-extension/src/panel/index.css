@@ -14,10 +14,39 @@ body {
   font-size: 13px;
   line-height: 1.35;
   background: #1a2332;
-  color: #1e293b;
+  color: #e2e8f0;
   -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Modern thin scrollbar (Firefox + Chromium) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }

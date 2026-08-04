@@ -72,12 +72,12 @@ export function LoansBoard() {
   }
 
   return (
-    <div className="space-y-2 p-2.5 pb-3">
+    <div className="space-y-2 bg-sidebar p-2.5 pb-3">
       {canWrite && (
         <Button
           type="button"
           variant={showForm ? 'secondary' : 'action'}
-          className="min-h-[28px] w-full text-xs"
+          className={`min-h-[28px] w-full text-xs${showForm ? ' border-white/15 bg-white/5 text-slate-200' : ''}`}
           onClick={() => setShowForm((v) => !v)}
         >
           {showForm ? 'Abbrechen' : 'Ausleihen'}
@@ -88,7 +88,7 @@ export function LoansBoard() {
         <Card padding>
           <form className="space-y-2" onSubmit={onSubmit}>
             <select
-              className="w-full rounded-md border border-border px-2 py-1 text-xs"
+              className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
               value={roomId}
               onChange={(e) => setRoomId(e.target.value)}
               required
@@ -101,7 +101,7 @@ export function LoansBoard() {
               ))}
             </select>
             <select
-              className="w-full rounded-md border border-border px-2 py-1 text-xs"
+              className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
               value={catalogItemId}
               onChange={(e) => setCatalogItemId(e.target.value)}
               required
@@ -114,9 +114,9 @@ export function LoansBoard() {
               ))}
             </select>
             {selected && (
-              <p className="text-[10px] text-ink-muted">Pfand {formatChf(selected.depositCents)}</p>
+              <p className="text-[10px] text-sidebar-muted">Pfand {formatChf(selected.depositCents)}</p>
             )}
-            {err && <p className="text-[10px] text-danger">{err}</p>}
+            {err && <p className="text-[10px] text-red-300">{err}</p>}
             <Button type="submit" variant="action" className="min-h-[28px] text-xs" disabled={createMut.isPending}>
               Speichern
             </Button>
@@ -124,24 +124,24 @@ export function LoansBoard() {
         </Card>
       )}
 
-      {loansQ.isLoading && <p className="text-[11px] text-ink-muted">Laden…</p>}
+      {loansQ.isLoading && <p className="text-[11px] text-sidebar-muted">Laden…</p>}
       <ul className="space-y-1.5">
         {(loansQ.data ?? []).map((loan) => (
           <li key={loan.id}>
             <Card padding>
               <div className="flex items-start justify-between gap-1">
                 <div>
-                  <p className="text-[10px] font-semibold text-ink">
+                  <p className="text-[10px] font-semibold text-slate-100">
                     Zi. {loan.room.roomNumber} · {loan.catalogItem.name}
                   </p>
-                  <p className="text-[9px] text-ink-muted">
+                  <p className="text-[9px] text-sidebar-muted">
                     {formatChf(loan.depositCents)} · {new Date(loan.loanedAt).toLocaleDateString('de-CH')}
                   </p>
                 </div>
                 {canWrite && (
                   <button
                     type="button"
-                    className="text-[9px] text-action"
+                    className="text-[9px] text-sky-300"
                     onClick={() => returnMut.mutate(loan.id)}
                   >
                     Zurück
@@ -152,7 +152,7 @@ export function LoansBoard() {
           </li>
         ))}
         {!loansQ.isLoading && !(loansQ.data ?? []).length && (
-          <p className="text-[11px] text-ink-muted">Keine aktiven Ausleihen.</p>
+          <p className="text-[11px] text-sidebar-muted">Keine aktiven Ausleihen.</p>
         )}
       </ul>
     </div>
