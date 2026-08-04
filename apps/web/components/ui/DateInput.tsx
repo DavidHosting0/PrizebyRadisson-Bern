@@ -5,7 +5,7 @@ import type { InputHTMLAttributes } from 'react';
 
 type DateInputType = 'date' | 'datetime-local' | 'month' | 'time';
 
-type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'size'> & {
   type?: DateInputType;
   /** Visual density. Default `md`. */
   size?: 'sm' | 'md';
