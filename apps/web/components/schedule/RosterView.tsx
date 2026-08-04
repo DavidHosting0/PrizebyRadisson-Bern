@@ -220,7 +220,7 @@ export function RosterView() {
                         {s.label}
                       </span>
                     )}
-                    {s.source !== 'favur' && (
+                    {s.source !== 'mirus' && s.source !== 'favur' && (
                       <span className="ml-auto text-[11px] uppercase tracking-wide text-ink-muted">
                         {s.source}
                       </span>

@@ -23,7 +23,7 @@ import { TeamChatModule } from './team-chat/team-chat.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { RolesModule } from './roles/roles.module';
 import { ShiftsModule } from './shifts/shifts.module';
-import { FavurModule } from './favur/favur.module';
+import { MirusModule } from './mirus/mirus.module';
 import { PuzzleModule } from './puzzle/puzzle.module';
 import { EmmaModule } from './emma/emma.module';
 import { ReservationsModule } from './reservations/reservations.module';
@@ -71,7 +71,7 @@ import configuration from './config/configuration';
     TeamChatModule,
     RolesModule,
     ShiftsModule,
-    FavurModule,
+    MirusModule,
     PuzzleModule,
     EmmaModule,
     ReservationsModule,

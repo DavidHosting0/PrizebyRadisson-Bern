@@ -108,7 +108,7 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     label: 'Schedule',
     entries: [
       { code: PermissionCode.SHIFT_READ, title: 'View shift plan', description: 'Open the daily/weekly roster.' },
-      { code: PermissionCode.SHIFT_MANAGE, title: 'Manage shift integration', description: 'Configure Favur sync, map users, trigger manual sync.' },
+      { code: PermissionCode.SHIFT_MANAGE, title: 'Manage shift integration', description: 'Configure Mirus sync, map users, trigger manual sync.' },
     ],
   },
   {

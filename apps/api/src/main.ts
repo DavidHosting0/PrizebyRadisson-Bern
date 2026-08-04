@@ -15,8 +15,7 @@ async function bootstrap() {
       if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
         return cb(null, true);
       }
-      // Browser extensions (Chrome, Firefox, Safari) — actual auth is via the
-      // Favur API key on /favur/import, so the origin is not the gate.
+      // Browser extensions (legacy / tooling) — JWT still required for app APIs.
       if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://') || origin.startsWith('safari-web-extension://')) {
         return cb(null, true);
       }

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { chromium, type Browser, type Page } from 'playwright';
-import type { FavurShift } from './favur-scraper.service';
+import type { MirusShift } from './mirus-shift.types';
 import {
   addDaysLocal,
   BROWSER_UA,
@@ -38,7 +38,7 @@ function scrapeShiftsInBrowser(dateStr: string) {
 
   const out: Array<{
     displayName: string;
-    favurUserId: string;
+    externalUserId: string;
     startsAt: string;
     endsAt: string;
     label: string | null;
@@ -73,7 +73,7 @@ function scrapeShiftsInBrowser(dateStr: string) {
 
     const img = row.querySelector('img[src*="/Persons/"]') as HTMLImageElement | null;
     const personMatch = img?.getAttribute('src')?.match(/\/Persons\/([0-9a-f-]{36})\//i);
-    const favurUserId = (personMatch?.[1] || displayName.toLowerCase().replace(/\s+/g, ' ')).trim();
+    const externalUserId = (personMatch?.[1] || displayName.toLowerCase().replace(/\s+/g, ' ')).trim();
 
     let workStart: string | null = null;
     let workEnd: string | null = null;
@@ -114,16 +114,16 @@ function scrapeShiftsInBrowser(dateStr: string) {
       endsAt = end.toISOString();
     }
 
-    const key = `${favurUserId}|${startsAt}`;
+    const key = `${externalUserId}|${startsAt}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
       displayName,
-      favurUserId,
+      externalUserId,
       startsAt,
       endsAt,
       label,
-      sourceId: `${favurUserId}-${startsAt}`,
+      sourceId: `${externalUserId}-${startsAt}`,
     });
   }
 
@@ -147,7 +147,7 @@ function scrapeShiftsInBrowser(dateStr: string) {
           }
         }
         if (displayName) {
-          const favurUserId = displayName.toLowerCase().replace(/\s+/g, ' ');
+          const externalUserId = displayName.toLowerCase().replace(/\s+/g, ' ');
           const startsAt = combine(dateStr, m[1]);
           let endsAt = combine(dateStr, m[2]);
           if (startsAt && endsAt) {
@@ -156,16 +156,16 @@ function scrapeShiftsInBrowser(dateStr: string) {
               end.setDate(end.getDate() + 1);
               endsAt = end.toISOString();
             }
-            const key = `${favurUserId}|${startsAt}`;
+            const key = `${externalUserId}|${startsAt}`;
             if (!seen.has(key)) {
               seen.add(key);
               out.push({
                 displayName,
-                favurUserId,
+                externalUserId,
                 startsAt,
                 endsAt,
                 label: null,
-                sourceId: `${favurUserId}-${startsAt}`,
+                sourceId: `${externalUserId}-${startsAt}`,
               });
             }
           }
@@ -178,8 +178,8 @@ function scrapeShiftsInBrowser(dateStr: string) {
   return out;
 }
 
-function normalizeApiShifts(payload: unknown, dateStr: string): FavurShift[] {
-  const out: FavurShift[] = [];
+function normalizeApiShifts(payload: unknown, dateStr: string): MirusShift[] {
+  const out: MirusShift[] = [];
   const walk = (node: unknown, depth = 0): void => {
     if (depth > 8 || node == null) return;
     if (Array.isArray(node)) {
@@ -211,13 +211,13 @@ function normalizeApiShifts(payload: unknown, dateStr: string): FavurShift[] {
           endsAt = new Date(endsAt.getTime() + 86400000);
         }
         const displayName = String(nameRaw).trim();
-        const favurUserId = String(idRaw ?? displayName).trim();
+        const externalUserId = String(idRaw ?? displayName).trim();
         out.push({
-          favurUserId,
-          favurDisplayName: displayName,
+          externalUserId,
+          displayName: displayName,
           startsAt,
           endsAt,
-          sourceId: String(o.id ?? `${favurUserId}-${startsAt.toISOString()}`),
+          sourceId: String(o.id ?? `${externalUserId}-${startsAt.toISOString()}`),
           label:
             o.label != null
               ? String(o.label)
@@ -243,14 +243,14 @@ async function tryApiPaths(
   from: Date,
   to: Date,
   swaggerPaths: string[],
-): Promise<FavurShift[]> {
+): Promise<MirusShift[]> {
   const scored = [...swaggerPaths]
     .map((p) => ({ p, score: mirusScoreShiftPath(p) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 12);
 
-  const all: FavurShift[] = [];
+  const all: MirusShift[] = [];
   const cursor = new Date(from);
   cursor.setHours(0, 0, 0, 0);
   const last = new Date(to);
@@ -321,7 +321,7 @@ async function openDayDetail(page: Page): Promise<boolean> {
   return hasDetail();
 }
 
-async function scrapeDay(page: Page, origin: string, dateStr: string): Promise<FavurShift[]> {
+async function scrapeDay(page: Page, origin: string, dateStr: string): Promise<MirusShift[]> {
   const url = `${origin}/webapp/shifts/shift/${dateStr}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
   await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => undefined);
@@ -344,8 +344,8 @@ async function scrapeDay(page: Page, origin: string, dateStr: string): Promise<F
 
   const rows = await page.evaluate(scrapeShiftsInBrowser, dateStr);
   return rows.map((r) => ({
-    favurUserId: r.favurUserId,
-    favurDisplayName: r.displayName,
+    externalUserId: r.externalUserId,
+    displayName: r.displayName,
     startsAt: new Date(r.startsAt),
     endsAt: new Date(r.endsAt),
     sourceId: r.sourceId,
@@ -358,7 +358,7 @@ async function playwrightScrapeWithSession(
   jar: MirusCookieJar,
   from: Date,
   to: Date,
-): Promise<FavurShift[]> {
+): Promise<MirusShift[]> {
   const origin = baseUrl.replace(/\/+$/, '');
   let browser: Browser | null = null;
   try {
@@ -386,7 +386,7 @@ async function playwrightScrapeWithSession(
       throw new Error('Mirus session cookie rejected — re-save credentials and sync again');
     }
 
-    const all: FavurShift[] = [];
+    const all: MirusShift[] = [];
     const cursor = new Date(from);
     cursor.setHours(0, 0, 0, 0);
     const last = new Date(to);
@@ -409,11 +409,11 @@ async function playwrightScrapeWithSession(
   }
 }
 
-function dedupeShifts(shifts: FavurShift[]): FavurShift[] {
+function dedupeShifts(shifts: MirusShift[]): MirusShift[] {
   const seen = new Set<string>();
-  const out: FavurShift[] = [];
+  const out: MirusShift[] = [];
   for (const s of shifts) {
-    const key = `${s.favurUserId}|${s.startsAt.toISOString()}|${s.endsAt.toISOString()}`;
+    const key = `${s.externalUserId}|${s.startsAt.toISOString()}|${s.endsAt.toISOString()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(s);
@@ -430,7 +430,7 @@ export type MirusSyncOpts = {
 };
 
 export type MirusSyncResult = {
-  shifts: FavurShift[];
+  shifts: MirusShift[];
   session: MirusSessionStored;
 };
 
@@ -458,7 +458,7 @@ export async function syncMirusShifts(opts: MirusSyncOpts): Promise<MirusSyncRes
     logger.log('Mirus HTTP login ok');
   }
 
-  let shifts: FavurShift[] = [];
+  let shifts: MirusShift[] = [];
 
   const swagger = await mirusFetchSwagger(jar, origin).catch(() => null);
   if (swagger?.paths.length) {

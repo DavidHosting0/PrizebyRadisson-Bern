@@ -95,15 +95,11 @@ const RULES: RouteRule[] = [
   { method: 'POST', pattern: /^\/team-chat\/messages$/, action: 'team_chat.message.create', label: 'Chat-Nachricht gesendet', category: ActivityLogCategory.TEAM_CHAT },
   { method: 'POST', pattern: /^\/team-chat\/messages\/([^/]+)\/reactions$/, action: 'team_chat.reaction', label: 'Chat-Reaktion gesetzt', category: ActivityLogCategory.TEAM_CHAT, resourceType: 'team_chat_message', resourceIndex: 1 },
 
-  // Favur / shifts
-  { method: 'PUT', pattern: /^\/favur\/config$/, action: 'favur.config.update', label: 'Favur-Konfiguration geändert', category: ActivityLogCategory.SHIFT },
-  { method: 'POST', pattern: /^\/favur\/api-key$/, action: 'favur.api_key.rotate', label: 'Favur API-Key erneuert', category: ActivityLogCategory.SHIFT },
-  { method: 'POST', pattern: /^\/favur\/captures\/([^/]+)\/activate$/, action: 'favur.capture.activate', label: 'Favur-Capture aktiviert', category: ActivityLogCategory.SHIFT, resourceType: 'favur_capture', resourceIndex: 1 },
-  { method: 'DELETE', pattern: /^\/favur\/captures\/([^/]+)$/, action: 'favur.capture.delete', label: 'Favur-Capture gelöscht', category: ActivityLogCategory.SHIFT, resourceType: 'favur_capture', resourceIndex: 1 },
-  { method: 'PUT', pattern: /^\/favur\/users\/([^/]+)$/, action: 'favur.user_map', label: 'Favur-Benutzer-Zuordnung geändert', category: ActivityLogCategory.SHIFT, resourceType: 'favur_user', resourceIndex: 1 },
-  { method: 'POST', pattern: /^\/favur\/sync$/, action: 'favur.sync', label: 'Favur-Sync gestartet', category: ActivityLogCategory.SHIFT },
-  { method: 'POST', pattern: /^\/favur\/import$/, action: 'favur.import', label: 'Schichtplan importiert (Extension)', category: ActivityLogCategory.SHIFT },
-  { method: 'POST', pattern: /^\/favur\/import-dom$/, action: 'favur.import_dom', label: 'Schichtplan importiert (DOM)', category: ActivityLogCategory.SHIFT },
+  // Mirus / shifts
+  { method: 'PUT', pattern: /^\/mirus\/config$/, action: 'mirus.config.update', label: 'Mirus-Konfiguration geändert', category: ActivityLogCategory.SHIFT },
+  { method: 'PUT', pattern: /^\/mirus\/users\/([^/]+)$/, action: 'mirus.user_map', label: 'Mirus-Benutzer-Zuordnung geändert', category: ActivityLogCategory.SHIFT, resourceType: 'mirus_user', resourceIndex: 1 },
+  { method: 'POST', pattern: /^\/mirus\/sync$/, action: 'mirus.sync', label: 'Mirus-Sync gestartet', category: ActivityLogCategory.SHIFT },
+  { method: 'POST', pattern: /^\/mirus\/sync\/unlock$/, action: 'mirus.sync.unlock', label: 'Mirus-Sync-Sperre aufgehoben', category: ActivityLogCategory.SHIFT },
 
   // Reservations / EMMA
   { method: 'POST', pattern: /^\/reservations\/sync$/, action: 'reservations.sync', label: 'Reservierungs-Sync gestartet', category: ActivityLogCategory.RESERVATION },

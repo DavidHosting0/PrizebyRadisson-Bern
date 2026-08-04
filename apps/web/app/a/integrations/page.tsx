@@ -18,12 +18,14 @@ type MirusConfig = {
   syncInProgress: boolean;
   mirusUsername: string | null;
   hasMirusPassword: boolean;
+  mappedUserCount: number;
+  unmappedUserCount: number;
 };
 
 type ExternalUserMap = {
   id: string;
-  favurUserId: string;
-  favurDisplayName: string | null;
+  externalUserId: string;
+  displayName: string | null;
   lastSeenAt: string;
   user: {
     id: string;
@@ -55,13 +57,13 @@ export default function IntegrationsPage() {
 
   const configQuery = useQuery({
     queryKey: ['mirus-config'],
-    queryFn: () => api<MirusConfig>('/favur/config'),
+    queryFn: () => api<MirusConfig>('/mirus/config'),
     refetchInterval: 10_000,
   });
 
   const usersQuery = useQuery({
     queryKey: ['mirus-users'],
-    queryFn: () => api<ExternalUserMap[]>('/favur/users'),
+    queryFn: () => api<ExternalUserMap[]>('/mirus/users'),
     refetchInterval: 30_000,
   });
 
@@ -78,7 +80,7 @@ export default function IntegrationsPage() {
       mirusUsername?: string;
       mirusPassword?: string;
     }) =>
-      api<MirusConfig>('/favur/config', {
+      api<MirusConfig>('/mirus/config', {
         method: 'PUT',
         body: JSON.stringify(body),
       }),
@@ -88,7 +90,7 @@ export default function IntegrationsPage() {
   });
 
   const syncMut = useMutation({
-    mutationFn: () => api<MirusConfig>('/favur/sync', { method: 'POST' }),
+    mutationFn: () => api<MirusConfig>('/mirus/sync', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mirus-config'] });
       queryClient.invalidateQueries({ queryKey: ['mirus-users'] });
@@ -96,20 +98,24 @@ export default function IntegrationsPage() {
   });
 
   const unlockMut = useMutation({
-    mutationFn: () => api<MirusConfig>('/favur/sync/unlock', { method: 'POST' }),
+    mutationFn: () => api<MirusConfig>('/mirus/sync/unlock', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mirus-config'] });
     },
   });
 
+  const [mapHint, setMapHint] = useState(false);
+
   const mapUserMut = useMutation({
     mutationFn: ({ id, userId }: { id: string; userId: string | null }) =>
-      api<ExternalUserMap>(`/favur/users/${id}`, {
+      api<ExternalUserMap>(`/mirus/users/${id}`, {
         method: 'PUT',
         body: JSON.stringify({ userId }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mirus-users'] });
+      queryClient.invalidateQueries({ queryKey: ['mirus-config'] });
+      setMapHint(true);
     },
   });
 
@@ -159,8 +165,8 @@ export default function IntegrationsPage() {
             <h2 className="text-lg font-semibold text-ink">Schichtplan (Mirus NEO)</h2>
             <p className="text-sm text-ink-muted">
               Der Server meldet sich bei{' '}
-              <code className="rounded bg-surface-muted px-1 py-0.5">neo.mirus.ch</code>{' '}
-              an und synchronisiert den Schichtplan automatisch alle 15 Minuten.
+              <code className="rounded bg-surface-muted px-1 py-0.5">neo.mirus.ch</code> an und
+              synchronisiert den Schichtplan automatisch alle 15 Minuten.
             </p>
           </div>
           <SyncStatusBadge config={config} />
@@ -169,22 +175,19 @@ export default function IntegrationsPage() {
         <ol className="mt-5 space-y-3 text-sm text-ink">
           <Step n={1} title="Mirus-Zugangsdaten eintragen">
             <p className="text-ink-muted">
-              Benutzername und Passwort für{' '}
-              <code className="rounded bg-surface-muted px-1 py-0.5">neo.mirus.ch</code>{' '}
-              unten eintragen und speichern. Das Konto muss Zugriff auf den Team-Schichtplan haben.
+              Benutzername und Passwort für neo.mirus.ch speichern. Das Konto muss den Team-Schichtplan
+              sehen können (ohne MFA/FIDO2).
             </p>
           </Step>
-          <Step n={2} title="Sync aktivieren">
+          <Step n={2} title="Sync aktivieren und einmal synchronisieren">
             <p className="text-ink-muted">
-              «Sync aktiviert» ankreuzen, speichern, dann «Jetzt synchronisieren» klicken oder
-              15 Minuten warten.
+              Danach erscheinen die Mirus-Mitarbeiter unten in der Zuordnungsliste.
             </p>
           </Step>
-          <Step n={3} title="Mitarbeiter zuordnen">
+          <Step n={3} title="Mitarbeiter zuordnen, dann erneut syncen">
             <p className="text-ink-muted">
-              Nach dem ersten erfolgreichen Import erscheinen die Mirus-Mitarbeiter unten.
-              Verknüpfe sie mit den internen Benutzerkonten — erst dann erscheinen Schichten im
-              Schichtplan.
+              Verknüpfe jeden Mirus-Namen mit dem lokalen Benutzerkonto. Erst nach einem weiteren Sync
+              erscheinen die Schichten im Schichtplan.
             </p>
           </Step>
         </ol>
@@ -212,7 +215,7 @@ export default function IntegrationsPage() {
             />
             <span className="text-sm font-medium text-ink">Sync aktiviert</span>
             <span className="ml-auto text-xs text-ink-muted">
-              Cron alle 15 Minuten · manueller Sync läuft im Hintergrund (ca. 1–3 Min.)
+              Cron alle 15 Minuten · manueller Sync im Hintergrund (ca. 1–3 Min.)
             </span>
           </label>
 
@@ -258,12 +261,6 @@ export default function IntegrationsPage() {
             />
           </Field>
 
-          <div className="md:col-span-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
-            Der Server meldet sich per HTTP bei neo.mirus.ch an (wie im Browser: Login mit
-            ReturnUrl, Session-Cookie <code>mirusWeb</code>) und synchronisiert den Schichtplan.
-            Zugangsdaten müssen zu einem Konto ohne MFA/FIDO2 gehören.
-          </div>
-
           <div className="md:col-span-2 flex flex-wrap items-center gap-3">
             <button
               type="submit"
@@ -274,7 +271,10 @@ export default function IntegrationsPage() {
             </button>
             <button
               type="button"
-              onClick={() => syncMut.mutate()}
+              onClick={() => {
+                setMapHint(false);
+                syncMut.mutate();
+              }}
               disabled={!canSync}
               className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
             >
@@ -309,14 +309,26 @@ export default function IntegrationsPage() {
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
         <h2 className="text-lg font-semibold text-ink">Mitarbeiter zuordnen</h2>
         <p className="text-sm text-ink-muted">
-          Jeder Mitarbeiter aus Mirus NEO landet hier nach dem ersten Import. Erst nach dem Mapping
-          erscheinen seine Schichten im Schichtplan.
+          Mirus-Mitarbeiter aus dem letzten Sync. Nur verknüpfte Personen erscheinen nach dem nächsten
+          Sync im Schichtplan.
+          {config != null && (
+            <>
+              {' '}
+              Verknüpft: {config.mappedUserCount} · offen: {config.unmappedUserCount}.
+            </>
+          )}
         </p>
+        {mapHint && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            Zuordnung gespeichert. Bitte jetzt erneut «Jetzt synchronisieren» klicken, damit die
+            Schichten gespeichert werden.
+          </p>
+        )}
         {usersQuery.isLoading ? (
           <p className="mt-4 text-sm text-ink-muted">Lädt…</p>
         ) : (usersQuery.data?.length ?? 0) === 0 ? (
           <p className="mt-4 text-sm text-ink-muted">
-            Noch keine Mirus-Mitarbeiter gesehen. Zugangsdaten speichern und synchronisieren.
+            Noch keine Mirus-Mitarbeiter. Zugangsdaten speichern und synchronisieren.
           </p>
         ) : (
           <ul className="mt-4 divide-y divide-border">
@@ -324,10 +336,10 @@ export default function IntegrationsPage() {
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-ink">
-                    {row.favurDisplayName || row.favurUserId}
+                    {row.displayName || row.externalUserId}
                   </p>
                   <p className="truncate text-xs text-ink-muted">
-                    Mirus-ID: {row.favurUserId} · zuletzt {formatDateTime(row.lastSeenAt)}
+                    Mirus-ID: {row.externalUserId} · zuletzt {formatDateTime(row.lastSeenAt)}
                   </p>
                 </div>
                 {row.user && (
@@ -340,7 +352,9 @@ export default function IntegrationsPage() {
                 )}
                 <select
                   value={row.user?.id ?? ''}
-                  onChange={(e) => mapUserMut.mutate({ id: row.id, userId: e.target.value || null })}
+                  onChange={(e) =>
+                    mapUserMut.mutate({ id: row.id, userId: e.target.value || null })
+                  }
                   className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm"
                   disabled={mapUserMut.isPending}
                 >
@@ -390,27 +404,32 @@ function SyncStatusBadge({ config }: { config: MirusConfig | undefined }) {
   const tone =
     config.lastSyncStatus === 'ok'
       ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
-      : config.lastSyncStatus === 'error'
-        ? 'bg-rose-100 text-rose-900 border-rose-200'
-        : 'bg-surface-muted text-ink-muted border-border';
+      : config.lastSyncStatus === 'warn'
+        ? 'bg-amber-100 text-amber-950 border-amber-200'
+        : config.lastSyncStatus === 'error'
+          ? 'bg-rose-100 text-rose-900 border-rose-200'
+          : 'bg-surface-muted text-ink-muted border-border';
   const label = config.syncInProgress
     ? 'Sync läuft… (1–3 Min.)'
     : config.lastSyncStatus === 'ok'
       ? `OK · ${config.lastSyncCount} Schichten`
-      : config.lastSyncStatus === 'error'
-        ? 'Fehler'
-        : config.hasMirusPassword
-          ? 'Bereit'
-          : 'Zugangsdaten fehlen';
+      : config.lastSyncStatus === 'warn'
+        ? 'Zuordnung fehlt'
+        : config.lastSyncStatus === 'error'
+          ? 'Fehler'
+          : config.hasMirusPassword
+            ? 'Bereit'
+            : 'Zugangsdaten fehlen';
   return (
     <div className="text-right">
       <span className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>
         {label}
       </span>
       <p className="mt-1 text-xs text-ink-muted">Letzter Lauf: {formatDateTime(config.lastSyncAt)}</p>
-      {config.lastSyncStatus === 'error' && config.lastSyncError && (
-        <p className="mt-1 max-w-xs text-xs text-rose-700">{config.lastSyncError}</p>
-      )}
+      {(config.lastSyncStatus === 'error' || config.lastSyncStatus === 'warn') &&
+        config.lastSyncError && (
+          <p className="mt-1 max-w-xs text-xs text-rose-700">{config.lastSyncError}</p>
+        )}
     </div>
   );
 }

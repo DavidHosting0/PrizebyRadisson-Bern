@@ -691,11 +691,11 @@ model Shift {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   startsAt  DateTime
   endsAt    DateTime
-  /// Where the row originated. "manual" for hand entries, "favur" for sync.
+  /// Where the row originated. "manual" for hand entries, "mirus" for Mirus NEO sync.
   source    String   @default("manual")
-  /// External id from the source system (e.g. Favur shift id). Lets us upsert.
+  /// External id from the source system (e.g. Mirus shift id). Lets us upsert.
   sourceId  String?
-  /// Free-form label (Favur shift code, location, role, etc.).
+  /// Free-form label (shift code, location, role, etc.).
   label     String?
   /// Hex color for the chip on the roster (defaults to user's role color).
   color     String?
@@ -707,12 +707,8 @@ model Shift {
   @@index([startsAt, endsAt])
 }
 
-/// Singleton-ish config for the Favur shift import. Always one row (id = "default").
-///
-/// Auth flows in via the browser extension: the user logs into Favur as normal
-/// (SMS OTP), the extension intercepts API calls + reads cookies, and POSTs them
-/// to /favur/import on our backend. The most useful capture (or whatever the
-/// admin marks as active) becomes the "request template" we replay every 15 min.
+/// Singleton config for Mirus NEO shift import (table name historical: FavurIntegration).
+/// Server logs in with mirusUsername/password and scrapes the Dienstplan.
 model FavurIntegration {
   id                 String    @id @default("default")
   enabled            Boolean   @default(false)
@@ -765,10 +761,7 @@ model FavurIntegration {
   updatedAt          DateTime  @updatedAt
 }
 
-/// Every API request the browser extension forwards. The most-recently chosen
-/// one becomes the active request template (mirrored onto FavurIntegration
-/// for fast access and so the extension's history can be cleaned without
-/// breaking sync).
+/// Legacy capture table from the removed browser extension (unused by Mirus sync).
 model FavurCapture {
   id              String   @id @default(cuid())
   url             String
@@ -787,8 +780,8 @@ model FavurCapture {
   @@index([capturedAt])
 }
 
-/// Mapping from Favur employee identifier to a local User. Rows are created
-/// the first time we see a Favur user; admins map them to local accounts.
+/// Mapping from Mirus employee identifier to a local User (table name historical).
+/// Rows are created the first time we see a Mirus person; admins map them to local accounts.
 model FavurUserMap {
   id               String    @id @default(cuid())
   favurUserId      String    @unique
