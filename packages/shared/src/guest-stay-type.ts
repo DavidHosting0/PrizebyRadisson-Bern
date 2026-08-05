@@ -42,6 +42,8 @@ export function hotelTodayIso(timeZone = HOTEL_TIME_ZONE): string {
 /**
  * Classify in-house guest for UI icons.
  * Restant (per front office): in-house guest with neither check-in nor check-out today.
+ * Departure today remains true after checkout (same calendar day) so housekeeping can
+ * keep departure work visible until inspection.
  */
 export function deriveGuestStaySignals(input: GuestStayDeriveInput): GuestStaySignals {
   const arrivalDate = formatHotelDateOnly(input.arrivalDate);

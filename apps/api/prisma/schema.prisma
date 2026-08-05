@@ -522,6 +522,11 @@ model Room {
   metadata    Json     @default("{}")
   /** Set when assigned housekeeper confirms clean. Drives derived CLEAN vs IN_PROGRESS. */
   cleaningDeclaredAt DateTime?
+  /**
+   * Hotel date (Europe/Zurich) when this room was first seen as a departure for the day.
+   * Kept after checkout until a passed inspection clears it — board shows departure styling all day.
+   */
+  departureStickyOn DateTime? @db.Date
 
   checklistStates  RoomChecklistState[]
   cleaningSessions CleaningSession[]

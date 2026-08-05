@@ -471,15 +471,32 @@ export class RoomsService {
     );
   }
 
-  private async attachOccupancy<T extends { roomNumber: string }>(
-    dtos: T[],
-    viewer?: RoomViewer,
-  ): Promise<(T & { occupancy?: RoomOccupancy | null })[]> {
+  private async attachOccupancy<
+    T extends { id: string; roomNumber: string; derivedStatus: string },
+  >(dtos: T[], viewer?: RoomViewer): Promise<(T & { occupancy?: RoomOccupancy | null })[]> {
     if (!this.canViewOccupancy(viewer) || dtos.length === 0) return dtos;
     const map = await this.occupancy.mapForRoomNumbers(dtos.map((d) => d.roomNumber));
-    return dtos.map((d) => ({
+
+    const stickyRows = await this.prisma.room.findMany({
+      where: { id: { in: dtos.map((d) => d.id) } },
+      select: { id: true, departureStickyOn: true },
+    });
+    const stickyById = new Map(stickyRows.map((r) => [r.id, r.departureStickyOn]));
+
+    const withOcc = dtos.map((d) => ({
       ...d,
       occupancy: map.get(d.roomNumber) ?? null,
+      departureStickyOn: stickyById.get(d.id) ?? null,
+    }));
+
+    const stickyToday = await this.occupancy.syncDepartureSticky(withOcc);
+
+    return dtos.map((d) => ({
+      ...d,
+      occupancy: this.occupancy.applyStickyDeparture(
+        map.get(d.roomNumber) ?? null,
+        stickyToday.get(d.id) === true,
+      ),
     }));
   }
 }

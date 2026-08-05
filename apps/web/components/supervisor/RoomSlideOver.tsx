@@ -17,14 +17,6 @@ import { InspectRoomModal } from '@/components/supervisor/InspectRoomModal';
 import type { RoomOccupancy } from '@housekeeping/shared';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
-type Task = {
-  id: string;
-  label: string;
-  code: string;
-  status: string;
-  supervisorOverride: boolean;
-};
-
 type RoomDetail = {
   id: string;
   roomNumber: string;
@@ -34,13 +26,11 @@ type RoomDetail = {
   oooReason: string | null;
   oooUntil: string | null;
   notes: string | null;
-  checklist: { stateId: string; tasks: Task[] } | null;
+  cleaningDeclaredAt?: string | null;
   lastCleaningPhoto?: LastCleaningPhotoDto;
   lastCleaning?: LastCleaningDto;
   occupancy?: RoomOccupancy | null;
 };
-
-const STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'] as const;
 
 export function RoomSlideOver({
   roomId,
@@ -89,18 +79,6 @@ export function RoomSlideOver({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['rooms'] });
       refetch();
-    },
-  });
-
-  const patchTask = useMutation({
-    mutationFn: ({ taskId, status }: { taskId: string; status: string }) =>
-      api(`/rooms/${roomId}/checklist/tasks/${taskId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status, supervisorOverride: true }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['room', roomId] });
-      qc.invalidateQueries({ queryKey: ['rooms'] });
     },
   });
 
@@ -234,34 +212,21 @@ export function RoomSlideOver({
               </Card>
 
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Checklist</h3>
-                <ul className="mt-3 space-y-2">
-                  {(data.checklist?.tasks ?? []).map((t) => (
-                    <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-btn border border-border bg-surface-muted/50 px-3 py-2">
-                      <span className="text-sm font-medium text-ink">{t.label}</span>
-                      <select
-                        className="min-h-[40px] rounded-btn border border-border bg-surface px-2 text-sm"
-                        value={t.status}
-                        onChange={(e) =>
-                          patchTask.mutate({ taskId: t.id, status: e.target.value })
-                        }
-                      >
-                        {STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s.replace(/_/g, ' ')}
-                          </option>
-                        ))}
-                      </select>
-                    </li>
-                  ))}
-                </ul>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                  Cleaning
+                </h3>
+                <p className="mt-2 text-sm text-ink-muted">
+                  {data.cleaningDeclaredAt
+                    ? 'Room was marked clean. Re-open if the attendant needs to clean again.'
+                    : 'No per-room checklist — attendants mark the room clean when finished.'}
+                </p>
                 <Button
                   variant="danger"
                   className="mt-4"
-                  disabled={reopen.isPending || !data.checklist?.tasks?.length}
+                  disabled={reopen.isPending || !data.cleaningDeclaredAt}
                   onClick={() => reopen.mutate()}
                 >
-                  Re-open room (reset checklist)
+                  Re-open room
                 </Button>
               </section>
             </div>

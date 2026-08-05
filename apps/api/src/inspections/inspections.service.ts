@@ -70,6 +70,10 @@ export class InspectionsService {
         source: 'inspections.create',
       });
       await this.inspectionQueue.completeTaskForRoom(dto.roomId, row.id);
+      await this.prisma.room.update({
+        where: { id: dto.roomId },
+        data: { departureStickyOn: null },
+      });
     }
 
     const room = await this.rooms.findOne(dto.roomId);

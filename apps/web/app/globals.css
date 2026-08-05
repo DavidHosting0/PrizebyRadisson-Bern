@@ -3,16 +3,18 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 html {
-  scrollbar-gutter: stable;
+  /* Do not reserve a document gutter — app shells scroll inside main/AppPageBody.
+     A stable gutter here showed as a white strip beside the page scrollbar. */
+  background-color: #121a26;
 }
 
 body {
-  @apply bg-surface-muted text-ink antialiased min-h-screen;
+  @apply bg-[#121a26] text-ink antialiased min-h-screen;
 }
 
 /* Light surfaces — calm slate thumb matching sidebar/action palette */
@@ -68,7 +70,6 @@ body {
   .sidebar-scroll {
     scrollbar-width: thin;
     scrollbar-color: #3b5170 transparent;
-    scrollbar-gutter: stable;
   }
 
   .sidebar-scroll::-webkit-scrollbar {

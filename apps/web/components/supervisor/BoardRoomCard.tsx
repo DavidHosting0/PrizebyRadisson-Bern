@@ -13,7 +13,6 @@ export type BoardRoom = {
   roomNumber: string;
   floor: number | null;
   derivedStatus: string;
-  checklist: { tasks: { status: string }[] } | null;
   occupancy?: RoomOccupancy | null;
 };
 
@@ -26,11 +25,8 @@ const TILE: Record<
     card: string;
     accent: string;
     title: string;
-    muted: string;
     grip: string;
     link: string;
-    progressTrack: string;
-    progressBar: string;
     badgeRestant: string;
     badgeOverdue: string;
     ghost: string;
@@ -41,56 +37,41 @@ const TILE: Record<
     card: 'border-sidebar-border/10 bg-white hover:border-action/25',
     accent: 'bg-gradient-to-b from-action to-sidebar',
     title: 'text-ink',
-    muted: 'text-ink-muted',
     grip: 'text-sidebar-muted/70 group-hover:text-action',
     link: 'text-action',
-    progressTrack: 'bg-surface-muted',
-    progressBar: 'bg-gradient-to-r from-action to-success',
     badgeRestant: 'bg-action-muted text-action',
     badgeOverdue: 'bg-red-100 text-red-700',
     ghost: 'border-white/15 bg-sidebar ring-action/40',
     ghostMuted: 'text-sidebar-muted',
   },
-  /** Departures — dark red */
   departure: {
     card: 'border-red-950/40 bg-[#6B2424] hover:border-red-400/40 hover:brightness-110',
     accent: 'bg-gradient-to-b from-red-400 to-red-950',
     title: 'text-red-50',
-    muted: 'text-red-200/80',
     grip: 'text-red-200/70 group-hover:text-red-100',
     link: 'text-red-100',
-    progressTrack: 'bg-black/25',
-    progressBar: 'bg-gradient-to-r from-red-300 to-amber-200',
     badgeRestant: 'bg-black/20 text-red-100',
     badgeOverdue: 'bg-black/30 text-amber-100',
     ghost: 'border-red-300/30 bg-[#6B2424] ring-red-400/50',
     ghostMuted: 'text-red-200/80',
   },
-  /** Restants — matte yellow */
   restant: {
     card: 'border-amber-900/20 bg-[#C9B56A] hover:border-amber-800/35 hover:brightness-[1.03]',
     accent: 'bg-gradient-to-b from-amber-200 to-amber-800',
     title: 'text-amber-950',
-    muted: 'text-amber-950/70',
     grip: 'text-amber-950/55 group-hover:text-amber-950',
     link: 'text-amber-950',
-    progressTrack: 'bg-amber-950/15',
-    progressBar: 'bg-gradient-to-r from-amber-800 to-amber-950',
     badgeRestant: 'bg-amber-950/15 text-amber-950',
     badgeOverdue: 'bg-red-800/15 text-red-900',
     ghost: 'border-amber-900/25 bg-[#C9B56A] ring-amber-700/40',
     ghostMuted: 'text-amber-950/70',
   },
-  /** Public cleaning — dark aqua */
   public: {
     card: 'border-teal-950/40 bg-[#0D5C63] hover:border-teal-300/35 hover:brightness-110',
     accent: 'bg-gradient-to-b from-teal-300 to-teal-950',
     title: 'text-teal-50',
-    muted: 'text-teal-100/75',
     grip: 'text-teal-100/70 group-hover:text-teal-50',
     link: 'text-teal-100',
-    progressTrack: 'bg-black/25',
-    progressBar: 'bg-gradient-to-r from-teal-200 to-cyan-100',
     badgeRestant: 'bg-black/20 text-teal-50',
     badgeOverdue: 'bg-black/30 text-amber-100',
     ghost: 'border-teal-200/30 bg-[#0D5C63] ring-teal-300/45',
@@ -128,9 +109,6 @@ export function BoardRoomCard({
   dragging?: boolean;
   ghost?: boolean;
 }) {
-  const total = room.checklist?.tasks.length ?? 0;
-  const done = room.checklist?.tasks.filter((t) => t.status === 'COMPLETED').length ?? 0;
-  const pct = total ? Math.round((done / total) * 100) : 0;
   const kind = tileKindProp ?? boardTileKindForRoom(room, isRestant);
   const t = TILE[kind];
   const onDark = kind === 'departure' || kind === 'public';
@@ -154,10 +132,16 @@ export function BoardRoomCard({
               t.ghostMuted,
             )}
           >
-            {kind === 'departure' ? 'Depart' : kind === 'restant' ? 'Restant' : room.derivedStatus.replace(/_/g, ' ')}
+            {kind === 'departure'
+              ? 'Depart'
+              : kind === 'restant'
+                ? 'Restant'
+                : room.derivedStatus.replace(/_/g, ' ')}
           </span>
         </div>
-        {room.floor != null && <p className={clsx('mt-1 text-[11px]', t.ghostMuted)}>Floor {room.floor}</p>}
+        {room.floor != null && (
+          <p className={clsx('mt-1 text-[11px]', t.ghostMuted)}>Floor {room.floor}</p>
+        )}
       </div>
     );
   }
@@ -204,15 +188,12 @@ export function BoardRoomCard({
             </span>
             <StatusBadge status={room.derivedStatus} variant={onDark ? 'onColor' : 'default'} />
           </div>
-          {(kind === 'departure' || kind === 'restant' || (overdueDays != null && overdueDays > 0)) && (
+          {(kind === 'departure' ||
+            kind === 'restant' ||
+            (overdueDays != null && overdueDays > 0)) && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {kind === 'departure' && (
-                <span
-                  className={clsx(
-                    'rounded-btn px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                    'bg-black/25 text-red-50',
-                  )}
-                >
+                <span className="rounded-btn bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-50">
                   Depart
                 </span>
               )}
@@ -240,20 +221,6 @@ export function BoardRoomCard({
           )}
           <RoomOccupancyGuestLine occupancy={room.occupancy} onColor={onDark} />
           <RoomOccupancyBadges occupancy={room.occupancy} onColor={onDark} />
-          <div className="mt-3">
-            <div className={clsx('flex justify-between text-[11px]', t.muted)}>
-              <span>Progress</span>
-              <span>
-                {done}/{total}
-              </span>
-            </div>
-            <div className={clsx('mt-1 h-1.5 overflow-hidden rounded-full', t.progressTrack)}>
-              <div
-                className={clsx('h-full rounded-full transition-all duration-300', t.progressBar)}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
           {onOpen && (
             <button
               type="button"
