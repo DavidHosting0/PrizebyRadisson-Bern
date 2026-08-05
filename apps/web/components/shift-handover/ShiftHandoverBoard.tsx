@@ -7,9 +7,9 @@ import { useTranslations } from 'next-intl';
 import type { ShiftHandoverStateDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { useToast } from '@/components/toast/ToastProvider';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 function parseApiError(raw: string): string {
   try {
@@ -23,9 +23,9 @@ function parseApiError(raw: string): string {
 }
 
 function shiftAccent(shift: string): string {
-  if (shift === 'NIGHT') return 'border-indigo-300 bg-indigo-50 text-indigo-900';
-  if (shift === 'MORNING') return 'border-amber-300 bg-amber-50 text-amber-900';
-  return 'border-sky-300 bg-sky-50 text-sky-900';
+  if (shift === 'NIGHT') return 'border-indigo-500/30 bg-indigo-500/10 text-indigo-200';
+  if (shift === 'MORNING') return 'border-amber-500/30 bg-amber-500/10 text-amber-200';
+  return 'border-sky-500/30 bg-sky-500/10 text-sky-200';
 }
 
 export function ShiftHandoverBoard() {
@@ -125,14 +125,19 @@ export function ShiftHandoverBoard() {
   }, [confirmName, data]);
 
   if (isLoading) {
-    return <p className="p-4 text-sm text-ink-muted">{t('loading')}</p>;
+    return <p className="p-4 text-sm text-sidebar-muted">{t('loading')}</p>;
   }
 
   if (isError || !data) {
     return (
       <div className="space-y-3 p-4">
-        <p className="text-sm text-danger">{t('loadError')}</p>
-        <Button type="button" variant="secondary" onClick={() => refetch()}>
+        <p className="text-sm text-rose-300">{t('loadError')}</p>
+        <Button
+          type="button"
+          variant="secondary"
+          className="border-sidebar-border bg-transparent text-white hover:bg-white/10"
+          onClick={() => refetch()}
+        >
           {t('retry')}
         </Button>
       </div>
@@ -142,16 +147,16 @@ export function ShiftHandoverBoard() {
   return (
     <div className="space-y-6 p-4 md:p-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
-        <p className="mt-1 text-sm text-ink-muted">{t('subtitle')}</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{t('title')}</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">{t('subtitle')}</p>
       </div>
 
-      <Card className={clsx('border-2 p-5', shiftAccent(data.activeShift))}>
+      <div className={clsx('rounded-card border-2 p-5', shiftAccent(data.activeShift))}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide opacity-80">{t('activeShift')}</p>
             <p className="text-2xl font-semibold">{data.activeShiftLabel}</p>
-            <p className="mt-0.5 text-sm text-ink-muted">
+            <p className="mt-0.5 text-sm opacity-80">
               {(() => {
                 const [y, m, d] = data.activeDate.split('-').map(Number);
                 return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
@@ -189,7 +194,7 @@ export function ShiftHandoverBoard() {
             })}
           </p>
         )}
-      </Card>
+      </div>
 
       <ul className="space-y-2">
         {data.tasks.map((task) => (
@@ -198,15 +203,15 @@ export function ShiftHandoverBoard() {
               className={clsx(
                 'flex min-h-[52px] cursor-pointer items-start gap-3 rounded-card border px-4 py-3 transition-colors',
                 task.completed
-                  ? 'border-success/30 bg-success/5'
+                  ? 'border-success/30 bg-success/10'
                   : task.essential
-                    ? 'border-brand/40 bg-brand/5 hover:bg-brand/10'
-                    : 'border-border bg-surface hover:bg-surface-muted/50',
+                    ? 'border-action/40 bg-action/10 hover:bg-action/15'
+                    : 'border-sidebar-border/60 bg-[#1A2332] hover:bg-white/5',
               )}
             >
               <input
                 type="checkbox"
-                className="mt-1 h-5 w-5 shrink-0 rounded border-border accent-brand"
+                className="mt-1 h-5 w-5 shrink-0 rounded border-sidebar-border accent-action"
                 checked={task.completed}
                 disabled={
                   toggleTask.isPending && toggleTask.variables?.taskId === task.id
@@ -216,17 +221,17 @@ export function ShiftHandoverBoard() {
                 }
               />
               <span className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className={clsx('text-sm', task.completed && 'text-ink-muted line-through')}>
+                <span className={clsx('text-sm text-white', task.completed && 'text-sidebar-muted line-through')}>
                   {task.label}
                 </span>
                 {task.essential && !task.completed && (
-                  <span className="w-fit rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand">
+                  <span className="w-fit rounded-full bg-action/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-action">
                     {t('essentialBadge')}
                   </span>
                 )}
               </span>
               {task.completed && task.completedBy && (
-                <span className="shrink-0 text-xs text-ink-muted">{task.completedBy.name}</span>
+                <span className="shrink-0 text-xs text-sidebar-muted">{task.completedBy.name}</span>
               )}
             </label>
           </li>
@@ -234,7 +239,7 @@ export function ShiftHandoverBoard() {
       </ul>
 
       {data.tasks.length === 0 && (
-        <p className="text-sm text-ink-muted">{t('noTasks')}</p>
+        <p className="text-sm text-sidebar-muted">{t('noTasks')}</p>
       )}
 
       <div className="sticky bottom-4 z-10">
@@ -254,39 +259,39 @@ export function ShiftHandoverBoard() {
 
       {handoverOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
           role="dialog"
           aria-modal="true"
           onClick={() => !handover.isPending && setHandoverOpen(false)}
         >
           <div
             ref={handoverPanelRef}
-            className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-lift"
+            className={clsx(APP_DARK_CARD, 'w-full max-w-md p-5 shadow-lift')}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold text-ink">{t('handoverTitle')}</h2>
-            <p className="mt-2 text-sm text-ink-muted">
+            <h2 className="text-lg font-semibold text-white">{t('handoverTitle')}</h2>
+            <p className="mt-2 text-sm text-sidebar-muted">
               {t('handoverDescription', { from: data.activeShiftLabel, to: data.nextShiftLabel })}
             </p>
 
             {incompleteEssentialCount > 0 && (
-              <p className="mt-3 rounded-btn border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+              <p className="mt-3 rounded-btn border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                 {t('incompleteEssentialWarning', { count: incompleteEssentialCount })}
               </p>
             )}
 
             {incompleteOptionalCount > 0 && essentialComplete && (
-              <p className="mt-3 rounded-btn border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p className="mt-3 rounded-btn border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
                 {t('incompleteWarning', { count: incompleteOptionalCount })}
               </p>
             )}
 
             <label className="mt-4 flex flex-col gap-1">
-              <span className="text-sm text-ink-muted">
+              <span className="text-sm text-sidebar-muted">
                 {t('confirmLabel', { shift: data.nextShiftLabel })}
               </span>
               <input
-                className="min-h-[48px] rounded-btn border border-border bg-surface px-3 text-sm"
+                className={clsx(APP_DARK_INPUT, 'min-h-[48px]')}
                 value={confirmName}
                 autoComplete="off"
                 placeholder={data.nextShiftLabel}
@@ -298,7 +303,7 @@ export function ShiftHandoverBoard() {
               <Button
                 type="button"
                 variant="secondary"
-                className="min-h-[44px]"
+                className="min-h-[44px] border-sidebar-border bg-transparent text-white hover:bg-white/10"
                 disabled={handover.isPending}
                 onClick={() => setHandoverOpen(false)}
               >
@@ -306,7 +311,7 @@ export function ShiftHandoverBoard() {
               </Button>
               <Button
                 type="button"
-                variant="primary"
+                variant="action"
                 className="min-h-[44px]"
                 disabled={!confirmMatches || !essentialComplete || handover.isPending}
                 onClick={() => handover.mutate(confirmName.trim())}

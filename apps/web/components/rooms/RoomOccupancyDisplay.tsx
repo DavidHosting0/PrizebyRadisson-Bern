@@ -56,39 +56,103 @@ export function RoomOccupancyGuestLine({
   );
 }
 
-export function RoomOccupancySection({ occupancy }: { occupancy: RoomOccupancy | null | undefined }) {
+export function RoomOccupancySection({
+  occupancy,
+  tone = 'light',
+}: {
+  occupancy: RoomOccupancy | null | undefined;
+  tone?: 'light' | 'dark';
+}) {
+  const dark = tone === 'dark';
+
   if (!occupancy) {
     return (
-      <section className="rounded-xl border border-border bg-surface-muted/30 p-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">Gast / Belegung</h3>
-        <p className="mt-2 text-sm text-ink-muted">Kein aktiver Gast in diesem Zimmer.</p>
+      <section
+        className={
+          dark
+            ? 'rounded-xl border border-sidebar-border/60 bg-sidebar p-4'
+            : 'rounded-xl border border-border bg-surface-muted/30 p-4'
+        }
+      >
+        <h3
+          className={
+            dark
+              ? 'text-xs font-bold uppercase tracking-wider text-sidebar-muted'
+              : 'text-xs font-bold uppercase tracking-wider text-ink-muted'
+          }
+        >
+          Gast / Belegung
+        </h3>
+        <p className={dark ? 'mt-2 text-sm text-sidebar-muted' : 'mt-2 text-sm text-ink-muted'}>
+          Kein aktiver Gast in diesem Zimmer.
+        </p>
       </section>
     );
   }
 
   return (
-    <section className="rounded-xl border border-border bg-surface-muted/30 p-4">
-      <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">Gast / Belegung</h3>
+    <section
+      className={
+        dark
+          ? 'rounded-xl border border-sidebar-border/60 bg-sidebar p-4'
+          : 'rounded-xl border border-border bg-surface-muted/30 p-4'
+      }
+    >
+      <h3
+        className={
+          dark
+            ? 'text-xs font-bold uppercase tracking-wider text-sidebar-muted'
+            : 'text-xs font-bold uppercase tracking-wider text-ink-muted'
+        }
+      >
+        Gast / Belegung
+      </h3>
       <dl className="mt-3 space-y-2 text-sm">
         <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Gast</dt>
-          <dd className="mt-0.5 font-medium text-ink">{occupancy.mainGuestName?.trim() || '—'}</dd>
+          <dt
+            className={
+              dark
+                ? 'text-xs font-semibold uppercase tracking-wide text-sidebar-muted'
+                : 'text-xs font-semibold uppercase tracking-wide text-ink-muted'
+            }
+          >
+            Gast
+          </dt>
+          <dd className={dark ? 'mt-0.5 font-medium text-white' : 'mt-0.5 font-medium text-ink'}>
+            {occupancy.mainGuestName?.trim() || '—'}
+          </dd>
         </div>
         <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Abreise</dt>
-          <dd className="mt-0.5 text-ink">
+          <dt
+            className={
+              dark
+                ? 'text-xs font-semibold uppercase tracking-wide text-sidebar-muted'
+                : 'text-xs font-semibold uppercase tracking-wide text-ink-muted'
+            }
+          >
+            Abreise
+          </dt>
+          <dd className={dark ? 'mt-0.5 text-white' : 'mt-0.5 text-ink'}>
             {occupancy.departureDate}
             {occupancy.expectedDepartureTime ? ` · ${occupancy.expectedDepartureTime}` : ''}
           </dd>
         </div>
         <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</dt>
+          <dt
+            className={
+              dark
+                ? 'text-xs font-semibold uppercase tracking-wide text-sidebar-muted'
+                : 'text-xs font-semibold uppercase tracking-wide text-ink-muted'
+            }
+          >
+            Status
+          </dt>
           <dd className="mt-1">
             <RoomOccupancyBadges occupancy={occupancy} />
             {!occupancy.isDepartureToday &&
               !occupancy.isRestant &&
               !occupancy.isArrivalToday && (
-              <span className="text-ink-muted">Im Haus</span>
+              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>Im Haus</span>
             )}
           </dd>
         </div>

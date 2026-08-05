@@ -5,9 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { GuideListItemDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 function formatRelativeDate(iso: string): string {
   const date = new Date(iso);
@@ -55,8 +55,8 @@ export function GuidesBrowser() {
   return (
     <div className="space-y-8 p-4 md:p-8">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">{t('title')}</h1>
-        <p className="mt-1 text-sm text-ink-muted">
+        <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">{t('title')}</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Procedures, references, and how-tos for the reception desk.
         </p>
       </header>
@@ -67,7 +67,7 @@ export function GuidesBrowser() {
           placeholder={t('search')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="min-h-[44px] w-full max-w-md rounded-btn border border-border bg-surface px-4 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-2 focus:ring-action/20"
+          className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full max-w-md')}
         />
         {categories.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -77,8 +77,8 @@ export function GuidesBrowser() {
               className={clsx(
                 'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                 category === null
-                  ? 'bg-ink text-white'
-                  : 'bg-surface text-ink-muted hover:bg-surface-muted',
+                  ? 'bg-action text-white'
+                  : 'bg-white/5 text-sidebar-muted hover:bg-white/10 hover:text-white',
               )}
             >
               {tCommon('all')}
@@ -91,8 +91,8 @@ export function GuidesBrowser() {
                 className={clsx(
                   'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                   category === cat
-                    ? 'bg-ink text-white'
-                    : 'bg-surface text-ink-muted hover:bg-surface-muted',
+                    ? 'bg-action text-white'
+                    : 'bg-white/5 text-sidebar-muted hover:bg-white/10 hover:text-white',
                 )}
               >
                 {cat}
@@ -102,35 +102,35 @@ export function GuidesBrowser() {
         )}
       </div>
 
-      {isLoading && <p className="text-sm text-ink-muted">Loading guides…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">Loading guides…</p>}
 
       {!isLoading && filtered.length === 0 && (
-        <Card className="py-12 text-center">
-          <p className="text-sm font-medium text-ink">No guides found</p>
-          <p className="mt-1 text-sm text-ink-muted">
+        <div className={clsx(APP_DARK_CARD, 'py-12 text-center')}>
+          <p className="text-sm font-medium text-white">No guides found</p>
+          <p className="mt-1 text-sm text-sidebar-muted">
             {data.length === 0
               ? 'No guides have been published yet.'
               : 'Try a different search or category.'}
           </p>
-        </Card>
+        </div>
       )}
 
       <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {filtered.map((guide) => (
           <li key={guide.id}>
             <Link href={`/r/guides/${guide.id}`} className="group block h-full">
-              <Card className="flex h-full flex-col transition-shadow duration-200 group-hover:shadow-lift">
+              <div className={clsx(APP_DARK_CARD, 'flex h-full flex-col p-5 transition-colors group-hover:border-action/40')}>
                 {guide.category && (
-                  <span className="mb-3 inline-flex w-fit rounded-full bg-action-muted px-2.5 py-0.5 text-xs font-medium text-action">
+                  <span className="mb-3 inline-flex w-fit rounded-full bg-action/15 px-2.5 py-0.5 text-xs font-medium text-action">
                     {guide.category}
                   </span>
                 )}
-                <h2 className="text-lg font-semibold text-ink group-hover:text-action">{guide.title}</h2>
+                <h2 className="text-lg font-semibold text-white group-hover:text-action">{guide.title}</h2>
                 {guide.summary && (
-                  <p className="mt-2 line-clamp-3 flex-1 text-sm text-ink-muted">{guide.summary}</p>
+                  <p className="mt-2 line-clamp-3 flex-1 text-sm text-sidebar-muted">{guide.summary}</p>
                 )}
-                <p className="mt-4 text-xs text-ink-muted">{formatRelativeDate(guide.updatedAt)}</p>
-              </Card>
+                <p className="mt-4 text-xs text-sidebar-muted">{formatRelativeDate(guide.updatedAt)}</p>
+              </div>
             </Link>
           </li>
         ))}

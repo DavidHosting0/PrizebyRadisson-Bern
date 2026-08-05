@@ -29,14 +29,17 @@ function formatTime(iso: string | null) {
   return new Date(iso).toLocaleString('de-CH', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-function DangerBadges({ dangerTypes }: { dangerTypes: string[] }) {
+function DangerBadges({ dangerTypes, dark }: { dangerTypes: string[]; dark?: boolean }) {
   if (dangerTypes.length === 0) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {dangerTypes.map((type) => (
         <span
           key={type}
-          className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-800"
+          className={clsx(
+            'rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide',
+            dark ? 'bg-rose-500/15 text-rose-200' : 'bg-red-100 text-red-800',
+          )}
         >
           {MONITOR_MAP_DANGER_TYPE_LABELS[type] ?? type}
         </span>
@@ -203,7 +206,7 @@ export function MonitorMapView({
                   {entry.type === 'news' ? 'Nachricht' : 'Polizei'} · {formatTime(item.publishedAt)}
                   {!hasGeo && ' · ohne Kartenposition'}
                 </p>
-                {entry.type === 'news' && <DangerBadges dangerTypes={dangerTypes} />}
+                {entry.type === 'news' && <DangerBadges dangerTypes={dangerTypes} dark={dark} />}
                 {'aiAnalysis' in item && item.aiAnalysis?.summaryDe && (
                   <p className={clsx('mt-1 line-clamp-2 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
                     {item.aiAnalysis.summaryDe}

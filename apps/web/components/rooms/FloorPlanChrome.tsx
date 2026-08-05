@@ -35,6 +35,6 @@ export function FloorPlanCanvasFrame({ children }: { children: ReactNode }) {
 
 export function floorTabClass(active: boolean): string {
   return active
-    ? 'bg-ink text-white shadow-md'
-    : 'bg-transparent text-ink-muted hover:bg-white/55 hover:text-ink';
+    ? 'bg-action text-white shadow-none'
+    : 'bg-transparent text-sidebar-muted hover:bg-white/10 hover:text-white';
 }

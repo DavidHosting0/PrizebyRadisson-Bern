@@ -47,6 +47,7 @@ type Props = {
   oooUntil: string | null;
   /** Supervisor can edit maintenance fields in RoomSlideOver; reception is read-only here. */
   maintenanceReadOnly?: boolean;
+  tone?: 'light' | 'dark';
 };
 
 export function RoomDetailInsights({
@@ -58,37 +59,69 @@ export function RoomDetailInsights({
   oooReason,
   oooUntil,
   maintenanceReadOnly = true,
+  tone = 'light',
 }: Props) {
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const dark = tone === 'dark';
 
   return (
     <>
       <section className="space-y-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Last cleaning</h3>
+        <h3
+          className={
+            dark
+              ? 'text-xs font-semibold uppercase tracking-wider text-sidebar-muted'
+              : 'text-xs font-semibold uppercase tracking-wider text-ink-muted'
+          }
+        >
+          Last cleaning
+        </h3>
         {lastCleaning ? (
-          <div className="rounded-btn border border-border bg-surface-muted/50 px-3 py-2 text-sm">
-            <p className="font-medium text-ink">
+          <div
+            className={
+              dark
+                ? 'rounded-btn border border-sidebar-border/60 bg-sidebar px-3 py-2 text-sm'
+                : 'rounded-btn border border-border bg-surface-muted/50 px-3 py-2 text-sm'
+            }
+          >
+            <p className={dark ? 'font-medium text-white' : 'font-medium text-ink'}>
               {formatUserWithTitlePrefix(lastCleaning.by.name, lastCleaning.by.titlePrefix)}
             </p>
-            <p className="text-ink-muted">{formatWhen(lastCleaning.at)}</p>
-            <p className="mt-1 text-xs text-ink-muted">{SOURCE_LABEL[lastCleaning.source]}</p>
+            <p className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>{formatWhen(lastCleaning.at)}</p>
+            <p className={dark ? 'mt-1 text-xs text-sidebar-muted' : 'mt-1 text-xs text-ink-muted'}>
+              {SOURCE_LABEL[lastCleaning.source]}
+            </p>
           </div>
         ) : (
-          <p className="text-sm text-ink-muted">No cleaning or inspection activity on record yet.</p>
+          <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>
+            No cleaning or inspection activity on record yet.
+          </p>
         )}
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Latest inspection photo</h3>
+        <h3
+          className={
+            dark
+              ? 'text-xs font-semibold uppercase tracking-wider text-sidebar-muted'
+              : 'text-xs font-semibold uppercase tracking-wider text-ink-muted'
+          }
+        >
+          Latest inspection photo
+        </h3>
         {lastCleaningPhoto?.url ? (
           <button
             type="button"
-            className="block w-full overflow-hidden rounded-btn border border-border text-left transition hover:border-action/50"
+            className={
+              dark
+                ? 'block w-full overflow-hidden rounded-btn border border-sidebar-border/60 text-left transition hover:border-action/50'
+                : 'block w-full overflow-hidden rounded-btn border border-border text-left transition hover:border-action/50'
+            }
             onClick={() => setTimelineOpen(true)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={lastCleaningPhoto.url} alt={`Room ${roomNumber} inspection`} className="aspect-video w-full object-cover" />
-            <p className="px-2 py-1.5 text-xs text-ink-muted">
+            <p className={dark ? 'px-2 py-1.5 text-xs text-sidebar-muted' : 'px-2 py-1.5 text-xs text-ink-muted'}>
               {formatUserWithTitlePrefix(
                 lastCleaningPhoto.uploadedBy.name,
                 lastCleaningPhoto.uploadedBy.titlePrefix,
@@ -97,36 +130,65 @@ export function RoomDetailInsights({
             </p>
           </button>
         ) : lastCleaningPhoto && !lastCleaningPhoto.url ? (
-          <p className="text-sm text-ink-muted">Photo is stored but could not be loaded (check S3 configuration).</p>
+          <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>
+            Photo is stored but could not be loaded (check S3 configuration).
+          </p>
         ) : (
-          <p className="text-sm text-ink-muted">No inspection photos yet.</p>
+          <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>No inspection photos yet.</p>
         )}
-        <Button type="button" variant="secondary" className="w-full min-h-[44px]" onClick={() => setTimelineOpen(true)}>
+        <Button
+          type="button"
+          variant="secondary"
+          className={
+            dark
+              ? 'w-full min-h-[44px] border border-sidebar-border bg-transparent text-white hover:bg-white/10'
+              : 'w-full min-h-[44px]'
+          }
+          onClick={() => setTimelineOpen(true)}
+        >
           Photo timeline
         </Button>
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Maintenance &amp; housekeeping notes</h3>
-        <div className="rounded-btn border border-border bg-surface-muted/40 px-3 py-2 text-sm">
+        <h3
+          className={
+            dark
+              ? 'text-xs font-semibold uppercase tracking-wider text-sidebar-muted'
+              : 'text-xs font-semibold uppercase tracking-wider text-ink-muted'
+          }
+        >
+          Maintenance &amp; housekeeping notes
+        </h3>
+        <div
+          className={
+            dark
+              ? 'rounded-btn border border-sidebar-border/60 bg-sidebar px-3 py-2 text-sm'
+              : 'rounded-btn border border-border bg-surface-muted/40 px-3 py-2 text-sm'
+          }
+        >
           <p>
-            <span className="text-ink-muted">Out of order: </span>
-            <span className="font-medium text-ink">{outOfOrder ? 'Yes' : 'No'}</span>
+            <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>Out of order: </span>
+            <span className={dark ? 'font-medium text-white' : 'font-medium text-ink'}>
+              {outOfOrder ? 'Yes' : 'No'}
+            </span>
           </p>
           {(oooReason || outOfOrder) && (
-            <p className="mt-2 text-ink">
-              <span className="text-ink-muted">Reason: </span>
+            <p className={dark ? 'mt-2 text-white' : 'mt-2 text-ink'}>
+              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>Reason: </span>
               {oooReason || '—'}
             </p>
           )}
           {oooUntil && (
-            <p className="mt-1 text-ink">
-              <span className="text-ink-muted">OOO until: </span>
+            <p className={dark ? 'mt-1 text-white' : 'mt-1 text-ink'}>
+              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>OOO until: </span>
               {formatWhen(oooUntil)}
             </p>
           )}
           {!maintenanceReadOnly && (
-            <p className="mt-2 text-xs text-ink-muted">Use the maintenance fields below to update reason and expected return.</p>
+            <p className={dark ? 'mt-2 text-xs text-sidebar-muted' : 'mt-2 text-xs text-ink-muted'}>
+              Use the maintenance fields below to update reason and expected return.
+            </p>
           )}
         </div>
       </section>

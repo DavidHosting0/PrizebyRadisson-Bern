@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
+import { APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 function todayIso() {
   const d = new Date();
@@ -201,11 +202,11 @@ export function ShiftNotesBoard() {
   const loading = showDayList ? daysQ.isLoading : notesQ.isLoading;
 
   return (
-    <div className="flex h-[calc(100dvh-5.5rem)] min-h-[420px] flex-col bg-surface-muted md:h-[calc(100dvh-4rem)]">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2.5">
+    <div className="flex h-[calc(100dvh-5.5rem)] min-h-[420px] flex-col md:h-[calc(100dvh-4rem)]">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-sidebar-border/60 px-4 py-2.5">
         <div className="min-w-0">
-          <h1 className="text-base font-semibold tracking-tight text-ink">Schichtübergabe</h1>
-          <p className="truncate text-xs text-ink-muted">
+          <h1 className="text-base font-semibold tracking-tight text-white">Schichtübergabe</h1>
+          <p className="truncate text-xs text-sidebar-muted">
             {mode === 'today'
               ? handoverQ.data
                 ? `${handoverQ.data.activeShiftLabel} · ${formatDayShort(operatingDay)}`
@@ -215,7 +216,7 @@ export function ShiftNotesBoard() {
                 : 'Tage mit Notizen'}
           </p>
         </div>
-        <div className="flex shrink-0 rounded-btn border border-border bg-surface-muted p-0.5">
+        <div className="flex shrink-0 rounded-btn border border-sidebar-border bg-sidebar p-0.5">
           {(
             [
               ['today', 'Heute'],
@@ -231,7 +232,7 @@ export function ShiftNotesBoard() {
               }}
               className={clsx(
                 'rounded-[6px] px-2.5 py-1 text-xs font-medium transition',
-                mode === id ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
+                mode === id ? 'bg-action text-white shadow-sm' : 'text-sidebar-muted hover:text-white',
               )}
             >
               {label}
@@ -243,9 +244,9 @@ export function ShiftNotesBoard() {
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
         {showDayList && (
           <>
-            {loading && <p className="py-8 text-center text-sm text-ink-muted">Laden…</p>}
+            {loading && <p className="py-8 text-center text-sm text-sidebar-muted">Laden…</p>}
             {!loading && (daysQ.data?.length ?? 0) === 0 && (
-              <p className="py-10 text-center text-sm text-ink-muted">
+              <p className="py-10 text-center text-sm text-sidebar-muted">
                 Noch keine Tage mit Notizen.
               </p>
             )}
@@ -255,10 +256,10 @@ export function ShiftNotesBoard() {
                   <button
                     type="button"
                     onClick={() => setBrowseDate(day.date)}
-                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-left shadow-sm transition hover:border-action/40 hover:bg-surface-muted/40"
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-sidebar-border/60 bg-[#1A2332] px-4 py-3 text-left transition hover:border-action/40 hover:bg-white/5"
                   >
-                    <span className="text-sm font-medium text-ink">{formatDayLabel(day.date)}</span>
-                    <span className="shrink-0 rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-medium text-ink-muted">
+                    <span className="text-sm font-medium text-white">{formatDayLabel(day.date)}</span>
+                    <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-sidebar-muted">
                       {day.count} {day.count === 1 ? 'Notiz' : 'Notizen'}
                     </span>
                   </button>
@@ -279,12 +280,12 @@ export function ShiftNotesBoard() {
                 >
                   ← Alle Tage
                 </button>
-                <span className="text-xs text-ink-muted">{formatDayLabel(browseDate)}</span>
+                <span className="text-xs text-sidebar-muted">{formatDayLabel(browseDate)}</span>
               </div>
             )}
-            {loading && <p className="py-8 text-center text-sm text-ink-muted">Laden…</p>}
+            {loading && <p className="py-8 text-center text-sm text-sidebar-muted">Laden…</p>}
             {!loading && notes.length === 0 && (
-              <p className="py-10 text-center text-sm text-ink-muted">
+              <p className="py-10 text-center text-sm text-sidebar-muted">
                 Noch keine Notizen für diesen Tag.
               </p>
             )}
@@ -298,10 +299,10 @@ export function ShiftNotesBoard() {
                   <li
                     key={n.id}
                     className={clsx(
-                      'overflow-hidden rounded-xl border shadow-sm transition-colors',
+                      'overflow-hidden rounded-xl border transition-colors',
                       n.completed
-                        ? 'border-success/25 bg-success/5'
-                        : 'border-border bg-surface',
+                        ? 'border-success/25 bg-success/10'
+                        : 'border-sidebar-border/60 bg-[#1A2332]',
                     )}
                   >
                     <div className="flex">
@@ -317,7 +318,7 @@ export function ShiftNotesBoard() {
                           <label className="mt-0.5 flex shrink-0 cursor-pointer items-start">
                             <input
                               type="checkbox"
-                              className="h-5 w-5 rounded border-border accent-action"
+                              className="h-5 w-5 rounded border-sidebar-border accent-action"
                               checked={n.completed}
                               disabled={toggling}
                               aria-label={n.completed ? 'Als offen markieren' : 'Als erledigt markieren'}
@@ -338,14 +339,14 @@ export function ShiftNotesBoard() {
                                   'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
                                   n.completed
                                     ? 'bg-success/15 text-success'
-                                    : 'bg-action/10 text-action',
+                                    : 'bg-action/15 text-action',
                                 )}
                               >
                                 {n.completed ? 'Erledigt' : 'Info'}
                               </span>
-                              <span className="text-sm font-semibold text-ink">{n.createdBy.name}</span>
+                              <span className="text-sm font-semibold text-white">{n.createdBy.name}</span>
                             </div>
-                            <span className="text-[11px] text-ink-muted">
+                            <span className="text-[11px] text-sidebar-muted">
                               {formatTime(n.createdAt)}
                               {n.updatedAt !== n.createdAt && !n.completed ? ' · bearbeitet' : ''}
                               {n.completed && n.completedBy
@@ -359,7 +360,7 @@ export function ShiftNotesBoard() {
                                 rows={3}
                                 value={editBody}
                                 onChange={(e) => setEditBody(e.target.value)}
-                                className="w-full resize-y rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm text-ink focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                                className={clsx(APP_DARK_INPUT, 'w-full resize-y py-2')}
                                 autoFocus
                               />
                               <div className="flex flex-wrap gap-2">
@@ -376,6 +377,7 @@ export function ShiftNotesBoard() {
                                 <Button
                                   type="button"
                                   variant="secondary"
+                                  className="border-sidebar-border bg-transparent text-white hover:bg-white/10"
                                   onClick={() => {
                                     setEditingId(null);
                                     setEditBody('');
@@ -389,17 +391,17 @@ export function ShiftNotesBoard() {
                             <p
                               className={clsx(
                                 'whitespace-pre-wrap text-sm leading-relaxed',
-                                n.completed ? 'text-ink-muted line-through' : 'text-ink',
+                                n.completed ? 'text-sidebar-muted line-through' : 'text-slate-100',
                               )}
                             >
                               {n.body}
                             </p>
                           )}
                           {canWrite && mine && !editing && (
-                            <div className="mt-2.5 flex gap-3 border-t border-border/70 pt-2">
+                            <div className="mt-2.5 flex gap-3 border-t border-sidebar-border/50 pt-2">
                               <button
                                 type="button"
-                                className="text-xs font-medium text-ink-muted hover:text-action"
+                                className="text-xs font-medium text-sidebar-muted hover:text-action"
                                 onClick={() => {
                                   setEditingId(n.id);
                                   setEditBody(n.body);
@@ -409,7 +411,7 @@ export function ShiftNotesBoard() {
                               </button>
                               <button
                                 type="button"
-                                className="text-xs font-medium text-ink-muted hover:text-danger"
+                                className="text-xs font-medium text-sidebar-muted hover:text-rose-300"
                                 onClick={() => deleteMut.mutate(n.id)}
                               >
                                 Löschen
@@ -430,7 +432,7 @@ export function ShiftNotesBoard() {
       {showComposer && (
         <form
           onSubmit={onSubmit}
-          className="shrink-0 border-t border-border bg-surface px-3 py-2.5 md:px-6"
+          className="shrink-0 border-t border-sidebar-border/60 px-3 py-2.5 md:px-6"
         >
           <div className="mx-auto max-w-2xl space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -440,8 +442,8 @@ export function ShiftNotesBoard() {
                 className={clsx(
                   'group inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition',
                   showSchedule || isFuture
-                    ? 'bg-warning text-white shadow-sm shadow-warning/25 ring-2 ring-warning/25'
-                    : 'bg-warning-muted text-warning ring-1 ring-warning/25 hover:bg-warning/15',
+                    ? 'bg-warning text-white shadow-sm shadow-warning/25 ring-2 ring-warning/30'
+                    : 'bg-warning/15 text-amber-300 ring-1 ring-warning/30 hover:bg-warning/25',
                 )}
               >
                 <svg
@@ -485,7 +487,7 @@ export function ShiftNotesBoard() {
               {isFuture && (
                 <button
                   type="button"
-                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-muted ring-1 ring-border transition hover:bg-surface-muted hover:text-ink"
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium text-sidebar-muted ring-1 ring-sidebar-border transition hover:bg-white/10 hover:text-white"
                   onClick={() => {
                     setForDate(operatingDay);
                     setShowSchedule(false);
@@ -497,9 +499,9 @@ export function ShiftNotesBoard() {
             </div>
 
             {showSchedule && (
-              <div className="rounded-2xl border border-warning/20 bg-warning-muted px-3.5 py-3 shadow-sm">
+              <div className="rounded-2xl border border-warning/30 bg-warning/10 px-3.5 py-3">
                 <label className="block text-xs">
-                  <span className="font-semibold text-warning">Zieltag wählen</span>
+                  <span className="font-semibold text-amber-300">Zieltag wählen</span>
                   <div className="mt-1.5 max-w-xs">
                     <DateInput
                       min={operatingDay}
@@ -508,7 +510,7 @@ export function ShiftNotesBoard() {
                     />
                   </div>
                 </label>
-                <p className="mt-2 text-[11px] text-warning/80">
+                <p className="mt-2 text-[11px] text-amber-300/80">
                   Die Notiz erscheint erst am gewählten Tag.
                 </p>
               </div>
@@ -530,7 +532,7 @@ export function ShiftNotesBoard() {
                     ? `Notiz für ${formatDayShort(forDate)}…`
                     : 'Notiz schreiben…'
                 }
-                className="h-11 flex-1 rounded-full border border-border bg-surface-muted px-4 text-sm text-ink placeholder:text-ink-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
+                className="h-11 flex-1 rounded-full border border-sidebar-border bg-sidebar px-4 text-sm text-white placeholder:text-sidebar-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
               />
               <Button
                 type="submit"
@@ -541,7 +543,7 @@ export function ShiftNotesBoard() {
                 {isFuture ? 'Planen' : 'Senden'}
               </Button>
             </div>
-            {err && <p className="text-xs text-danger">{err}</p>}
+            {err && <p className="text-xs text-rose-300">{err}</p>}
           </div>
         </form>
       )}

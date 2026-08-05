@@ -6,17 +6,21 @@ import { useMemo, useState } from 'react';
 import type { GuestStaySignals, ReservationListItem, ReservationOverview } from '@housekeeping/shared';
 import { deriveGuestStaySignals, hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
 import { GuestStayTypeIcons, GuestStayTypeLegend } from '@/components/reception/GuestStayTypeIcons';
-import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import {
+  AppPageChrome,
+  AppPageBody,
+  APP_DARK_CARD,
+  APP_DARK_INPUT,
+} from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-muted/50 px-3 py-2">
-      <p className="text-xs text-ink-muted">{label}</p>
-      <p className="text-lg font-semibold tabular-nums text-ink">{value}</p>
+    <div className={`${APP_DARK_CARD} px-3 py-2`}>
+      <p className="text-xs text-sidebar-muted">{label}</p>
+      <p className="text-lg font-semibold tabular-nums text-white">{value}</p>
     </div>
   );
 }
@@ -118,7 +122,7 @@ export default function ReceptionInHousePage() {
             <Kpi label="Restant" value={stats.stayovers} />
           </div>
           <GuestStayTypeLegend />
-          <p className="text-xs text-ink-muted">
+          <p className="text-xs text-sidebar-muted">
             Entspricht der EMMA Search-Reservations-Ansicht <strong>In House</strong> (Status-basiert,
             synchronisiert mit Check-In-Daten). Nach dem Sync sollte „In Liste“ der EMMA In-House-Liste
             entsprechen — bei Abweichung bitte „Jetzt synchronisieren“.
@@ -126,21 +130,21 @@ export default function ReceptionInHousePage() {
         </>
       )}
 
-      <Card className="p-4">
+      <div className={`${APP_DARK_CARD} p-4`}>
         <input
           type="search"
           placeholder="Gast, Res.-Nr., Zimmer…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+          className={`${APP_DARK_INPUT} w-full py-2`}
         />
-      </Card>
+      </div>
 
-      <Card className="overflow-hidden">
+      <div className={`${APP_DARK_CARD} overflow-hidden`}>
         {listQuery.isLoading ? (
-          <p className="p-6 text-sm text-ink-muted">Lädt…</p>
+          <p className="p-6 text-sm text-sidebar-muted">Lädt…</p>
         ) : rows.length === 0 ? (
-          <p className="p-6 text-sm text-ink-muted">
+          <p className="p-6 text-sm text-sidebar-muted">
             {overview && overview.inHouse === 0
               ? 'EMMA meldet derzeit 0 Gäste im Haus.'
               : 'Keine In-House-Gäste in der Liste. Bitte erneut synchronisieren (Admin → EMMA).'}
@@ -148,7 +152,7 @@ export default function ReceptionInHousePage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1020px] text-left text-sm">
-              <thead className="border-b border-border bg-surface-muted/40 text-xs uppercase tracking-wide text-ink-muted">
+              <thead className="border-b border-sidebar-border/60 bg-white/5 text-xs uppercase tracking-wide text-sidebar-muted">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Zimmer</th>
                   <th className="px-4 py-3 font-semibold">Typ</th>
@@ -162,10 +166,10 @@ export default function ReceptionInHousePage() {
                   <th className="px-4 py-3 font-semibold" />
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-sidebar-border/40">
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-border/60 hover:bg-surface-muted/30">
-                    <td className="px-4 py-3 font-semibold tabular-nums text-ink">{r.roomId ?? '—'}</td>
+                  <tr key={r.id} className="transition-colors hover:bg-white/5">
+                    <td className="px-4 py-3 font-semibold tabular-nums text-white">{r.roomId ?? '—'}</td>
                     <td className="px-4 py-3">
                       <GuestStayTypeIcons
                         stay={reservationStaySignals(r)}
@@ -173,24 +177,24 @@ export default function ReceptionInHousePage() {
                         showLabels
                       />
                     </td>
-                    <td className="px-4 py-3 font-medium text-ink">{r.mainGuestName ?? '—'}</td>
-                    <td className="px-4 py-3 tabular-nums text-ink-muted">{r.reservationId}</td>
-                    <td className="px-4 py-3 text-ink-muted">
+                    <td className="px-4 py-3 font-medium text-white">{r.mainGuestName ?? '—'}</td>
+                    <td className="px-4 py-3 tabular-nums text-sidebar-muted">{r.reservationId}</td>
+                    <td className="px-4 py-3 text-sidebar-muted">
                       {r.arrivalDate} → {r.departureDate}
                     </td>
-                    <td className="px-4 py-3 tabular-nums text-ink-muted">
+                    <td className="px-4 py-3 tabular-nums text-sidebar-muted">
                       {r.expectedDepartureTime ?? '—'}
                     </td>
-                    <td className="px-4 py-3">{r.roomType ?? '—'}</td>
-                    <td className="px-4 py-3 tabular-nums">{r.numPax ?? '—'}</td>
-                    <td className="px-4 py-3">{r.vipDesc ?? r.tier ?? '—'}</td>
+                    <td className="px-4 py-3 text-sidebar-muted">{r.roomType ?? '—'}</td>
+                    <td className="px-4 py-3 tabular-nums text-white">{r.numPax ?? '—'}</td>
+                    <td className="px-4 py-3 text-sidebar-muted">{r.vipDesc ?? r.tier ?? '—'}</td>
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
                         onClick={() =>
                           router.push(`/r/reservations/${r.reservationId}?from=in-house`)
                         }
-                        className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink hover:bg-surface-muted"
+                        className="rounded-lg border border-sidebar-border bg-transparent px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10"
                       >
                         Ansehen
                       </button>
@@ -201,10 +205,10 @@ export default function ReceptionInHousePage() {
             </table>
           </div>
         )}
-      </Card>
+      </div>
 
       {syncMut.isError && (
-        <p className="text-sm text-rose-700">{(syncMut.error as Error).message}</p>
+        <p className="text-sm text-rose-300">{(syncMut.error as Error).message}</p>
       )}
         </div>
       </AppPageBody>

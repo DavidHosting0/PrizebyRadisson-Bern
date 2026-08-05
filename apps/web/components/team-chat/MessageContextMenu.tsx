@@ -122,11 +122,11 @@ export function MessageContextMenu({
         role="menu"
         aria-label={labels.react}
         data-chat-message-menu
-        className="pointer-events-auto absolute min-w-[220px] overflow-hidden rounded-2xl border border-border bg-surface shadow-lift"
+        className="pointer-events-auto absolute min-w-[220px] overflow-hidden rounded-2xl border border-sidebar-border bg-sidebar shadow-lift"
         style={{ left: pos.left, top: pos.top }}
       >
         {canReact && (
-          <div className="border-b border-border px-2 py-2">
+          <div className="border-b border-sidebar-border px-2 py-2">
             {!showMore ? (
               <div className="flex items-center gap-0.5">
                 {QUICK_REACTION_EMOJIS.map((emoji) => (
@@ -135,7 +135,7 @@ export function MessageContextMenu({
                     type="button"
                     role="menuitem"
                     title={emoji}
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-[22px] transition hover:bg-surface-muted active:scale-95"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-[22px] transition hover:bg-white/10 active:scale-95"
                     onClick={() => onReact(emoji)}
                   >
                     {emoji}
@@ -146,7 +146,7 @@ export function MessageContextMenu({
                   role="menuitem"
                   title={labels.moreEmojis}
                   aria-label={labels.moreEmojis}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-ink-muted transition hover:bg-surface-muted"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-sidebar-muted transition hover:bg-white/10"
                   onClick={() => setShowMore(true)}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -162,12 +162,12 @@ export function MessageContextMenu({
             ) : (
               <div>
                 <div className="mb-1.5 flex items-center justify-between px-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
                     {labels.moreEmojis}
                   </span>
                   <button
                     type="button"
-                    className="rounded-md px-2 py-0.5 text-[11px] font-medium text-action hover:bg-action-muted"
+                    className="rounded-md px-2 py-0.5 text-[11px] font-medium text-action hover:bg-action/15"
                     onClick={() => setShowMore(false)}
                   >
                     {labels.close}
@@ -180,7 +180,7 @@ export function MessageContextMenu({
                       type="button"
                       role="menuitem"
                       title={emoji}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl text-[22px] transition hover:bg-surface-muted active:scale-95"
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-[22px] transition hover:bg-white/10 active:scale-95"
                       onClick={() => onReact(emoji)}
                     >
                       {emoji}
@@ -196,10 +196,10 @@ export function MessageContextMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink transition hover:bg-surface-muted"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-white transition hover:bg-white/10"
             onClick={onReply}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden className="text-ink-muted">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden className="text-sidebar-muted">
               <path
                 d="M10 9V5L3 12l7 7v-4.1c5 0 8.5 1.6 11 5.1-1-6-4.5-12-11-13z"
                 stroke="currentColor"
@@ -214,7 +214,7 @@ export function MessageContextMenu({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-rose-700 transition hover:bg-rose-50"
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-rose-400 transition hover:bg-rose-500/10"
               onClick={onDelete}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>

@@ -220,7 +220,7 @@ export function ReservationDetailView({
 
   return (
     <div>
-      <div className="flex gap-1 overflow-x-auto border-b border-border">
+      <div className="flex gap-1 overflow-x-auto border-b border-sidebar-border/60">
         {TAB_IDS.map((tabId) => (
           <button
             key={tabId}
@@ -228,8 +228,8 @@ export function ReservationDetailView({
             onClick={() => onTabChange(tabId)}
             className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
               activeTab === tabId
-                ? 'border-ink text-ink'
-                : 'border-transparent text-ink-muted hover:text-ink'
+                ? 'border-white text-white'
+                : 'border-transparent text-sidebar-muted hover:text-white'
             }`}
           >
             {tabLabels[tabId]}

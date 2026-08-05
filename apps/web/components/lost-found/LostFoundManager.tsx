@@ -195,13 +195,14 @@ export function LostFoundManager({
       {selected && (
         <ItemDetailModal
           item={selected}
+          dark={dark}
           onClose={() => setSelectedId(null)}
           onPatch={(body) => patch.mutate({ id: selected.id, body })}
           pending={patch.isPending}
         />
       )}
 
-      {addOpen && <AddItemModal onClose={() => setAddOpen(false)} />}
+      {addOpen && <AddItemModal dark={dark} onClose={() => setAddOpen(false)} />}
     </div>
   );
 
@@ -467,11 +468,13 @@ function BoxPicker({
 
 function ItemDetailModal({
   item,
+  dark,
   onClose,
   onPatch,
   pending,
 }: {
   item: Lf;
+  dark?: boolean;
   onClose: () => void;
   onPatch: (body: Record<string, unknown>) => void;
   pending: boolean;
@@ -480,80 +483,101 @@ function ItemDetailModal({
   useOverlayKeyboard({ open: true, onClose, containerRef: panelRef });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
+    <div className={clsx('fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center', dark ? 'bg-black/60' : 'bg-ink/40')}>
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+        className={clsx(
+          'max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-card sm:rounded-card',
+          dark ? APP_DARK_CARD : 'border border-border bg-surface shadow-lift',
+        )}
       >
-        <div className="flex items-start justify-between border-b border-border px-5 py-4">
+        <div className={clsx('flex items-start justify-between border-b px-5 py-4', dark ? 'border-sidebar-border/60' : 'border-border')}>
           <div>
-            <h2 className="text-lg font-semibold text-ink">Lost & found item</h2>
-            <p className="mt-1 text-xs text-ink-muted capitalize">Status: {item.status.toLowerCase()}</p>
+            <h2 className={clsx('text-lg font-semibold', dark ? 'text-white' : 'text-ink')}>Lost & found item</h2>
+            <p className={clsx('mt-1 text-xs capitalize', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
+              Status: {item.status.toLowerCase()}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md px-2 py-1 text-sm text-ink-muted hover:bg-surface-muted"
+            className={clsx(
+              'rounded-md px-2 py-1 text-sm',
+              dark ? 'text-sidebar-muted hover:bg-white/10 hover:text-white' : 'text-ink-muted hover:bg-surface-muted',
+            )}
           >
             Close
           </button>
         </div>
         <div className="grid gap-6 p-5 md:grid-cols-5">
           <div className="md:col-span-2">
-            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-card bg-surface-muted">
+            <div className={clsx('flex aspect-square items-center justify-center overflow-hidden rounded-card', dark ? 'bg-black/20' : 'bg-surface-muted')}>
               {item.photoUrl ? (
                 <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
               ) : (
-                <span className="text-sm text-ink-muted">No photo</span>
+                <span className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>No photo</span>
               )}
             </div>
           </div>
           <div className="space-y-4 md:col-span-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Description</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{item.description}</p>
+              <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
+                Description
+              </p>
+              <p className={clsx('mt-1 whitespace-pre-wrap text-sm', dark ? 'text-slate-100' : 'text-ink')}>{item.description}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <DetailRow
+                dark={dark}
                 label="Found"
                 value={item.foundAt ? new Date(item.foundAt).toLocaleString() : 'None (not reported by cleaner)'}
               />
               <DetailRow
+                dark={dark}
                 label="Stored"
                 value={item.storedAt ? new Date(item.storedAt).toLocaleString() : 'Not in storage'}
               />
-              <DetailRow label="Room" value={item.room ? `Room ${item.room.roomNumber}` : '—'} />
+              <DetailRow dark={dark} label="Room" value={item.room ? `Room ${item.room.roomNumber}` : '—'} />
               <DetailRow
+                dark={dark}
                 label="Reported by"
                 value={item.reportedBy?.name ?? item.reportedBy?.email ?? '—'}
               />
             </div>
 
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Storage box</p>
+              <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
+                Storage box
+              </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <BoxPicker
+                  dark={dark}
                   value={item.storedLocation ?? ''}
                   onChange={(box) => onPatch({ status: 'STORED', storedLocation: box })}
                   disabled={pending}
                 />
                 {item.storedLocation && (
-                  <span className="text-xs text-ink-muted">
-                    Currently in <strong className="text-ink">{item.storedLocation}</strong>
+                  <span className={clsx('text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
+                    Currently in <strong className={dark ? 'text-white' : 'text-ink'}>{item.storedLocation}</strong>
                   </span>
                 )}
               </div>
             </div>
 
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Status</p>
+              <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
+                Status
+              </p>
               <select
                 disabled={pending}
                 value={item.status}
                 onChange={(e) => onPatch({ status: e.target.value })}
-                className="mt-1.5 min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+                className={clsx(
+                  'mt-1.5 min-h-[40px] rounded-btn px-3 text-sm',
+                  dark ? APP_DARK_INPUT : 'border border-border bg-surface',
+                )}
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -563,7 +587,7 @@ function ItemDetailModal({
               </select>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-ink">
+            <label className={clsx('flex items-center gap-2 text-sm', dark ? 'text-white' : 'text-ink')}>
               <input
                 type="checkbox"
                 checked={!!item.guestContactedAt}
@@ -572,7 +596,7 @@ function ItemDetailModal({
               />
               Guest has been contacted
               {item.guestContactedAt && (
-                <span className="text-xs text-ink-muted">
+                <span className={clsx('text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
                   (on {new Date(item.guestContactedAt).toLocaleString()})
                 </span>
               )}
@@ -584,16 +608,18 @@ function ItemDetailModal({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, dark }: { label: string; value: string; dark?: boolean }) {
   return (
     <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="mt-1 text-sm text-ink">{value}</p>
+      <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
+        {label}
+      </p>
+      <p className={clsx('mt-1 text-sm', dark ? 'text-slate-100' : 'text-ink')}>{value}</p>
     </div>
   );
 }
 
-function AddItemModal({ onClose }: { onClose: () => void }) {
+function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -652,24 +678,30 @@ function AddItemModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
+    <div className={clsx('fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center', dark ? 'bg-black/60' : 'bg-ink/40')}>
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+        className={clsx(
+          'max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card sm:rounded-card',
+          dark ? APP_DARK_CARD : 'border border-border bg-surface shadow-lift',
+        )}
       >
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-ink">Add lost & found item</h2>
-          <p className="mt-1 text-xs text-ink-muted">
+        <div className={clsx('border-b px-5 py-4', dark ? 'border-sidebar-border/60' : 'border-border')}>
+          <h2 className={clsx('text-lg font-semibold', dark ? 'text-white' : 'text-ink')}>Add lost & found item</h2>
+          <p className={clsx('mt-1 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
             Use this to log existing storage items or something handed in directly at reception.
           </p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-5">
           <div>
-            <label className="text-sm font-medium text-ink">Description *</label>
+            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>Description *</label>
             <textarea
-              className="mt-1.5 w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-sm"
+              className={clsx(
+                'mt-1.5 w-full rounded-btn px-3 py-2.5 text-sm',
+                dark ? APP_DARK_INPUT : 'border border-border bg-surface',
+              )}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -678,9 +710,12 @@ function AddItemModal({ onClose }: { onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Storage box (optional)</label>
+            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>Storage box (optional)</label>
             <select
-              className="mt-1.5 min-h-[40px] w-full rounded-btn border border-border bg-surface px-3 text-sm"
+              className={clsx(
+                'mt-1.5 min-h-[40px] w-full rounded-btn px-3 text-sm',
+                dark ? APP_DARK_INPUT : 'border border-border bg-surface',
+              )}
               value={box}
               onChange={(e) => setBox(e.target.value)}
             >
@@ -691,12 +726,12 @@ function AddItemModal({ onClose }: { onClose: () => void }) {
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-ink-muted">
+            <p className={clsx('mt-1 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
               Selecting a box marks the item as stored immediately.
             </p>
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Photo (optional)</label>
+            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>Photo (optional)</label>
             <input
               ref={fileRef}
               type="file"
@@ -705,18 +740,23 @@ function AddItemModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Button type="button" variant="secondary" onClick={() => fileRef.current?.click()}>
+              <Button
+                type="button"
+                variant="secondary"
+                className={dark ? 'border-sidebar-border bg-transparent text-white hover:bg-white/10' : undefined}
+                onClick={() => fileRef.current?.click()}
+              >
                 {file ? 'Change photo' : 'Add photo'}
               </Button>
-              {file && <span className="text-xs text-ink-muted">{file.name}</span>}
+              {file && <span className={clsx('text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>{file.name}</span>}
             </div>
           </div>
-          {error && <p className="text-sm text-danger">{error}</p>}
+          {error && <p className={clsx('text-sm', dark ? 'text-rose-300' : 'text-danger')}>{error}</p>}
           <div className="flex flex-wrap gap-3 pt-2">
             <Button type="submit" variant="action" disabled={submit.isPending}>
               {submit.isPending ? 'Saving…' : 'Save item'}
             </Button>
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant={dark ? 'ghostOnDark' : 'ghost'} onClick={onClose}>
               Cancel
             </Button>
           </div>

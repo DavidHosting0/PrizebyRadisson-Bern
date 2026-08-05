@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { PriorityBadge } from '@/components/PriorityBadge';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
 import { usePermission } from '@/lib/auth-context';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 type Req = {
   id: string;
@@ -55,8 +55,8 @@ export default function ReceptionMobileRequestsPage() {
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Requests</h1>
-          <p className="mt-1 text-sm text-ink-muted">Guest and housekeeping requests</p>
+          <h1 className="text-xl font-semibold tracking-tight text-white">Requests</h1>
+          <p className="mt-1 text-sm text-sidebar-muted">Guest and housekeeping requests</p>
         </div>
         {canCreateRequest && (
           <Button type="button" variant="action" className="min-h-[40px] px-3 text-sm" onClick={openNewRequest}>
@@ -65,28 +65,28 @@ export default function ReceptionMobileRequestsPage() {
         )}
       </div>
 
-      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
 
-      <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
+      <ul className="sidebar-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
         {active.map((r) => (
           <li key={r.id}>
-            <Card className="p-4">
-              <p className="text-base font-semibold text-ink">
+            <div className={APP_DARK_CARD + ' p-4'}>
+              <p className="text-base font-semibold text-white">
                 Room {r.room.roomNumber}
-                <span className="font-normal text-ink-muted"> · {r.type.label}</span>
+                <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase text-ink-muted">{r.status.replace(/_/g, ' ')}</span>
+                <span className="text-xs uppercase text-sidebar-muted">{r.status.replace(/_/g, ' ')}</span>
                 <PriorityBadge priority={r.priority} />
               </div>
               {r.claimedBy && (
-                <p className="mt-2 text-xs text-ink-muted">
+                <p className="mt-2 text-xs text-sidebar-muted">
                   Assigned to {formatUserWithTitlePrefix(r.claimedBy.name, r.claimedBy.titlePrefix)}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <select
-                  className="min-h-[40px] flex-1 rounded-btn border border-border bg-surface px-2 text-sm"
+                  className={APP_DARK_INPUT + ' min-h-[40px] flex-1 px-2'}
                   value={r.status}
                   onChange={(e) => patch.mutate({ id: r.id, status: e.target.value })}
                   disabled={patch.isPending}
@@ -101,7 +101,7 @@ export default function ReceptionMobileRequestsPage() {
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-[40px] px-3 py-1.5 text-xs"
+                    className="min-h-[40px] border border-sidebar-border bg-transparent px-3 py-1.5 text-xs text-white hover:bg-white/10"
                     disabled={escalate.isPending}
                     onClick={() => escalate.mutate(r.id)}
                   >
@@ -111,18 +111,20 @@ export default function ReceptionMobileRequestsPage() {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="min-h-[40px] px-3 py-1.5 text-xs text-danger"
+                  className="min-h-[40px] px-3 py-1.5 text-xs text-rose-400"
                   disabled={cancel.isPending}
                   onClick={() => cancel.mutate(r.id)}
                 >
                   Cancel
                 </Button>
               </div>
-            </Card>
+            </div>
           </li>
         ))}
       </ul>
-      {active.length === 0 && !isLoading && <p className="text-sm text-ink-muted">No active requests.</p>}
+      {active.length === 0 && !isLoading && (
+        <p className="text-sm text-sidebar-muted">No active requests.</p>
+      )}
     </div>
   );
 }

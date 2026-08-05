@@ -304,7 +304,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
     <div className="space-y-6">
       <nav
         aria-label="Floor"
-        className="flex w-full max-w-full overflow-x-auto rounded-xl border border-border/60 bg-gradient-to-b from-[#f0efeb] to-[#e4e2dc] p-1 shadow-[inset_0_1px_2px_rgba(43,43,43,0.07)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex w-full max-w-full overflow-x-auto rounded-xl border border-sidebar-border/60 bg-sidebar p-1 shadow-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="flex min-w-min flex-1 flex-wrap gap-1 sm:flex-nowrap">
           <button
@@ -336,51 +336,51 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
         </div>
       </nav>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border/50 bg-white/70 px-4 py-2.5 text-[11px] shadow-sm backdrop-blur-sm">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-sidebar-border/60 bg-white/5 px-4 py-2.5 text-[11px] shadow-none">
         {heatMode ? (
           <>
-            <span className="font-semibold text-ink">Beschwerden</span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="font-semibold text-white">Beschwerden</span>
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 shadow-sm" />
               0
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/40 bg-gradient-to-b from-amber-300 to-amber-400 shadow-sm" />
               1
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/40 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
               2
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/40 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
               3–4
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-red-950/50 bg-gradient-to-b from-red-800 to-red-950 shadow-sm" />
               5+
             </span>
           </>
         ) : (
           <>
-            <span className="font-semibold text-ink">Room status</span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="font-semibold text-white">Room status</span>
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/35 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
               Dirty
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/35 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
               Clean
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-emerald-900/35 bg-gradient-to-b from-emerald-600 to-emerald-700 shadow-sm" />
               Inspected
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/45 bg-gradient-to-b from-amber-400 to-amber-500 shadow-sm" />
               In progress
             </span>
-            <span className="inline-flex items-center gap-2 text-ink-muted">
+            <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-violet-950/40 bg-gradient-to-b from-violet-600 to-violet-700 shadow-sm" />
               Out of order
             </span>
@@ -388,7 +388,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
         )}
       </div>
 
-      <p className="text-xs text-ink-muted">
+      <p className="text-xs text-sidebar-muted">
         Corridors use numbered labels (e.g. Corridor 2.1) per floor. Select a floor to focus, or use All floors.
         Click a room for details, photos, and maintenance.
       </p>
@@ -396,7 +396,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
       <div className="space-y-8">
         {activeFloor === 'unplaced' && unplaced.length > 0 && (
           <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sidebar-muted">
               Unplaced (no floor in database and room number not in hotel layout)
             </h2>
             <div
@@ -414,8 +414,8 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
         {typeof activeFloor === 'number' && savedPlan?.layout?.length ? (
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-semibold tracking-tight text-ink">{formatFloorLabel(activeFloor)}</h2>
-              <span className="inline-flex items-center rounded-full border border-border/50 bg-white/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted shadow-sm backdrop-blur-sm">
+              <h2 className="text-base font-semibold tracking-tight text-white">{formatFloorLabel(activeFloor)}</h2>
+              <span className="inline-flex items-center rounded-full border border-sidebar-border/60 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
                 Custom admin layout
               </span>
             </div>
@@ -483,8 +483,8 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
         ) : typeof activeFloor === 'number' && oneToSixLayout ? (
           <section>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-semibold tracking-tight text-ink">{formatFloorLabel(activeFloor)}</h2>
-              <span className="inline-flex items-center rounded-full border border-border/50 bg-white/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted shadow-sm backdrop-blur-sm">
+              <h2 className="text-base font-semibold tracking-tight text-white">{formatFloorLabel(activeFloor)}</h2>
+              <span className="inline-flex items-center rounded-full border border-sidebar-border/60 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
                 Physical layout
               </span>
             </div>
@@ -530,7 +530,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
             </FloorPlanCanvasFrame>
             {oneToSixLayout.fallback.length > 0 && (
               <div className="mt-3">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   Rooms without mapped physical slot
                 </h3>
                 <div
@@ -555,7 +555,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
             const cols = floorPlanGridCols(list.length);
             return (
               <section key={f}>
-                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sidebar-muted">
                   {formatFloorLabel(f)}
                 </h2>
                 <div
@@ -573,7 +573,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
 
         {activeFloor === 'all' && unplaced.length > 0 && (
           <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-ink-muted">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sidebar-muted">
               Unplaced (set floor in admin or use a known room number)
             </h2>
             <div
@@ -590,7 +590,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
       </div>
 
       {displayed.length === 0 && (
-        <p className="text-sm text-ink-muted">No rooms to show for this filter.</p>
+        <p className="text-sm text-sidebar-muted">No rooms to show for this filter.</p>
       )}
     </div>
   );

@@ -617,6 +617,13 @@ export default function SupervisorBoardPage() {
                       </p>
                     </div>
                   </div>
+                  {col.length === 0 && publics.length === 0 && (
+                    <div className="px-3 pt-3">
+                      <p className="rounded-lg border border-dashed border-white/15 bg-[#141c28] px-4 py-6 text-center text-sm text-sidebar-muted">
+                        Drop rooms here
+                      </p>
+                    </div>
+                  )}
                   <ul className="space-y-2.5 p-3">
                     {col.map((a) => {
                       const full = roomById[a.roomId];
@@ -663,13 +670,6 @@ export default function SupervisorBoardPage() {
                           onComplete={(taskId) => completePublic.mutate(taskId)}
                         />
                       ))}
-                    </div>
-                  )}
-                  {col.length === 0 && publics.length === 0 && (
-                    <div className="flex flex-1 items-center justify-center px-3 py-8">
-                      <p className="rounded-lg border border-dashed border-white/15 bg-[#141c28] px-4 py-6 text-center text-sm text-sidebar-muted">
-                        Drop rooms here
-                      </p>
                     </div>
                   )}
                 </div>

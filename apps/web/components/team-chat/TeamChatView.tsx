@@ -80,7 +80,7 @@ function ChatMessageBody({
           onClick={() => setShowOriginal((v) => !v)}
           className={clsx(
             'mt-1 text-[10px] font-medium underline-offset-2 hover:underline',
-            mine ? 'text-ink/70' : 'text-action',
+            mine ? 'text-white/70' : 'text-action',
           )}
         >
           {showOriginal ? t('showTranslation') : t('showOriginal')}
@@ -628,8 +628,7 @@ export function TeamChatView({
   return (
     <div
       className={clsx(
-        // Subtle tinted chat backdrop — kept within existing tokens so the color scheme matches.
-        'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,rgba(244,241,234,0.6),rgba(244,241,234,0.35))]',
+        'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#121a26] [background-image:radial-gradient(ellipse_at_top,_rgba(59,111,160,0.14),_transparent_55%)]',
         className,
       )}
     >
@@ -640,13 +639,13 @@ export function TeamChatView({
       >
         <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end">
         {(loadingMsg || loadingReq || (canReadDamage && loadingDmg)) && (
-          <p className="text-sm text-ink-muted">Loading…</p>
+          <p className="text-sm text-sidebar-muted">Loading…</p>
         )}
         {!loadingMsg &&
           !loadingReq &&
           !(canReadDamage && loadingDmg) &&
           timeline.filter((i) => i.kind !== 'day').length === 0 && (
-          <p className="mt-12 text-center text-sm text-ink-muted">
+          <p className="mt-12 text-center text-sm text-sidebar-muted">
             No messages or requests yet. Say hi to your team 👋
           </p>
         )}
@@ -656,7 +655,7 @@ export function TeamChatView({
             if (item.kind === 'day') {
               return (
                 <li key={item.key} className="my-3 flex justify-center">
-                  <span className="rounded-full bg-surface/90 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted shadow-card ring-1 ring-border/60">
+                  <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted ring-1 ring-white/10">
                     {item.label}
                   </span>
                 </li>
@@ -670,25 +669,25 @@ export function TeamChatView({
                 <li key={item.key} className="my-2 flex justify-center">
                   <div
                     className={clsx(
-                      'w-full max-w-xl rounded-2xl border px-4 py-3 shadow-sm',
+                      'w-full max-w-xl rounded-2xl border px-4 py-3 shadow-none',
                       active
-                        ? 'border-amber-500/35 bg-amber-50/90'
-                        : 'border-border/70 bg-surface/80 text-ink-muted',
+                        ? 'border-amber-400/30 bg-amber-500/10'
+                        : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
                     )}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
                           Service request
                         </p>
-                        <p className="mt-1 text-base font-semibold text-ink">
+                        <p className="mt-1 text-base font-semibold text-white">
                           Room {r.room.roomNumber}
-                          <span className="font-normal text-ink-muted"> · {r.type.label}</span>
+                          <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
                         </p>
-                        <p className="mt-1 text-sm text-ink-muted">{statusLine(r)}</p>
+                        <p className="mt-1 text-sm text-sidebar-muted">{statusLine(r)}</p>
                         <div className="mt-2 flex items-center gap-2">
                           <PriorityBadge priority={r.priority} />
-                          <span className="text-[10px] text-ink-muted/80">{formatClock(r.createdAt)}</span>
+                          <span className="text-[10px] text-sidebar-muted/80">{formatClock(r.createdAt)}</span>
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
@@ -710,7 +709,7 @@ export function TeamChatView({
                             <Button
                               type="button"
                               variant="secondary"
-                              className="min-h-[36px] px-3 text-xs"
+                              className="min-h-[36px] border border-sidebar-border bg-transparent px-3 text-xs text-white hover:bg-white/10"
                               disabled={resolve.isPending}
                               onClick={() => resolve.mutate(r.id)}
                             >
@@ -731,38 +730,38 @@ export function TeamChatView({
                 <li key={item.key} className="my-2 flex justify-center">
                   <div
                     className={clsx(
-                      'w-full max-w-xl overflow-hidden rounded-2xl border shadow-sm',
+                      'w-full max-w-xl overflow-hidden rounded-2xl border shadow-none',
                       active
-                        ? 'border-rose-500/35 bg-rose-50/90'
-                        : 'border-border/70 bg-surface/80 text-ink-muted',
+                        ? 'border-rose-400/30 bg-rose-500/10'
+                        : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
                     )}
                   >
-                    <div className="aspect-[16/9] max-h-40 bg-surface-muted">
+                    <div className="aspect-[16/9] max-h-40 bg-white/5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={d.photoUrl} alt="" className="h-full w-full object-cover" />
                     </div>
                     <div className="px-4 py-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
                             Damage report
                           </p>
-                          <p className="mt-1 text-base font-semibold text-ink">
+                          <p className="mt-1 text-base font-semibold text-white">
                             Room {d.room.roomNumber}
-                            <span className="font-normal text-ink-muted"> · {damageLabel(d.damageType)}</span>
+                            <span className="font-normal text-sidebar-muted"> · {damageLabel(d.damageType)}</span>
                           </p>
-                          <p className="mt-1 text-sm leading-snug text-ink">{truncateBody(d.description, 160)}</p>
-                          <p className="mt-1 text-sm text-ink-muted">
+                          <p className="mt-1 text-sm leading-snug text-white">{truncateBody(d.description, 160)}</p>
+                          <p className="mt-1 text-sm text-sidebar-muted">
                             {formatUserWithTitlePrefix(d.reportedBy.name, d.reportedBy.titlePrefix)} ·{' '}
                             {damageStatusLine(d)}
                           </p>
-                          <span className="mt-2 inline-block text-[10px] text-ink-muted/80">
+                          <span className="mt-2 inline-block text-[10px] text-sidebar-muted/80">
                             {formatClock(d.reportedAt)}
                           </span>
                         </div>
                         {canUpdateDamage && (
                           <select
-                            className="min-h-[36px] shrink-0 rounded-btn border border-border bg-surface px-2 text-xs"
+                            className="min-h-[36px] shrink-0 rounded-btn border border-sidebar-border bg-sidebar px-2 text-xs text-white"
                             value={d.status}
                             disabled={patchDamageStatus.isPending}
                             onChange={(e) =>
@@ -818,10 +817,10 @@ export function TeamChatView({
                   <div className="relative min-w-0">
                     <div
                       className={clsx(
-                        'relative min-w-[56px] select-none px-3.5 py-2 text-sm shadow-sm',
+                        'relative min-w-[56px] select-none px-3.5 py-2 text-sm shadow-none',
                         mine
-                          ? 'bg-action-muted text-ink'
-                          : 'bg-surface text-ink border border-border/60',
+                          ? 'bg-indigo-500/20 text-white'
+                          : 'bg-white/5 text-white border border-sidebar-border/60',
                         mine
                           ? isTail
                             ? 'rounded-2xl rounded-br-md'
@@ -834,8 +833,8 @@ export function TeamChatView({
                     >
                       {!mine && isHead && (
                         <div className="mb-0.5 flex items-baseline gap-1.5">
-                          <span className="text-[12px] font-semibold text-ink">{m.author.name}</span>
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">
+                          <span className="text-[12px] font-semibold text-white">{m.author.name}</span>
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-sidebar-muted">
                             {userTitlePrefixLabel(m.author.titlePrefix)}
                           </span>
                         </div>
@@ -846,12 +845,12 @@ export function TeamChatView({
                           className={clsx(
                             'mb-1.5 rounded-md border-l-[3px] px-2 py-1 text-[11px]',
                             mine
-                              ? 'border-ink/35 bg-ink/5'
-                              : 'border-action/60 bg-action-muted/40',
+                              ? 'border-white/30 bg-white/5'
+                              : 'border-action/60 bg-action/10',
                           )}
                         >
-                          <span className="font-semibold text-ink">{m.replyTo.author.name}</span>
-                          <p className="mt-0.5 truncate text-ink-muted">
+                          <span className="font-semibold text-white">{m.replyTo.author.name}</span>
+                          <p className="mt-0.5 truncate text-sidebar-muted">
                             {m.replyTo.deleted
                               ? tChat('deletedMessage')
                               : truncateBody(m.replyTo.body, 120)}
@@ -863,7 +862,7 @@ export function TeamChatView({
 
                       <span
                         className={clsx(
-                          'mt-0.5 block text-right text-[10px] leading-none text-ink-muted/80',
+                          'mt-0.5 block text-right text-[10px] leading-none text-sidebar-muted/80',
                           'tabular-nums',
                         )}
                       >
@@ -888,10 +887,10 @@ export function TeamChatView({
                               toggleReaction.mutate({ messageId: m.id, emoji: rx.emoji })
                             }
                             className={clsx(
-                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-sm transition-colors',
+                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-none transition-colors',
                               rx.me
-                                ? 'border-action/40 bg-action-muted font-medium text-ink'
-                                : 'border-border bg-surface text-ink-muted hover:bg-surface-muted',
+                                ? 'border-action/40 bg-action/20 font-medium text-white'
+                                : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted hover:bg-white/10',
                             )}
                           >
                             <span>{rx.emoji}</span>
@@ -914,7 +913,7 @@ export function TeamChatView({
           <button
             type="button"
             onClick={() => scrollToBottom('smooth', true)}
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-ink shadow-card transition hover:bg-surface-muted"
+            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sidebar-border bg-sidebar px-3 py-1.5 text-xs font-medium text-white shadow-none transition hover:bg-sidebar-hover"
             aria-label="Jump to latest messages"
           >
             <span aria-hidden>↓</span>
@@ -924,16 +923,16 @@ export function TeamChatView({
       )}
 
       {canPost && (
-        <form onSubmit={onSend} className="shrink-0 border-t border-border bg-surface/95 backdrop-blur">
+        <form onSubmit={onSend} className="shrink-0 border-t border-sidebar-border/60 bg-[#121a26]/95 backdrop-blur">
           {replyTo && (
-            <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-2 border-b border-border/60 bg-action-muted/30 px-3 py-2 text-xs">
+            <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-2 border-b border-sidebar-border/60 bg-action/10 px-3 py-2 text-xs">
               <div className="min-w-0 border-l-[3px] border-action/60 pl-2">
-                <p className="font-semibold text-ink">Replying to {replyTo.author.name}</p>
-                <p className="mt-0.5 truncate text-ink-muted">{truncateBody(replyTo.body, 160)}</p>
+                <p className="font-semibold text-white">Replying to {replyTo.author.name}</p>
+                <p className="mt-0.5 truncate text-sidebar-muted">{truncateBody(replyTo.body, 160)}</p>
               </div>
               <button
                 type="button"
-                className="shrink-0 rounded-md px-2 py-1 font-medium text-ink-muted hover:bg-surface hover:text-ink"
+                className="shrink-0 rounded-md px-2 py-1 font-medium text-sidebar-muted hover:bg-white/10 hover:text-white"
                 onClick={() => setReplyTo(null)}
               >
                 Cancel
@@ -955,7 +954,7 @@ export function TeamChatView({
               <button
                 type="button"
                 onClick={() => setNewReqOpen(true)}
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-ink-muted transition hover:border-action/40 hover:text-ink"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white"
                 aria-label="New service request"
                 title="New service request"
               >
@@ -983,10 +982,10 @@ export function TeamChatView({
               type="submit"
               disabled={send.isPending || !body.trim()}
               className={clsx(
-                'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-card transition',
+                'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
                 body.trim() && !send.isPending
                   ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
-                  : 'bg-surface-muted text-ink-muted',
+                  : 'bg-white/10 text-sidebar-muted',
               )}
               aria-label="Send message"
             >

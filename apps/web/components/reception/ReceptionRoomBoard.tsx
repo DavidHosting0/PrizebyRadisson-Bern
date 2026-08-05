@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Card } from '@/components/ui/Card';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 import { useReceptionUi } from '@/app/r/reception-context';
 import {
   RoomOccupancyBadges,
@@ -168,26 +168,26 @@ export function ReceptionRoomBoard({ compact }: Props) {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-ink-muted">Loading rooms…</p>;
+    return <p className="text-sm text-sidebar-muted">Loading rooms…</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Search</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Search</label>
           <input
             type="search"
             placeholder="Room #"
-            className="mt-1 min-h-[40px] min-w-[140px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className={`${APP_DARK_INPUT} mt-1 min-w-[140px]`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Floor</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Floor</label>
           <select
-            className="mt-1 min-h-[40px] min-w-[120px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className={`${APP_DARK_INPUT} mt-1 min-w-[120px]`}
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
           >
@@ -200,9 +200,9 @@ export function ReceptionRoomBoard({ compact }: Props) {
           </select>
         </div>
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Status</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Status</label>
           <select
-            className="mt-1 min-h-[40px] min-w-[140px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className={`${APP_DARK_INPUT} mt-1 min-w-[140px]`}
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
@@ -215,9 +215,9 @@ export function ReceptionRoomBoard({ compact }: Props) {
           </select>
         </div>
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Group</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Group</label>
           <select
-            className="mt-1 min-h-[40px] min-w-[140px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className={`${APP_DARK_INPUT} mt-1 min-w-[140px]`}
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
           >
@@ -226,17 +226,17 @@ export function ReceptionRoomBoard({ compact }: Props) {
             <option value="status">By status</option>
           </select>
         </div>
-        <div className="ml-auto flex rounded-lg border border-border p-0.5">
+        <div className="ml-auto flex rounded-lg border border-sidebar-border p-0.5">
           <button
             type="button"
-            className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === 'grid' ? 'bg-ink text-white' : 'text-ink-muted'}`}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === 'grid' ? 'bg-sidebar-hover text-white' : 'text-sidebar-muted hover:text-white'}`}
             onClick={() => setView('grid')}
           >
             Grid
           </button>
           <button
             type="button"
-            className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === 'table' ? 'bg-ink text-white' : 'text-ink-muted'}`}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === 'table' ? 'bg-sidebar-hover text-white' : 'text-sidebar-muted hover:text-white'}`}
             onClick={() => setView('table')}
           >
             Table
@@ -248,7 +248,7 @@ export function ReceptionRoomBoard({ compact }: Props) {
         grouped.map((g) => (
           <section key={g.key}>
             {groupBy !== 'none' && (
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-muted">{g.key}</h3>
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-sidebar-muted">{g.key}</h3>
             )}
             <div
               className={`grid gap-3 ${compact ? 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4' : 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'}`}
@@ -261,9 +261,9 @@ export function ReceptionRoomBoard({ compact }: Props) {
         ))}
 
       {view === 'table' && (
-        <Card className="overflow-x-auto p-0">
+        <div className={`${APP_DARK_CARD} overflow-x-auto`}>
           <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="border-b border-border bg-surface-muted/80 text-xs uppercase tracking-wide text-ink-muted">
+            <thead className="border-b border-sidebar-border/60 bg-white/5 text-xs uppercase tracking-wide text-sidebar-muted">
               <tr>
                 <th className="px-4 py-3 font-semibold">Room</th>
                 <th className="px-4 py-3 font-semibold">Floor</th>
@@ -273,28 +273,28 @@ export function ReceptionRoomBoard({ compact }: Props) {
                 <th className="px-4 py-3 font-semibold">Flags</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-sidebar-border/40">
               {filtered.map((r) => {
                 const urgent = urgentByRoom.has(r.id);
                 return (
                   <tr
                     key={r.id}
-                    className="cursor-pointer border-b border-border/80 hover:bg-surface-muted/50"
+                    className="cursor-pointer transition-colors hover:bg-white/5"
                     onClick={() => openRoom(r.id)}
                   >
-                    <td className="px-4 py-3 font-semibold text-ink">{r.roomNumber}</td>
-                    <td className="px-4 py-3 text-ink-muted">{r.floor ?? '—'}</td>
+                    <td className="px-4 py-3 font-semibold text-white">{r.roomNumber}</td>
+                    <td className="px-4 py-3 text-sidebar-muted">{r.floor ?? '—'}</td>
                     <td className="max-w-[180px] px-4 py-3">
-                      <div className="truncate text-ink-muted">{r.occupancy?.mainGuestName ?? '—'}</div>
+                      <div className="truncate text-sidebar-muted">{r.occupancy?.mainGuestName ?? '—'}</div>
                       <RoomOccupancyBadges occupancy={r.occupancy} />
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={r.derivedStatus} />
+                      <StatusBadge status={r.derivedStatus} variant="dark" />
                     </td>
-                    <td className="px-4 py-3 text-ink-muted">{assignByRoom[r.id] ?? '—'}</td>
+                    <td className="px-4 py-3 text-sidebar-muted">{assignByRoom[r.id] ?? '—'}</td>
                     <td className="px-4 py-3">
                       {urgent && (
-                        <span className="rounded-full bg-danger-muted px-2 py-0.5 text-xs font-medium text-danger">
+                        <span className="rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-xs font-medium text-rose-300">
                           Urgent
                         </span>
                       )}
@@ -304,7 +304,7 @@ export function ReceptionRoomBoard({ compact }: Props) {
               })}
             </tbody>
           </table>
-        </Card>
+        </div>
       )}
     </div>
   );

@@ -1,11 +1,12 @@
+import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { formatEmmaAmount, parseEmmaNumber } from './folioFormat';
 
 export function Field({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value?.trim()) return null;
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm text-ink">{value}</dd>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{label}</dt>
+      <dd className="mt-0.5 text-sm text-white">{value}</dd>
     </div>
   );
 }
@@ -13,16 +14,16 @@ export function Field({ label, value }: { label: string; value: string | null | 
 export function BoolField({ label, value }: { label: string; value: boolean }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm text-ink">{value ? 'Ja' : 'Nein'}</dd>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{label}</dt>
+      <dd className="mt-0.5 text-sm text-white">{value ? 'Ja' : 'Nein'}</dd>
     </div>
   );
 }
 
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-border bg-surface-muted/30 p-4">
-      <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-muted">{title}</h3>
+    <section className={`${APP_DARK_CARD} p-4`}>
+      <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-sidebar-muted">{title}</h3>
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</dl>
     </section>
   );
@@ -38,10 +39,10 @@ export function ListSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-surface-muted/30 p-4">
+    <section className={`${APP_DARK_CARD} p-4`}>
       <div className="mb-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-ink-muted">{title}</h3>
-        {subtitle && <p className="mt-1 text-xs text-ink-muted">{subtitle}</p>}
+        <h3 className="text-xs font-bold uppercase tracking-wider text-sidebar-muted">{title}</h3>
+        {subtitle && <p className="mt-1 text-xs text-sidebar-muted">{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -66,19 +67,19 @@ export function formatEmmaValue(value: unknown): string | null {
 }
 
 export function RecordGrid({ rows }: { rows: Record<string, unknown>[] }) {
-  if (rows.length === 0) return <p className="text-sm text-ink-muted">Keine Einträge</p>;
+  if (rows.length === 0) return <p className="text-sm text-sidebar-muted">Keine Einträge</p>;
   return (
     <div className="space-y-3">
       {rows.map((row, i) => (
-        <div key={i} className="rounded-lg border border-border/60 bg-surface p-3">
+        <div key={i} className="rounded-lg border border-sidebar-border/60 bg-white/5 p-3">
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {Object.entries(row).map(([key, value]) => {
               const formatted = formatEmmaValue(value);
               if (!formatted) return null;
               return (
                 <div key={key}>
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{key}</dt>
-                  <dd className="mt-0.5 text-sm text-ink">{formatted}</dd>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{key}</dt>
+                  <dd className="mt-0.5 text-sm text-white">{formatted}</dd>
                 </div>
               );
             })}
@@ -97,9 +98,9 @@ export function EmptyState({
   description: string;
 }) {
   return (
-    <div className="rounded-xl border border-dashed border-border bg-surface-muted/20 px-6 py-10 text-center">
-      <p className="font-medium text-ink">{title}</p>
-      <p className="mt-2 text-sm text-ink-muted">{description}</p>
+    <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-white/5 px-6 py-10 text-center">
+      <p className="font-medium text-white">{title}</p>
+      <p className="mt-2 text-sm text-sidebar-muted">{description}</p>
     </div>
   );
 }

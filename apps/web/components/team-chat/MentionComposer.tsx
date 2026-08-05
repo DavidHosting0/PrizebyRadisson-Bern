@@ -138,7 +138,7 @@ export function MentionComposer({
         ref={textareaRef}
         rows={1}
         className={clsx(
-          'min-h-[44px] w-full resize-none rounded-full border border-border bg-surface-muted/70 px-4 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-action/40 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-action/15',
+          'min-h-[44px] w-full resize-none rounded-full border border-sidebar-border bg-sidebar px-4 py-2.5 text-sm text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15',
           className,
         )}
         placeholder={placeholder}
@@ -151,7 +151,7 @@ export function MentionComposer({
 
       {mentionQuery !== null && suggestions.length > 0 && (
         <ul
-          className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-lift"
+          className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-xl border border-sidebar-border bg-sidebar py-1 shadow-lift"
           role="listbox"
         >
           {suggestions.map((u, i) => (
@@ -162,7 +162,7 @@ export function MentionComposer({
                 onClick={() => pickMention(u)}
                 className={clsx(
                   'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition',
-                  i === highlightIdx ? 'bg-action-muted text-ink' : 'text-ink hover:bg-surface-muted',
+                  i === highlightIdx ? 'bg-action/20 text-white' : 'text-white hover:bg-white/10',
                 )}
               >
                 <Avatar name={u.name} url={u.avatarUrl} size={28} />

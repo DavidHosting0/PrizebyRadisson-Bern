@@ -1,6 +1,7 @@
 import type { ReservationDetail, ReservationFolioCharge } from '@housekeeping/shared';
 import { chargesForFolio, normalizeFolioId, rehydrateFolioBundle } from '@housekeeping/shared';
 import { useMemo, useState } from 'react';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 import {
   Field,
   formatEmmaValue,
@@ -68,7 +69,7 @@ function ChargeMoveControl({
         value={target}
         onChange={(e) => setTarget(e.target.value)}
         disabled={disabled}
-        className="max-w-[120px] rounded border border-border bg-surface px-1.5 py-1 text-xs text-ink"
+        className={`${APP_DARK_INPUT} max-w-[120px] py-1 text-xs`}
         aria-label={`Ziel-Folio für Posten ${chargeRowId(charge)}`}
       >
         {destinationFolios.map((f) => (
@@ -85,7 +86,7 @@ function ChargeMoveControl({
           setBusy(true);
           void onMove(sourceFolioId, chargeRowId(charge), target).finally(() => setBusy(false));
         }}
-        className="rounded border border-border bg-surface-muted px-2 py-1 text-xs font-medium text-ink hover:bg-surface disabled:opacity-50"
+        className="rounded border border-sidebar-border bg-transparent px-2 py-1 text-xs font-medium text-white hover:bg-white/10 disabled:opacity-50"
       >
         {busy || moving ? '…' : 'Verschieben'}
       </button>
@@ -124,12 +125,12 @@ export function FolioChargeTable({
   const showMove = Boolean(canMove && onMove && sourceFolioId);
 
   if (charges.length === 0) {
-    return <p className="py-4 text-center text-sm text-ink-muted">Keine Posten vorhanden.</p>;
+    return <p className="py-4 text-center text-sm text-sidebar-muted">Keine Posten vorhanden.</p>;
   }
   return (
     <div className="max-h-[360px] overflow-auto">
       <table className="w-full min-w-[760px] text-left text-xs">
-        <thead className="sticky top-0 z-10 bg-surface-muted/95 text-ink-muted backdrop-blur">
+        <thead className="sticky top-0 z-10 bg-[#1A2332] text-sidebar-muted backdrop-blur">
           <tr>
             <th className="px-2 py-2 font-semibold">Pos.</th>
             <th className="px-2 py-2 font-semibold">Datum</th>
@@ -144,15 +145,15 @@ export function FolioChargeTable({
         </thead>
         <tbody>
           {charges.map((c) => (
-            <tr key={c.id} className="border-t border-border/50">
-              <td className="px-2 py-2 tabular-nums text-ink-muted">{chargePosition(c)}</td>
-              <td className="px-2 py-2 text-ink-muted">{chargeDate(c)}</td>
-              <td className="px-2 py-2 text-ink-muted">{c.concept ?? '—'}</td>
-              <td className="px-2 py-2 text-ink">{c.description ?? '—'}</td>
-              <td className="px-2 py-2 text-ink-muted">{c.guestName ?? '—'}</td>
-              <td className="px-2 py-2 tabular-nums">{formatEmmaAmount(c.quantity) ?? '—'}</td>
-              <td className="px-2 py-2 tabular-nums font-medium text-ink">{chargeAmount(c)}</td>
-              <td className="px-2 py-2">{c.status ?? '—'}</td>
+            <tr key={c.id} className="border-t border-sidebar-border/40">
+              <td className="px-2 py-2 tabular-nums text-sidebar-muted">{chargePosition(c)}</td>
+              <td className="px-2 py-2 text-sidebar-muted">{chargeDate(c)}</td>
+              <td className="px-2 py-2 text-sidebar-muted">{c.concept ?? '—'}</td>
+              <td className="px-2 py-2 text-white">{c.description ?? '—'}</td>
+              <td className="px-2 py-2 text-sidebar-muted">{c.guestName ?? '—'}</td>
+              <td className="px-2 py-2 tabular-nums text-white">{formatEmmaAmount(c.quantity) ?? '—'}</td>
+              <td className="px-2 py-2 tabular-nums font-medium text-white">{chargeAmount(c)}</td>
+              <td className="px-2 py-2 text-sidebar-muted">{c.status ?? '—'}</td>
               {showMove && sourceFolioId && onMove && (
                 <td className="px-2 py-2">
                   <ChargeMoveControl
@@ -191,10 +192,10 @@ function FolioCard({
   const currency = folioCurrency(folio);
   const folioId = String(folio.Id ?? '');
   return (
-    <article className="flex min-h-[280px] flex-col rounded-xl border border-border bg-surface">
-      <header className="border-b border-border bg-surface-muted/40 px-4 py-3">
-        <h4 className="text-sm font-semibold text-ink">{folioTitle(folio)}</h4>
-        <p className="mt-0.5 text-xs text-ink-muted">
+    <article className={`${APP_DARK_CARD} flex min-h-[280px] flex-col overflow-hidden`}>
+      <header className="border-b border-sidebar-border/60 bg-white/5 px-4 py-3">
+        <h4 className="text-sm font-semibold text-white">{folioTitle(folio)}</h4>
+        <p className="mt-0.5 text-xs text-sidebar-muted">
           {charges.length} {charges.length === 1 ? 'Posten' : 'Posten'}
         </p>
       </header>
@@ -208,28 +209,28 @@ function FolioCard({
           onMove={onMove}
         />
       </div>
-      <footer className="space-y-1 border-t border-border bg-surface-muted/20 px-4 py-3 text-xs">
+      <footer className="space-y-1 border-t border-sidebar-border/60 bg-white/5 px-4 py-3 text-xs">
         <div className="flex justify-between gap-4">
-          <span className="text-ink-muted">Total ohne Steuern</span>
-          <span className="tabular-nums font-medium text-ink">
+          <span className="text-sidebar-muted">Total ohne Steuern</span>
+          <span className="tabular-nums font-medium text-white">
             {formatEmmaAmount(folio.AmountTotalWot, currency) ?? '—'}
           </span>
         </div>
         <div className="flex justify-between gap-4">
-          <span className="text-ink-muted">Total mit Steuern</span>
-          <span className="tabular-nums font-medium text-ink">
+          <span className="text-sidebar-muted">Total mit Steuern</span>
+          <span className="tabular-nums font-medium text-white">
             {formatEmmaAmount(folio.AmountTotal, currency) ?? '—'}
           </span>
         </div>
         <div className="flex justify-between gap-4">
-          <span className="text-ink-muted">Bezahlt</span>
-          <span className="tabular-nums text-ink">
+          <span className="text-sidebar-muted">Bezahlt</span>
+          <span className="tabular-nums text-white">
             {formatEmmaAmount(folio.AmountPaid, currency) ?? '—'}
           </span>
         </div>
-        <div className="flex justify-between gap-4 border-t border-border/60 pt-2">
-          <span className="font-semibold text-ink">Offen</span>
-          <span className="tabular-nums font-semibold text-rose-700">
+        <div className="flex justify-between gap-4 border-t border-sidebar-border/60 pt-2">
+          <span className="font-semibold text-white">Offen</span>
+          <span className="tabular-nums font-semibold text-rose-300">
             {formatEmmaAmount(folio.AmountDue, currency) ?? '—'}
           </span>
         </div>
@@ -296,7 +297,7 @@ export function EmmaFolioSections({
   return (
     <div className="space-y-4">
       {canMove && onMoveCharge && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-3 py-2 text-sm text-amber-200">
           Test: Einzelne Posten per «Verschieben» in EMMA auf ein anderes Folio moven (Operator-Login
           erforderlich). Nach dem Move wird das Folio automatisch neu geladen.
         </p>

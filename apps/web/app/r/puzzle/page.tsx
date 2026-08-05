@@ -3,13 +3,16 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
+
+/** Secondary button on the dark chrome — outline instead of the light "secondary" fill. */
+const DARK_SECONDARY_BTN = 'border border-sidebar-border bg-transparent text-white hover:bg-white/10';
 
 type PuzzelTicketPrizeCategory =
   | 'SPAM'
@@ -134,11 +137,11 @@ const PRIZE_CATEGORY_LABEL: Record<PuzzelTicketPrizeCategory, string> = {
 };
 
 const PRIZE_CATEGORY_TONE: Record<PuzzelTicketPrizeCategory, string> = {
-  SPAM: 'border-slate-300 bg-slate-200 text-slate-900',
-  RECHNUNG_ANGEFRAGT: 'border-sky-300 bg-sky-100 text-sky-950',
-  RECHNUNGSKORREKTUR: 'border-amber-300 bg-amber-100 text-amber-950',
-  MEHRERE_RECHNUNGSANFRAGEN: 'border-violet-300 bg-violet-100 text-violet-950',
-  SONSTIGES: 'border-teal-300 bg-teal-100 text-teal-950',
+  SPAM: 'border-slate-400/30 bg-slate-500/15 text-slate-300',
+  RECHNUNG_ANGEFRAGT: 'border-sky-400/30 bg-sky-500/15 text-sky-300',
+  RECHNUNGSKORREKTUR: 'border-amber-400/30 bg-amber-500/15 text-amber-300',
+  MEHRERE_RECHNUNGSANFRAGEN: 'border-violet-400/30 bg-violet-500/15 text-violet-300',
+  SONSTIGES: 'border-teal-400/30 bg-teal-500/15 text-teal-300',
 };
 
 const ALL_PRIZE_CATEGORIES = Object.keys(PRIZE_CATEGORY_LABEL) as PuzzelTicketPrizeCategory[];
@@ -176,14 +179,14 @@ const INVOICE_ACTION_LABEL: Record<PuzzelInvoiceAction, string> = {
 
 /** Distinct badge colour so “resend” vs “correct” is scannable. */
 const INVOICE_ACTION_TONE: Record<PuzzelInvoiceAction, string> = {
-  resend_only: 'border-sky-300 bg-sky-100 text-sky-950',
-  correct_and_reissue: 'border-amber-300 bg-amber-100 text-amber-950',
-  new_or_additional_invoice: 'border-violet-300 bg-violet-100 text-violet-950',
-  vat_tax_legal: 'border-indigo-300 bg-indigo-100 text-indigo-950',
-  payment_refund: 'border-rose-300 bg-rose-100 text-rose-950',
-  invoice_question: 'border-teal-300 bg-teal-100 text-teal-950',
-  other_billing: 'border-slate-300 bg-slate-100 text-slate-900',
-  unclear: 'border-border bg-surface-muted text-ink-muted',
+  resend_only: 'border-sky-400/30 bg-sky-500/15 text-sky-300',
+  correct_and_reissue: 'border-amber-400/30 bg-amber-500/15 text-amber-300',
+  new_or_additional_invoice: 'border-violet-400/30 bg-violet-500/15 text-violet-300',
+  vat_tax_legal: 'border-indigo-400/30 bg-indigo-500/15 text-indigo-300',
+  payment_refund: 'border-rose-400/30 bg-rose-500/15 text-rose-300',
+  invoice_question: 'border-teal-400/30 bg-teal-500/15 text-teal-300',
+  other_billing: 'border-slate-400/30 bg-slate-500/15 text-slate-300',
+  unclear: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
 };
 
 const REQUEST_TYPE_LABEL: Record<PuzzelTicketAnalysisRequestType, string> = {
@@ -194,10 +197,10 @@ const REQUEST_TYPE_LABEL: Record<PuzzelTicketAnalysisRequestType, string> = {
 };
 
 const REQUEST_TYPE_TONE: Record<PuzzelTicketAnalysisRequestType, string> = {
-  invoice_correction: 'border-amber-200 bg-amber-50 text-amber-900',
-  invoice_resend: 'border-sky-200 bg-sky-50 text-sky-900',
-  invoice_other: 'border-violet-200 bg-violet-50 text-violet-900',
-  unknown: 'border-border bg-surface-muted text-ink-muted',
+  invoice_correction: 'border-amber-400/30 bg-amber-500/15 text-amber-300',
+  invoice_resend: 'border-sky-400/30 bg-sky-500/15 text-sky-300',
+  invoice_other: 'border-violet-400/30 bg-violet-500/15 text-violet-300',
+  unknown: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
 };
 
 const CONFIDENCE_LABEL: Record<'high' | 'medium' | 'low', string> = {
@@ -214,10 +217,10 @@ const URGENCY_LABEL: Record<PuzzelTicketUrgency, string> = {
 };
 
 const URGENCY_TONE: Record<PuzzelTicketUrgency, string> = {
-  critical: 'border-rose-300 bg-rose-100 text-rose-950',
-  high: 'border-amber-300 bg-amber-100 text-amber-950',
-  normal: 'border-slate-200 bg-slate-100 text-slate-800',
-  low: 'border-border bg-surface-muted text-ink-muted',
+  critical: 'border-rose-400/30 bg-rose-500/15 text-rose-300',
+  high: 'border-amber-400/30 bg-amber-500/15 text-amber-300',
+  normal: 'border-slate-400/30 bg-slate-500/15 text-slate-300',
+  low: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
 };
 
 const MISSING_FIELD = 'Not detected';
@@ -317,7 +320,7 @@ function highlightTicketMessageBody(
     nodes.push(
       <mark
         key={`h-${idx}`}
-        className="rounded-sm bg-amber-200/90 px-0.5 text-inherit dark:bg-amber-500/40"
+        className="rounded-sm bg-amber-500/35 px-0.5 text-amber-100"
       >
         {slice}
       </mark>,
@@ -363,15 +366,15 @@ function ticketSearchText(ticket: PuzzelTicket) {
 function statusTone(status: string | null) {
   const s = status?.toLowerCase() ?? '';
   if (/(closed|done|solved|resolved|fermé|geschlossen)/.test(s)) {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-900';
+    return 'border-emerald-400/30 bg-emerald-500/15 text-emerald-300';
   }
   if (/(new|open|neu|pending|created)/.test(s)) {
-    return 'border-amber-200 bg-amber-50 text-amber-900';
+    return 'border-amber-400/30 bg-amber-500/15 text-amber-300';
   }
   if (/(urgent|error|failed|overdue|kritisch)/.test(s)) {
-    return 'border-rose-200 bg-rose-50 text-rose-900';
+    return 'border-rose-400/30 bg-rose-500/15 text-rose-300';
   }
-  return 'border-border bg-surface-muted text-ink-muted';
+  return 'border-sidebar-border/60 bg-white/5 text-sidebar-muted';
 }
 
 /** Synced Puzzel row status: archive tab (Resolved / Closed in CM). */
@@ -709,59 +712,59 @@ export default function ReceptionPuzzlePage() {
       />
 
       <AppPageBody>
-        <div className="space-y-6 bg-surface-muted/30 p-4 md:p-6">
+        <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div />
         <div className="flex flex-col items-start gap-1 sm:items-end">
           {status?.lastSyncedAt != null && (
-            <p className="text-xs text-ink-muted">
+            <p className="text-xs text-sidebar-muted">
               Zuletzt synchronisiert: {formatDateTime(status.lastSyncedAt)}
               {typeof status.lastTicketCount === 'number' ? ` · ${status.lastTicketCount} Tickets` : ''}
             </p>
           )}
           {status?.inProgress && (
-            <p className="text-xs font-medium text-amber-800">Synchronisation läuft…</p>
+            <p className="text-xs font-medium text-amber-300">Synchronisation läuft…</p>
           )}
           {status?.lastError && !status?.inProgress && (
-            <p className="max-w-xl text-xs text-rose-700">{status.lastError}</p>
+            <p className="max-w-xl text-xs text-rose-300">{status.lastError}</p>
           )}
           {isAdmin && syncMut.data?.status === 'already_running' && (
-            <span className="text-xs text-ink-muted">Bereits aktiv.</span>
+            <span className="text-xs text-sidebar-muted">Bereits aktiv.</span>
           )}
           {isAdmin && syncMut.isError && (
-            <span className="text-xs text-rose-700">{(syncMut.error as Error).message}</span>
+            <span className="text-xs text-rose-300">{(syncMut.error as Error).message}</span>
           )}
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Aktive Tickets</p>
-          <p className="mt-1 text-2xl font-semibold text-ink">{activeTickets.length}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Erledigt (Resolved)</p>
-          <p className="mt-1 text-2xl font-semibold text-ink">{resolvedTickets.length}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">In dieser Ansicht</p>
-          <p className="mt-1 text-2xl font-semibold text-ink">{filteredTickets.length}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Sync-Status</p>
-          <p className="mt-1 text-sm font-medium text-ink">
+        <div className={clsx(APP_DARK_CARD, 'p-4')}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Aktive Tickets</p>
+          <p className="mt-1 text-2xl font-semibold text-white">{activeTickets.length}</p>
+        </div>
+        <div className={clsx(APP_DARK_CARD, 'p-4')}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Erledigt (Resolved)</p>
+          <p className="mt-1 text-2xl font-semibold text-white">{resolvedTickets.length}</p>
+        </div>
+        <div className={clsx(APP_DARK_CARD, 'p-4')}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">In dieser Ansicht</p>
+          <p className="mt-1 text-2xl font-semibold text-white">{filteredTickets.length}</p>
+        </div>
+        <div className={clsx(APP_DARK_CARD, 'p-4')}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Sync-Status</p>
+          <p className="mt-1 text-sm font-medium text-white">
             {status?.inProgress ? 'Synchronisation läuft' : status?.lastError ? 'Letzter Lauf mit Fehler' : 'Bereit'}
           </p>
-        </Card>
+        </div>
       </div>
 
-      <Card className="p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Ticket-Ansicht</p>
+      <div className={clsx(APP_DARK_CARD, 'p-4')}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Ticket-Ansicht</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             type="button"
             variant={ticketBucket === 'active' ? 'action' : 'secondary'}
-            className="min-h-[44px]"
+            className={clsx('min-h-[44px]', ticketBucket !== 'active' && DARK_SECONDARY_BTN)}
             onClick={() => {
               setTicketBucket('active');
               setExpandedId(null);
@@ -772,7 +775,7 @@ export default function ReceptionPuzzlePage() {
           <Button
             type="button"
             variant={ticketBucket === 'resolved' ? 'action' : 'secondary'}
-            className="min-h-[44px]"
+            className={clsx('min-h-[44px]', ticketBucket !== 'resolved' && DARK_SECONDARY_BTN)}
             onClick={() => {
               setTicketBucket('resolved');
               setExpandedId(null);
@@ -783,7 +786,7 @@ export default function ReceptionPuzzlePage() {
           <Button
             type="button"
             variant={ticketBucket === 'all' ? 'action' : 'secondary'}
-            className="min-h-[44px]"
+            className={clsx('min-h-[44px]', ticketBucket !== 'all' && DARK_SECONDARY_BTN)}
             onClick={() => {
               setTicketBucket('all');
               setExpandedId(null);
@@ -792,16 +795,16 @@ export default function ReceptionPuzzlePage() {
             Alle Tickets ({tickets.length})
           </Button>
         </div>
-        <p className="mt-2 text-xs text-ink-muted">
+        <p className="mt-2 text-xs text-sidebar-muted">
           Unter „Alle Status“ (Filter) siehst du nur Status-Werte der aktuellen Ansicht — bei „Aktiv“ bzw. „Erledigt“
           jeweils eine Teilmenge. Für die komplette Liste „Alle Tickets“ wählen. Resolved/Closed erscheinen unter
           „Erledigt“. Nach dem Senden einer Antwort über PrizeBern wird der Status wie in Puzzel auf Resolved gesetzt.
         </p>
-      </Card>
+      </div>
 
-      <Card className="p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Tickets nach KI-Kategorie</p>
-        <p className="mt-1 text-sm text-ink-muted">
+      <div className={clsx(APP_DARK_CARD, 'p-4')}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Tickets nach KI-Kategorie</p>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Anzahl pro PrizeBern-Kategorie (Spam, Rechnung angefragt, …), basierend auf der gespeicherten KI-Auswertung.
         </p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
@@ -814,45 +817,45 @@ export default function ReceptionPuzzlePage() {
             const { counts, none } = countTicketsByPrizeCategory(list);
             return (
               <div key={key}>
-                <p className="text-xs font-semibold text-ink">
+                <p className="text-xs font-semibold text-white">
                   {title}{' '}
-                  <span className="font-normal text-ink-muted">({list.length} gesamt)</span>
+                  <span className="font-normal text-sidebar-muted">({list.length} gesamt)</span>
                 </p>
                 <ul className="mt-2 space-y-1.5 text-sm">
                   {ALL_PRIZE_CATEGORIES.map((cat) => (
                     <li
                       key={cat}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-2.5 py-1.5"
+                      className="flex items-center justify-between gap-2 rounded-lg border border-sidebar-border/60 bg-white/5 px-2.5 py-1.5"
                     >
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[cat]}`}>
                         {PRIZE_CATEGORY_LABEL[cat]}
                       </span>
-                      <span className="font-mono tabular-nums text-sm font-semibold text-ink">{counts[cat]}</span>
+                      <span className="font-mono tabular-nums text-sm font-semibold text-white">{counts[cat]}</span>
                     </li>
                   ))}
-                  <li className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-border bg-surface-muted/50 px-2.5 py-1.5 text-ink-muted">
+                  <li className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-sidebar-border/60 bg-white/[0.02] px-2.5 py-1.5 text-sidebar-muted">
                     <span className="text-xs font-medium">Keine KI-Auswertung</span>
-                    <span className="font-mono tabular-nums text-sm font-semibold text-ink">{none}</span>
+                    <span className="font-mono tabular-nums text-sm font-semibold text-white">{none}</span>
                   </li>
                 </ul>
               </div>
             );
           })}
         </div>
-      </Card>
+      </div>
 
-      {ticketsQuery.isLoading && <p className="text-sm text-ink-muted">Lädt Tickets…</p>}
+      {ticketsQuery.isLoading && <p className="text-sm text-sidebar-muted">Lädt Tickets…</p>}
 
-      <Card className="p-4">
+      <div className={clsx(APP_DARK_CARD, 'p-4')}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-ink">Puzzel-Filter</h2>
-            <p className="text-sm text-ink-muted">
+            <h2 className="text-lg font-semibold text-white">Puzzel-Filter</h2>
+            <p className="text-sm text-sidebar-muted">
               Diese Werte nutzt der Sync in Puzzel, bevor er die Ticketliste ausliest.
             </p>
           </div>
           {saveFilterMut.isSuccess && !saveFilterMut.isPending && (
-            <span className="text-xs font-medium text-emerald-800">Filter gespeichert.</span>
+            <span className="text-xs font-medium text-emerald-300">Filter gespeichert.</span>
           )}
         </div>
         <form
@@ -868,70 +871,75 @@ export default function ReceptionPuzzlePage() {
           }}
         >
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Saved Search</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Saved Search</span>
             <input
               value={filterDraft.savedSearchName}
               onChange={(e) => setFilterDraft((f) => ({ ...f, savedSearchName: e.target.value }))}
               disabled={!isAdmin}
-              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+              className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full disabled:opacity-50')}
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Team</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Team</span>
             <input
               value={filterDraft.teamName}
               onChange={(e) => setFilterDraft((f) => ({ ...f, teamName: e.target.value }))}
               disabled={!isAdmin}
-              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+              className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full disabled:opacity-50')}
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Status</span>
             <input
               value={filterDraft.statusName}
               onChange={(e) => setFilterDraft((f) => ({ ...f, statusName: e.target.value }))}
               disabled={!isAdmin}
-              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+              className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full disabled:opacity-50')}
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Time Period</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Time Period</span>
             <input
               value={filterDraft.timePeriod}
               onChange={(e) => setFilterDraft((f) => ({ ...f, timePeriod: e.target.value }))}
               disabled={!isAdmin}
-              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action disabled:bg-surface-muted"
+              className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full disabled:opacity-50')}
             />
           </label>
           {isAdmin && (
             <div className="flex items-end md:col-span-4">
-              <Button type="submit" variant="secondary" className="min-h-[44px]" disabled={saveFilterMut.isPending}>
+              <Button
+                type="submit"
+                variant="secondary"
+                className={clsx('min-h-[44px]', DARK_SECONDARY_BTN)}
+                disabled={saveFilterMut.isPending}
+              >
                 {saveFilterMut.isPending ? 'Speichert…' : 'Filter speichern'}
               </Button>
               {saveFilterMut.isError && (
-                <span className="ml-3 text-sm text-rose-700">{(saveFilterMut.error as Error).message}</span>
+                <span className="ml-3 text-sm text-rose-300">{(saveFilterMut.error as Error).message}</span>
               )}
             </div>
           )}
         </form>
-      </Card>
+      </div>
 
       {!ticketsQuery.isLoading && tickets.length === 0 && (
-        <Card className="p-6">
-          <p className="text-sm text-ink-muted">
-            Noch keine Tickets. Sobald ein Admin unter <strong>Puzzle → Zugangsdaten</strong> E-Mail,
+        <div className={clsx(APP_DARK_CARD, 'p-6')}>
+          <p className="text-sm text-sidebar-muted">
+            Noch keine Tickets. Sobald ein Admin unter <strong className="text-white">Puzzle → Zugangsdaten</strong> E-Mail,
             Passwort und 2FA-Seed eingetragen hat, holt der Server die Liste automatisch etwa alle 15&nbsp;Minuten
-            (deaktivieren: Umgebungsvariable <code className="rounded bg-surface-muted px-1">PUZZEL_AUTO_SYNC=false</code>).
-            Zusätzlich kann ein Admin <strong>Jetzt synchronisieren</strong> auslösen.
+            (deaktivieren: Umgebungsvariable <code className="rounded bg-white/10 px-1 text-white">PUZZEL_AUTO_SYNC=false</code>).
+            Zusätzlich kann ein Admin <strong className="text-white">Jetzt synchronisieren</strong> auslösen.
           </p>
-        </Card>
+        </div>
       )}
 
       {tickets.length > 0 && (
         <div className="grid items-start gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card className="p-4">
+          <div className={clsx(APP_DARK_CARD, 'p-4')}>
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Suchen</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Suchen</span>
               <input
                 type="search"
                 value={search}
@@ -940,18 +948,18 @@ export default function ReceptionPuzzlePage() {
                   setExpandedId(null);
                 }}
                 placeholder="Referenz, Betreff, Status oder Text suchen…"
-                className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action"
+                className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               />
             </label>
             <label className="mt-3 block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Status</span>
               <select
                 value={statusFilter}
                 onChange={(e) => {
                   setStatusFilter(e.target.value);
                   setExpandedId(null);
                 }}
-                className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action"
+                className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               >
                 <option value="">Alle Status</option>
                 {statuses.map((s) => (
@@ -962,14 +970,14 @@ export default function ReceptionPuzzlePage() {
               </select>
             </label>
             <label className="mt-3 block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Kategorie (KI)</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Kategorie (KI)</span>
               <select
                 value={categoryFilter}
                 onChange={(e) => {
                   setCategoryFilter((e.target.value as PuzzelTicketPrizeCategory | '') || '');
                   setExpandedId(null);
                 }}
-                className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm text-ink outline-none focus:border-action"
+                className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               >
                 <option value="">Alle Kategorien</option>
                 {(Object.keys(PRIZE_CATEGORY_LABEL) as PuzzelTicketPrizeCategory[]).map((c) => (
@@ -983,7 +991,7 @@ export default function ReceptionPuzzlePage() {
               <Button
                 type="button"
                 variant="secondary"
-                className="min-h-[44px] w-full"
+                className={clsx('min-h-[44px] w-full', DARK_SECONDARY_BTN)}
                 onClick={() => {
                   setSearch('');
                   setStatusFilter('');
@@ -1012,14 +1020,14 @@ export default function ReceptionPuzzlePage() {
                     }}
                     className={`w-full rounded-2xl border p-4 text-left transition ${
                       selected
-                        ? 'border-action bg-action/5 shadow-card'
-                        : 'border-border bg-surface hover:border-action/40 hover:bg-surface-muted/50'
+                        ? 'border-action bg-action/10 shadow-none'
+                        : 'border-sidebar-border/60 bg-white/5 hover:border-action/40 hover:bg-white/10'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs text-ink-muted">{ticket.reference ?? 'No reference'}</span>
+                          <span className="font-mono text-xs text-sidebar-muted">{ticket.reference ?? 'No reference'}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(ticket.status)}`}>
                             {ticket.status ?? 'Unknown'}
                           </span>
@@ -1031,47 +1039,47 @@ export default function ReceptionPuzzlePage() {
                             </span>
                           )}
                         </div>
-                        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-ink">{ticket.subject}</p>
+                        <p className="mt-2 line-clamp-2 text-sm font-semibold leading-snug text-white">{ticket.subject}</p>
                       </div>
-                      <span className="shrink-0 rounded-full bg-surface-muted px-2 py-1 text-[11px] text-ink-muted">
+                      <span className="shrink-0 rounded-full bg-white/10 px-2 py-1 text-[11px] text-sidebar-muted">
                         {formatDateTime(ticket.scrapedAt)}
                       </span>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-ink-muted">
-                      {team && <span className="rounded-full bg-surface-muted px-2 py-1">Team: {team}</span>}
-                      {lastActivity && <span className="rounded-full bg-surface-muted px-2 py-1">Last activity: {lastActivity}</span>}
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-sidebar-muted">
+                      {team && <span className="rounded-full bg-white/10 px-2 py-1">Team: {team}</span>}
+                      {lastActivity && <span className="rounded-full bg-white/10 px-2 py-1">Last activity: {lastActivity}</span>}
                     </div>
-                    <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-ink-muted">{ticket.rowSummary}</p>
+                    <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-sidebar-muted">{ticket.rowSummary}</p>
                   </button>
                 );
               })}
             </div>
             {filteredTickets.length === 0 && (
-              <p className="mt-4 rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+              <p className="mt-4 rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
                 Keine Tickets passen zu den aktuellen Filtern.
               </p>
             )}
-          </Card>
+          </div>
 
-          <Card className="flex min-h-[620px] flex-col overflow-hidden xl:sticky xl:top-4 xl:z-10 xl:max-h-[calc(100dvh-2rem)]">
+          <div className={clsx(APP_DARK_CARD, 'flex min-h-[620px] flex-col overflow-hidden xl:sticky xl:top-4 xl:z-10 xl:max-h-[calc(100dvh-2rem)]')}>
             {selectedTicket ? (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="shrink-0 border-b border-border bg-surface p-5">
+                <div className="shrink-0 border-b border-sidebar-border/60 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-ink-muted">{selectedTicket.reference ?? 'No reference'}</span>
+                        <span className="font-mono text-xs text-sidebar-muted">{selectedTicket.reference ?? 'No reference'}</span>
                         <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(selectedTicket.status)}`}>
                           {selectedTicket.status ?? 'Unknown'}
                         </span>
                         {assignedAt(selectedTicket) && (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900">
+                          <span className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
                             Assigned to me
                           </span>
                         )}
                       </div>
-                      <h2 className="mt-2 text-xl font-semibold leading-tight text-ink">{selectedTicket.subject}</h2>
-                      <p className="mt-1 text-sm text-ink-muted">
+                      <h2 className="mt-2 text-xl font-semibold leading-tight text-white">{selectedTicket.subject}</h2>
+                      <p className="mt-1 text-sm text-sidebar-muted">
                         Synced {formatDateTime(selectedTicket.scrapedAt)}
                         {metaText(selectedTicket, 'lastActivity') ? ` · Last activity ${metaText(selectedTicket, 'lastActivity')}` : ''}
                       </p>
@@ -1080,7 +1088,7 @@ export default function ReceptionPuzzlePage() {
                       <Button
                         type="button"
                         variant="secondary"
-                        className="min-h-[40px]"
+                        className={clsx('min-h-[40px]', DARK_SECONDARY_BTN)}
                         disabled={assignMut.isPending || Boolean(assignedAt(selectedTicket))}
                         onClick={() => assignMut.mutate(selectedTicket.id)}
                       >
@@ -1091,7 +1099,7 @@ export default function ReceptionPuzzlePage() {
                         <Button
                           type="button"
                           variant="secondary"
-                          className="min-h-[40px]"
+                          className={clsx('min-h-[40px]', DARK_SECONDARY_BTN)}
                           disabled={resolveMut.isPending}
                           onClick={() => resolveMut.mutate(selectedTicket.id)}
                         >
@@ -1103,7 +1111,7 @@ export default function ReceptionPuzzlePage() {
                           href={selectedTicket.detailHref}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex min-h-[40px] items-center rounded-btn border border-border px-3 text-sm font-medium text-ink hover:bg-surface-muted"
+                          className="inline-flex min-h-[40px] items-center rounded-btn border border-sidebar-border px-3 text-sm font-medium text-white hover:bg-white/10"
                         >
                           Open in Puzzel
                         </a>
@@ -1111,13 +1119,13 @@ export default function ReceptionPuzzlePage() {
                     </div>
                   </div>
                   {(assignMut.isError || replyMut.isError || resolveMut.isError) && (
-                    <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                    <p className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-300">
                       {((assignMut.error || replyMut.error || resolveMut.error) as Error).message}
                     </p>
                   )}
                 </div>
 
-                <div className="min-h-0 flex-1 space-y-4 overflow-auto bg-gradient-to-b from-surface-muted/60 to-surface p-5">
+                <div className="min-h-0 flex-1 space-y-4 overflow-auto p-5">
                   <AiSummaryCard
                     ticketId={selectedTicket.id}
                     analysis={analysisQuery.data ?? null}
@@ -1138,13 +1146,13 @@ export default function ReceptionPuzzlePage() {
                     analysisQuery.data &&
                     (messagesQuery.data?.length ?? 0) > 0 &&
                     !analysisQuery.data.suggestedGuestReply?.trim() && (
-                      <div className="rounded-2xl border border-amber-200/90 bg-amber-50/90 p-4 text-sm text-amber-950">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">
+                      <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-300/80">
                           Antwortvorschlag fehlt
                         </p>
-                        <p className="mt-2 text-xs leading-relaxed text-amber-900/90">
+                        <p className="mt-2 text-xs leading-relaxed text-amber-200/90">
                           Gespeicherte KI-Analyse ohne Gast-Antwort. Oben in der KI-Übersicht{' '}
-                          <strong className="font-semibold text-amber-950">Re-analyze</strong> wählen (oder Ticket
+                          <strong className="font-semibold text-amber-100">Re-analyze</strong> wählen (oder Ticket
                           erneut öffnen), damit ein Vorschlag erzeugt wird.
                         </p>
                       </div>
@@ -1156,23 +1164,23 @@ export default function ReceptionPuzzlePage() {
                     onApply={setReplyText}
                   />
 
-                  <div className="rounded-2xl border border-border bg-surface p-4 text-xs text-ink-muted">
-                    <p className="font-semibold uppercase tracking-wide text-ink-muted">Ticket summary</p>
+                  <div className="rounded-2xl border border-sidebar-border/60 bg-white/5 p-4 text-xs text-sidebar-muted">
+                    <p className="font-semibold uppercase tracking-wide text-sidebar-muted">Ticket summary</p>
                     <p className="mt-2 leading-relaxed">{selectedTicket.rowSummary || selectedTicket.subject}</p>
                   </div>
 
                   {messagesQuery.isLoading && (
-                    <p className="rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+                    <p className="rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
                       Loading chat history from Puzzel…
                     </p>
                   )}
                   {messagesQuery.isError && (
-                    <p className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                    <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-300">
                       {(messagesQuery.error as Error).message}
                     </p>
                   )}
                   {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 && (
-                    <p className="rounded-xl border border-border bg-surface p-4 text-sm text-ink-muted">
+                    <p className="rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
                       No messages saved yet.
                     </p>
                   )}
@@ -1183,34 +1191,34 @@ export default function ReceptionPuzzlePage() {
                       return (
                         <li key={message.id} className={`flex gap-3 ${outbound ? 'justify-end' : 'justify-start'}`}>
                           {!outbound && (
-                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-semibold text-amber-900">
+                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-semibold text-amber-300">
                               {initials(message.fromText)}
                             </div>
                           )}
                           <article
                             className={`max-w-[780px] rounded-2xl border p-4 shadow-sm ${
                               outbound
-                                ? 'border-sky-200 bg-sky-50 text-sky-950'
-                                : 'border-border bg-white text-ink'
+                                ? 'border-indigo-400/30 bg-indigo-500/20 text-white'
+                                : 'border-sidebar-border/60 bg-white/5 text-white'
                             }`}
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                                   {outbound ? 'Hotel reply' : 'Guest message'}
                                 </p>
                                 <p className="mt-1 text-sm font-medium">
                                   {message.fromText ?? 'Unknown'} → {message.toText ?? 'Unknown'}
                                 </p>
                               </div>
-                              <span className="text-xs text-ink-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
+                              <span className="text-xs text-sidebar-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
                             </div>
-                            <div className="mt-3 max-h-[560px] overflow-auto whitespace-pre-wrap rounded-xl bg-white/80 p-3 text-sm leading-7">
+                            <div className="mt-3 max-h-[560px] overflow-auto whitespace-pre-wrap rounded-xl bg-black/20 p-3 text-sm leading-7">
                               {highlightTicketMessageBody(message.bodyText, analysisQuery.data ?? null)}
                             </div>
                           </article>
                           {outbound && (
-                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-900">
+                            <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
                               {initials(message.fromText)}
                             </div>
                           )}
@@ -1220,9 +1228,9 @@ export default function ReceptionPuzzlePage() {
                   </ol>
                 </div>
 
-                <div className="shrink-0 border-t border-border bg-surface p-4">
+                <div className="shrink-0 border-t border-sidebar-border/60 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-ink-muted">
+                    <p className="text-xs text-sidebar-muted">
                       Reply and attachments are sent through Puzzel (same as the pink Send in the CM composer).
                     </p>
                     {isAdmin && (
@@ -1256,16 +1264,16 @@ export default function ReceptionPuzzlePage() {
                       onChange={(e) => setReplyText(e.target.value)}
                       rows={5}
                       placeholder="Write a reply to the guest…"
-                      className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-ink outline-none focus:border-action"
+                      className="w-full rounded-2xl border border-sidebar-border bg-sidebar px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-sidebar-muted focus:border-action focus:ring-2 focus:ring-action/30"
                     />
                     {replyFiles.length > 0 && (
-                      <ul className="mt-2 space-y-1 rounded-xl border border-border bg-surface-muted/40 px-3 py-2 text-xs text-ink">
+                      <ul className="mt-2 space-y-1 rounded-xl border border-sidebar-border/60 bg-white/5 px-3 py-2 text-xs text-white">
                         {replyFiles.map((f, i) => (
                           <li key={`${f.name}-${i}-${f.size}`} className="flex items-center justify-between gap-2">
                             <span className="truncate">{f.name}</span>
                             <button
                               type="button"
-                              className="shrink-0 font-medium text-rose-700 hover:underline"
+                              className="shrink-0 font-medium text-rose-400 hover:underline"
                               onClick={() => setReplyFiles((prev) => prev.filter((_, j) => j !== i))}
                             >
                               Remove
@@ -1301,15 +1309,15 @@ export default function ReceptionPuzzlePage() {
                           <Button
                             type="button"
                             variant="secondary"
-                            className="min-h-[44px] pointer-events-none"
+                            className={clsx('min-h-[44px] pointer-events-none', DARK_SECONDARY_BTN)}
                             tabIndex={-1}
                           >
                             Attach files
                           </Button>
                         </div>
-                        <p className="text-xs text-ink-muted">Up to 10 files, 25 MB each.</p>
+                        <p className="text-xs text-sidebar-muted">Up to 10 files, 25 MB each.</p>
                       </div>
-                      <p className="max-w-md text-xs text-ink-muted">
+                      <p className="max-w-md text-xs text-sidebar-muted">
                         Use the same signature/business data you want in Puzzel.
                       </p>
                       <Button
@@ -1324,12 +1332,12 @@ export default function ReceptionPuzzlePage() {
                       </Button>
                     </div>
                     {replyMut.isSuccess && (
-                      <p className="mt-2 text-sm font-medium text-emerald-800">Sent through Puzzel.</p>
+                      <p className="mt-2 text-sm font-medium text-emerald-300">Sent through Puzzel.</p>
                     )}
                   </form>
                   </>
                   ) : (
-                    <p className="mt-3 rounded-xl border border-border bg-surface-muted/40 p-4 text-sm text-ink-muted">
+                    <p className="mt-3 rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
                       {ticketBucket === 'resolved' || isPuzzelTicketArchivedStatus(selectedTicket.status)
                         ? 'Archiv: Tickets mit Status Resolved oder Closed in Puzzel. Es können hier keine neuen Antworten mehr gesendet werden.'
                         : 'Dieses Ticket ist erledigt — Antworten über PrizeBern sind deaktiviert.'}
@@ -1340,12 +1348,12 @@ export default function ReceptionPuzzlePage() {
             ) : (
               <div className="flex min-h-[520px] items-center justify-center p-8 text-center">
                 <div>
-                  <p className="text-lg font-semibold text-ink">Select a ticket</p>
-                  <p className="mt-1 text-sm text-ink-muted">The chat history and actions will appear here.</p>
+                  <p className="text-lg font-semibold text-white">Select a ticket</p>
+                  <p className="mt-1 text-sm text-sidebar-muted">The chat history and actions will appear here.</p>
                 </div>
               </div>
             )}
-          </Card>
+          </div>
         </div>
       )}
         </div>
@@ -1368,22 +1376,27 @@ function SuggestedGuestReplyPanel({
     return null;
   }
   return (
-    <div className="rounded-2xl border border-emerald-200/90 bg-emerald-50/80 p-4">
+    <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900/90">KI-Antwortvorschlag</p>
-          <p className="mt-1 text-xs leading-snug text-emerald-950/80">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">KI-Antwortvorschlag</p>
+          <p className="mt-1 text-xs leading-snug text-emerald-200/80">
             Entwurf für den Gast — bitte prüfen. Wenn die KI eine Rechnung im Anhang erwähnt,{' '}
-            <strong className="font-semibold">vor dem Senden das PDF anhängen</strong>.
+            <strong className="font-semibold text-emerald-100">vor dem Senden das PDF anhängen</strong>.
           </p>
         </div>
         {showApply && (
-          <Button type="button" variant="secondary" className="min-h-[40px] shrink-0" onClick={() => onApply(body)}>
+          <Button
+            type="button"
+            variant="secondary"
+            className={clsx('min-h-[40px] shrink-0', DARK_SECONDARY_BTN)}
+            onClick={() => onApply(body)}
+          >
             In Antwort übernehmen
           </Button>
         )}
       </div>
-      <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-emerald-200/60 bg-white/90 p-3 text-sm leading-6 text-ink whitespace-pre-wrap">
+      <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-emerald-400/20 bg-white/5 p-3 text-sm leading-6 text-white whitespace-pre-wrap">
         {body}
       </div>
     </div>
@@ -1421,8 +1434,8 @@ function AiSummaryCard({
 
   if (!hasMessages) {
     return (
-      <section className="rounded-2xl border border-dashed border-border bg-surface p-4 text-sm text-ink-muted">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+      <section className="rounded-2xl border border-dashed border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
+        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
           KI-Übersicht
         </p>
         <p className="mt-2 leading-relaxed">
@@ -1435,11 +1448,11 @@ function AiSummaryCard({
 
   if (isLoading) {
     return (
-      <section className="rounded-2xl border border-border bg-surface p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+      <section className="rounded-2xl border border-sidebar-border/60 bg-white/5 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
           KI-Übersicht
         </p>
-        <p className="mt-2 text-sm text-ink-muted">
+        <p className="mt-2 text-sm text-sidebar-muted">
           Analyse läuft … (üblicherweise 3–8 Sekunden)
         </p>
       </section>
@@ -1448,22 +1461,22 @@ function AiSummaryCard({
 
   if (error) {
     return (
-      <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+      <section className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-rose-900">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-200">
             KI-Übersicht — Fehler
           </p>
           <button
             type="button"
             onClick={onRefresh}
             disabled={isRefreshing}
-            className="text-xs font-medium text-rose-900 underline disabled:opacity-50"
+            className="text-xs font-medium text-rose-200 underline disabled:opacity-50"
           >
             {isRefreshing ? 'Wiederholt …' : 'Erneut versuchen'}
           </button>
         </div>
         <p className="mt-2 break-words leading-relaxed">{error}</p>
-        <p className="mt-2 text-xs text-rose-900/80">
+        <p className="mt-2 text-xs text-rose-300/70">
           Falls noch kein OpenAI-API-Key hinterlegt ist: Admin → Settings → AI Config.
         </p>
       </section>
@@ -1512,7 +1525,7 @@ function AiSummaryCard({
   ).filter((k) => cib.fieldsRequestedOnInvoice[k]);
 
   return (
-    <section className="relative rounded-2xl border border-action/35 bg-surface p-4 shadow-sm ring-1 ring-black/[0.04]">
+    <section className="relative rounded-2xl border border-action/40 bg-white/5 p-4 shadow-none ring-1 ring-white/5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -1525,7 +1538,7 @@ function AiSummaryCard({
               {URGENCY_LABEL[analysis.urgencyLevel]}
             </span>
             {analysis.stale && (
-              <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-950">
+              <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
                 Outdated — new messages
               </span>
             )}
@@ -1548,7 +1561,7 @@ function AiSummaryCard({
             >
               {REQUEST_TYPE_LABEL[analysis.requestType]}
             </span>
-            <span className="rounded-full border border-border bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+            <span className="rounded-full border border-sidebar-border/60 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-sidebar-muted">
               {CONFIDENCE_LABEL[analysis.confidence]}
             </span>
           </div>
@@ -1563,12 +1576,12 @@ function AiSummaryCard({
         </button>
       </div>
 
-      <p className="mt-3 text-base font-semibold leading-snug text-ink">
+      <p className="mt-3 text-base font-semibold leading-snug text-white">
         {analysis.summary}
       </p>
 
       <div className="mt-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
           Key fields
         </p>
         <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -1576,15 +1589,17 @@ function AiSummaryCard({
             <div
               key={row.label}
               className={`rounded-xl border px-3 py-2.5 ${
-                missing(row.value) ? 'border-dashed border-border bg-surface-muted/50' : 'border-border bg-surface'
+                missing(row.value)
+                  ? 'border-dashed border-sidebar-border/60 bg-white/[0.02]'
+                  : 'border-sidebar-border/60 bg-white/5'
               }`}
             >
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
                 {row.label}
               </dt>
               <dd
                 className={`mt-1 break-words text-sm font-medium leading-snug ${
-                  missing(row.value) ? 'text-ink-muted italic' : 'text-ink'
+                  missing(row.value) ? 'text-sidebar-muted italic' : 'text-white'
                 }`}
               >
                 {row.value}
@@ -1594,11 +1609,11 @@ function AiSummaryCard({
         </dl>
       </div>
 
-      <div className="mt-4 rounded-xl border border-border bg-surface-muted/35 p-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+      <div className="mt-4 rounded-xl border border-sidebar-border/60 bg-white/5 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
           Company / invoice address (AI)
         </p>
-        <p className="mt-2 text-sm font-medium leading-snug text-ink">
+        <p className="mt-2 text-sm font-medium leading-snug text-white">
           {COMPANY_BILLING_INTENT_LABEL[cib.intent]}
         </p>
         {requestedOnInvoice.length > 0 ? (
@@ -1606,14 +1621,14 @@ function AiSummaryCard({
             {requestedOnInvoice.map((k) => (
               <span
                 key={k}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900"
+                className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
               >
                 On invoice: {COMPANY_BILLING_FIELD_LABEL[k]}
               </span>
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-ink-muted">
+          <p className="mt-2 text-xs text-sidebar-muted">
             No line-items explicitly flagged as “must appear on invoice” (may still be a firm booking — see intent above).
           </p>
         )}
@@ -1627,16 +1642,16 @@ function AiSummaryCard({
               key={key}
               className={`rounded-lg border px-3 py-2 ${
                 missing(fmt(cib.extracted[key]))
-                  ? 'border-dashed border-border bg-surface/60'
-                  : 'border-border bg-surface'
+                  ? 'border-dashed border-sidebar-border/60 bg-white/[0.02]'
+                  : 'border-sidebar-border/60 bg-white/5'
               }`}
             >
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
                 {COMPANY_BILLING_FIELD_LABEL[key]} (from message)
               </dt>
               <dd
                 className={`mt-0.5 break-words text-sm font-medium ${
-                  missing(fmt(cib.extracted[key])) ? 'text-ink-muted italic' : 'text-ink'
+                  missing(fmt(cib.extracted[key])) ? 'text-sidebar-muted italic' : 'text-white'
                 }`}
               >
                 {fmt(cib.extracted[key])}
@@ -1647,23 +1662,23 @@ function AiSummaryCard({
       </div>
 
       <div className="mt-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
           Additional
         </p>
         <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {secondaryRows.map((row) => (
-            <div key={row.label} className="rounded-xl border border-border bg-surface px-3 py-2">
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+            <div key={row.label} className="rounded-xl border border-sidebar-border/60 bg-white/5 px-3 py-2">
+              <dt className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
                 {row.label}
               </dt>
-              <dd className="mt-1 break-words text-sm font-medium text-ink">{row.value}</dd>
+              <dd className="mt-1 break-words text-sm font-medium text-white">{row.value}</dd>
             </div>
           ))}
         </dl>
       </div>
 
       {bd.otherDetails.length > 0 && (
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-ink">
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white">
           {bd.otherDetails.map((detail, idx) => (
             <li key={idx}>{detail}</li>
           ))}
@@ -1672,16 +1687,16 @@ function AiSummaryCard({
 
       {analysis.rationale && (
         <details className="mt-3">
-          <summary className="cursor-pointer text-xs font-medium text-ink-muted hover:text-ink">
+          <summary className="cursor-pointer text-xs font-medium text-sidebar-muted hover:text-white">
             AI rationale
           </summary>
-          <p className="mt-2 whitespace-pre-wrap rounded-lg border border-border bg-surface-muted/40 p-3 text-xs leading-relaxed text-ink-muted">
+          <p className="mt-2 whitespace-pre-wrap rounded-lg border border-sidebar-border/60 bg-white/5 p-3 text-xs leading-relaxed text-sidebar-muted">
             {analysis.rationale}
           </p>
         </details>
       )}
 
-      <p className="mt-3 text-[10px] uppercase tracking-wide text-ink-muted">
+      <p className="mt-3 text-[10px] uppercase tracking-wide text-sidebar-muted">
         Model: {analysis.model}
       </p>
     </section>

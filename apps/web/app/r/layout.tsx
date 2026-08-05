@@ -123,16 +123,16 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
   if (loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">{t('loading')}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#121a26] p-4">
+        <p className="text-sm text-sidebar-muted">{t('loading')}</p>
       </div>
     );
   }
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">{t('loading')}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#121a26] p-4">
+        <p className="text-sm text-sidebar-muted">{t('loading')}</p>
       </div>
     );
   }
@@ -141,8 +141,8 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const redirectingDesktop = !mobileUi && isReceptionMobilePath(path);
   if (redirectingMobile || redirectingDesktop) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">{t('loading')}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#121a26] p-4">
+        <p className="text-sm text-sidebar-muted">{t('loading')}</p>
       </div>
     );
   }

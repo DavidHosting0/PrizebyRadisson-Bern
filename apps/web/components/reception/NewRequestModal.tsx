@@ -7,20 +7,18 @@ import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 type RoomOpt = { id: string; roomNumber: string };
 type TypeOpt = { id: string; label: string; code: string };
 
-const fieldClass =
-  'mt-1.5 w-full min-h-[44px] rounded-btn border border-border bg-surface px-3 py-2 text-sm text-ink shadow-card transition-colors hover:border-ink/15 focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15';
-
-const selectFieldClass =
-  'mt-1.5 w-full min-h-[44px] cursor-pointer appearance-none rounded-btn border border-border bg-surface py-2.5 pl-3 pr-10 text-sm text-ink shadow-card transition-colors hover:border-action/25 focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 disabled:cursor-not-allowed disabled:opacity-60';
+const fieldClass = `${APP_DARK_INPUT} mt-1.5 w-full min-h-[44px] px-3 py-2`;
+const selectFieldClass = `${APP_DARK_INPUT} mt-1.5 w-full min-h-[44px] cursor-pointer appearance-none py-2.5 pl-3 pr-10 disabled:cursor-not-allowed disabled:opacity-60`;
 
 function SelectChevron() {
   return (
     <svg
-      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-muted"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -138,23 +136,23 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div
         ref={panelRef}
-        className="w-full max-w-lg rounded-card border border-border bg-surface shadow-lift"
+        className={`${APP_DARK_CARD} w-full max-w-lg shadow-lift`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-req-title"
       >
-        <div className="border-b border-border px-6 py-4">
-          <h2 id="new-req-title" className="text-lg font-semibold text-ink">
+        <div className="border-b border-sidebar-border/60 px-6 py-4">
+          <h2 id="new-req-title" className="text-lg font-semibold text-white">
             New service request
           </h2>
-          <p className="mt-1 text-sm text-ink-muted">Room, request type, and priority.</p>
+          <p className="mt-1 text-sm text-sidebar-muted">Room, request type, and priority.</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-6">
           <div>
-            <label className="text-sm font-medium text-ink">Room</label>
+            <label className="text-sm font-medium text-white">Room</label>
             <input
               type="search"
               className={fieldClass}
@@ -184,7 +182,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Request type</label>
+            <label className="text-sm font-medium text-white">Request type</label>
             <div className="relative">
               <select
                 className={selectFieldClass}
@@ -207,9 +205,9 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
           </div>
           <div>
-            <span className="text-sm font-medium text-ink">Priority</span>
+            <span className="text-sm font-medium text-white">Priority</span>
             <div className="mt-2 flex gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
                 <input
                   type="radio"
                   name="prio"
@@ -219,7 +217,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
                 />
                 Normal
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
                 <input
                   type="radio"
                   name="prio"
@@ -232,7 +230,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Notes (optional)</label>
+            <label className="text-sm font-medium text-white">Notes (optional)</label>
             <textarea
               className={`${fieldClass} min-h-[80px] resize-y`}
               rows={2}
@@ -249,7 +247,12 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             >
               {create.isPending ? 'Creating…' : 'Create request'}
             </Button>
-            <Button type="button" variant="secondary" className="min-h-[48px]" onClick={onClose}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-[48px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
+              onClick={onClose}
+            >
               Cancel
             </Button>
           </div>

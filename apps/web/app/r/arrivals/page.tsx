@@ -12,15 +12,20 @@ import {
   type ArrivalsSortDir,
   type ArrivalsSortKey,
 } from '@/components/reception/ArrivalsTable';
-import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import {
+  AppPageChrome,
+  AppPageBody,
+  APP_DARK_CARD,
+  APP_DARK_INPUT,
+} from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
-    <div className="min-w-[7rem] rounded-lg border border-border/80 bg-surface px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums leading-none text-ink">{value}</p>
+    <div className={`${APP_DARK_CARD} min-w-[7rem] px-4 py-3`}>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums leading-none text-white">{value}</p>
     </div>
   );
 }
@@ -113,8 +118,8 @@ export default function ReceptionArrivalsPage() {
         <div className="flex flex-wrap items-end gap-3">
           <Kpi label="Anreisen" value={overview.arrivals || overview.checkInPending} />
           <Kpi label="In Liste" value={overview.visibleArrivals ?? rows.length} />
-          <details className="ml-auto text-sm text-ink-muted">
-            <summary className="cursor-pointer select-none rounded-lg px-3 py-2 hover:bg-surface-muted">
+          <details className="ml-auto text-sm text-sidebar-muted">
+            <summary className="cursor-pointer select-none rounded-lg px-3 py-2 hover:bg-white/5">
               Weitere Kennzahlen
             </summary>
             <div className="mt-2 flex flex-wrap gap-3">
@@ -127,21 +132,21 @@ export default function ReceptionArrivalsPage() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-        <div className="border-b border-border px-4 py-3">
+      <div className={`${APP_DARK_CARD} overflow-hidden`}>
+        <div className="border-b border-sidebar-border/60 px-4 py-3">
           <input
             type="search"
             placeholder="Gast, Res.-Nr., Zimmer…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-border bg-surface-muted/50 px-4 py-2.5 text-sm text-ink placeholder:text-ink-muted/60 focus:border-ink/20 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ink/8"
+            className={`${APP_DARK_INPUT} w-full py-2.5`}
           />
         </div>
 
         {listQuery.isLoading ? (
-          <p className="px-6 py-10 text-sm text-ink-muted">Lädt…</p>
+          <p className="px-6 py-10 text-sm text-sidebar-muted">Lädt…</p>
         ) : sortedRows.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-ink-muted">
+          <p className="px-6 py-10 text-sm text-sidebar-muted">
             {overview && (overview.arrivals || overview.checkInPending) === 0
               ? 'EMMA meldet derzeit 0 Anreisen für heute.'
               : 'Keine Anreisen in der Liste. Bitte erneut synchronisieren.'}
@@ -159,7 +164,7 @@ export default function ReceptionArrivalsPage() {
         )}
 
         {!listQuery.isLoading && sortedRows.length > 0 && (
-          <div className="border-t border-border px-4 py-2.5 text-xs text-ink-muted">
+          <div className="border-t border-sidebar-border/60 px-4 py-2.5 text-xs text-sidebar-muted">
             {sortedRows.length} Einträge · Sortiert nach {sortLabel(sortKey)} (
             {sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
           </div>
@@ -167,7 +172,7 @@ export default function ReceptionArrivalsPage() {
       </div>
 
       {syncMut.isError && (
-        <p className="rounded-lg border border-danger/15 bg-danger-muted px-3 py-2 text-sm text-danger">
+        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
           {(syncMut.error as Error).message}
         </p>
       )}

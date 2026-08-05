@@ -14,26 +14,26 @@ import {
 } from '@/components/reception/reservation-detail/ReservationDetailView';
 import { reservationStatus } from '@/components/reception/reservation-detail/reservationStatus';
 import { useReservationEmmaFetch } from '@/components/reception/reservation-detail/useReservationEmmaFetch';
-import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-muted/40 px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-ink">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-ink-muted">{sub}</p>}
+    <div className={`${APP_DARK_CARD} px-4 py-3`}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-sidebar-muted">{sub}</p>}
     </div>
   );
 }
 
 function LoadIndicator({ loaded, fetchedAt }: { loaded: boolean; fetchedAt?: string | null }) {
   return (
-    <span className={loaded ? 'text-emerald-700' : 'text-ink-muted'}>
+    <span className={loaded ? 'text-emerald-300' : 'text-sidebar-muted'}>
       {loaded ? '✓' : '—'}
       {loaded && fetchedAt && (
-        <span className="ml-1 text-xs text-ink-muted">
+        <span className="ml-1 text-xs text-sidebar-muted">
           {new Date(fetchedAt).toLocaleString('de-CH')}
         </span>
       )}
@@ -123,15 +123,15 @@ export default function ReservationDetailPage() {
               sub={data.roomType ?? undefined}
             />
             <SummaryCard label="Total offen" value={formatOpenTotal(data)} />
-            <div className="rounded-xl border border-border bg-surface-muted/40 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">EMMA Daten</p>
+            <div className={`${APP_DARK_CARD} px-4 py-3`}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">EMMA Daten</p>
               <div className="mt-2 space-y-1 text-sm">
                 <p>
-                  <span className="text-ink-muted">Detail: </span>
+                  <span className="text-sidebar-muted">Detail: </span>
                   <LoadIndicator loaded={!!data.emmaDetail} fetchedAt={data.detailFetchedAt} />
                 </p>
                 <p>
-                  <span className="text-ink-muted">Folio: </span>
+                  <span className="text-sidebar-muted">Folio: </span>
                   <LoadIndicator loaded={!!data.emmaFolio} fetchedAt={data.folioFetchedAt} />
                 </p>
               </div>
@@ -139,12 +139,12 @@ export default function ReservationDetailPage() {
           </div>
 
           {canSync && (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-4">
+            <div className={`${APP_DARK_CARD} flex flex-wrap items-center gap-2 p-4`}>
               <button
                 type="button"
                 onClick={() => fetchDetail()}
                 disabled={isFetchingDetail || isFetchingFolio || isMovingFolioCharge}
-                className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
+                className="rounded-lg border border-sidebar-border bg-transparent px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
               >
                 {isFetchingDetail ? 'Lädt EMMA Detail…' : 'EMMA Detail laden'}
               </button>
@@ -152,7 +152,7 @@ export default function ReservationDetailPage() {
                 type="button"
                 onClick={() => fetchFolio()}
                 disabled={isFetchingFolio || isFetchingDetail || isMovingFolioCharge}
-                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+                className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/25 disabled:opacity-50"
               >
                 {isFetchingFolio ? 'Lädt Folio…' : 'Folio laden'}
               </button>
@@ -160,7 +160,7 @@ export default function ReservationDetailPage() {
           )}
 
           {fetchError && (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
               {fetchError}
             </p>
           )}

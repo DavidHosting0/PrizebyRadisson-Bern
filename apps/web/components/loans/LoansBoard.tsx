@@ -2,12 +2,13 @@
 
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import type { LoanCatalogItemDto, RoomLoanDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { usePermission } from '@/lib/auth-context';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 type RoomOpt = { id: string; roomNumber: string };
 
@@ -75,8 +76,8 @@ export function LoansBoard() {
     <div className="space-y-6 p-4 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Leihartikel</h1>
-          <p className="mt-1 text-sm text-ink-muted">
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Leihartikel</h1>
+          <p className="mt-1 text-sm text-sidebar-muted">
             Aktive Ausleihen an Zimmer — Pfand aus dem Katalog.
           </p>
         </div>
@@ -88,12 +89,12 @@ export function LoansBoard() {
       </div>
 
       {showForm && canWrite && (
-        <Card>
+        <div className={clsx(APP_DARK_CARD, 'p-5')}>
           <form className="space-y-4" onSubmit={onSubmit}>
             <label className="block text-sm">
-              <span className="font-medium text-ink">Zimmer</span>
+              <span className="font-medium text-white">Zimmer</span>
               <select
-                className="mt-1 w-full rounded-btn border border-border px-3 py-2 text-sm"
+                className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
                 value={roomId}
                 onChange={(e) => setRoomId(e.target.value)}
                 required
@@ -107,9 +108,9 @@ export function LoansBoard() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="font-medium text-ink">Artikel</span>
+              <span className="font-medium text-white">Artikel</span>
               <select
-                className="mt-1 w-full rounded-btn border border-border px-3 py-2 text-sm"
+                className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
                 value={catalogItemId}
                 onChange={(e) => setCatalogItemId(e.target.value)}
                 required
@@ -123,29 +124,29 @@ export function LoansBoard() {
               </select>
             </label>
             {selectedItem && (
-              <p className="text-sm text-ink-muted">
-                Pfand: <span className="font-semibold text-ink">{formatChf(selectedItem.depositCents)}</span>
+              <p className="text-sm text-sidebar-muted">
+                Pfand: <span className="font-semibold text-white">{formatChf(selectedItem.depositCents)}</span>
               </p>
             )}
-            {err && <p className="text-sm text-danger">{err}</p>}
+            {err && <p className="text-sm text-rose-300">{err}</p>}
             <Button type="submit" variant="action" disabled={createMut.isPending}>
               {createMut.isPending ? 'Speichern…' : 'Speichern'}
             </Button>
           </form>
-        </Card>
+        </div>
       )}
 
-      {loansQ.isLoading && <p className="text-sm text-ink-muted">Laden…</p>}
+      {loansQ.isLoading && <p className="text-sm text-sidebar-muted">Laden…</p>}
       <ul className="space-y-3">
         {(loansQ.data ?? []).map((loan) => (
           <li key={loan.id}>
-            <Card>
+            <div className={clsx(APP_DARK_CARD, 'p-5')}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-semibold text-ink">
+                  <p className="text-sm font-semibold text-white">
                     Zimmer {loan.room.roomNumber} · {loan.catalogItem.name}
                   </p>
-                  <p className="mt-0.5 text-xs text-ink-muted">
+                  <p className="mt-0.5 text-xs text-sidebar-muted">
                     Pfand {formatChf(loan.depositCents)} · seit{' '}
                     {new Date(loan.loanedAt).toLocaleString('de-CH')} · {loan.loanedBy.name}
                   </p>
@@ -154,7 +155,7 @@ export function LoansBoard() {
                   <Button
                     type="button"
                     variant="secondary"
-                    className="min-h-0 px-2 py-1 text-xs"
+                    className="min-h-0 border-sidebar-border bg-transparent px-2 py-1 text-xs text-white hover:bg-white/10"
                     onClick={() => returnMut.mutate(loan.id)}
                     disabled={returnMut.isPending}
                   >
@@ -162,11 +163,11 @@ export function LoansBoard() {
                   </Button>
                 )}
               </div>
-            </Card>
+            </div>
           </li>
         ))}
         {!loansQ.isLoading && !(loansQ.data ?? []).length && (
-          <p className="text-sm text-ink-muted">Keine aktiven Ausleihen.</p>
+          <p className="text-sm text-sidebar-muted">Keine aktiven Ausleihen.</p>
         )}
       </ul>
     </div>

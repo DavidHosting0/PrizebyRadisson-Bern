@@ -13,6 +13,7 @@ import {
 import { RoomOccupancySection } from '@/components/rooms/RoomOccupancyDisplay';
 import type { RoomOccupancy } from '@housekeeping/shared';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 
 type RoomDetail = {
   id: string;
@@ -62,26 +63,26 @@ export function ReceptionRoomDetailPanel({
 
   return (
     <>
-      <button type="button" className="fixed inset-0 z-40 bg-ink/25" aria-label="Close" onClick={onClose} />
+      <button type="button" className="fixed inset-0 z-40 bg-black/50" aria-label="Close" onClick={onClose} />
       <aside
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-surface shadow-lift"
+        className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col border-l border-sidebar-border bg-[#1A2332] text-slate-100 shadow-lift"
       >
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-sidebar-border/60 px-5 py-4">
           <div>
-            <h2 className="text-xl font-semibold text-ink">
+            <h2 className="text-xl font-semibold text-white">
               Room {room?.roomNumber ?? '…'}
               {room?.floor != null && (
-                <span className="ml-2 text-sm font-normal text-ink-muted">· Floor {room.floor}</span>
+                <span className="ml-2 text-sm font-normal text-sidebar-muted">· Floor {room.floor}</span>
               )}
             </h2>
             {room && <StatusBadge status={room.derivedStatus} />}
           </div>
           <button
             type="button"
-            className="rounded-full p-2 text-ink-muted hover:bg-surface-muted"
+            className="rounded-full p-2 text-sidebar-muted hover:bg-white/10 hover:text-white"
             onClick={onClose}
             aria-label="Close"
           >
@@ -90,12 +91,12 @@ export function ReceptionRoomDetailPanel({
             </svg>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+        <div className="sidebar-scroll flex-1 overflow-y-auto p-5">
+          {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
           {room && (
             <div className="space-y-6">
               {room.outOfOrder && (
-                <p className="rounded-btn border border-warning/40 bg-warning-muted px-3 py-2 text-sm text-ink">
+                <p className="rounded-btn border border-amber-500/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-200">
                   Out of order
                 </p>
               )}
@@ -108,20 +109,21 @@ export function ReceptionRoomDetailPanel({
                 oooReason={room.oooReason}
                 oooUntil={room.oooUntil}
                 maintenanceReadOnly
+                tone="dark"
               />
-              <RoomOccupancySection occupancy={room.occupancy} />
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Assigned to</h3>
-                <p className="mt-2 text-sm font-medium text-ink">
+              <RoomOccupancySection occupancy={room.occupancy} tone="dark" />
+              <section className={APP_DARK_CARD + ' p-4'}>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Assigned to</h3>
+                <p className="mt-2 text-sm font-medium text-white">
                   {assign
                     ? formatUserWithTitlePrefix(assign.housekeeper.name, assign.housekeeper.titlePrefix)
                     : '— Unassigned'}
                 </p>
               </section>
               {room.notes && (
-                <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Notes</h3>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{room.notes}</p>
+                <section className={APP_DARK_CARD + ' p-4'}>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Notes</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-100">{room.notes}</p>
                 </section>
               )}
             </div>
