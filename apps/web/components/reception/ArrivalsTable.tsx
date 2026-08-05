@@ -113,13 +113,18 @@ export function arrivalsSortLabel(key: ArrivalsSortKey): string {
 
 function SortIcon({ active, dir }: { active: boolean; dir: ArrivalsSortDir }) {
   return (
-    <span className={clsx('inline-flex flex-col gap-px', active ? 'text-ink' : 'text-ink-muted/35')}>
+    <span
+      className={clsx(
+        'inline-flex flex-col gap-px',
+        active ? 'text-white' : 'text-sidebar-muted/40',
+      )}
+    >
       <svg
         width="8"
         height="5"
         viewBox="0 0 8 5"
         aria-hidden
-        className={clsx(active && dir === 'asc' && 'text-ink')}
+        className={clsx(active && dir === 'asc' && 'text-white')}
       >
         <path d="M4 0L8 5H0z" fill="currentColor" />
       </svg>
@@ -128,7 +133,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: ArrivalsSortDir }) {
         height="5"
         viewBox="0 0 8 5"
         aria-hidden
-        className={clsx(active && dir === 'desc' && 'text-ink')}
+        className={clsx(active && dir === 'desc' && 'text-white')}
       >
         <path d="M4 5L0 0h8z" fill="currentColor" />
       </svg>
@@ -159,7 +164,7 @@ function SortableTh({
         onClick={() => onSort(column)}
         className={clsx(
           'inline-flex items-center gap-1.5 text-left text-[11px] uppercase tracking-wide transition-colors',
-          active ? 'text-ink' : 'text-ink-muted hover:text-ink',
+          active ? 'text-white' : 'text-sidebar-muted hover:text-white',
         )}
       >
         {label}
@@ -196,7 +201,7 @@ export function ArrivalsTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[960px] text-left text-sm">
-        <thead className="border-b border-border bg-surface-muted/50">
+        <thead className="border-b border-sidebar-border/60 bg-sidebar-hover/40">
           <tr>
             {selection && (
               <th className="w-10 px-4 py-3">
@@ -266,15 +271,15 @@ export function ArrivalsTable({
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/70">
+        <tbody className="divide-y divide-sidebar-border/40">
           {rows.map((r) => {
             const selected = selection?.selectedIds.has(r.reservationId) ?? false;
             return (
               <tr
                 key={r.id}
                 className={clsx(
-                  'transition-colors hover:bg-surface-muted/40',
-                  selection && selected && 'bg-surface-muted/30',
+                  'transition-colors hover:bg-white/5',
+                  selection && selected && 'bg-indigo-500/10',
                 )}
               >
                 {selection && (
@@ -284,39 +289,39 @@ export function ArrivalsTable({
                       checked={selected}
                       onChange={() => selection.onToggle(r.reservationId)}
                       aria-label={`${r.mainGuestName ?? r.reservationId} auswählen`}
-                      className="h-4 w-4 rounded border-border text-ink focus:ring-ink/20"
+                      className="h-4 w-4 rounded border-sidebar-border bg-sidebar text-action focus:ring-action/30"
                     />
                   </td>
                 )}
-                <td className="px-4 py-3.5 font-medium text-ink">
+                <td className="px-4 py-3.5 font-medium text-white">
                   {r.mainGuestName ?? '—'}
                   {r.arrivalCheckCompletedAt && (
                     <span
                       title={`Anreise-Check erledigt am ${new Date(r.arrivalCheckCompletedAt).toLocaleString('de-CH')}`}
-                      className="ml-2 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-800"
+                      className="ml-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
                     >
                       Check erledigt
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3.5 tabular-nums text-ink-muted">{r.reservationId}</td>
-                <td className="px-4 py-3.5 tabular-nums text-ink">{r.roomId ?? '—'}</td>
-                <td className="whitespace-nowrap px-4 py-3.5 text-ink-muted">
+                <td className="px-4 py-3.5 tabular-nums text-sidebar-muted">{r.reservationId}</td>
+                <td className="px-4 py-3.5 tabular-nums text-white">{r.roomId ?? '—'}</td>
+                <td className="whitespace-nowrap px-4 py-3.5 text-sidebar-muted">
                   <span className="tabular-nums">{r.arrivalDate}</span>
-                  <span className="mx-1.5 text-ink-muted/50">→</span>
+                  <span className="mx-1.5 text-sidebar-muted/50">→</span>
                   <span className="tabular-nums">{r.departureDate}</span>
                 </td>
                 <td
-                  className="max-w-[10rem] truncate px-4 py-3.5 text-ink-muted"
+                  className="max-w-[10rem] truncate px-4 py-3.5 text-sidebar-muted"
                   title={r.roomType ?? undefined}
                 >
                   {r.roomType ?? '—'}
                 </td>
-                <td className="px-4 py-3.5 tabular-nums text-ink">{r.numPax ?? '—'}</td>
+                <td className="px-4 py-3.5 tabular-nums text-white">{r.numPax ?? '—'}</td>
                 {browseMode && (
                   <>
-                    <td className="px-4 py-3.5 text-ink-muted">{r.vipDesc ?? r.tier ?? '—'}</td>
-                    <td className="px-4 py-3.5 font-mono text-xs text-ink-muted">
+                    <td className="px-4 py-3.5 text-sidebar-muted">{r.vipDesc ?? r.tier ?? '—'}</td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-sidebar-muted">
                       {r.creditCard ?? '—'}
                     </td>
                     <td className="px-4 py-3.5 text-right">
@@ -324,7 +329,7 @@ export function ArrivalsTable({
                         <button
                           type="button"
                           onClick={() => onView(r.reservationId)}
-                          className="rounded-md px-3 py-1.5 text-xs font-medium text-ink-muted transition hover:bg-surface-muted hover:text-ink"
+                          className="rounded-md px-3 py-1.5 text-xs font-medium text-sidebar-muted transition hover:bg-white/10 hover:text-white"
                         >
                           Ansehen
                         </button>

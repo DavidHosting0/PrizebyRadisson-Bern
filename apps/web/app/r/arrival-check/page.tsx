@@ -14,7 +14,7 @@ import {
   type ArrivalsSortDir,
   type ArrivalsSortKey,
 } from '@/components/reception/ArrivalsTable';
-import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
@@ -178,105 +178,105 @@ export default function ArrivalCheckPage() {
       />
 
       <AppPageBody>
-        <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-        <div className="flex flex-wrap gap-1 border-b border-border bg-surface-muted/30 p-2">
-          {CHECKIN_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                activeTab === tab.id
-                  ? 'bg-surface text-ink shadow-sm ring-1 ring-border'
-                  : 'text-ink-muted hover:bg-surface/80 hover:text-ink'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <input
-            type="search"
-            placeholder="Gast, Res.-Nr., Zimmer…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="min-w-[12rem] flex-1 rounded-lg border border-border bg-surface-muted/50 px-4 py-2.5 text-sm text-ink placeholder:text-ink-muted/60 focus:border-ink/20 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ink/8"
-          />
-          {showSelection && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleAllVisible}
-                disabled={sortedRows.length === 0}
-                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-50"
-              >
-                {allVisibleSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
-              </button>
-              <span className="text-sm text-ink-muted">
-                {selectedCount} von {sortedRows.length} ausgewählt
-              </span>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-                <input
-                  type="checkbox"
-                  checked={forceRerun}
-                  onChange={(e) => setForceRerun(e.target.checked)}
-                  className="rounded border-border"
-                />
-                Bereits erledigte erneut ausführen
-              </label>
-              <button
-                type="button"
-                onClick={() =>
-                  startMut.mutate({ reservationIds: [...selectedIds], forceRerun })
-                }
-                disabled={selectedCount === 0 || startMut.isPending}
-                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white transition hover:bg-ink/90 disabled:opacity-50"
-              >
-                {startMut.isPending ? 'Startet…' : 'Anreise-Check starten'}
-              </button>
+        <div className="w-full space-y-6 p-4 md:p-6">
+          <div className={`${APP_DARK_CARD} overflow-hidden`}>
+            <div className="flex flex-wrap gap-1 border-b border-sidebar-border/60 bg-sidebar-hover/40 p-2">
+              {CHECKIN_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    activeTab === tab.id
+                      ? 'bg-sidebar text-white shadow-sm ring-1 ring-sidebar-border'
+                      : 'text-sidebar-muted hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
 
-        {listQuery.isLoading ? (
-          <p className="px-6 py-10 text-sm text-ink-muted">Lädt…</p>
-        ) : sortedRows.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-ink-muted">{tabMeta.empty}</p>
-        ) : (
-          <ArrivalsTable
-            rows={sortedRows}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={onSort}
-            selection={
-              showSelection
-                ? {
-                    selectedIds,
-                    onToggle: toggleSelection,
-                    allVisibleSelected,
-                    someVisibleSelected,
-                  }
-                : undefined
-            }
-          />
-        )}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sidebar-border/60 px-4 py-3">
+              <input
+                type="search"
+                placeholder="Gast, Res.-Nr., Zimmer…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className={`${APP_DARK_INPUT} min-h-[40px] min-w-[12rem] flex-1 px-4 py-2.5`}
+              />
+              {showSelection && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleAllVisible}
+                    disabled={sortedRows.length === 0}
+                    className="rounded-lg border border-sidebar-border bg-transparent px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {allVisibleSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+                  </button>
+                  <span className="text-sm text-sidebar-muted">
+                    {selectedCount} von {sortedRows.length} ausgewählt
+                  </span>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
+                    <input
+                      type="checkbox"
+                      checked={forceRerun}
+                      onChange={(e) => setForceRerun(e.target.checked)}
+                      className="rounded border-sidebar-border"
+                    />
+                    Bereits erledigte erneut ausführen
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      startMut.mutate({ reservationIds: [...selectedIds], forceRerun })
+                    }
+                    disabled={selectedCount === 0 || startMut.isPending}
+                    className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white transition hover:bg-action/90 disabled:opacity-50"
+                  >
+                    {startMut.isPending ? 'Startet…' : 'Anreise-Check starten'}
+                  </button>
+                </div>
+              )}
+            </div>
 
-        {!listQuery.isLoading && sortedRows.length > 0 && (
-          <div className="border-t border-border px-4 py-2.5 text-xs text-ink-muted">
-            {sortedRows.length} Einträge · {tabMeta.label} · Sortiert nach{' '}
-            {arrivalsSortLabel(sortKey)} ({sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
+            {listQuery.isLoading ? (
+              <p className="px-6 py-10 text-sm text-sidebar-muted">Lädt…</p>
+            ) : sortedRows.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-sidebar-muted">{tabMeta.empty}</p>
+            ) : (
+              <ArrivalsTable
+                rows={sortedRows}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                selection={
+                  showSelection
+                    ? {
+                        selectedIds,
+                        onToggle: toggleSelection,
+                        allVisibleSelected,
+                        someVisibleSelected,
+                      }
+                    : undefined
+                }
+              />
+            )}
+
+            {!listQuery.isLoading && sortedRows.length > 0 && (
+              <div className="border-t border-sidebar-border/60 px-4 py-2.5 text-xs text-sidebar-muted">
+                {sortedRows.length} Einträge · {tabMeta.label} · Sortiert nach{' '}
+                {arrivalsSortLabel(sortKey)} ({sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {(syncMut.isError || startError) && (
-        <p className="rounded-lg border border-danger/15 bg-danger-muted px-3 py-2 text-sm text-danger">
-          {startError ?? (syncMut.error as Error).message}
-        </p>
-      )}
+          {(syncMut.isError || startError) && (
+            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              {startError ?? (syncMut.error as Error).message}
+            </p>
+          )}
         </div>
       </AppPageBody>
     </div>

@@ -63,7 +63,7 @@ export function AppPageBody({
   return (
     <div
       className={clsx(
-        'min-h-0 min-w-0 flex-1',
+        'sidebar-scroll min-h-0 min-w-0 flex-1',
         canvas
           ? 'overflow-auto bg-[#121a26] [background-image:radial-gradient(ellipse_at_top,_rgba(59,111,160,0.14),_transparent_55%)]'
           : 'overflow-y-auto bg-[#121a26]',

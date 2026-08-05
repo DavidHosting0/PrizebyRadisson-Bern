@@ -156,9 +156,7 @@ export default function AdminArrivalCheckPreviewPage() {
         </div>
 
         <div className="min-w-0">
-          <div className="rounded-2xl border border-sidebar-border/60 bg-white/5 p-4 md:p-8">
-            <ArrivalCheckRunView run={run} preview />
-          </div>
+          <ArrivalCheckRunView run={run} preview />
         </div>
       </div>
         </div>

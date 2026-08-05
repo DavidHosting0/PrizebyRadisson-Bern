@@ -64,19 +64,22 @@ body {
     @apply animate-[fadeIn_200ms_ease-out];
   }
 
-  /* Dark sidebar — deeper blue thumb on transparent track */
+  /* Dark chrome (sidebar + page body) — muted blue thumb on transparent track */
   .sidebar-scroll {
     scrollbar-width: thin;
     scrollbar-color: #3b5170 transparent;
+    scrollbar-gutter: stable;
   }
 
   .sidebar-scroll::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   .sidebar-scroll::-webkit-scrollbar-track {
     background: transparent;
     margin-block: 4px;
+    margin-inline: 2px;
   }
 
   .sidebar-scroll::-webkit-scrollbar-thumb {
@@ -92,6 +95,10 @@ body {
 
   .sidebar-scroll::-webkit-scrollbar-thumb:active {
     background-color: #5a7aa3;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   [cmdk-overlay],

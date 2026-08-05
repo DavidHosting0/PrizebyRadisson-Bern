@@ -85,15 +85,15 @@ export default function ArrivalCheckRunPage() {
       <AppPageBody>
         <div className="p-4 md:p-6">
           {runQuery.isLoading && !run ? (
-            <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col items-center justify-center gap-6 p-6">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-                <div className="h-full w-1/3 animate-pulse rounded-full bg-ink/20" />
+            <div className="flex min-h-[40vh] w-full flex-col justify-center gap-6">
+              <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-400/40" />
               </div>
               <p className="text-sm text-sidebar-muted">Anreise-Check wird geladen…</p>
             </div>
           ) : runQuery.isError || !run ? (
-            <div className="mx-auto max-w-lg space-y-4 p-6">
-              <p className="text-sm text-danger">
+            <div className="w-full space-y-4">
+              <p className="text-sm text-rose-400">
                 {(runQuery.error as Error)?.message ?? 'Lauf nicht gefunden.'}
               </p>
               <button

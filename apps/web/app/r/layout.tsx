@@ -234,9 +234,9 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
         <main
           className={clsx(
-            'min-h-0 min-w-0 flex-1 bg-[#121a26]',
+            'sidebar-scroll flex min-h-0 min-w-0 flex-1 flex-col bg-[#121a26]',
             isChat
-              ? 'flex h-full flex-col overflow-hidden'
+              ? 'h-full overflow-hidden'
               : 'overflow-y-auto pb-20 md:overflow-hidden md:pb-0',
           )}
         >

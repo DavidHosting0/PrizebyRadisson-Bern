@@ -178,7 +178,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <NotificationBell variant="onDark" />
           </div>
         </header>
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-[#121a26] md:overflow-hidden">
+        <main className="sidebar-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#121a26] md:overflow-hidden">
           {children}
         </main>
       </div>

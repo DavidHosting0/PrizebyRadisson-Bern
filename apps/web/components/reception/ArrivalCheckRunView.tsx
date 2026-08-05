@@ -15,6 +15,7 @@ import {
   runNeedsContinue,
   stepLabel,
 } from '@/components/reception/arrival-check-run-utils';
+import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 
 type Props = {
   run: ArrivalCheckRunDetail;
@@ -34,12 +35,12 @@ type Props = {
 
 function StatusDot({ status }: { status: ArrivalCheckRunItem['status'] }) {
   const tone = clsx('h-2 w-2 shrink-0 rounded-full', {
-    'bg-ink/25': status === 'PENDING',
-    'animate-pulse bg-indigo-500': status === 'IN_PROGRESS',
-    'bg-emerald-500': status === 'COMPLETED',
-    'bg-slate-400': status === 'SKIPPED',
-    'bg-orange-500': status === 'NEEDS_MANUAL',
-    'bg-rose-500': status === 'FAILED',
+    'bg-sidebar-muted/50': status === 'PENDING',
+    'animate-pulse bg-indigo-400': status === 'IN_PROGRESS',
+    'bg-emerald-400': status === 'COMPLETED',
+    'bg-slate-500': status === 'SKIPPED',
+    'bg-orange-400': status === 'NEEDS_MANUAL',
+    'bg-rose-400': status === 'FAILED',
   });
   return <span className={tone} aria-hidden />;
 }
@@ -55,11 +56,11 @@ function StatChip({
 }) {
   if (value === 0) return null;
   const styles = {
-    neutral: 'border-border bg-surface text-ink',
-    success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    warning: 'border-orange-200 bg-orange-50 text-orange-900',
-    danger: 'border-rose-200 bg-rose-50 text-rose-900',
-    muted: 'border-border bg-surface-muted/60 text-ink-muted',
+    neutral: 'border-sidebar-border bg-sidebar text-white',
+    success: 'border-emerald-500/30 bg-emerald-500/15 text-emerald-300',
+    warning: 'border-orange-500/30 bg-orange-500/15 text-orange-300',
+    danger: 'border-rose-500/30 bg-rose-500/15 text-rose-300',
+    muted: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
   };
   return (
     <span
@@ -94,9 +95,9 @@ function StepPills({ item }: { item: ArrivalCheckRunItem }) {
             key={step}
             className={clsx(
               'rounded-md px-2 py-0.5 text-[11px] font-medium',
-              done && 'bg-emerald-100 text-emerald-800',
-              active && !done && 'bg-indigo-100 text-indigo-900 ring-1 ring-indigo-200',
-              !done && !active && 'bg-surface-muted text-ink-muted',
+              done && 'bg-emerald-500/20 text-emerald-300',
+              active && !done && 'bg-indigo-500/25 text-indigo-200 ring-1 ring-indigo-400/40',
+              !done && !active && 'bg-white/5 text-sidebar-muted',
             )}
           >
             {stepLabel(step)}
@@ -112,31 +113,31 @@ function RunItemRow({ item, highlight }: { item: ArrivalCheckRunItem; highlight?
     <li
       className={clsx(
         'flex items-start gap-3 px-4 py-3 text-sm transition-colors',
-        highlight && 'bg-indigo-50/80',
+        highlight && 'bg-indigo-500/10',
       )}
     >
       <StatusDot status={item.status} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="font-medium text-ink">{item.mainGuestName ?? '—'}</span>
+          <span className="font-medium text-white">{item.mainGuestName ?? '—'}</span>
           {item.roomId && (
-            <span className="text-xs text-ink-muted">Zi. {item.roomId}</span>
+            <span className="text-xs text-sidebar-muted">Zi. {item.roomId}</span>
           )}
-          <span className="text-xs text-ink-muted">{itemStatusLabel(item.status)}</span>
+          <span className="text-xs text-sidebar-muted">{itemStatusLabel(item.status)}</span>
         </div>
         {item.categoryLabel && (
-          <p className="mt-0.5 text-xs text-ink-muted">{item.categoryLabel}</p>
+          <p className="mt-0.5 text-xs text-sidebar-muted">{item.categoryLabel}</p>
         )}
         {item.statusMessage && highlight && (
-          <p className="mt-1.5 text-xs leading-relaxed text-indigo-900">{item.statusMessage}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-indigo-200">{item.statusMessage}</p>
         )}
         {item.status === 'IN_PROGRESS' && highlight && <StepPills item={item} />}
         {needsManual(item) && !highlight && (
-          <p className="mt-1 text-xs text-orange-800">{manualReasonText(item)}</p>
+          <p className="mt-1 text-xs text-orange-300">{manualReasonText(item)}</p>
         )}
       </div>
       {!highlight && item.paymentStatus === 'PAID' && (
-        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+        <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
           VCC
         </span>
       )}
@@ -176,19 +177,19 @@ export function ArrivalCheckRunView({
         : 'Alles erledigt';
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       {!preview && (
         <header className="flex items-center justify-between gap-4">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="text-sm text-ink-muted hover:text-ink"
+              className="text-sm text-sidebar-muted hover:text-white"
             >
               ← Zurück
             </button>
           ) : (
-            <Link href="/r/arrival-check" className="text-sm text-ink-muted hover:text-ink">
+            <Link href="/r/arrival-check" className="text-sm text-sidebar-muted hover:text-white">
               ← Zurück
             </Link>
           )}
@@ -197,7 +198,7 @@ export function ArrivalCheckRunView({
               type="button"
               onClick={onCancel}
               disabled={cancelPending}
-              className="text-sm text-rose-700 hover:text-rose-900 disabled:opacity-50"
+              className="text-sm text-rose-400 hover:text-rose-300 disabled:opacity-50"
             >
               {cancelPending ? 'Wird abgebrochen…' : 'Abbrechen'}
             </button>
@@ -206,12 +207,12 @@ export function ArrivalCheckRunView({
       )}
 
       <section className="space-y-5">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{headline}</h1>
-          <p className="mt-1 text-sm text-ink-muted">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight text-white">{headline}</h2>
+          <p className="mt-1 text-sm text-sidebar-muted">
             {run.itemCount} Reservierung{run.itemCount === 1 ? '' : 'en'}
             {preview && (
-              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
+              <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-300">
                 Vorschau
               </span>
             )}
@@ -220,24 +221,24 @@ export function ArrivalCheckRunView({
 
         {(active || finished) && (
           <div className="space-y-2">
-            <div className="h-3 w-full overflow-hidden rounded-full bg-surface-muted">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-white/10">
               <div
                 className={clsx(
                   'h-full rounded-full transition-[width] duration-700 ease-out',
                   finished && manualItems.length === 0 && run.status !== 'CANCELLED'
-                    ? 'bg-emerald-600'
+                    ? 'bg-emerald-500'
                     : finished && manualItems.length > 0
                       ? 'bg-orange-500'
-                      : 'bg-ink',
+                      : 'bg-indigo-400',
                 )}
                 style={{ width: `${Math.max(progressPct, active ? 2 : 100)}%` }}
               />
             </div>
-            <p className="text-center text-sm tabular-nums text-ink-muted">{progressPct}%</p>
+            <p className="text-sm tabular-nums text-sidebar-muted">{progressPct}%</p>
           </div>
         )}
 
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="flex flex-wrap gap-2">
           <StatChip label="Erledigt" value={run.completedCount} tone="success" />
           <StatChip label="VCC" value={run.paidCount} tone="success" />
           <StatChip label="Manuell" value={run.manualCount} tone="warning" />
@@ -249,8 +250,8 @@ export function ArrivalCheckRunView({
       </section>
 
       {paused && onContinue && !preview && (
-        <section className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-center">
-          <p className="text-sm text-indigo-950">
+        <section className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 p-4">
+          <p className="text-sm text-indigo-100">
             {run.pendingCount} Reservierung{run.pendingCount === 1 ? '' : 'en'} in der Warteschlange
             — nach einem Neustart oder einer Unterbrechung manuell fortsetzen.
           </p>
@@ -258,7 +259,7 @@ export function ArrivalCheckRunView({
             type="button"
             onClick={onContinue}
             disabled={continuePending}
-            className="mt-3 rounded-lg border border-indigo-300 bg-surface px-4 py-2 text-sm font-semibold text-indigo-950 hover:bg-indigo-50 disabled:opacity-50"
+            className="mt-3 rounded-lg border border-indigo-400/40 bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
           >
             {continuePending ? 'Wird fortgesetzt…' : 'Fortsetzen'}
           </button>
@@ -266,9 +267,9 @@ export function ArrivalCheckRunView({
       )}
 
       {active && current && (
-        <section className="overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/50 shadow-sm">
-          <div className="border-b border-indigo-100 px-4 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">
+        <section className={clsx(APP_DARK_CARD, 'overflow-hidden border-indigo-400/30')}>
+          <div className="border-b border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
               Aktuelle Reservierung
             </p>
           </div>
@@ -277,13 +278,13 @@ export function ArrivalCheckRunView({
       )}
 
       {run.items.length > 0 && (
-        <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
-          <div className="border-b border-border bg-surface-muted/30 px-4 py-2.5">
-            <h2 className="text-sm font-semibold text-ink">
+        <section className={clsx(APP_DARK_CARD, 'overflow-hidden')}>
+          <div className="border-b border-sidebar-border/60 bg-sidebar-hover/40 px-4 py-2.5">
+            <h3 className="text-sm font-semibold text-white">
               {active ? 'Warteschlange' : 'Reservierungen'}
-            </h2>
+            </h3>
           </div>
-          <ul className="divide-y divide-border max-h-[320px] overflow-y-auto">
+          <ul className="max-h-[min(480px,50vh)] divide-y divide-sidebar-border/50 overflow-y-auto">
             {run.items.map((item) => (
               <RunItemRow key={item.id} item={item} />
             ))}
@@ -292,16 +293,16 @@ export function ArrivalCheckRunView({
       )}
 
       {finished && run.categoryCounts.length > 0 && (
-        <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
-          <h2 className="text-sm font-semibold text-ink">Kategorien</h2>
+        <section className={clsx(APP_DARK_CARD, 'p-4')}>
+          <h3 className="text-sm font-semibold text-white">Kategorien</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             {run.categoryCounts.map((cat) => (
               <span
                 key={`${cat.source}-${cat.scenario}`}
-                className="rounded-lg border border-border bg-surface-muted/40 px-3 py-1.5 text-xs"
+                className="rounded-lg border border-sidebar-border/60 bg-sidebar px-3 py-1.5 text-xs"
               >
-                <span className="font-medium text-ink">{cat.label}</span>
-                <span className="ml-1.5 tabular-nums text-ink-muted">×{cat.count}</span>
+                <span className="font-medium text-white">{cat.label}</span>
+                <span className="ml-1.5 tabular-nums text-sidebar-muted">×{cat.count}</span>
               </span>
             ))}
           </div>
@@ -311,10 +312,10 @@ export function ArrivalCheckRunView({
       {finished && (
         <section className="space-y-4">
           {run.status !== 'CANCELLED' && manualItems.length === 0 && (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-900">
+            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
               Keine manuelle Nachbearbeitung nötig.
               {run.completedCount > 0 && (
-                <span className="mt-1 block text-emerald-800/80">
+                <span className="mt-1 block text-emerald-300/80">
                   {run.completedCount} erfolgreich
                   {run.paidCount > 0 ? ` · ${run.paidCount} VCC belastet` : ''}
                   {run.skippedCount > 0 ? ` · ${run.skippedCount} übersprungen` : ''}
@@ -324,42 +325,42 @@ export function ArrivalCheckRunView({
           )}
 
           {run.status === 'CANCELLED' && (
-            <p className="rounded-xl border border-border bg-surface-muted/50 px-4 py-3 text-center text-sm text-ink-muted">
+            <p className="rounded-xl border border-sidebar-border/60 bg-white/5 px-4 py-3 text-sm text-sidebar-muted">
               Ausstehende Reservierungen wurden nicht verarbeitet.
             </p>
           )}
 
           {manualItems.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-ink">
+              <h3 className="text-sm font-semibold text-white">
                 Manuelle Bearbeitung nötig ({manualItems.length})
-              </h2>
-              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-card">
+              </h3>
+              <ul className={clsx(APP_DARK_CARD, 'divide-y divide-sidebar-border/50 overflow-hidden')}>
                 {manualItems.map((item) => (
                   <li key={item.id} className="p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-ink">
+                        <p className="font-medium text-white">
                           {item.mainGuestName ?? '—'}
                           {item.roomId && (
-                            <span className="ml-2 font-normal text-ink-muted">
+                            <span className="ml-2 font-normal text-sidebar-muted">
                               Zi. {item.roomId}
                             </span>
                           )}
                         </p>
-                        <p className="mt-0.5 text-xs tabular-nums text-ink-muted">
+                        <p className="mt-0.5 text-xs tabular-nums text-sidebar-muted">
                           {item.reservationId}
                         </p>
                         <p
                           className={clsx(
                             'mt-2 text-sm',
-                            isDeclinedVcc(item) ? 'text-rose-800' : 'text-orange-800',
+                            isDeclinedVcc(item) ? 'text-rose-300' : 'text-orange-300',
                           )}
                         >
                           {manualReasonText(item)}
                         </p>
                         {isDeclinedVcc(item) && (
-                          <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-900">
+                          <span className="mt-1 inline-block rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-medium text-rose-300">
                             VCC abgelehnt
                           </span>
                         )}
@@ -367,7 +368,7 @@ export function ArrivalCheckRunView({
                       {!preview && (
                         <Link
                           href={`/r/reservations/${item.reservationId}?from=arrivals`}
-                          className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-muted"
+                          className="shrink-0 rounded-lg border border-sidebar-border px-3 py-1.5 text-sm font-medium text-white hover:bg-white/10"
                         >
                           Öffnen
                         </Link>
@@ -380,8 +381,8 @@ export function ArrivalCheckRunView({
           )}
 
           {finished && run.failedCount > 0 && onRetryFailed && !preview && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-4 text-center">
-              <p className="text-sm text-rose-900">
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
+              <p className="text-sm text-rose-200">
                 {run.failedCount} Reservierung{run.failedCount === 1 ? '' : 'en'} mit technischem
                 Fehler — nach Prüfung erneut versuchen.
               </p>
@@ -389,7 +390,7 @@ export function ArrivalCheckRunView({
                 type="button"
                 onClick={onRetryFailed}
                 disabled={retryFailedPending}
-                className="mt-3 rounded-lg border border-rose-300 bg-surface px-4 py-2 text-sm font-semibold text-rose-950 hover:bg-rose-50 disabled:opacity-50"
+                className="mt-3 rounded-lg border border-rose-400/40 bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
               >
                 {retryFailedPending ? 'Wird wiederholt…' : 'Fehlgeschlagene wiederholen'}
               </button>
@@ -399,25 +400,17 @@ export function ArrivalCheckRunView({
       )}
 
       {!active && !finished && (
-        <section className="space-y-4 py-6 text-center">
-          <p className="text-sm text-ink-muted">Warte auf Start…</p>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
-            <div className="h-full w-1/4 animate-pulse rounded-full bg-ink/20" />
+        <section className="space-y-4 py-6">
+          <p className="text-sm text-sidebar-muted">Warte auf Start…</p>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-full w-1/4 animate-pulse rounded-full bg-indigo-400/40" />
           </div>
         </section>
       )}
 
-      {cancelError && (
-        <p className="text-sm text-rose-700">{cancelError}</p>
-      )}
-
-      {retryFailedError && (
-        <p className="text-sm text-rose-700">{retryFailedError}</p>
-      )}
-
-      {continueError && (
-        <p className="text-sm text-rose-700">{continueError}</p>
-      )}
+      {cancelError && <p className="text-sm text-rose-400">{cancelError}</p>}
+      {retryFailedError && <p className="text-sm text-rose-400">{retryFailedError}</p>}
+      {continueError && <p className="text-sm text-rose-400">{continueError}</p>}
     </div>
   );
 }

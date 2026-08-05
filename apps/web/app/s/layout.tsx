@@ -191,8 +191,8 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
         <PushPermissionBanner />
         <main
           className={clsx(
-            'min-h-0 min-w-0 flex-1 bg-[#121a26]',
-            isChat ? 'flex h-full flex-col overflow-hidden' : 'overflow-y-auto md:overflow-hidden',
+            'sidebar-scroll flex min-h-0 min-w-0 flex-1 flex-col bg-[#121a26]',
+            isChat ? 'h-full overflow-hidden' : 'overflow-y-auto md:overflow-hidden',
           )}
         >
           {children}
