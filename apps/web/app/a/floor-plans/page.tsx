@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { formatFloorLabel } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
-import { Card } from '@/components/ui/Card';
+import { FloorPlanCanvasFrame } from '@/components/rooms/FloorPlanChrome';
 import { Button } from '@/components/ui/Button';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type LayoutElement = {
   id: string;
@@ -191,19 +193,21 @@ export default function AdminFloorPlansPage() {
   }, [drag]);
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Floor plan builder</h1>
-        <p className="mt-1 text-sm text-ink-muted">Admin category to create custom floor plans (rooms, corridors, elevators, staff areas).</p>
-      </div>
-
-      <Card className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Floor plan builder"
+        description="Admin category to create custom floor plans (rooms, corridors, elevators, staff areas)."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-6 p-4 md:p-6">
+      <div className={APP_DARK_CARD + ' space-y-4 p-4 md:p-6'}>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 space-y-1.5">
-            <span className="text-xs font-medium text-ink-muted">Floor</span>
+            <span className="text-xs font-medium text-sidebar-muted">Floor</span>
             <nav
               aria-label="Edit floor"
-              className="flex w-full max-w-full overflow-x-auto rounded-xl border border-border/60 bg-gradient-to-b from-[#f0efeb] to-[#e4e2dc] p-1 shadow-[inset_0_1px_2px_rgba(43,43,43,0.07)] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="flex w-full max-w-full overflow-x-auto rounded-xl border border-sidebar-border bg-sidebar p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <div className="flex min-w-min flex-1 flex-wrap gap-1">
                 {FLOOR_CHOICES.map((f) => (
@@ -211,7 +215,9 @@ export default function AdminFloorPlansPage() {
                     key={f}
                     type="button"
                     onClick={() => setFloor(f)}
-                    className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(floor === f)}`}
+                    className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${
+                      floor === f ? 'bg-action text-white shadow-md' : 'bg-transparent text-sidebar-muted hover:bg-white/10 hover:text-white'
+                    }`}
                   >
                     {formatFloorLabel(f)}
                   </button>
@@ -219,13 +225,18 @@ export default function AdminFloorPlansPage() {
               </div>
             </nav>
           </div>
-          <Button type="button" variant="secondary" onClick={() => setDraft(sourceLayout)}>
+          <Button
+            type="button"
+            variant="secondary"
+            className="border border-sidebar-border bg-transparent text-white hover:bg-white/10"
+            onClick={() => setDraft(sourceLayout)}
+          >
             Reload saved
           </Button>
-          <label className="text-xs text-ink-muted">
+          <label className="text-xs text-sidebar-muted">
             Copy from floor
             <select
-              className="mt-1 min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+              className={clsx(APP_DARK_INPUT, 'mt-1 min-h-[40px]')}
               value={copyFromFloor}
               onChange={(e) => setCopyFromFloor(parseInt(e.target.value, 10))}
             >
@@ -239,6 +250,7 @@ export default function AdminFloorPlansPage() {
           <Button
             type="button"
             variant="secondary"
+            className="border border-sidebar-border bg-transparent text-white hover:bg-white/10"
             onClick={copyLayoutFromFloor}
             disabled={!allPlans.some((p) => p.floor === copyFromFloor && p.layout.length > 0)}
           >
@@ -248,11 +260,11 @@ export default function AdminFloorPlansPage() {
             {save.isPending ? 'Saving…' : 'Save floor plan'}
           </Button>
         </div>
-        {saveMessage && <p className="text-sm text-success">{saveMessage}</p>}
-        {saveError && <p className="whitespace-pre-wrap text-sm text-danger">{saveError}</p>}
+        {saveMessage && <p className="text-sm text-emerald-400">{saveMessage}</p>}
+        {saveError && <p className="whitespace-pre-wrap text-sm text-red-400">{saveError}</p>}
 
         <div className="space-y-3">
-          <p className="text-xs text-ink-muted">Drag elements from the toolbox and drop them on the floor plan. Move elements by dragging; resize with the bottom-right handle.</p>
+          <p className="text-xs text-sidebar-muted">Drag elements from the toolbox and drop them on the floor plan. Move elements by dragging; resize with the bottom-right handle.</p>
           <div className="flex flex-wrap gap-2">
             {(['corridor', 'elevator', 'staff', 'glass'] as const).map((t) => (
               <button
@@ -264,15 +276,15 @@ export default function AdminFloorPlansPage() {
                   e.dataTransfer.setData('application/x-floor-element', payload);
                   e.dataTransfer.setData('text/plain', payload);
                 }}
-                className="rounded-btn border border-border bg-surface px-3 py-2 text-sm font-medium text-ink"
+                className="rounded-btn border border-sidebar-border bg-sidebar px-3 py-2 text-sm font-medium text-white hover:bg-white/10"
               >
                 {t}
               </button>
             ))}
           </div>
           <div>
-            <p className="mb-2 text-xs font-medium text-ink-muted">Rooms (drag into plan)</p>
-            <div className="flex max-h-36 flex-wrap gap-2 overflow-auto rounded-btn border border-border bg-surface p-2">
+            <p className="mb-2 text-xs font-medium text-sidebar-muted">Rooms (drag into plan)</p>
+            <div className="flex max-h-36 flex-wrap gap-2 overflow-auto rounded-btn border border-sidebar-border bg-sidebar p-2">
               {roomOptions.map((r) => (
                 <button
                   key={r.id}
@@ -283,7 +295,7 @@ export default function AdminFloorPlansPage() {
                     e.dataTransfer.setData('application/x-floor-element', payload);
                     e.dataTransfer.setData('text/plain', payload);
                   }}
-                  className="rounded-btn border border-border bg-surface-muted px-2 py-1 text-sm font-semibold text-ink"
+                  className="rounded-btn border border-sidebar-border bg-white/10 px-2 py-1 text-sm font-semibold text-white"
                 >
                   {r.roomNumber}
                 </button>
@@ -291,12 +303,12 @@ export default function AdminFloorPlansPage() {
             </div>
           </div>
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div className={APP_DARK_CARD + ' p-4 md:p-6'}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold tracking-tight text-ink">Preview — {formatFloorLabel(floor)}</h2>
-          <span className="inline-flex items-center rounded-full border border-border/50 bg-white/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted shadow-sm backdrop-blur-sm">
+          <h2 className="text-base font-semibold tracking-tight text-white">Preview — {formatFloorLabel(floor)}</h2>
+          <span className="inline-flex items-center rounded-full border border-sidebar-border bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
             Custom admin layout
           </span>
         </div>
@@ -388,15 +400,19 @@ export default function AdminFloorPlansPage() {
             })}
           </div>
         </FloorPlanCanvasFrame>
-      </Card>
+      </div>
 
-      <Card>
-        <h2 className="mb-3 text-sm font-semibold text-ink">Elements</h2>
+      <div className={APP_DARK_CARD + ' p-4 md:p-6'}>
+        <h2 className="mb-3 text-sm font-semibold text-white">Elements</h2>
         <div className="space-y-2">
           {draft.map((el) => (
-            <div key={el.id} className="grid items-end gap-2 rounded-btn border border-border p-2 md:grid-cols-4">
-              <span className="text-xs text-ink-muted">{el.id.slice(0, 8)}</span>
-              <select className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm" value={el.kind} onChange={(e) => updateEl(el.id, { kind: e.target.value as LayoutElement['kind'] })}>
+            <div key={el.id} className="grid items-end gap-2 rounded-btn border border-sidebar-border p-2 md:grid-cols-4">
+              <span className="text-xs text-sidebar-muted">{el.id.slice(0, 8)}</span>
+              <select
+                className={clsx(APP_DARK_INPUT, 'min-h-[36px] px-2')}
+                value={el.kind}
+                onChange={(e) => updateEl(el.id, { kind: e.target.value as LayoutElement['kind'] })}
+              >
                 <option value="room">room</option>
                 <option value="corridor">corridor</option>
                 <option value="elevator">elevator</option>
@@ -404,7 +420,7 @@ export default function AdminFloorPlansPage() {
                 <option value="glass">glass</option>
               </select>
               <input
-                className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm"
+                className={clsx(APP_DARK_INPUT, 'min-h-[36px] px-2')}
                 placeholder="roomNumber"
                 value={el.roomNumber ?? ''}
                 onChange={(e) => updateEl(el.id, { roomNumber: e.target.value || undefined })}
@@ -415,9 +431,11 @@ export default function AdminFloorPlansPage() {
               </Button>
             </div>
           ))}
-          {draft.length === 0 && <p className="text-sm text-ink-muted">No elements yet for this floor.</p>}
+          {draft.length === 0 && <p className="text-sm text-sidebar-muted">No elements yet for this floor.</p>}
         </div>
-      </Card>
+      </div>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

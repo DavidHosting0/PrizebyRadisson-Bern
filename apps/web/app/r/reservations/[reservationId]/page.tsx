@@ -14,6 +14,9 @@ import {
 } from '@/components/reception/reservation-detail/ReservationDetailView';
 import { reservationStatus } from '@/components/reception/reservation-detail/reservationStatus';
 import { useReservationEmmaFetch } from '@/components/reception/reservation-detail/useReservationEmmaFetch';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -49,6 +52,7 @@ export default function ReservationDetailPage() {
     from === 'arrivals' ? 'Anreisen' : from === 'in-house' ? 'Im Haus' : 'Reservierungen';
 
   const canSync = usePermission('RESERVATIONS_SYNC');
+  const { enterMobile } = useReceptionMobileMode();
   const [activeTab, setActiveTab] = useState<ReservationDetailTab>('overview');
 
   const { data, isLoading, isError } = useQuery({
@@ -72,35 +76,37 @@ export default function ReservationDetailPage() {
   const status = data ? reservationStatus(data) : null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">
-      <header className="space-y-4">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1 text-sm font-medium text-ink-muted hover:text-ink"
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title={data?.mainGuestName ?? 'Reservierung'}
+        description={`Res.-Nr. ${reservationId}`}
+        actions={
+          <>
+            <AppChromeTools onEnterMobile={enterMobile} />
+            <Link
+              href={backHref}
+              className="inline-flex min-h-[40px] items-center gap-1 rounded-btn border border-sidebar-border px-3 text-sm font-medium text-white transition hover:bg-white/10"
+            >
+              ← {backLabel}
+            </Link>
+          </>
+        }
+      />
+
+      <AppPageBody>
+        <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
+
+      {status && (
+        <span
+          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.className}`}
         >
-          ← Zurück zu {backLabel}
-        </Link>
+          {status.label}
+        </span>
+      )}
 
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="truncate text-2xl font-semibold tracking-tight text-ink md:text-3xl">
-              {data?.mainGuestName ?? 'Reservierung'}
-            </h1>
-            <p className="mt-1 text-sm text-ink-muted">Res.-Nr. {reservationId}</p>
-            {status && (
-              <span
-                className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.className}`}
-              >
-                {status.label}
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {isLoading && <p className="text-sm text-ink-muted">Lädt…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">Lädt…</p>}
       {isError && (
-        <p className="text-sm text-rose-700">Reservierung konnte nicht geladen werden.</p>
+        <p className="text-sm text-rose-400">Reservierung konnte nicht geladen werden.</p>
       )}
 
       {data && (
@@ -180,6 +186,8 @@ export default function ReservationDetailPage() {
           />
         </>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type AiConfigMeta = {
   hasOpenaiApiKey: boolean;
@@ -45,20 +47,17 @@ export default function AdminAiConfigPage() {
   const meta = metaQuery.data;
 
   return (
-    <div className="space-y-8 px-4 py-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-ink">AI Config</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          OpenAI-API-Key und Modell für die automatische Ticket-Analyse in
-          Puzzel. Der Key wird AES-256-GCM-verschlüsselt in der Datenbank
-          abgelegt und nie wieder im Klartext ausgegeben. Nur Admins haben
-          Zugriff auf diese Seite.
-        </p>
-      </header>
-
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="AI Config"
+        description="OpenAI-API-Key und Modell für die automatische Ticket-Analyse in Puzzel. Nur Admins haben Zugriff auf diese Seite."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
+      <section className={APP_DARK_CARD + ' p-5'}>
         {metaQuery.isLoading ? (
-          <p className="text-sm text-ink-muted">Lädt…</p>
+          <p className="text-sm text-sidebar-muted">Lädt…</p>
         ) : (
           <form
             className="grid max-w-xl grid-cols-1 gap-5"
@@ -76,7 +75,7 @@ export default function AdminAiConfigPage() {
             }}
           >
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 OpenAI API Key
               </span>
               <input
@@ -84,7 +83,7 @@ export default function AdminAiConfigPage() {
                 autoComplete="off"
                 value={openaiApiKey}
                 onChange={(e) => setOpenaiApiKey(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-sm"
+                className={APP_DARK_INPUT + ' w-full py-2 font-mono'}
                 placeholder={
                   meta?.hasOpenaiApiKey
                     ? 'Neu eintragen zum Ersetzen …'
@@ -92,7 +91,7 @@ export default function AdminAiConfigPage() {
                 }
               />
               {meta?.hasOpenaiApiKey && (
-                <p className="mt-1 text-xs text-ink-muted">
+                <p className="mt-1 text-xs text-sidebar-muted">
                   Es ist bereits ein OpenAI-Key gespeichert. Leer lassen, um ihn zu
                   behalten.
                 </p>
@@ -100,7 +99,7 @@ export default function AdminAiConfigPage() {
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 Modell
               </span>
               <input
@@ -108,17 +107,17 @@ export default function AdminAiConfigPage() {
                 autoComplete="off"
                 value={openaiModel}
                 onChange={(e) => setOpenaiModel(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-sm"
+                className={APP_DARK_INPUT + ' w-full py-2 font-mono'}
                 placeholder="gpt-4o-mini"
               />
-              <p className="mt-1 text-xs text-ink-muted">
+              <p className="mt-1 text-xs text-sidebar-muted">
                 Standard: <code>gpt-4o-mini</code> (schnell und günstig). Für mehr
                 Qualität <code>gpt-4o</code>; für längere Tickets eignet sich
                 ggf. <code>gpt-4.1-mini</code>.
               </p>
             </label>
 
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+            <p className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-emerald-200">
               Der Key wird mit AES-256-GCM verschlüsselt gespeichert (Schlüssel:{' '}
               <code>FAVUR_ENCRYPTION_KEY</code> auf dem Server). Diese Seite gibt
               ihn nie wieder im Klartext aus.
@@ -128,43 +127,45 @@ export default function AdminAiConfigPage() {
               <button
                 type="submit"
                 disabled={saveMut.isPending}
-                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
               >
                 {saveMut.isPending ? 'Speichert …' : 'Speichern'}
               </button>
               {saveMut.isError && (
-                <span className="text-sm text-rose-700">
+                <span className="text-sm text-rose-400">
                   {(saveMut.error as Error).message}
                 </span>
               )}
               {saveMut.isSuccess && !saveMut.isPending && (
-                <span className="text-sm text-emerald-800">Gespeichert.</span>
+                <span className="text-sm text-emerald-400">Gespeichert.</span>
               )}
             </div>
           </form>
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Verwendung</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">Verwendung</h2>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Aktuell wird die KI für die automatische Ticket-Analyse im{' '}
-          <strong>Puzzel-Modul</strong> genutzt. Wenn eine Rezeptionistin auf
+          <strong className="text-white">Puzzel-Modul</strong> genutzt. Wenn eine Rezeptionistin auf
           ein Ticket klickt, wird der Inhalt einmal an OpenAI geschickt; die
           Antwort wird in der Datenbank zwischengespeichert und nur dann erneut
           erzeugt, wenn neue Nachrichten zum Ticket hinzukommen.
         </p>
-        <p className="mt-2 text-sm text-ink-muted">
+        <p className="mt-2 text-sm text-sidebar-muted">
           Team-Chat-Nachrichten werden ebenfalls über OpenAI übersetzt, wenn ein
           API-Schlüssel konfiguriert ist. Übersetzungen werden in der Datenbank
           zwischengespeichert.
         </p>
-        <p className="mt-2 text-sm text-ink-muted">
+        <p className="mt-2 text-sm text-sidebar-muted">
           Kostenrahmen: <code>gpt-4o-mini</code> liegt bei ~0.15&nbsp;$ pro
           Million Input-Tokens und ~0.60&nbsp;$ pro Million Output-Tokens. Ein
           typisches Puzzel-Ticket kostet damit unter 0.001&nbsp;$ pro Analyse.
         </p>
       </section>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

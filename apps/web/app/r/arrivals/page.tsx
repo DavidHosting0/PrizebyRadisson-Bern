@@ -12,6 +12,9 @@ import {
   type ArrivalsSortDir,
   type ArrivalsSortKey,
 } from '@/components/reception/ArrivalsTable';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
@@ -26,6 +29,7 @@ export default function ReceptionArrivalsPage() {
   const router = useRouter();
   const sortLabel = useArrivalsSortLabel();
   const queryClient = useQueryClient();
+  const { enterMobile } = useReceptionMobileMode();
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
   const [sortDir, setSortDir] = useState<ArrivalsSortDir>('asc');
@@ -79,25 +83,31 @@ export default function ReceptionArrivalsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Anreisen</h1>
-          {overview?.lastSyncedAt && (
-            <p className="mt-1 text-sm text-ink-muted">
-              Zuletzt synchronisiert {new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH')}
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => syncMut.mutate()}
-          disabled={syncMut.isPending}
-          className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-ink/90 disabled:opacity-50"
-        >
-          {syncMut.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
-        </button>
-      </header>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Anreisen"
+        description={
+          overview?.lastSyncedAt
+            ? `Zuletzt synchronisiert ${new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH')}`
+            : undefined
+        }
+        actions={
+          <>
+            <AppChromeTools onEnterMobile={enterMobile} />
+            <button
+              type="button"
+              onClick={() => syncMut.mutate()}
+              disabled={syncMut.isPending}
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90 disabled:opacity-50"
+            >
+              {syncMut.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
+            </button>
+          </>
+        }
+      />
+
+      <AppPageBody>
+        <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
 
       {overview && (
         <div className="flex flex-wrap items-end gap-3">
@@ -161,6 +171,8 @@ export default function ReceptionArrivalsPage() {
           {(syncMut.error as Error).message}
         </p>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

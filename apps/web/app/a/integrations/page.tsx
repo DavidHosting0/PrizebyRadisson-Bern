@@ -2,9 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { api } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type MirusConfig = {
   id: string;
@@ -151,41 +154,41 @@ export default function IntegrationsPage() {
     (config.hasMirusPassword || mirusPassword.trim().length > 0);
 
   return (
-    <div className="space-y-8 px-4 py-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-ink">Integrationen</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Externe Datenquellen, die in den Schichtplan einfliessen.
-        </p>
-      </header>
-
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Integrationen"
+        description="Externe Datenquellen, die in den Schichtplan einfliessen."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
+      <section className={APP_DARK_CARD + ' p-5'}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-ink">Schichtplan (Mirus NEO)</h2>
-            <p className="text-sm text-ink-muted">
+            <h2 className="text-lg font-semibold text-white">Schichtplan (Mirus NEO)</h2>
+            <p className="text-sm text-sidebar-muted">
               Der Server meldet sich bei{' '}
-              <code className="rounded bg-surface-muted px-1 py-0.5">neo.mirus.ch</code> an und
+              <code className="rounded bg-white/10 px-1 py-0.5">neo.mirus.ch</code> an und
               synchronisiert den Schichtplan automatisch alle 15 Minuten.
             </p>
           </div>
           <SyncStatusBadge config={config} />
         </div>
 
-        <ol className="mt-5 space-y-3 text-sm text-ink">
+        <ol className="mt-5 space-y-3 text-sm text-white">
           <Step n={1} title="Mirus-Zugangsdaten eintragen">
-            <p className="text-ink-muted">
+            <p className="text-sidebar-muted">
               Benutzername und Passwort für neo.mirus.ch speichern. Das Konto muss den Team-Schichtplan
               sehen können (ohne MFA/FIDO2).
             </p>
           </Step>
           <Step n={2} title="Sync aktivieren und einmal synchronisieren">
-            <p className="text-ink-muted">
+            <p className="text-sidebar-muted">
               Danach erscheinen die Mirus-Mitarbeiter unten in der Zuordnungsliste.
             </p>
           </Step>
           <Step n={3} title="Mitarbeiter zuordnen, dann erneut syncen">
-            <p className="text-ink-muted">
+            <p className="text-sidebar-muted">
               Verknüpfe jeden Mirus-Namen mit dem lokalen Benutzerkonto. Erst nach einem weiteren Sync
               erscheinen die Schichten im Schichtplan.
             </p>
@@ -193,7 +196,7 @@ export default function IntegrationsPage() {
         </ol>
 
         <form
-          className="mt-6 grid grid-cols-1 gap-4 rounded-xl border border-border bg-surface-muted p-4 md:grid-cols-2"
+          className="mt-6 grid grid-cols-1 gap-4 rounded-xl border border-sidebar-border bg-white/5 p-4 md:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             updateMut.mutate({
@@ -206,15 +209,15 @@ export default function IntegrationsPage() {
             if (mirusPassword.trim()) setMirusPassword('');
           }}
         >
-          <label className="md:col-span-2 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2.5">
+          <label className="md:col-span-2 flex items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar px-3 py-2.5">
             <input
               type="checkbox"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
               className="h-4 w-4"
             />
-            <span className="text-sm font-medium text-ink">Sync aktiviert</span>
-            <span className="ml-auto text-xs text-ink-muted">
+            <span className="text-sm font-medium text-white">Sync aktiviert</span>
+            <span className="ml-auto text-xs text-sidebar-muted">
               Cron alle 15 Minuten · manueller Sync im Hintergrund (ca. 1–3 Min.)
             </span>
           </label>
@@ -226,7 +229,7 @@ export default function IntegrationsPage() {
               value={mirusUsername}
               onChange={(e) => setMirusUsername(e.target.value)}
               placeholder="E-Mail oder Benutzername"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+              className={clsx(APP_DARK_INPUT, 'w-full py-2')}
             />
           </Field>
 
@@ -237,7 +240,7 @@ export default function IntegrationsPage() {
               value={mirusPassword}
               onChange={(e) => setMirusPassword(e.target.value)}
               placeholder={config?.hasMirusPassword ? '•••••••• (leer = unverändert)' : 'Passwort'}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+              className={clsx(APP_DARK_INPUT, 'w-full py-2')}
             />
           </Field>
 
@@ -246,7 +249,7 @@ export default function IntegrationsPage() {
               type="url"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+              className={clsx(APP_DARK_INPUT, 'w-full py-2')}
             />
           </Field>
 
@@ -257,7 +260,7 @@ export default function IntegrationsPage() {
               max={60}
               value={windowDays}
               onChange={(e) => setWindowDays(Number(e.target.value))}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+              className={clsx(APP_DARK_INPUT, 'w-full py-2')}
             />
           </Field>
 
@@ -265,7 +268,7 @@ export default function IntegrationsPage() {
             <button
               type="submit"
               disabled={updateMut.isPending}
-              className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
             >
               {updateMut.isPending ? 'Speichert…' : 'Speichern'}
             </button>
@@ -276,7 +279,7 @@ export default function IntegrationsPage() {
                 syncMut.mutate();
               }}
               disabled={!canSync}
-              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink hover:bg-surface-muted disabled:opacity-50"
+              className="rounded-lg border border-sidebar-border bg-transparent px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
             >
               {syncMut.isPending || config?.syncInProgress ? 'Synchronisiert…' : 'Jetzt synchronisieren'}
             </button>
@@ -285,30 +288,30 @@ export default function IntegrationsPage() {
                 type="button"
                 onClick={() => unlockMut.mutate()}
                 disabled={unlockMut.isPending}
-                className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                className="rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-300 hover:bg-rose-400/20 disabled:opacity-50"
               >
                 {unlockMut.isPending ? 'Setzt zurück…' : 'Hängenden Sync freigeben'}
               </button>
             )}
             {syncMut.isError && (
-              <span className="text-sm text-rose-700">{(syncMut.error as Error).message}</span>
+              <span className="text-sm text-rose-400">{(syncMut.error as Error).message}</span>
             )}
             {unlockMut.isError && (
-              <span className="text-sm text-rose-700">{(unlockMut.error as Error).message}</span>
+              <span className="text-sm text-rose-400">{(unlockMut.error as Error).message}</span>
             )}
             {updateMut.isError && (
-              <span className="text-sm text-rose-700">{(updateMut.error as Error).message}</span>
+              <span className="text-sm text-rose-400">{(updateMut.error as Error).message}</span>
             )}
             {updateMut.isSuccess && !updateMut.isPending && (
-              <span className="text-sm text-emerald-700">Gespeichert.</span>
+              <span className="text-sm text-emerald-400">Gespeichert.</span>
             )}
           </div>
         </form>
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Mitarbeiter zuordnen</h2>
-        <p className="text-sm text-ink-muted">
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">Mitarbeiter zuordnen</h2>
+        <p className="text-sm text-sidebar-muted">
           Nur Mirus-Personen aus dem letzten Sync (alte Favur-Einträge werden entfernt). Nur
           verknüpfte Personen erscheinen nach dem nächsten Sync im Schichtplan.
           {config != null && (
@@ -319,33 +322,33 @@ export default function IntegrationsPage() {
           )}
         </p>
         {mapHint && (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <p className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
             Zuordnung gespeichert. Bitte jetzt erneut «Jetzt synchronisieren» klicken, damit die
             Schichten gespeichert werden.
           </p>
         )}
         {usersQuery.isLoading ? (
-          <p className="mt-4 text-sm text-ink-muted">Lädt…</p>
+          <p className="mt-4 text-sm text-sidebar-muted">Lädt…</p>
         ) : (usersQuery.data?.length ?? 0) === 0 ? (
-          <p className="mt-4 text-sm text-ink-muted">
+          <p className="mt-4 text-sm text-sidebar-muted">
             Noch keine Mirus-Mitarbeiter. Zugangsdaten speichern und synchronisieren.
           </p>
         ) : (
-          <ul className="mt-4 divide-y divide-border">
+          <ul className="mt-4 divide-y divide-sidebar-border/40">
             {usersQuery.data!.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-ink">
+                  <p className="truncate font-medium text-white">
                     {row.displayName || row.externalUserId}
                   </p>
-                  <p className="truncate text-xs text-ink-muted">
+                  <p className="truncate text-xs text-sidebar-muted">
                     Mirus-ID: {row.externalUserId} · zuletzt {formatDateTime(row.lastSeenAt)}
                   </p>
                 </div>
                 {row.user && (
                   <div className="flex items-center gap-2">
                     <Avatar name={row.user.name} url={row.user.avatarUrl} size={28} />
-                    <span className="truncate text-xs text-ink">
+                    <span className="truncate text-xs text-white">
                       {formatUserWithTitlePrefix(row.user.name, row.user.titlePrefix)}
                     </span>
                   </div>
@@ -355,7 +358,7 @@ export default function IntegrationsPage() {
                   onChange={(e) =>
                     mapUserMut.mutate({ id: row.id, userId: e.target.value || null })
                   }
-                  className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm"
+                  className={clsx(APP_DARK_INPUT, 'py-1.5')}
                   disabled={mapUserMut.isPending}
                 >
                   <option value="">— nicht verknüpft —</option>
@@ -370,6 +373,8 @@ export default function IntegrationsPage() {
           </ul>
         )}
       </section>
+        </div>
+      </AppPageBody>
     </div>
   );
 }
@@ -377,11 +382,11 @@ export default function IntegrationsPage() {
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action text-xs font-bold text-white">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-ink">{title}</p>
+        <p className="font-semibold text-white">{title}</p>
         <div className="mt-1 text-sm">{children}</div>
       </div>
     </li>
@@ -391,7 +396,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
         {label}
       </span>
       {children}
@@ -403,12 +408,12 @@ function SyncStatusBadge({ config }: { config: MirusConfig | undefined }) {
   if (!config) return null;
   const tone =
     config.lastSyncStatus === 'ok'
-      ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+      ? 'bg-emerald-400/15 text-emerald-300 border-emerald-400/30'
       : config.lastSyncStatus === 'warn'
-        ? 'bg-amber-100 text-amber-950 border-amber-200'
+        ? 'bg-amber-400/15 text-amber-300 border-amber-400/30'
         : config.lastSyncStatus === 'error'
-          ? 'bg-rose-100 text-rose-900 border-rose-200'
-          : 'bg-surface-muted text-ink-muted border-border';
+          ? 'bg-rose-400/15 text-rose-300 border-rose-400/30'
+          : 'bg-white/10 text-sidebar-muted border-sidebar-border';
   const label = config.syncInProgress
     ? 'Sync läuft… (1–3 Min.)'
     : config.lastSyncStatus === 'ok'
@@ -425,12 +430,12 @@ function SyncStatusBadge({ config }: { config: MirusConfig | undefined }) {
       <span className={`inline-block rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>
         {label}
       </span>
-      <p className="mt-1 text-xs text-ink-muted">Letzter Lauf: {formatDateTime(config.lastSyncAt)}</p>
+      <p className="mt-1 text-xs text-sidebar-muted">Letzter Lauf: {formatDateTime(config.lastSyncAt)}</p>
       {(config.lastSyncStatus === 'error' || config.lastSyncStatus === 'warn' || config.lastSyncStatus === 'ok') &&
         config.lastSyncError && (
           <p
             className={`mt-1 max-w-sm text-xs ${
-              config.lastSyncStatus === 'ok' ? 'text-ink-muted' : 'text-rose-700'
+              config.lastSyncStatus === 'ok' ? 'text-sidebar-muted' : 'text-rose-400'
             }`}
           >
             {config.lastSyncError}

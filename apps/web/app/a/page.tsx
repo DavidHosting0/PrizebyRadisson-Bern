@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { RoleBadge } from '@/components/admin/RoleBadge';
 import { Avatar } from '@/components/ui/Avatar';
@@ -15,6 +14,8 @@ import {
   userTitlePrefixLabel,
 } from '@/lib/userTitlePrefix';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type CustomRole = { id: string; name: string; color: string; position: number };
 
@@ -152,40 +153,42 @@ export default function AdminUserManagementPage() {
   });
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Members</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Assign roles to grant permissions. Title prefix picks the app area (Reception, Housekeeping, etc.).
-          </p>
-        </div>
-        <Button type="button" variant="action" className="min-h-[44px]" onClick={() => setCreateOpen(true)}>
-          + Add user
-        </Button>
-      </div>
-
-      {isLoading && <p className="text-sm text-ink-muted">Loading users…</p>}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Members"
+        description="Assign roles to grant permissions. Title prefix picks the app area (Reception, Housekeeping, etc.)."
+        actions={
+          <>
+            <AppChromeTools />
+            <Button type="button" variant="action" className="min-h-[40px]" onClick={() => setCreateOpen(true)}>
+              + Add user
+            </Button>
+          </>
+        }
+      />
+      <AppPageBody>
+        <div className="space-y-6 p-4 md:p-6">
+      {isLoading && <p className="text-sm text-sidebar-muted">Loading users…</p>}
 
       <ul className="space-y-3">
         {users.map((u) => (
           <li key={u.id}>
-            <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className={APP_DARK_CARD + ' flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between'}>
               <div className="flex min-w-0 flex-1 gap-3">
                 <Avatar name={u.name} size={44} className="hidden shrink-0 sm:flex" />
                 <div className="min-w-0 flex-1">
-                <p className="font-semibold text-ink">{u.name}</p>
-                <p className="text-sm text-ink-muted">{u.email}</p>
-                {u.phone && <p className="text-sm text-ink-muted">{u.phone}</p>}
-                <p className="mt-1 text-xs text-ink-muted">
-                  <span className="font-medium text-ink/90">{userTitlePrefixLabel(u.titlePrefix)}</span>
-                  <span className="mx-1.5 text-ink-muted/60">·</span>
+                <p className="font-semibold text-white">{u.name}</p>
+                <p className="text-sm text-sidebar-muted">{u.email}</p>
+                {u.phone && <p className="text-sm text-sidebar-muted">{u.phone}</p>}
+                <p className="mt-1 text-xs text-sidebar-muted">
+                  <span className="font-medium text-white/90">{userTitlePrefixLabel(u.titlePrefix)}</span>
+                  <span className="mx-1.5 text-sidebar-muted/60">·</span>
                   {accountTypeLabel(u.role)}
                   {!u.isActive && (
-                    <span className="ml-2 font-medium text-danger">· Disabled</span>
+                    <span className="ml-2 font-medium text-red-400">· Disabled</span>
                   )}
                   {u.id === me?.id && (
-                    <span className="ml-2 font-medium text-ink-muted">· You</span>
+                    <span className="ml-2 font-medium text-sidebar-muted">· You</span>
                   )}
                 </p>
                 {u.roles && u.roles.length > 0 && (
@@ -196,17 +199,22 @@ export default function AdminUserManagementPage() {
                   </div>
                 )}
                 {(!u.roles || u.roles.length === 0) && u.role !== 'ADMIN' && (
-                  <p className="mt-2 text-[11px] font-medium text-danger">No roles assigned</p>
+                  <p className="mt-2 text-[11px] font-medium text-red-400">No roles assigned</p>
                 )}
                 {u.permissionGrants && u.permissionGrants.length > 0 && (
-                  <p className="mt-1 text-[11px] text-ink-muted">
-                    <span className="font-medium text-ink/80">+{u.permissionGrants.length} override{u.permissionGrants.length === 1 ? '' : 's'}</span>
+                  <p className="mt-1 text-[11px] text-sidebar-muted">
+                    <span className="font-medium text-white/80">+{u.permissionGrants.length} override{u.permissionGrants.length === 1 ? '' : 's'}</span>
                   </p>
                 )}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" className="min-h-[40px] px-3 text-sm" onClick={() => setEditUser(u)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-[40px] border border-sidebar-border bg-transparent px-3 text-sm text-white hover:bg-white/10"
+                  onClick={() => setEditUser(u)}
+                >
                   Edit
                 </Button>
                 <Button
@@ -219,10 +227,12 @@ export default function AdminUserManagementPage() {
                   Delete
                 </Button>
               </div>
-            </Card>
+            </div>
           </li>
         ))}
       </ul>
+        </div>
+      </AppPageBody>
 
       {createOpen && (
         <UserUpsertModal

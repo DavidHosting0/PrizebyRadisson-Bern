@@ -7,6 +7,9 @@ import { PriorityBadge } from '@/components/PriorityBadge';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
 import { usePermission } from '@/lib/auth-context';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 type Req = {
   id: string;
@@ -22,6 +25,7 @@ export default function ReceptionRequestsPage() {
   const qc = useQueryClient();
   const { openNewRequest } = useReceptionUi();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
+  const { enterMobile } = useReceptionMobileMode();
 
   const { data: list = [], isLoading } = useQuery({
     queryKey: ['service-requests'],
@@ -45,76 +49,87 @@ export default function ReceptionRequestsPage() {
   const active = list.filter((r) => r.status !== 'RESOLVED' && r.status !== 'CANCELLED');
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Service requests</h1>
-          <p className="mt-1 text-sm text-ink-muted">Create, track, and manage guest requests.</p>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Service requests"
+        description="Create, track, and manage guest requests"
+        actions={
+          <>
+            <AppChromeTools onEnterMobile={enterMobile} />
+            {canCreateRequest && (
+              <Button type="button" variant="action" className="min-h-[40px]" onClick={openNewRequest}>
+                + New request
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <AppPageBody>
+        <div className="space-y-6 p-4 md:p-6">
+          {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+
+          <div className={APP_DARK_CARD + ' overflow-x-auto'}>
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="border-b border-sidebar-border/60 bg-white/5 text-xs uppercase tracking-wide text-sidebar-muted">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Room</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold">Priority</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-semibold">Assigned</th>
+                  <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {active.map((r) => (
+                  <tr key={r.id} className="border-b border-sidebar-border/40 hover:bg-white/5">
+                    <td className="px-4 py-3 font-semibold text-white">Room {r.room.roomNumber}</td>
+                    <td className="px-4 py-3 text-sidebar-muted">{r.type.label}</td>
+                    <td className="px-4 py-3">
+                      <PriorityBadge priority={r.priority} />
+                    </td>
+                    <td className="px-4 py-3 capitalize text-sidebar-muted">
+                      {r.status.replace(/_/g, ' ').toLowerCase()}
+                    </td>
+                    <td className="px-4 py-3 text-sidebar-muted">
+                      {r.claimedBy ? formatUserRef(r.claimedBy) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {r.priority === 'NORMAL' && (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-[36px] border border-sidebar-border bg-transparent px-3 py-1.5 text-xs text-white hover:bg-white/10"
+                            disabled={escalate.isPending}
+                            onClick={() => escalate.mutate(r.id)}
+                          >
+                            Escalate
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="min-h-[36px] px-3 py-1.5 text-xs text-red-300 hover:bg-white/10"
+                          disabled={cancel.isPending}
+                          onClick={() => cancel.mutate(r.id)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {active.length === 0 && !isLoading && (
+            <p className="text-sm text-sidebar-muted">No active requests.</p>
+          )}
         </div>
-        {canCreateRequest && (
-          <Button type="button" variant="action" className="min-h-[48px]" onClick={openNewRequest}>
-            + New request
-          </Button>
-        )}
-      </div>
-
-      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
-
-      <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-card">
-        <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="border-b border-border bg-surface-muted/80 text-xs uppercase tracking-wide text-ink-muted">
-            <tr>
-              <th className="px-4 py-3 font-semibold">Room</th>
-              <th className="px-4 py-3 font-semibold">Type</th>
-              <th className="px-4 py-3 font-semibold">Priority</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Assigned</th>
-              <th className="px-4 py-3 font-semibold text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {active.map((r) => (
-              <tr key={r.id} className="border-b border-border/80 hover:bg-surface-muted/40">
-                <td className="px-4 py-3 font-semibold text-ink">Room {r.room.roomNumber}</td>
-                <td className="px-4 py-3 text-ink-muted">{r.type.label}</td>
-                <td className="px-4 py-3">
-                  <PriorityBadge priority={r.priority} />
-                </td>
-                <td className="px-4 py-3 capitalize text-ink-muted">{r.status.replace(/_/g, ' ').toLowerCase()}</td>
-                <td className="px-4 py-3 text-ink-muted">{r.claimedBy ? formatUserRef(r.claimedBy) : '—'}</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {r.priority === 'NORMAL' && (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="min-h-[36px] px-3 py-1.5 text-xs"
-                        disabled={escalate.isPending}
-                        onClick={() => escalate.mutate(r.id)}
-                      >
-                        Escalate
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="min-h-[36px] px-3 py-1.5 text-xs text-danger"
-                      disabled={cancel.isPending}
-                      onClick={() => cancel.mutate(r.id)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {active.length === 0 && !isLoading && (
-        <p className="text-sm text-ink-muted">No active requests.</p>
-      )}
+      </AppPageBody>
     </div>
   );
 }

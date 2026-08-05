@@ -6,7 +6,9 @@ import type { PublicAreaDto, PublicAreaKind } from '@housekeeping/shared';
 import { formatFloorLabel } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 
 const KINDS: PublicAreaKind[] = ['corridor', 'glass', 'elevator', 'staff', 'custom'];
 
@@ -19,6 +21,7 @@ const FREQUENCY_OPTIONS = [
 
 export default function PublicAreasPage() {
   const qc = useQueryClient();
+  const { enterMobile } = useSupervisorMobileMode();
   const { data: areas = [], isLoading, error } = useQuery({
     queryKey: ['public-areas'],
     queryFn: () => api<PublicAreaDto[]>('/public-areas'),
@@ -66,127 +69,135 @@ export default function PublicAreasPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Public areas</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Set how often corridors, glass, elevators, and staff areas must be cleaned. Due items are
-          included in the daily auto-assignment.
-        </p>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Public areas"
+        description="Set how often corridors, glass, elevators, and staff areas must be cleaned. Due items are included in the daily auto-assignment."
+        actions={<AppChromeTools onEnterMobile={enterMobile} />}
+      />
 
-      <div className="flex flex-wrap gap-3">
-        <Button
-          variant="secondary"
-          disabled={sync.isPending}
-          onClick={() => sync.mutate()}
-        >
-          {sync.isPending ? 'Syncing…' : 'Sync from floor plans'}
-        </Button>
-        {sync.data && (
-          <p className="self-center text-sm text-ink-muted">
-            Created {sync.data.created}, skipped {sync.data.skipped}
-          </p>
-        )}
-      </div>
+      <AppPageBody>
+        <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-6">
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              className="border border-sidebar-border bg-transparent text-white hover:bg-white/10"
+              disabled={sync.isPending}
+              onClick={() => sync.mutate()}
+            >
+              {sync.isPending ? 'Syncing…' : 'Sync from floor plans'}
+            </Button>
+            {sync.data && (
+              <p className="self-center text-sm text-sidebar-muted">
+                Created {sync.data.created}, skipped {sync.data.skipped}
+              </p>
+            )}
+          </div>
 
-      <Card className="space-y-3">
-        <h2 className="text-sm font-semibold text-ink">Add public area</h2>
-        <div className="flex flex-wrap gap-2">
-          <input
-            className="min-h-[44px] flex-1 min-w-[160px] rounded-btn border border-border bg-surface px-3 text-sm"
-            placeholder="Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <select
-            className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as PublicAreaKind)}
-          >
-            {KINDS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
-          <input
-            className="min-h-[44px] w-24 rounded-btn border border-border bg-surface px-3 text-sm"
-            placeholder="Floor"
-            value={floor}
-            onChange={(e) => setFloor(e.target.value)}
-          />
-          <select
-            className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-            value={frequencyDays}
-            onChange={(e) => setFrequencyDays(Number(e.target.value))}
-          >
-            {FREQUENCY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="action"
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
-          >
-            Add
-          </Button>
-        </div>
-      </Card>
-
-      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
-      {error && <p className="text-sm text-red-600">Could not load public areas.</p>}
-
-      <ul className="space-y-3">
-        {areas.map((a) => (
-          <li key={a.id}>
-            <Card className="flex flex-wrap items-center gap-3">
-              <div className="min-w-[140px] flex-1">
-                <p className="font-semibold text-ink">{a.name}</p>
-                <p className="text-xs text-ink-muted">
-                  {a.kind}
-                  {a.floor != null ? ` · ${formatFloorLabel(a.floor)}` : ''}
-                  {a.isDueToday ? ' · due today' : ''}
-                  {!a.isActive ? ' · inactive' : ''}
-                </p>
-              </div>
+          <div className={APP_DARK_CARD + ' space-y-3 p-5'}>
+            <h2 className="text-sm font-semibold text-white">Add public area</h2>
+            <div className="flex flex-wrap gap-2">
+              <input
+                className={APP_DARK_INPUT + ' min-h-[44px] min-w-[160px] flex-1'}
+                placeholder="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
               <select
-                className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-                value={a.frequencyDays}
-                onChange={(e) =>
-                  patch.mutate({ id: a.id, body: { frequencyDays: Number(e.target.value) } })
-                }
+                className={APP_DARK_INPUT + ' min-h-[44px]'}
+                value={kind}
+                onChange={(e) => setKind(e.target.value as PublicAreaKind)}
+              >
+                {KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+              <input
+                className={APP_DARK_INPUT + ' min-h-[44px] w-24'}
+                placeholder="Floor"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              />
+              <select
+                className={APP_DARK_INPUT + ' min-h-[44px]'}
+                value={frequencyDays}
+                onChange={(e) => setFrequencyDays(Number(e.target.value))}
               >
                 {FREQUENCY_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
-                {!FREQUENCY_OPTIONS.some((o) => o.value === a.frequencyDays) && (
-                  <option value={a.frequencyDays}>Every {a.frequencyDays} days</option>
-                )}
               </select>
               <Button
-                variant="ghost"
-                onClick={() => patch.mutate({ id: a.id, body: { isActive: !a.isActive } })}
+                variant="action"
+                disabled={!name.trim() || create.isPending}
+                onClick={() => create.mutate()}
               >
-                {a.isActive ? 'Deactivate' : 'Activate'}
+                Add
               </Button>
-              <Button variant="ghost" onClick={() => remove.mutate(a.id)}>
-                Delete
-              </Button>
-            </Card>
-          </li>
-        ))}
-      </ul>
-      {!isLoading && areas.length === 0 && (
-        <p className="text-sm text-ink-muted">
-          No public areas yet. Sync from floor plans or add manually.
-        </p>
-      )}
+            </div>
+          </div>
+
+          {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+          {error && <p className="text-sm text-red-400">Could not load public areas.</p>}
+
+          <ul className="space-y-3">
+            {areas.map((a) => (
+              <li key={a.id}>
+                <div className={APP_DARK_CARD + ' flex flex-wrap items-center gap-3 p-4'}>
+                  <div className="min-w-[140px] flex-1">
+                    <p className="font-semibold text-white">{a.name}</p>
+                    <p className="text-xs text-sidebar-muted">
+                      {a.kind}
+                      {a.floor != null ? ` · ${formatFloorLabel(a.floor)}` : ''}
+                      {a.isDueToday ? ' · due today' : ''}
+                      {!a.isActive ? ' · inactive' : ''}
+                    </p>
+                  </div>
+                  <select
+                    className={APP_DARK_INPUT + ' min-h-[44px]'}
+                    value={a.frequencyDays}
+                    onChange={(e) =>
+                      patch.mutate({ id: a.id, body: { frequencyDays: Number(e.target.value) } })
+                    }
+                  >
+                    {FREQUENCY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                    {!FREQUENCY_OPTIONS.some((o) => o.value === a.frequencyDays) && (
+                      <option value={a.frequencyDays}>Every {a.frequencyDays} days</option>
+                    )}
+                  </select>
+                  <Button
+                    variant="ghost"
+                    className="text-sidebar-muted hover:bg-white/10 hover:text-white"
+                    onClick={() => patch.mutate({ id: a.id, body: { isActive: !a.isActive } })}
+                  >
+                    {a.isActive ? 'Deactivate' : 'Activate'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="text-sidebar-muted hover:bg-white/10 hover:text-white"
+                    onClick={() => remove.mutate(a.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {!isLoading && areas.length === 0 && (
+            <p className="text-sm text-sidebar-muted">
+              No public areas yet. Sync from floor plans or add manually.
+            </p>
+          )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

@@ -6,21 +6,32 @@ import { roomsListQueryOptions } from '@/lib/rooms-query';
 import type { FloorPlanRoom } from '@/components/rooms/RoomFloorPlan';
 import { RoomFloorPlan } from '@/components/rooms/RoomFloorPlan';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 
 export default function SupervisorFloorPlanPage() {
+  const { enterMobile } = useSupervisorMobileMode();
   const [panelRoomId, setPanelRoomId] = useState<string | null>(null);
 
   const { data: rooms = [] } = useQuery(roomsListQueryOptions<FloorPlanRoom>());
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Floor plan</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Room locations by floor with live housekeeping status. Open a room for cleaning history, photos, and maintenance.
-        </p>
-      </div>
-      <RoomFloorPlan rooms={rooms} onRoomClick={(id) => setPanelRoomId(id)} />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Floor plan"
+        description="Room locations by floor with live housekeeping status. Open a room for cleaning history, photos, and maintenance."
+        actions={<AppChromeTools onEnterMobile={enterMobile} />}
+      />
+
+      <AppPageBody>
+        <div className="p-4 md:p-6">
+          <div className={APP_DARK_CARD + ' p-4 md:p-6'}>
+            <RoomFloorPlan rooms={rooms} onRoomClick={(id) => setPanelRoomId(id)} />
+          </div>
+        </div>
+      </AppPageBody>
+
       <RoomSlideOver roomId={panelRoomId} open={!!panelRoomId} onClose={() => setPanelRoomId(null)} />
     </div>
   );

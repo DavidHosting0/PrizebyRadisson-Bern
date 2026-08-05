@@ -29,14 +29,14 @@ export default function TechnicianRoomsPage() {
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Rooms</h1>
-          <p className="mt-1 text-sm text-ink-muted">
+          <h1 className="text-xl font-semibold tracking-tight text-white">Rooms</h1>
+          <p className="mt-1 text-sm text-sidebar-muted">
             Green = vacant · Red = guest checked in · Based on PMS check-in status, not future reservations.
           </p>
         </div>
         <Button
           type="button"
-          variant="secondary"
+          variant="ghostOnDark"
           className="shrink-0"
           disabled={isLoading || data.length === 0}
           onClick={onDownloadList}
@@ -63,10 +63,10 @@ export default function TechnicianRoomsPage() {
         </div>
       )}
 
-      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
 
       {!isLoading && floors.length === 0 && (
-        <p className="text-sm text-ink-muted">No rooms found.</p>
+        <p className="text-sm text-sidebar-muted">No rooms found.</p>
       )}
 
       {!isLoading &&
@@ -74,15 +74,15 @@ export default function TechnicianRoomsPage() {
           <section key={group.floor}>
             {idx > 0 && (
               <div className="mb-4 flex items-center gap-3" role="separator" aria-label={group.label}>
-                <div className="h-px flex-1 bg-border" />
-                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                <div className="h-px flex-1 bg-sidebar-border" />
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
                   {group.label}
                 </span>
-                <div className="h-px flex-1 bg-border" />
+                <div className="h-px flex-1 bg-sidebar-border" />
               </div>
             )}
             {idx === 0 && (
-              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
                 {group.label}
               </h2>
             )}

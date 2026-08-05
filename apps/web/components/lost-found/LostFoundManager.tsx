@@ -2,12 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useMemo, useRef, useState } from 'react';
+import clsx from 'clsx';
 import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { LOST_FOUND_BOXES } from '@/lib/lostFoundBoxes';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type Lf = {
   id: string;
@@ -31,10 +34,15 @@ const STATUSES = ['FOUND', 'STORED', 'CLAIMED', 'CLOSED'] as const;
 export function LostFoundManager({
   title = 'Lost & found',
   subtitle = 'Triage cleaner reports, manage storage boxes, and track items through to claim.',
+  tone = 'light',
+  onEnterMobile,
 }: {
   title?: string;
   subtitle?: string;
+  tone?: 'light' | 'dark';
+  onEnterMobile?: () => void;
 }) {
+  const dark = tone === 'dark';
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('unsorted');
   const [q, setQ] = useState('');
@@ -99,33 +107,46 @@ export function LostFoundManager({
     [raw, selectedId],
   );
 
-  return (
-    <div className="space-y-6 p-4 md:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">{title}</h1>
-          <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>
+  const body = (
+    <div className={clsx('space-y-6', dark ? 'p-4 md:p-6' : 'p-4 md:p-8')}>
+      {!dark && (
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">{title}</h1>
+            <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>
+          </div>
+          <Button variant="action" onClick={() => setAddOpen(true)}>
+            + Add item
+          </Button>
         </div>
-        <Button variant="action" onClick={() => setAddOpen(true)}>
-          + Add item
-        </Button>
-      </div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
-        <TabButton active={tab === 'unsorted'} onClick={() => setTab('unsorted')} label="Not sorted" count={counts.unsorted} />
-        <TabButton active={tab === 'stored'} onClick={() => setTab('stored')} label="In storage" count={counts.stored} />
-        <TabButton active={tab === 'archive'} onClick={() => setTab('archive')} label="Claimed / closed" count={counts.archive} />
+      <div
+        className={clsx(
+          'flex flex-wrap items-center gap-2 border-b pb-2',
+          dark ? 'border-sidebar-border/60' : 'border-border',
+        )}
+      >
+        <TabButton dark={dark} active={tab === 'unsorted'} onClick={() => setTab('unsorted')} label="Not sorted" count={counts.unsorted} />
+        <TabButton dark={dark} active={tab === 'stored'} onClick={() => setTab('stored')} label="In storage" count={counts.stored} />
+        <TabButton dark={dark} active={tab === 'archive'} onClick={() => setTab('archive')} label="Claimed / closed" count={counts.archive} />
         <div className="ml-auto flex flex-wrap gap-2">
           <input
             type="search"
             placeholder="Search description…"
-            className="min-h-[36px] w-56 rounded-btn border border-border bg-surface px-3 text-sm"
+            className={clsx(
+              'min-h-[36px] w-56 rounded-btn px-3 text-sm',
+              dark ? APP_DARK_INPUT : 'border border-border bg-surface',
+            )}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
           {tab === 'stored' && (
             <select
-              className="min-h-[36px] rounded-btn border border-border bg-surface px-2 text-sm"
+              className={clsx(
+                'min-h-[36px] rounded-btn px-2 text-sm',
+                dark ? APP_DARK_INPUT : 'border border-border bg-surface',
+              )}
               value={boxFilter}
               onChange={(e) => setBoxFilter(e.target.value)}
             >
@@ -137,13 +158,19 @@ export function LostFoundManager({
               ))}
             </select>
           )}
+          {dark && (
+            <Button variant="action" onClick={() => setAddOpen(true)}>
+              + Add item
+            </Button>
+          )}
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+      {isLoading && <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>Loading…</p>}
 
       {tab === 'unsorted' && (
         <UnsortedList
+          dark={dark}
           items={items}
           onOpen={(id) => setSelectedId(id)}
           onStore={(id, box) => patch.mutate({ id, body: { status: 'STORED', storedLocation: box } })}
@@ -151,12 +178,12 @@ export function LostFoundManager({
         />
       )}
 
-      {tab === 'stored' && <StoredGrid items={items} onOpen={(id) => setSelectedId(id)} />}
+      {tab === 'stored' && <StoredGrid dark={dark} items={items} onOpen={(id) => setSelectedId(id)} />}
 
-      {tab === 'archive' && <StoredGrid items={items} onOpen={(id) => setSelectedId(id)} showStatus />}
+      {tab === 'archive' && <StoredGrid dark={dark} items={items} onOpen={(id) => setSelectedId(id)} showStatus />}
 
       {items.length === 0 && !isLoading && (
-        <p className="text-sm text-ink-muted">
+        <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
           {tab === 'unsorted'
             ? 'Nothing to sort. New items from housekeepers will appear here.'
             : tab === 'stored'
@@ -177,6 +204,21 @@ export function LostFoundManager({
       {addOpen && <AddItemModal onClose={() => setAddOpen(false)} />}
     </div>
   );
+
+  if (dark) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AppPageChrome
+          title={title}
+          description={subtitle}
+          actions={<AppChromeTools onEnterMobile={onEnterMobile} />}
+        />
+        <AppPageBody>{body}</AppPageBody>
+      </div>
+    );
+  }
+
+  return body;
 }
 
 function TabButton({
@@ -184,25 +226,35 @@ function TabButton({
   onClick,
   label,
   count,
+  dark,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   count: number;
+  dark?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-t-md px-3 py-2 text-sm font-medium transition-colors ${
-        active ? 'bg-ink text-white' : 'text-ink-muted hover:bg-surface-muted'
-      }`}
+      className={clsx(
+        'rounded-t-md px-3 py-2 text-sm font-medium transition-colors',
+        dark
+          ? active
+            ? 'bg-action text-white'
+            : 'text-sidebar-muted hover:bg-white/10 hover:text-white'
+          : active
+            ? 'bg-ink text-white'
+            : 'text-ink-muted hover:bg-surface-muted',
+      )}
     >
       {label}{' '}
       <span
-        className={`ml-1 inline-flex min-w-[22px] justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
-          active ? 'bg-white/20 text-white' : 'bg-surface-muted text-ink-muted'
-        }`}
+        className={clsx(
+          'ml-1 inline-flex min-w-[22px] justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+          active ? 'bg-white/20 text-white' : dark ? 'bg-white/10 text-sidebar-muted' : 'bg-surface-muted text-ink-muted',
+        )}
       >
         {count}
       </span>
@@ -215,49 +267,88 @@ function UnsortedList({
   onOpen,
   onStore,
   pending,
+  dark,
 }: {
   items: Lf[];
   onOpen: (id: string) => void;
   onStore: (id: string, box: string) => void;
   pending: boolean;
+  dark?: boolean;
 }) {
   return (
     <ul className="space-y-3">
       {items.map((item) => (
         <li key={item.id}>
-          <Card className="flex flex-wrap items-center gap-4 p-4">
-            <button
-              type="button"
-              onClick={() => onOpen(item.id)}
-              className="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted"
-            >
-              {item.photoUrl ? (
-                <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-[10px] text-ink-muted">No photo</span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpen(item.id)}
-              className="min-w-[200px] flex-1 text-left"
-            >
-              <p className="font-medium text-ink">{item.description}</p>
-              <p className="mt-1 text-xs text-ink-muted">
-                {item.room ? `Room ${item.room.roomNumber}` : 'No room'}
-                {item.reportedBy?.name ? ` · Reported by ${item.reportedBy.name}` : ''}
-              </p>
-              <p className="mt-1 text-xs text-ink-muted">
-                Found: {item.foundAt ? new Date(item.foundAt).toLocaleString() : 'Not reported'}
-              </p>
-            </button>
-            <BoxPicker
-              disabled={pending}
-              placeholder="Store in box…"
-              value=""
-              onChange={(box) => onStore(item.id, box)}
-            />
-          </Card>
+          {dark ? (
+            <div className={clsx(APP_DARK_CARD, 'flex flex-wrap items-center gap-4 p-4')}>
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-black/20"
+              >
+                {item.photoUrl ? (
+                  <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-[10px] text-sidebar-muted">No photo</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="min-w-[200px] flex-1 text-left"
+              >
+                <p className="font-medium text-white">{item.description}</p>
+                <p className="mt-1 text-xs text-sidebar-muted">
+                  {item.room ? `Room ${item.room.roomNumber}` : 'No room'}
+                  {item.reportedBy?.name ? ` · Reported by ${item.reportedBy.name}` : ''}
+                </p>
+                <p className="mt-1 text-xs text-sidebar-muted">
+                  Found: {item.foundAt ? new Date(item.foundAt).toLocaleString() : 'Not reported'}
+                </p>
+              </button>
+              <BoxPicker
+                dark
+                disabled={pending}
+                placeholder="Store in box…"
+                value=""
+                onChange={(box) => onStore(item.id, box)}
+              />
+            </div>
+          ) : (
+            <Card className="flex flex-wrap items-center gap-4 p-4">
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted"
+              >
+                {item.photoUrl ? (
+                  <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-[10px] text-ink-muted">No photo</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen(item.id)}
+                className="min-w-[200px] flex-1 text-left"
+              >
+                <p className="font-medium text-ink">{item.description}</p>
+                <p className="mt-1 text-xs text-ink-muted">
+                  {item.room ? `Room ${item.room.roomNumber}` : 'No room'}
+                  {item.reportedBy?.name ? ` · Reported by ${item.reportedBy.name}` : ''}
+                </p>
+                <p className="mt-1 text-xs text-ink-muted">
+                  Found: {item.foundAt ? new Date(item.foundAt).toLocaleString() : 'Not reported'}
+                </p>
+              </button>
+              <BoxPicker
+                disabled={pending}
+                placeholder="Store in box…"
+                value=""
+                onChange={(box) => onStore(item.id, box)}
+              />
+            </Card>
+          )}
         </li>
       ))}
     </ul>
@@ -268,10 +359,12 @@ function StoredGrid({
   items,
   onOpen,
   showStatus,
+  dark,
 }: {
   items: Lf[];
   onOpen: (id: string) => void;
   showStatus?: boolean;
+  dark?: boolean;
 }) {
   return (
     <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -280,9 +373,19 @@ function StoredGrid({
           <button
             type="button"
             onClick={() => onOpen(item.id)}
-            className="group block w-full overflow-hidden rounded-card border border-border bg-surface text-left shadow-card transition hover:shadow-lift"
+            className={clsx(
+              'group block w-full overflow-hidden text-left transition',
+              dark
+                ? clsx(APP_DARK_CARD, 'p-0 hover:border-action/40')
+                : 'rounded-card border border-border bg-surface shadow-card hover:shadow-lift',
+            )}
           >
-            <div className="flex aspect-[4/3] items-center justify-center bg-surface-muted text-ink-muted">
+            <div
+              className={clsx(
+                'flex aspect-[4/3] items-center justify-center',
+                dark ? 'bg-black/20 text-sidebar-muted' : 'bg-surface-muted text-ink-muted',
+              )}
+            >
               {item.photoUrl ? (
                 <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
               ) : (
@@ -291,21 +394,31 @@ function StoredGrid({
             </div>
             <div className="p-4">
               <div className="flex items-start justify-between gap-2">
-                <p className="font-medium leading-snug text-ink">{item.description}</p>
+                <p className={clsx('font-medium leading-snug', dark ? 'text-white' : 'text-ink')}>{item.description}</p>
                 {item.storedLocation && (
-                  <span className="rounded-md bg-action/10 px-2 py-0.5 text-xs font-semibold text-action">
+                  <span
+                    className={clsx(
+                      'rounded-md px-2 py-0.5 text-xs font-semibold',
+                      dark ? 'bg-action/20 text-action' : 'bg-action/10 text-action',
+                    )}
+                  >
                     {item.storedLocation}
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-xs text-ink-muted">
+              <p className={clsx('mt-2 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
                 Stored: {item.storedAt ? new Date(item.storedAt).toLocaleString() : '—'}
               </p>
-              <p className="mt-1 text-xs text-ink-muted">
+              <p className={clsx('mt-1 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
                 Guest contacted: {item.guestContactedAt ? 'Yes' : 'No'}
               </p>
               {showStatus && (
-                <span className="mt-3 inline-flex rounded-full bg-surface-muted px-2.5 py-1 text-xs font-medium capitalize text-ink-muted">
+                <span
+                  className={clsx(
+                    'mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize',
+                    dark ? 'bg-white/10 text-sidebar-muted' : 'bg-surface-muted text-ink-muted',
+                  )}
+                >
                   {item.status.toLowerCase()}
                 </span>
               )}
@@ -322,11 +435,13 @@ function BoxPicker({
   onChange,
   disabled,
   placeholder,
+  dark,
 }: {
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  dark?: boolean;
 }) {
   return (
     <select
@@ -335,7 +450,10 @@ function BoxPicker({
       onChange={(e) => {
         if (e.target.value) onChange(e.target.value);
       }}
-      className="min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+      className={clsx(
+        'min-h-[40px] rounded-btn px-3 text-sm',
+        dark ? APP_DARK_INPUT : 'border border-border bg-surface',
+      )}
     >
       <option value="">{placeholder ?? 'Select box…'}</option>
       {LOST_FOUND_BOXES.map((b) => (

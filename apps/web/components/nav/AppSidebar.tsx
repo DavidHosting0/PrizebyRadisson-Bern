@@ -7,7 +7,7 @@ import type { SidebarNavGroup } from '@/lib/nav-groups';
 import { IconChevronLeft, IconChevronRight } from '@/components/nav/nav-icons';
 
 function isNavActive(path: string, href: string) {
-  if (href === '/r' || href === '/s') return path === href;
+  if (href === '/r' || href === '/s' || href === '/a') return path === href;
   return path === href || path.startsWith(`${href}/`);
 }
 

@@ -8,6 +8,9 @@ import { deriveGuestStaySignals, hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { GuestStayTypeIcons, GuestStayTypeLegend } from '@/components/reception/GuestStayTypeIcons';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
@@ -34,6 +37,7 @@ function reservationStaySignals(r: ReservationListItem): GuestStaySignals {
 export default function ReceptionInHousePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { enterMobile } = useReceptionMobileMode();
   const [search, setSearch] = useState('');
 
   const listQuery = useQuery({
@@ -78,28 +82,31 @@ export default function ReceptionInHousePage() {
   }, [rows]);
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Im Haus</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            EMMA In-House-Liste — eingecheckte Gäste mit Zimmer
-            {overview?.lastSyncedAt && (
-              <span className="ml-2">
-                · Sync {new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH')}
-              </span>
-            )}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => syncMut.mutate()}
-          disabled={syncMut.isPending}
-          className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {syncMut.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
-        </button>
-      </header>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Im Haus"
+        description={
+          overview?.lastSyncedAt
+            ? `EMMA In-House-Liste — eingecheckte Gäste mit Zimmer · Sync ${new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH')}`
+            : 'EMMA In-House-Liste — eingecheckte Gäste mit Zimmer'
+        }
+        actions={
+          <>
+            <AppChromeTools onEnterMobile={enterMobile} />
+            <button
+              type="button"
+              onClick={() => syncMut.mutate()}
+              disabled={syncMut.isPending}
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90 disabled:opacity-50"
+            >
+              {syncMut.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
+            </button>
+          </>
+        }
+      />
+
+      <AppPageBody>
+        <div className="space-y-6 p-4 md:p-6">
 
       {overview && (
         <>
@@ -199,6 +206,8 @@ export default function ReceptionInHousePage() {
       {syncMut.isError && (
         <p className="text-sm text-rose-700">{(syncMut.error as Error).message}</p>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

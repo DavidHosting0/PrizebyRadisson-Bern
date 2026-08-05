@@ -5,9 +5,10 @@ import { FormEvent, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { DateInput } from '@/components/ui/DateInput';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type ActivityLogRow = {
   id: string;
@@ -157,58 +158,58 @@ export default function ActivityLogPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Aktivitätsprotokoll</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Nachvollziehbare Historie aller Änderungen und Aktionen in der Anwendung (POST, PATCH, PUT, DELETE).
-        </p>
-      </div>
-
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Aktivitätsprotokoll"
+        description="Nachvollziehbare Historie aller Änderungen und Aktionen in der Anwendung (POST, PATCH, PUT, DELETE)."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-6 p-4 md:p-6">
       {summary && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Einträge (Zeitraum)</p>
-            <p className="mt-1 text-2xl font-semibold text-ink">{summary.total}</p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Fehlgeschlagen</p>
-            <p className="mt-1 text-2xl font-semibold text-danger">{summary.failed}</p>
-          </Card>
-          <Card className="p-4 sm:col-span-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Top-Aktionen</p>
-            <ul className="mt-2 space-y-1 text-sm text-ink">
+          <div className={APP_DARK_CARD + ' p-4'}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Einträge (Zeitraum)</p>
+            <p className="mt-1 text-2xl font-semibold text-white">{summary.total}</p>
+          </div>
+          <div className={APP_DARK_CARD + ' p-4'}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Fehlgeschlagen</p>
+            <p className="mt-1 text-2xl font-semibold text-red-400">{summary.failed}</p>
+          </div>
+          <div className={APP_DARK_CARD + ' p-4 sm:col-span-2'}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Top-Aktionen</p>
+            <ul className="mt-2 space-y-1 text-sm text-white">
               {summary.topActions.slice(0, 5).map((a) => (
                 <li key={a.action} className="flex justify-between gap-2">
                   <span className="truncate">{a.label}</span>
-                  <span className="shrink-0 font-mono text-xs text-ink-muted">{a.count}</span>
+                  <span className="shrink-0 font-mono text-xs text-sidebar-muted">{a.count}</span>
                 </li>
               ))}
             </ul>
-          </Card>
+          </div>
         </div>
       )}
 
-      <Card className="space-y-4 p-4">
+      <div className={APP_DARK_CARD + ' space-y-4 p-4'}>
         <form onSubmit={onSearch} className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           <label className="block text-sm">
-            <span className="font-medium text-ink">Von</span>
+            <span className="font-medium text-white">Von</span>
             <div className="mt-1">
               <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
             </div>
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-ink">Bis</span>
+            <span className="font-medium text-white">Bis</span>
             <div className="mt-1">
               <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-ink">Kategorie</span>
+            <span className="font-medium text-white">Kategorie</span>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="mt-1 w-full min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+              className={clsx(APP_DARK_INPUT, 'mt-1 w-full min-h-[40px]')}
             >
               <option value="">Alle</option>
               {(categories?.categories ?? []).map((c) => (
@@ -219,11 +220,11 @@ export default function ActivityLogPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-ink">Status</span>
+            <span className="font-medium text-white">Status</span>
             <select
               value={successFilter}
               onChange={(e) => setSuccessFilter(e.target.value as 'all' | 'ok' | 'fail')}
-              className="mt-1 w-full min-h-[40px] rounded-btn border border-border bg-surface px-3 text-sm"
+              className={clsx(APP_DARK_INPUT, 'mt-1 w-full min-h-[40px]')}
             >
               <option value="all">Alle</option>
               <option value="ok">Erfolgreich</option>
@@ -231,108 +232,112 @@ export default function ActivityLogPage() {
             </select>
           </label>
           <label className="block text-sm lg:col-span-1">
-            <span className="font-medium text-ink">Suche</span>
+            <span className="font-medium text-white">Suche</span>
             <div className="mt-1 flex gap-2">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Benutzer, Aktion, Pfad…"
-                className="min-h-[40px] flex-1 rounded-btn border border-border bg-surface px-3 text-sm"
+                className={clsx(APP_DARK_INPUT, 'min-h-[40px] flex-1')}
               />
-              <Button type="submit" variant="secondary" className="min-h-[40px] shrink-0 px-3">
+              <Button
+                type="submit"
+                variant="secondary"
+                className="min-h-[40px] shrink-0 border border-sidebar-border bg-transparent px-3 text-white hover:bg-white/10"
+              >
                 Suchen
               </Button>
             </div>
           </label>
         </form>
-      </Card>
+      </div>
 
-      {listQuery.isLoading && <p className="text-sm text-ink-muted">Lade Protokoll…</p>}
+      {listQuery.isLoading && <p className="text-sm text-sidebar-muted">Lade Protokoll…</p>}
 
       <div className="space-y-2">
         {rows.map((row) => {
           const expanded = expandedId === row.id;
           return (
-            <Card key={row.id} className="overflow-hidden">
+            <div key={row.id} className={APP_DARK_CARD + ' overflow-hidden p-0'}>
               <button
                 type="button"
-                className="flex w-full flex-col gap-2 p-4 text-left hover:bg-surface-muted/40 sm:flex-row sm:items-center sm:justify-between"
+                className="flex w-full flex-col gap-2 p-4 text-left hover:bg-white/5 sm:flex-row sm:items-center sm:justify-between"
                 onClick={() => setExpandedId(expanded ? null : row.id)}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-ink">{row.label}</span>
+                    <span className="font-medium text-white">{row.label}</span>
                     <span
                       className={clsx(
                         'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                        row.success ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger',
+                        row.success ? 'bg-emerald-400/15 text-emerald-300' : 'bg-red-400/15 text-red-300',
                       )}
                     >
                       {row.success ? 'OK' : 'Fehler'}
                     </span>
-                    <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-ink-muted">
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-sidebar-muted">
                       {CATEGORY_LABELS[row.category] ?? row.category}
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-ink-muted">
+                  <p className="mt-1 text-sm text-sidebar-muted">
                     {row.actorName || row.actorEmail || 'Unbekannt'}
                     {row.actorEmail && row.actorName && row.actorName !== row.actorEmail && (
-                      <span className="text-ink-muted/70"> · {row.actorEmail}</span>
+                      <span className="text-sidebar-muted/70"> · {row.actorEmail}</span>
                     )}
                   </p>
-                  <p className="mt-0.5 font-mono text-xs text-ink-muted/80">
+                  <p className="mt-0.5 font-mono text-xs text-sidebar-muted/80">
                     {row.method} {row.path}
                     {row.resourceId && ` · ${row.resourceType ?? 'resource'}:${row.resourceId}`}
                   </p>
                 </div>
-                <div className="shrink-0 text-right text-xs text-ink-muted">
+                <div className="shrink-0 text-right text-xs text-sidebar-muted">
                   <p>{formatWhen(row.createdAt)}</p>
                   {row.durationMs != null && <p>{row.durationMs} ms</p>}
                 </div>
               </button>
 
               {expanded && (
-                <div className="border-t border-border bg-surface-muted/30 px-4 py-3 text-sm">
+                <div className="border-t border-sidebar-border/60 bg-white/5 px-4 py-3 text-sm">
                   <dl className="grid gap-2 sm:grid-cols-2">
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-ink-muted">Aktion</dt>
-                      <dd className="font-mono text-xs text-ink">{row.action}</dd>
+                      <dt className="text-xs font-semibold uppercase text-sidebar-muted">Aktion</dt>
+                      <dd className="font-mono text-xs text-white">{row.action}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs font-semibold uppercase text-ink-muted">HTTP</dt>
-                      <dd className="text-ink">
+                      <dt className="text-xs font-semibold uppercase text-sidebar-muted">HTTP</dt>
+                      <dd className="text-white">
                         {row.statusCode ?? '—'} · {row.method}
                       </dd>
                     </div>
                     {row.ipAddress && (
                       <div>
-                        <dt className="text-xs font-semibold uppercase text-ink-muted">IP</dt>
-                        <dd className="font-mono text-xs text-ink">{row.ipAddress}</dd>
+                        <dt className="text-xs font-semibold uppercase text-sidebar-muted">IP</dt>
+                        <dd className="font-mono text-xs text-white">{row.ipAddress}</dd>
                       </div>
                     )}
                     {row.errorMessage && (
                       <div className="sm:col-span-2">
-                        <dt className="text-xs font-semibold uppercase text-ink-muted">Fehler</dt>
-                        <dd className="text-danger">{row.errorMessage}</dd>
+                        <dt className="text-xs font-semibold uppercase text-sidebar-muted">Fehler</dt>
+                        <dd className="text-red-400">{row.errorMessage}</dd>
                       </div>
                     )}
                   </dl>
                   {row.metadata && Object.keys(row.metadata).length > 0 && (
                     <div className="mt-3">
-                      <p className="text-xs font-semibold uppercase text-ink-muted">Details</p>
-                      <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-ink/5 p-3 font-mono text-[11px] text-ink">
+                      <p className="text-xs font-semibold uppercase text-sidebar-muted">Details</p>
+                      <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-black/20 p-3 font-mono text-[11px] text-white">
                         {JSON.stringify(row.metadata, null, 2)}
                       </pre>
                     </div>
                   )}
                   {row.userAgent && (
-                    <p className="mt-2 truncate text-[11px] text-ink-muted" title={row.userAgent}>
+                    <p className="mt-2 truncate text-[11px] text-sidebar-muted" title={row.userAgent}>
                       {row.userAgent}
                     </p>
                   )}
                 </div>
               )}
-            </Card>
+            </div>
           );
         })}
       </div>
@@ -342,7 +347,7 @@ export default function ActivityLogPage() {
           <Button
             type="button"
             variant="secondary"
-            className="min-h-[44px]"
+            className="min-h-[44px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
             disabled={listQuery.isFetchingNextPage}
             onClick={() => listQuery.fetchNextPage()}
           >
@@ -352,8 +357,10 @@ export default function ActivityLogPage() {
       )}
 
       {!listQuery.isLoading && rows.length === 0 && (
-        <p className="text-center text-sm text-ink-muted">Keine Einträge für die gewählten Filter.</p>
+        <p className="text-center text-sm text-sidebar-muted">Keine Einträge für die gewählten Filter.</p>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

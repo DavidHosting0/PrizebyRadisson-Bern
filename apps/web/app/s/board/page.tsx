@@ -11,6 +11,7 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BoardRoomCard, boardTileKindForRoom, type BoardRoom, type BoardTileKind } from '@/components/supervisor/BoardRoomCard';
 import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
 import { Button } from '@/components/ui/Button';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
@@ -419,13 +420,10 @@ export default function SupervisorBoardPage() {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col md:h-full">
-      <div className="shrink-0 bg-sidebar text-white">
-        {/* Match AppSidebar logo block height (px-4 py-5 + min-h-12) so borders align */}
-        <div className="flex flex-nowrap items-center justify-between gap-3 overflow-x-auto border-b border-sidebar-border px-4 py-5 md:px-5">
-          <div className="flex min-h-12 min-w-0 flex-1 items-center gap-3">
-            <h1 className="truncate text-lg font-semibold tracking-tight text-white md:text-xl">
-              Room assignment
-            </h1>
+      <AppPageChrome
+        title="Room assignment"
+        status={
+          <>
             {plan?.status === 'SAVED' && plan.savedAt && (
               <span className="hidden truncate text-xs font-medium text-emerald-300 sm:inline">
                 Saved · {new Date(plan.savedAt).toLocaleString()}
@@ -436,8 +434,10 @@ export default function SupervisorBoardPage() {
                 Unsaved auto-assign
               </span>
             )}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          </>
+        }
+        actions={
+          <>
             <div className="hidden items-center gap-2 md:flex">
               <CommandPaletteTrigger onDark className="min-h-[40px] gap-2 px-3 text-xs" />
               <LanguageSwitcher compact onDark />
@@ -479,47 +479,48 @@ export default function SupervisorBoardPage() {
             >
               Auto room assignment
             </Button>
-          </div>
-        </div>
+          </>
+        }
+        toolbar={
+          <>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                Floor
+              </label>
+              <select
+                className="mt-1 min-h-[40px] min-w-[120px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
+                value={floor}
+                onChange={(e) => setFloor(e.target.value)}
+              >
+                <option value="">All</option>
+                {floors.map((f) => (
+                  <option key={f} value={String(f)}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                Status
+              </label>
+              <select
+                className="mt-1 min-h-[40px] min-w-[160px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All (cleaning)</option>
+                <option value="DIRTY">Dirty</option>
+                <option value="IN_PROGRESS">In progress</option>
+                <option value="CLEAN">Clean</option>
+                <option value="INSPECTED">Inspected</option>
+              </select>
+            </div>
+          </>
+        }
+      />
 
-        <div className="flex flex-wrap gap-3 bg-sidebar-hover/40 px-4 py-3 md:px-5">
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-              Floor
-            </label>
-            <select
-              className="mt-1 min-h-[40px] min-w-[120px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
-              value={floor}
-              onChange={(e) => setFloor(e.target.value)}
-            >
-              <option value="">All</option>
-              {floors.map((f) => (
-                <option key={f} value={String(f)}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-              Status
-            </label>
-            <select
-              className="mt-1 min-h-[40px] min-w-[160px] rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="">All (cleaning)</option>
-              <option value="DIRTY">Dirty</option>
-              <option value="IN_PROGRESS">In progress</option>
-              <option value="CLEAN">Clean</option>
-              <option value="INSPECTED">Inspected</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-x-contain bg-[#121a26] [background-image:radial-gradient(ellipse_at_top,_rgba(59,111,160,0.14),_transparent_55%)]">
+      <AppPageBody canvas className="overflow-x-auto overflow-y-auto overscroll-x-contain">
         <div className="flex w-max items-stretch gap-3 p-3 md:gap-4 md:p-4">
             <div
               data-drop-zone="unassigned"
@@ -675,7 +676,7 @@ export default function SupervisorBoardPage() {
               );
             })}
           </div>
-        </div>
+      </AppPageBody>
 
       {drag?.active && (
         <div

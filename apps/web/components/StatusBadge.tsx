@@ -11,6 +11,14 @@ const style: Record<string, string> = {
   OUT_OF_ORDER: 'border border-violet-950/30 bg-violet-600/15 text-violet-900',
 };
 
+const styleDark: Record<string, string> = {
+  DIRTY: 'border border-red-400/30 bg-red-500/20 text-red-200',
+  CLEAN: 'border border-orange-400/30 bg-orange-500/20 text-orange-200',
+  INSPECTED: 'border border-emerald-400/30 bg-emerald-500/20 text-emerald-200',
+  IN_PROGRESS: 'border border-amber-400/30 bg-amber-500/20 text-amber-200',
+  OUT_OF_ORDER: 'border border-violet-400/30 bg-violet-500/20 text-violet-200',
+};
+
 const STATUS_KEYS = [
   'OUT_OF_ORDER',
   'DIRTY',
@@ -31,8 +39,8 @@ export function StatusBadge({
   variant = 'default',
 }: {
   status: string;
-  /** Readable on saturated status-colored tiles (floor plan). */
-  variant?: 'default' | 'onColor';
+  /** Readable on saturated status-colored tiles (floor plan), or on dark card surfaces. */
+  variant?: 'default' | 'onColor' | 'dark';
 }) {
   const t = useTranslations();
   const label = roomStatusLabel(status, (key) => t(key as 'room.status.DIRTY'));
@@ -40,6 +48,18 @@ export function StatusBadge({
   if (variant === 'onColor') {
     return (
       <span className="inline-flex rounded-full border border-white/30 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-[2px]">
+        {label}
+      </span>
+    );
+  }
+  if (variant === 'dark') {
+    return (
+      <span
+        className={clsx(
+          'inline-flex rounded-full px-2.5 py-1 text-xs font-medium',
+          styleDark[status] ?? 'bg-white/10 text-sidebar-muted',
+        )}
+      >
         {label}
       </span>
     );

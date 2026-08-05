@@ -6,6 +6,8 @@ import type { MonitorMapFeedKind, MonitorMapFeedSourceDto } from '@housekeeping/
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type AdminStatus = {
   sources: MonitorMapFeedSourceDto[];
@@ -71,39 +73,46 @@ export default function MonitorMapAdminPage() {
   const data = statusQuery.data;
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-ink">Monitor Map</h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-muted">
-            RSS-Quellen für Nachrichten und Polizeimeldungen in der Region Bern. Luftfahrt kommt live von OpenSky.
-            Für KI-Nachrichtenanalyse muss unter{' '}
-            <Link href="/a/ai" className="font-medium text-action underline">
-              AI
-            </Link>{' '}
-            ein OpenAI-Key hinterlegt sein.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/r/monitor-map">
-            <Button type="button" variant="secondary">
-              Karte öffnen
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Monitor Map"
+        description="RSS-Quellen für Nachrichten und Polizeimeldungen in der Region Bern. Luftfahrt kommt live von OpenSky."
+        actions={
+          <>
+            <Link href="/r/monitor-map">
+              <Button
+                type="button"
+                variant="secondary"
+                className="border-sidebar-border bg-white/5 text-white shadow-none hover:bg-white/10"
+              >
+                Karte öffnen
+              </Button>
+            </Link>
+            <Button
+              type="button"
+              variant="action"
+              disabled={syncMutation.isPending}
+              onClick={() => syncMutation.mutate()}
+            >
+              {syncMutation.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
             </Button>
-          </Link>
-          <Button
-            type="button"
-            variant="action"
-            disabled={syncMutation.isPending}
-            onClick={() => syncMutation.mutate()}
-          >
-            {syncMutation.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
-          </Button>
-        </div>
-      </div>
+            <AppChromeTools />
+          </>
+        }
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
+      <p className="max-w-2xl text-sm text-sidebar-muted">
+        Für KI-Nachrichtenanalyse muss unter{' '}
+        <Link href="/a/ai" className="font-medium text-action underline">
+          AI
+        </Link>{' '}
+        ein OpenAI-Key hinterlegt sein.
+      </p>
 
-      {statusQuery.isLoading && <p className="text-sm text-ink-muted">Lade Status…</p>}
+      {statusQuery.isLoading && <p className="text-sm text-sidebar-muted">Lade Status…</p>}
       {statusQuery.error && (
-        <p className="text-sm text-red-600">Status konnte nicht geladen werden.</p>
+        <p className="text-sm text-rose-400">Status konnte nicht geladen werden.</p>
       )}
 
       {data && (
@@ -116,53 +125,53 @@ export default function MonitorMapAdminPage() {
                 ['Luftfahrt', data.syncStatus.aviation, data.counts.aviation],
               ] as const
             ).map(([label, sync, count]) => (
-              <div key={label} className="rounded-xl border border-border bg-surface p-4 shadow-card">
-                <p className="text-sm font-semibold text-ink">{label}</p>
-                <p className="mt-2 text-2xl font-semibold tabular-nums">{count}</p>
-                <p className="mt-1 text-xs text-ink-muted">Letzter Sync: {formatDateTime(sync.lastSyncAt)}</p>
-                {sync.lastError && <p className="mt-1 text-xs text-red-600">{sync.lastError}</p>}
+              <div key={label} className={APP_DARK_CARD + ' p-4'}>
+                <p className="text-sm font-semibold text-white">{label}</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums text-white">{count}</p>
+                <p className="mt-1 text-xs text-sidebar-muted">Letzter Sync: {formatDateTime(sync.lastSyncAt)}</p>
+                {sync.lastError && <p className="mt-1 text-xs text-rose-400">{sync.lastError}</p>}
               </div>
             ))}
           </section>
 
-          <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
-            <h2 className="text-lg font-semibold text-ink">Empfohlene Quellen</h2>
-            <p className="mt-1 text-sm text-ink-muted">
+          <section className={APP_DARK_CARD + ' p-4'}>
+            <h2 className="text-lg font-semibold text-white">Empfohlene Quellen</h2>
+            <p className="mt-1 text-sm text-sidebar-muted">
               Diese RSS-Feeds liefern zuverlässige Bern-Gefahrenmeldungen (Demos, Sperrungen, Unfälle, Polizei).
               Alte defekte Feeds (SRF 404, Kapo-Presse-RSS 404, falsche BZ-URL) bitte deaktivieren oder löschen.
             </p>
             <ul className="mt-4 space-y-3 text-sm">
-              <li className="rounded-lg border border-border bg-surface-muted px-3 py-2">
-                <p className="font-medium text-ink">BZ Bern Mittelland</p>
-                <p className="mt-0.5 text-xs text-ink-muted">Nachrichten · Unfälle, Polizei, lokale Ereignisse</p>
-                <code className="mt-1 block break-all text-xs">
+              <li className="rounded-lg border border-sidebar-border bg-white/5 px-3 py-2">
+                <p className="font-medium text-white">BZ Bern Mittelland</p>
+                <p className="mt-0.5 text-xs text-sidebar-muted">Nachrichten · Unfälle, Polizei, lokale Ereignisse</p>
+                <code className="mt-1 block break-all text-xs text-sidebar-muted">
                   https://partner-feeds.publishing.tamedia.ch/rss/bernerzeitung/bern
                 </code>
               </li>
-              <li className="rounded-lg border border-border bg-surface-muted px-3 py-2">
-                <p className="font-medium text-ink">Stadt Bern</p>
-                <p className="mt-0.5 text-xs text-ink-muted">
+              <li className="rounded-lg border border-sidebar-border bg-white/5 px-3 py-2">
+                <p className="font-medium text-white">Stadt Bern</p>
+                <p className="mt-0.5 text-xs text-sidebar-muted">
                   Nachrichten · Kundgebungen, Sperrungen, Baustellen
                 </p>
-                <code className="mt-1 block break-all text-xs">https://www.bern.ch/news_listing_rss</code>
+                <code className="mt-1 block break-all text-xs text-sidebar-muted">https://www.bern.ch/news_listing_rss</code>
               </li>
-              <li className="rounded-lg border border-border bg-surface-muted px-3 py-2">
-                <p className="font-medium text-ink">Blog Kantonspolizei Bern</p>
-                <p className="mt-0.5 text-xs text-ink-muted">Polizei · offizieller Kapo-Blog</p>
-                <code className="mt-1 block break-all text-xs">https://www.blog.police.be.ch/feed/</code>
+              <li className="rounded-lg border border-sidebar-border bg-white/5 px-3 py-2">
+                <p className="font-medium text-white">Blog Kantonspolizei Bern</p>
+                <p className="mt-0.5 text-xs text-sidebar-muted">Polizei · offizieller Kapo-Blog</p>
+                <code className="mt-1 block break-all text-xs text-sidebar-muted">https://www.blog.police.be.ch/feed/</code>
               </li>
             </ul>
           </section>
 
-          <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
-            <h2 className="text-lg font-semibold text-ink">Feed-Quellen</h2>
-            <p className="mt-1 text-sm text-ink-muted">
+          <section className={APP_DARK_CARD + ' p-4'}>
+            <h2 className="text-lg font-semibold text-white">Feed-Quellen</h2>
+            <p className="mt-1 text-sm text-sidebar-muted">
               Benutzer mit Berechtigung <code className="text-xs">MONITOR_MAP_READ</code> sehen die Karte unter Reception
               oder Supervisor.
             </p>
-            <ul className="mt-4 divide-y divide-border">
+            <ul className="mt-4 divide-y divide-sidebar-border">
               {data.sources.length === 0 && (
-                <li className="py-4 text-sm text-ink-muted">Noch keine Quellen — Standard-Feeds kommen aus dem Seed.</li>
+                <li className="py-4 text-sm text-sidebar-muted">Noch keine Quellen — Standard-Feeds kommen aus dem Seed.</li>
               )}
               {data.sources.map((source) => (
                 <FeedRow
@@ -176,13 +185,13 @@ export default function MonitorMapAdminPage() {
             </ul>
           </section>
 
-          <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
-            <h2 className="text-lg font-semibold text-ink">Neue Quelle</h2>
+          <section className={APP_DARK_CARD + ' p-4'}>
+            <h2 className="text-lg font-semibold text-white">Neue Quelle</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="block text-sm">
-                <span className="text-ink-muted">Typ</span>
+                <span className="text-sidebar-muted">Typ</span>
                 <select
-                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+                  className={APP_DARK_INPUT + ' mt-1 w-full py-2'}
                   value={newKind}
                   onChange={(e) => setNewKind(e.target.value as MonitorMapFeedKind)}
                 >
@@ -191,18 +200,18 @@ export default function MonitorMapAdminPage() {
                 </select>
               </label>
               <label className="block text-sm sm:col-span-1">
-                <span className="text-ink-muted">Name</span>
+                <span className="text-sidebar-muted">Name</span>
                 <input
-                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+                  className={APP_DARK_INPUT + ' mt-1 w-full py-2'}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="z. B. SRF Bern"
                 />
               </label>
               <label className="block text-sm lg:col-span-2">
-                <span className="text-ink-muted">RSS-URL</span>
+                <span className="text-sidebar-muted">RSS-URL</span>
                 <input
-                  className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2"
+                  className={APP_DARK_INPUT + ' mt-1 w-full py-2'}
                   value={newUrl}
                   onChange={(e) => setNewUrl(e.target.value)}
                   placeholder="https://…/rss.xml"
@@ -221,6 +230,8 @@ export default function MonitorMapAdminPage() {
           </section>
         </>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }
@@ -248,10 +259,10 @@ function FeedRow({
     <li className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center">
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs font-medium text-ink-muted">
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-sidebar-muted">
             {source.kind === 'NEWS' ? 'Nachrichten' : 'Polizei'}
           </span>
-          <label className="inline-flex items-center gap-2 text-sm">
+          <label className="inline-flex items-center gap-2 text-sm text-white">
             <input
               type="checkbox"
               checked={source.enabled}
@@ -262,12 +273,12 @@ function FeedRow({
           </label>
         </div>
         <input
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+          className={APP_DARK_INPUT + ' w-full py-2'}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <input
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+          className={APP_DARK_INPUT + ' w-full py-2'}
           value={feedUrl}
           onChange={(e) => setFeedUrl(e.target.value)}
         />
@@ -276,12 +287,19 @@ function FeedRow({
         <Button
           type="button"
           variant="secondary"
+          className="border-sidebar-border bg-white/5 text-white shadow-none hover:bg-white/10"
           disabled={busy}
           onClick={() => onUpdate({ name: name.trim(), feedUrl: feedUrl.trim() })}
         >
           Speichern
         </Button>
-        <Button type="button" variant="secondary" disabled={busy} onClick={onDelete}>
+        <Button
+          type="button"
+          variant="secondary"
+          className="border-sidebar-border bg-white/5 text-white shadow-none hover:bg-white/10"
+          disabled={busy}
+          onClick={onDelete}
+        >
           Löschen
         </Button>
       </div>

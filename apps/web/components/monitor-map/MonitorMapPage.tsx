@@ -6,7 +6,13 @@ import { useAuth, usePermission } from '@/lib/auth-context';
 import { getHomePath } from '@/lib/permission-routes';
 import { MonitorMapView } from '@/components/monitor-map/MonitorMapView';
 
-export function MonitorMapPage() {
+export function MonitorMapPage({
+  tone = 'light',
+  onEnterMobile,
+}: {
+  tone?: 'light' | 'dark';
+  onEnterMobile?: () => void;
+} = {}) {
   const router = useRouter();
   const { user, loading } = useAuth();
   const canView = usePermission('MONITOR_MAP_READ');
@@ -20,10 +26,10 @@ export function MonitorMapPage() {
   if (loading || !user || !canView) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className={tone === 'dark' ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>Loading…</p>
       </div>
     );
   }
 
-  return <MonitorMapView />;
+  return <MonitorMapView tone={tone} onEnterMobile={onEnterMobile} />;
 }

@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 
 type RoomTypeRow = {
   id: string;
@@ -37,6 +39,7 @@ function reorder<T>(list: T[], from: number, to: number): T[] {
 
 export default function SupervisorRoomTasksPage() {
   const qc = useQueryClient();
+  const { enterMobile } = useSupervisorMobileMode();
   const [roomTypeId, setRoomTypeId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftTask[]>([]);
 
@@ -162,149 +165,157 @@ export default function SupervisorRoomTasksPage() {
   };
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Room task lists</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Edit the housekeeping checklist for each room type. Supervisors use this for inspections; attendants only mark rooms clean.
-        </p>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Room task lists"
+        description="Edit the housekeeping checklist for each room type. Supervisors use this for inspections; attendants only mark rooms clean."
+        actions={<AppChromeTools onEnterMobile={enterMobile} />}
+      />
 
-      {loadingTypes && <p className="text-sm text-ink-muted">Loading room types…</p>}
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
+          {loadingTypes && <p className="text-sm text-sidebar-muted">Loading room types…</p>}
 
-      {!loadingTypes && roomTypes.length === 0 && (
-        <p className="text-sm text-ink-muted">No room types yet. Add room types in admin or seed data.</p>
-      )}
+          {!loadingTypes && roomTypes.length === 0 && (
+            <p className="text-sm text-sidebar-muted">No room types yet. Add room types in admin or seed data.</p>
+          )}
 
-      {roomTypes.length > 0 && (
-        <div className="flex flex-col gap-4 md:flex-row md:items-end">
-          <label className="flex min-w-[200px] flex-col gap-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">Room type</span>
-            <select
-              className="min-h-[48px] rounded-btn border border-border bg-surface px-3 text-sm"
-              value={roomTypeId ?? ''}
-              onChange={(e) => setRoomTypeId(e.target.value)}
-            >
-              {roomTypes.map((rt) => (
-                <option key={rt.id} value={rt.id}>
-                  {rt.name} ({rt.code}) · {rt.roomCount} rooms
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
+          {roomTypes.length > 0 && (
+            <div className="flex flex-col gap-4 md:flex-row md:items-end">
+              <label className="flex min-w-[200px] flex-col gap-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">Room type</span>
+                <select
+                  className={APP_DARK_INPUT + ' min-h-[48px]'}
+                  value={roomTypeId ?? ''}
+                  onChange={(e) => setRoomTypeId(e.target.value)}
+                >
+                  {roomTypes.map((rt) => (
+                    <option key={rt.id} value={rt.id}>
+                      {rt.name} ({rt.code}) · {rt.roomCount} rooms
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
 
-      {roomTypeId && loadingTpl && <p className="text-sm text-ink-muted">Loading checklist…</p>}
+          {roomTypeId && loadingTpl && <p className="text-sm text-sidebar-muted">Loading checklist…</p>}
 
-      {payload && (
-        <Card className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink">
-                {payload.roomType.name} ({payload.roomType.code})
+          {payload && (
+            <div className={APP_DARK_CARD + ' space-y-4 p-5'}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    {payload.roomType.name} ({payload.roomType.code})
+                  </p>
+                  <p className="text-xs text-sidebar-muted">Template v{payload.template.version}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-[44px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
+                    onClick={addTask}
+                  >
+                    Add task
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="action"
+                    className="min-h-[44px]"
+                    disabled={!dirty || save.isPending || sortedDraft.length === 0}
+                    onClick={() => save.mutate(sortedDraft)}
+                  >
+                    {save.isPending ? 'Saving…' : 'Save changes'}
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-xs text-sidebar-muted">
+                Use a short internal code (e.g. <code className="rounded bg-black/30 px-1">towels</code>) — it must stay
+                unique per room type. Changing codes may affect service-request links that reference them.
               </p>
-              <p className="text-xs text-ink-muted">Template v{payload.template.version}</p>
+
+              {save.isError && (
+                <p className="text-sm text-red-400">Could not save. Check codes are unique and valid (letters, numbers, hyphens).</p>
+              )}
+
+              <ul className="space-y-3">
+                {sortedDraft.map((t, index) => (
+                  <li
+                    key={t.id ?? `draft-${t.code}-${index}`}
+                    className="rounded-card border border-sidebar-border/60 bg-black/15 p-3 sm:p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-sidebar-muted">Task label</span>
+                          <input
+                            className={APP_DARK_INPUT + ' min-h-[44px]'}
+                            value={t.label}
+                            onChange={(e) => updateAt(index, { label: e.target.value })}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-sidebar-muted">Code</span>
+                          <input
+                            className={APP_DARK_INPUT + ' min-h-[44px] font-mono'}
+                            value={t.code}
+                            onChange={(e) => updateAt(index, { code: e.target.value })}
+                          />
+                        </label>
+                      </div>
+                      <label className="flex items-center gap-2 sm:pt-6">
+                        <input
+                          type="checkbox"
+                          checked={t.required}
+                          onChange={(e) => updateAt(index, { required: e.target.checked })}
+                          className="h-4 w-4 rounded border-sidebar-border"
+                        />
+                        <span className="text-sm text-white">Required</span>
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-[40px] min-w-[40px] px-2 text-sidebar-muted hover:bg-white/10 hover:text-white"
+                        disabled={index === 0}
+                        onClick={() => move(index, -1)}
+                        aria-label="Move up"
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-[40px] min-w-[40px] px-2 text-sidebar-muted hover:bg-white/10 hover:text-white"
+                        disabled={index === sortedDraft.length - 1}
+                        onClick={() => move(index, 1)}
+                        aria-label="Move down"
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-[40px] text-red-400 hover:bg-red-500/10"
+                        onClick={() => removeAt(index)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              {sortedDraft.length === 0 && (
+                <p className="text-sm text-sidebar-muted">No tasks yet. Add at least one task before saving.</p>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" className="min-h-[44px]" onClick={addTask}>
-                Add task
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                className="min-h-[44px]"
-                disabled={!dirty || save.isPending || sortedDraft.length === 0}
-                onClick={() => save.mutate(sortedDraft)}
-              >
-                {save.isPending ? 'Saving…' : 'Save changes'}
-              </Button>
-            </div>
-          </div>
-
-          <p className="text-xs text-ink-muted">
-            Use a short internal code (e.g. <code className="rounded bg-surface-muted px-1">towels</code>) — it must stay
-            unique per room type. Changing codes may affect service-request links that reference them.
-          </p>
-
-          {save.isError && (
-            <p className="text-sm text-danger">Could not save. Check codes are unique and valid (letters, numbers, hyphens).</p>
           )}
-
-          <ul className="space-y-3">
-            {sortedDraft.map((t, index) => (
-              <li
-                key={t.id ?? `draft-${t.code}-${index}`}
-                className="rounded-card border border-border bg-surface-muted/40 p-3 sm:p-4"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-ink-muted">Task label</span>
-                      <input
-                        className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
-                        value={t.label}
-                        onChange={(e) => updateAt(index, { label: e.target.value })}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-ink-muted">Code</span>
-                      <input
-                        className="min-h-[44px] rounded-btn border border-border bg-surface px-3 font-mono text-sm"
-                        value={t.code}
-                        onChange={(e) => updateAt(index, { code: e.target.value })}
-                      />
-                    </label>
-                  </div>
-                  <label className="flex items-center gap-2 sm:pt-6">
-                    <input
-                      type="checkbox"
-                      checked={t.required}
-                      onChange={(e) => updateAt(index, { required: e.target.checked })}
-                      className="h-4 w-4 rounded border-border"
-                    />
-                    <span className="text-sm text-ink">Required</span>
-                  </label>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-[40px] min-w-[40px] px-2"
-                    disabled={index === 0}
-                    onClick={() => move(index, -1)}
-                    aria-label="Move up"
-                  >
-                    ↑
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-[40px] min-w-[40px] px-2"
-                    disabled={index === sortedDraft.length - 1}
-                    onClick={() => move(index, 1)}
-                    aria-label="Move down"
-                  >
-                    ↓
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-[40px] text-danger"
-                    onClick={() => removeAt(index)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {sortedDraft.length === 0 && (
-            <p className="text-sm text-ink-muted">No tasks yet. Add at least one task before saving.</p>
-          )}
-        </Card>
-      )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

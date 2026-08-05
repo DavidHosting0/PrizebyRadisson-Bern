@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { api } from '@/lib/api';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type PuzzleMeta = {
   email: string | null;
@@ -43,19 +46,17 @@ export default function AdminPuzzleCredentialsPage() {
   const meta = metaQuery.data;
 
   return (
-    <div className="space-y-8 px-4 py-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-ink">Puzzle (Puzzel)</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Anmeldedaten für die automatisierte Anmeldung am Puzzel-Ticketportal (z. B.{' '}
-          <span className="whitespace-nowrap">radissonemea.cm.puzzel.com</span>). Nur sichtbar für
-          Administratoren.
-        </p>
-      </header>
-
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Puzzle (Puzzel)"
+        description="Anmeldedaten für die automatisierte Anmeldung am Puzzel-Ticketportal. Nur sichtbar für Administratoren."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
+      <section className={APP_DARK_CARD + ' p-5'}>
         {metaQuery.isLoading ? (
-          <p className="text-sm text-ink-muted">Lädt…</p>
+          <p className="text-sm text-sidebar-muted">Lädt…</p>
         ) : (
           <form
             className="grid max-w-xl grid-cols-1 gap-5"
@@ -75,49 +76,49 @@ export default function AdminPuzzleCredentialsPage() {
             }}
           >
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">E-Mail (Puzzel ID)</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">E-Mail (Puzzel ID)</span>
               <input
                 type="email"
                 autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm"
+                className={clsx(APP_DARK_INPUT, 'w-full py-2')}
                 placeholder="name@firma.com"
                 required
               />
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">Passwort</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Passwort</span>
               <input
                 type="password"
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm"
+                className={clsx(APP_DARK_INPUT, 'w-full py-2')}
                 placeholder={meta?.hasPassword ? 'Neu eintragen zum Ersetzen …' : 'Passwort'}
               />
               {meta?.hasPassword && (
-                <p className="mt-1 text-xs text-ink-muted">Es ist bereits ein Passwort gespeichert. Leer lassen, um es zu behalten.</p>
+                <p className="mt-1 text-xs text-sidebar-muted">Es ist bereits ein Passwort gespeichert. Leer lassen, um es zu behalten.</p>
               )}
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">2FA Seed (TOTP, Base32)</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">2FA Seed (TOTP, Base32)</span>
               <input
                 type="password"
                 autoComplete="off"
                 value={totpSecret}
                 onChange={(e) => setTotpSecret(e.target.value)}
-                className="w-full rounded-lg border border-border bg-surface-muted px-3 py-2 font-mono text-sm"
+                className={clsx(APP_DARK_INPUT, 'w-full py-2 font-mono')}
                 placeholder={meta?.hasTotpSecret ? 'Neuen Seed eintragen zum Ersetzen …' : 'z. B. aus otpauth:// QR (secret=… )'}
               />
               {meta?.hasTotpSecret && (
-                <p className="mt-1 text-xs text-ink-muted">Es ist bereits ein TOTP-Seed gespeichert. Leer lassen, um ihn zu behalten.</p>
+                <p className="mt-1 text-xs text-sidebar-muted">Es ist bereits ein TOTP-Seed gespeichert. Leer lassen, um ihn zu behalten.</p>
               )}
             </label>
 
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+            <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
               Hinweis: Passwort und Seed werden in der Datenbank im Klartext in den Hotel-Einstellungen gespeichert (interner Betrieb).
               Zugriff auf diese Seite haben nur Konten mit Admin-Rolle.
             </p>
@@ -126,20 +127,22 @@ export default function AdminPuzzleCredentialsPage() {
               <button
                 type="submit"
                 disabled={saveMut.isPending}
-                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
               >
                 {saveMut.isPending ? 'Speichert …' : 'Speichern'}
               </button>
               {saveMut.isError && (
-                <span className="text-sm text-rose-700">{(saveMut.error as Error).message}</span>
+                <span className="text-sm text-rose-400">{(saveMut.error as Error).message}</span>
               )}
               {saveMut.isSuccess && !saveMut.isPending && (
-                <span className="text-sm text-emerald-800">Gespeichert.</span>
+                <span className="text-sm text-emerald-400">Gespeichert.</span>
               )}
             </div>
           </form>
         )}
       </section>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

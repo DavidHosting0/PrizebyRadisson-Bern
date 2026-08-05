@@ -7,6 +7,9 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 type PuzzelTicketPrizeCategory =
   | 'SPAM'
@@ -422,6 +425,7 @@ function canReplyOrResolveInBucket(
 export default function ReceptionPuzzlePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { enterMobile } = useReceptionMobileMode();
   const isAdmin = user?.role === 'ADMIN';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -682,15 +686,33 @@ export default function ReceptionPuzzlePage() {
   }, [expandedId]);
 
   return (
-    <div className="space-y-6 bg-surface-muted/30 p-4 md:p-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Puzzel Tickets</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Alle synchronisierten Tickets aus Puzzel CM für die Rezeption.
-          </p>
-        </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Puzzel Tickets"
+        description="Alle synchronisierten Tickets aus Puzzel CM für die Rezeption"
+        actions={
+          <>
+            <AppChromeTools onEnterMobile={enterMobile} />
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="action"
+                className="min-h-[40px]"
+                disabled={syncMut.isPending || status?.inProgress}
+                onClick={() => syncMut.mutate()}
+              >
+                {status?.inProgress ? 'Läuft…' : syncMut.isPending ? 'Starte…' : 'Jetzt synchronisieren'}
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <AppPageBody>
+        <div className="space-y-6 bg-surface-muted/30 p-4 md:p-6">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div />
+        <div className="flex flex-col items-start gap-1 sm:items-end">
           {status?.lastSyncedAt != null && (
             <p className="text-xs text-ink-muted">
               Zuletzt synchronisiert: {formatDateTime(status.lastSyncedAt)}
@@ -703,24 +725,11 @@ export default function ReceptionPuzzlePage() {
           {status?.lastError && !status?.inProgress && (
             <p className="max-w-xl text-xs text-rose-700">{status.lastError}</p>
           )}
-          {isAdmin && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="action"
-                className="min-h-[44px]"
-                disabled={syncMut.isPending || status?.inProgress}
-                onClick={() => syncMut.mutate()}
-              >
-                {status?.inProgress ? 'Läuft…' : syncMut.isPending ? 'Starte…' : 'Jetzt synchronisieren'}
-              </Button>
-              {syncMut.data?.status === 'already_running' && (
-                <span className="text-xs text-ink-muted">Bereits aktiv.</span>
-              )}
-              {syncMut.isError && (
-                <span className="text-xs text-rose-700">{(syncMut.error as Error).message}</span>
-              )}
-            </div>
+          {isAdmin && syncMut.data?.status === 'already_running' && (
+            <span className="text-xs text-ink-muted">Bereits aktiv.</span>
+          )}
+          {isAdmin && syncMut.isError && (
+            <span className="text-xs text-rose-700">{(syncMut.error as Error).message}</span>
           )}
         </div>
       </div>
@@ -1339,6 +1348,8 @@ export default function ReceptionPuzzlePage() {
           </Card>
         </div>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

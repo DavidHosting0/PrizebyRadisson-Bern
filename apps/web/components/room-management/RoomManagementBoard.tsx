@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import clsx from 'clsx';
 import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -13,6 +14,7 @@ import {
   RoomOccupancyGuestLine,
 } from '@/components/rooms/RoomOccupancyDisplay';
 import type { RoomOccupancy } from '@housekeeping/shared';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
 export type RoomBoardRow = {
   id: string;
@@ -24,9 +26,11 @@ export type RoomBoardRow = {
 
 type Props = {
   basePath: '/s/room-management' | '/r/room-management';
+  tone?: 'light' | 'dark';
 };
 
-export function RoomManagementBoard({ basePath }: Props) {
+export function RoomManagementBoard({ basePath, tone = 'light' }: Props) {
+  const dark = tone === 'dark';
   const t = useTranslations('roomManagement');
   const tRoom = useTranslations('room.status');
   const tCommon = useTranslations('common');
@@ -59,13 +63,16 @@ export function RoomManagementBoard({ basePath }: Props) {
     return Array.from(set).sort();
   }, [rooms]);
 
+  const labelClass = dark ? 'text-xs font-medium uppercase tracking-wide text-sidebar-muted' : 'text-xs font-medium uppercase tracking-wide text-ink-muted';
+  const inputClass = dark ? APP_DARK_INPUT : 'border border-border bg-surface';
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3">
         <div>
-          <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">{t('filterFloor')}</label>
+          <label className={labelClass}>{t('filterFloor')}</label>
           <select
-            className="mt-1 min-h-[44px] min-w-[120px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className={clsx('mt-1 min-h-[44px] min-w-[120px] rounded-btn px-3 text-sm', inputClass)}
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
           >
@@ -78,9 +85,9 @@ export function RoomManagementBoard({ basePath }: Props) {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">{t('filterStatus')}</label>
+          <label className={labelClass}>{t('filterStatus')}</label>
           <select
-            className="mt-1 min-h-[44px] min-w-[160px] rounded-btn border border-border bg-surface px-3 text-sm"
+            className={clsx('mt-1 min-h-[44px] min-w-[160px] rounded-btn px-3 text-sm', inputClass)}
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
@@ -93,10 +100,10 @@ export function RoomManagementBoard({ basePath }: Props) {
           </select>
         </div>
         <div className="min-w-[200px] flex-1">
-          <label className="text-xs font-medium uppercase tracking-wide text-ink-muted">{tCommon('search')}</label>
+          <label className={labelClass}>{tCommon('search')}</label>
           <input
             type="search"
-            className="mt-1 min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm"
+            className={clsx('mt-1 min-h-[44px] w-full rounded-btn px-3 text-sm', inputClass)}
             placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -104,32 +111,52 @@ export function RoomManagementBoard({ basePath }: Props) {
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-ink-muted">{tCommon('loading')}</p>}
+      {isLoading && <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>{tCommon('loading')}</p>}
 
       {!isLoading && filtered.length === 0 && (
-        <p className="text-sm text-ink-muted">{t('noRooms')}</p>
+        <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>{t('noRooms')}</p>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filtered.map((room) => (
           <Link key={room.id} href={`${basePath}/${room.id}`} className="block">
-            <Card className="h-full transition hover:border-action/40 hover:shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-lg font-semibold text-ink">{room.roomNumber}</p>
-                  {room.floor != null && (
-                    <p className="text-xs text-ink-muted">
-                      {t('floor')} {room.floor}
-                    </p>
-                  )}
+            {dark ? (
+              <div className={clsx(APP_DARK_CARD, 'h-full p-5 transition hover:border-action/40')}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-lg font-semibold text-white">{room.roomNumber}</p>
+                    {room.floor != null && (
+                      <p className="text-xs text-sidebar-muted">
+                        {t('floor')} {room.floor}
+                      </p>
+                    )}
+                  </div>
+                  <StatusBadge status={room.derivedStatus} variant="dark" />
                 </div>
-                <StatusBadge status={room.derivedStatus} />
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <RoomOccupancyBadges occupancy={room.occupancy} onColor />
+                </div>
+                <RoomOccupancyGuestLine occupancy={room.occupancy} compact onColor />
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1">
-                <RoomOccupancyBadges occupancy={room.occupancy} />
-              </div>
-              <RoomOccupancyGuestLine occupancy={room.occupancy} compact />
-            </Card>
+            ) : (
+              <Card className="h-full transition hover:border-action/40 hover:shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-lg font-semibold text-ink">{room.roomNumber}</p>
+                    {room.floor != null && (
+                      <p className="text-xs text-ink-muted">
+                        {t('floor')} {room.floor}
+                      </p>
+                    )}
+                  </div>
+                  <StatusBadge status={room.derivedStatus} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <RoomOccupancyBadges occupancy={room.occupancy} />
+                </div>
+                <RoomOccupancyGuestLine occupancy={room.occupancy} compact />
+              </Card>
+            )}
           </Link>
         ))}
       </div>

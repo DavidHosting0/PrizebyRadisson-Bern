@@ -14,6 +14,9 @@ import {
   type ArrivalsSortDir,
   type ArrivalsSortKey,
 } from '@/components/reception/ArrivalsTable';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 const CHECKIN_TABS: { id: CheckInListTab; label: string; empty: string }[] = [
   {
@@ -38,6 +41,7 @@ export default function ArrivalCheckPage() {
   const queryClient = useQueryClient();
   const { user, loading } = useAuth();
   const canArrivalCheck = usePermission('ARRIVAL_CHECK');
+  const { enterMobile } = useReceptionMobileMode();
   const [activeTab, setActiveTab] = useState<CheckInListTab>('arrivals');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<ArrivalsSortKey>('guest');
@@ -147,31 +151,34 @@ export default function ArrivalCheckPage() {
 
   if (loading || !user || !canArrivalCheck) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-sm text-ink-muted">Lädt…</p>
+      <div className="flex min-h-[40vh] items-center justify-center bg-[#121a26]">
+        <p className="text-sm text-sidebar-muted">Lädt…</p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Anreise-Check</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Reservierungen auswählen und Check starten.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => syncMut.mutate()}
-          disabled={syncMut.isPending}
-          className="rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-ink transition hover:bg-surface-muted disabled:opacity-50"
-        >
-          {syncMut.isPending ? 'Synchronisiere…' : 'Reservierungen synchronisieren'}
-        </button>
-      </header>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Anreise-Check"
+        description="Reservierungen auswählen und Check starten"
+        actions={
+          <>
+            <AppChromeTools onEnterMobile={enterMobile} />
+            <button
+              type="button"
+              onClick={() => syncMut.mutate()}
+              disabled={syncMut.isPending}
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-sidebar-border bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
+            >
+              {syncMut.isPending ? 'Synchronisiere…' : 'Reservierungen synchronisieren'}
+            </button>
+          </>
+        }
+      />
 
+      <AppPageBody>
+        <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
       <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
         <div className="flex flex-wrap gap-1 border-b border-border bg-surface-muted/30 p-2">
           {CHECKIN_TABS.map((tab) => (
@@ -270,6 +277,8 @@ export default function ArrivalCheckPage() {
           {startError ?? (syncMut.error as Error).message}
         </p>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { PermissionToggle } from '@/components/admin/PermissionToggle';
 import type { ReservationSyncStatus, EmmaIntegrationStatus } from '@housekeeping/shared';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type EmmaMeta = {
   integrationEnabled: boolean;
@@ -166,26 +168,22 @@ export default function AdminEmmaCredentialsPage() {
   const backupMode = integrationStatusQuery.data?.backupMode;
 
   return (
-    <div className="space-y-8 px-4 py-6">
-      <header>
-        <h1 className="text-2xl font-semibold text-ink">EMMA (SAP Fiori)</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Zugangsdaten für die automatisierte Anmeldung am EMMA Launchpad{' '}
-          <span className="whitespace-nowrap">(emma.rhg.radissonhotels.com)</span>. Der Login
-          läuft in vier Stufen ab — ADFS, MFA, SAP-Logon und Property-Modal —
-          und alle Passwörter sowie der TOTP-Seed werden in der Datenbank
-          AES-256-GCM-verschlüsselt abgelegt. Nur Admins haben Zugriff auf
-          diese Seite.
-        </p>
-      </header>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="EMMA (SAP Fiori)"
+        description="Zugangsdaten für die automatisierte Anmeldung am EMMA Launchpad. Nur Admins haben Zugriff auf diese Seite."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">EMMA-Integration</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">EMMA-Integration</h2>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Schaltet automatischen Zimmerstatus-Sync (Cron, Zimmerlisten, Housekeeping-Aktionen),
           manuellen Sync und HTTP-Login (Cookies) ab. Zugangsdaten bleiben gespeichert.
         </p>
-        <div className="mt-4 rounded-xl border border-border bg-surface-muted/40">
+        <div className="mt-4 rounded-xl border border-sidebar-border bg-white/5">
           <PermissionToggle
             title="EMMA-Integration aktiv"
             description={
@@ -199,22 +197,22 @@ export default function AdminEmmaCredentialsPage() {
           />
         </div>
         {integrationMut.isError && (
-          <p className="mt-3 text-sm text-rose-700">{(integrationMut.error as Error).message}</p>
+          <p className="mt-3 text-sm text-rose-400">{(integrationMut.error as Error).message}</p>
         )}
         {!emmaActive && (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <p className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
             EMMA ist ausgeschaltet. Hintergrund-Sync und automatischer Re-Login laufen nicht.
           </p>
         )}
       </section>
 
-      <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Front Office Backup-Modus</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <section className="rounded-card border border-rose-400/30 bg-rose-500/10 p-5 text-slate-100 shadow-none">
+        <h2 className="text-lg font-semibold text-white">Front Office Backup-Modus</h2>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Schaltet die EMMA-Backup-Übersicht für die Rezeption ein — unabhängig davon, ob EMMA
           erreichbar ist. Nützlich für Tests und manuelle Notfall-Vorbereitung.
         </p>
-        <div className="mt-4 rounded-xl border border-rose-200 bg-white/80">
+        <div className="mt-4 rounded-xl border border-rose-400/30 bg-white/5">
           <PermissionToggle
             title="Manueller Backup-Modus"
             description={
@@ -232,14 +230,14 @@ export default function AdminEmmaCredentialsPage() {
           />
         </div>
         {backupModeMut.isError ? (
-          <p className="mt-2 text-sm text-rose-700">Backup-Modus konnte nicht gespeichert werden.</p>
+          <p className="mt-2 text-sm text-rose-400">Backup-Modus konnte nicht gespeichert werden.</p>
         ) : null}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Zugangsdaten</h2>
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">Zugangsdaten</h2>
         {metaQuery.isLoading ? (
-          <p className="mt-3 text-sm text-ink-muted">Lädt…</p>
+          <p className="mt-3 text-sm text-sidebar-muted">Lädt…</p>
         ) : (
           <form
             className="mt-4 grid max-w-2xl grid-cols-1 gap-6"
@@ -272,13 +270,13 @@ export default function AdminEmmaCredentialsPage() {
               saveMut.mutate(body);
             }}
           >
-            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-surface-muted/40 p-4">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-sidebar-border bg-white/5 p-4">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 Stufe 1 · ADFS (Microsoft Sign-In)
               </legend>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   E-Mail (ADFS-Konto)
                 </span>
                 <input
@@ -286,14 +284,14 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="off"
                   value={adfsEmail}
                   onChange={(e) => setAdfsEmail(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder="vorname.name@prizebyradisson.com"
                   required
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   ADFS-Passwort
                 </span>
                 <input
@@ -301,24 +299,24 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="new-password"
                   value={adfsPassword}
                   onChange={(e) => setAdfsPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder={meta?.hasAdfsPassword ? 'Neu eintragen zum Ersetzen …' : 'Passwort'}
                 />
                 {meta?.hasAdfsPassword && (
-                  <p className="mt-1 text-xs text-ink-muted">
+                  <p className="mt-1 text-xs text-sidebar-muted">
                     Es ist bereits ein ADFS-Passwort gespeichert. Leer lassen, um es zu behalten.
                   </p>
                 )}
               </label>
             </fieldset>
 
-            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-surface-muted/40 p-4">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-sidebar-border bg-white/5 p-4">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 Stufe 2 · MFA (TOTP)
               </legend>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   TOTP-Seed (Base32)
                 </span>
                 <input
@@ -326,7 +324,7 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="off"
                   value={totpSecret}
                   onChange={(e) => setTotpSecret(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2 font-mono'}
                   placeholder={
                     meta?.hasTotpSecret
                       ? 'Neuen Seed eintragen zum Ersetzen …'
@@ -334,20 +332,20 @@ export default function AdminEmmaCredentialsPage() {
                   }
                 />
                 {meta?.hasTotpSecret && (
-                  <p className="mt-1 text-xs text-ink-muted">
+                  <p className="mt-1 text-xs text-sidebar-muted">
                     Es ist bereits ein TOTP-Seed gespeichert. Leer lassen, um ihn zu behalten.
                   </p>
                 )}
               </label>
             </fieldset>
 
-            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-surface-muted/40 p-4">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-sidebar-border bg-white/5 p-4">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 Stufe 3 · SAP-Logon
               </legend>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   SAP-Benutzer
                 </span>
                 <input
@@ -355,14 +353,14 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="off"
                   value={sapUser}
                   onChange={(e) => setSapUser(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder="z. B. CHBRNPRF2"
                   required
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   SAP-Passwort
                 </span>
                 <input
@@ -370,24 +368,24 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="new-password"
                   value={sapPassword}
                   onChange={(e) => setSapPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder={meta?.hasSapPassword ? 'Neu eintragen zum Ersetzen …' : 'Passwort'}
                 />
                 {meta?.hasSapPassword && (
-                  <p className="mt-1 text-xs text-ink-muted">
+                  <p className="mt-1 text-xs text-sidebar-muted">
                     Es ist bereits ein SAP-Passwort gespeichert. Leer lassen, um es zu behalten.
                   </p>
                 )}
               </label>
             </fieldset>
 
-            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-surface-muted/40 p-4">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-sidebar-border bg-white/5 p-4">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 Stufe 4 · Property-Modal
               </legend>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   Operator-Code
                 </span>
                 <input
@@ -395,13 +393,13 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="off"
                   value={operatorCode}
                   onChange={(e) => setOperatorCode(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder="z. B. 47032"
                 />
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   Till (Folio / Rechnung)
                 </span>
                 <input
@@ -409,17 +407,17 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="off"
                   value={tillName}
                   onChange={(e) => setTillName(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder="z. B. FD1013 - David Eich"
                 />
-                <p className="mt-1 text-xs text-ink-muted">
+                <p className="mt-1 text-xs text-sidebar-muted">
                   Exakter Text wie in der EMMA-Combobox „Tills“ (Till and Employee nach Cancel
                   Invoice).
                 </p>
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   Operator-Passwort
                 </span>
                 <input
@@ -427,26 +425,26 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="new-password"
                   value={operatorPassword}
                   onChange={(e) => setOperatorPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2'}
                   placeholder={
                     meta?.hasOperatorPassword ? 'Neu eintragen zum Ersetzen …' : 'Passwort'
                   }
                 />
                 {meta?.hasOperatorPassword && (
-                  <p className="mt-1 text-xs text-ink-muted">
+                  <p className="mt-1 text-xs text-sidebar-muted">
                     Es ist bereits ein Operator-Passwort gespeichert. Leer lassen, um es zu behalten.
                   </p>
                 )}
               </label>
             </fieldset>
 
-            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-surface-muted/40 p-4">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <fieldset className="grid grid-cols-1 gap-4 rounded-xl border border-sidebar-border bg-white/5 p-4">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                 Optional · Launchpad-URL überschreiben
               </legend>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
                   Base URL
                 </span>
                 <input
@@ -454,16 +452,16 @@ export default function AdminEmmaCredentialsPage() {
                   autoComplete="off"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm"
+                  className={APP_DARK_INPUT + ' w-full py-2 font-mono'}
                   placeholder="https://emma.rhg.radissonhotels.com/sap/bc/ui2/flp"
                 />
-                <p className="mt-1 text-xs text-ink-muted">
+                <p className="mt-1 text-xs text-sidebar-muted">
                   Leer lassen für Standard-URL.
                 </p>
               </label>
             </fieldset>
 
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+            <p className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-xs text-emerald-200">
               Alle Passwörter und der TOTP-Seed werden mit AES-256-GCM verschlüsselt
               gespeichert (Schlüssel: <code>FAVUR_ENCRYPTION_KEY</code> auf dem Server).
               Diese Seite gibt sie nie wieder im Klartext aus.
@@ -473,26 +471,26 @@ export default function AdminEmmaCredentialsPage() {
               <button
                 type="submit"
                 disabled={saveMut.isPending}
-                className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
               >
                 {saveMut.isPending ? 'Speichert …' : 'Speichern'}
               </button>
               {saveMut.isError && (
-                <span className="text-sm text-rose-700">
+                <span className="text-sm text-rose-400">
                   {(saveMut.error as Error).message}
                 </span>
               )}
               {saveMut.isSuccess && !saveMut.isPending && (
-                <span className="text-sm text-emerald-800">Gespeichert.</span>
+                <span className="text-sm text-emerald-400">Gespeichert.</span>
               )}
             </div>
           </form>
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">HTTP-Session</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">HTTP-Session</h2>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Einmaliger Login per HTTP (ADFS, MFA, SAP) — speichert Cookies für den schnellen
           Zimmerstatus-Sync. Dauert typisch 30–60 Sekunden. Kein Browser auf dem Server.
         </p>
@@ -502,7 +500,7 @@ export default function AdminEmmaCredentialsPage() {
             type="button"
             onClick={() => refreshHttpMut.mutate()}
             disabled={refreshHttpMut.isPending || !emmaActive}
-            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
             title={!emmaActive ? 'EMMA-Integration ist deaktiviert' : undefined}
           >
             {refreshHttpMut.isPending ? 'Session wird erneuert …' : 'HTTP-Session erneuern'}
@@ -511,7 +509,7 @@ export default function AdminEmmaCredentialsPage() {
             type="button"
             onClick={() => invalidateMut.mutate()}
             disabled={invalidateMut.isPending}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+            className="rounded-lg border border-sidebar-border bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
             title="Löscht gespeicherte EMMA-Cookies; beim nächsten Sync wird neu eingeloggt."
           >
             {invalidateMut.isPending ? 'Setze zurück …' : 'Session zurücksetzen'}
@@ -519,27 +517,27 @@ export default function AdminEmmaCredentialsPage() {
         </div>
 
         {refreshHttpMut.isSuccess && refreshHttpMut.data && (
-          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+          <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-200">
             <p className="font-semibold">HTTP-Session gespeichert.</p>
-            <p className="mt-1 text-xs text-emerald-900/80">
+            <p className="mt-1 text-xs text-emerald-300/80">
               {refreshHttpMut.data.cookieCount} Cookies · {refreshHttpMut.data.savedAt}
             </p>
           </div>
         )}
         {refreshHttpMut.isError && (
-          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+          <div className="mt-4 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
             <p className="font-semibold">Session fehlgeschlagen.</p>
             <p className="mt-1 break-words">{(refreshHttpMut.error as Error).message}</p>
           </div>
         )}
         {invalidateMut.isSuccess && !invalidateMut.isPending && (
-          <p className="mt-3 text-sm text-emerald-800">HTTP-Session zurückgesetzt.</p>
+          <p className="mt-3 text-sm text-emerald-400">HTTP-Session zurückgesetzt.</p>
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Zimmerstatus-Sync</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">Zimmerstatus-Sync</h2>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Lädt Housekeeping-Status aus EMMA (OData) und schreibt ihn auf die lokalen Zimmer.
           Dauert typisch einige Sekunden, wenn die HTTP-Session gültig ist — sonst wird zuerst
           automatisch neu eingeloggt. Zusätzlich läuft der Sync alle 5 Minuten im Hintergrund.
@@ -550,7 +548,7 @@ export default function AdminEmmaCredentialsPage() {
             type="button"
             onClick={() => syncRoomsMut.mutate()}
             disabled={syncRoomsMut.isPending || !emmaActive}
-            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
             title={!emmaActive ? 'EMMA-Integration ist deaktiviert' : undefined}
           >
             {syncRoomsMut.isPending ? 'Synchronisiere …' : 'Zimmer jetzt synchronisieren'}
@@ -558,9 +556,9 @@ export default function AdminEmmaCredentialsPage() {
         </div>
 
         {syncRoomsMut.isSuccess && syncRoomsMut.data && (
-          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+          <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-200">
             <p className="font-semibold">Sync abgeschlossen.</p>
-            <p className="mt-1 text-xs text-emerald-900/80">
+            <p className="mt-1 text-xs text-emerald-300/80">
               {syncRoomsMut.data.matched} von {syncRoomsMut.data.emmaRooms} EMMA-Zimmern gematcht ·{' '}
               {syncRoomsMut.data.updated} aktualisiert · Hotel {syncRoomsMut.data.hotelId} ·{' '}
               {new Date(syncRoomsMut.data.syncedAt).toLocaleString('de-CH')}
@@ -568,32 +566,32 @@ export default function AdminEmmaCredentialsPage() {
           </div>
         )}
         {syncRoomsMut.isError && (
-          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+          <div className="mt-4 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
             <p className="font-semibold">Sync fehlgeschlagen.</p>
             <p className="mt-1 break-words">{(syncRoomsMut.error as Error).message}</p>
           </div>
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
-        <h2 className="text-lg font-semibold text-ink">Reservierungen (Check-In)</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+      <section className={APP_DARK_CARD + ' p-5'}>
+        <h2 className="text-lg font-semibold text-white">Reservierungen (Check-In)</h2>
+        <p className="mt-1 text-sm text-sidebar-muted">
           Synchronisiert Anreisen, Check-in-Queue und Im-Haus aus EMMA Check-In OData. Gästedaten
           werden verschlüsselt in PostgreSQL gespeichert. Cron alle 3 Minuten (konfigurierbar).
         </p>
 
         {reservationStatusQuery.data?.lastRun && (
-          <div className="mt-4 rounded-lg border border-border bg-surface-muted/40 p-3 text-sm">
+          <div className="mt-4 rounded-lg border border-sidebar-border bg-white/5 p-3 text-sm text-slate-100">
             <p>
               Letzter Lauf:{' '}
-              <span className="font-medium">{reservationStatusQuery.data.lastRun.status}</span>
+              <span className="font-medium text-white">{reservationStatusQuery.data.lastRun.status}</span>
               {' · '}
               {new Date(reservationStatusQuery.data.lastRun.startedAt).toLocaleString('de-CH')}
               {reservationStatusQuery.data.lastRun.rowCount != null &&
                 ` · ${reservationStatusQuery.data.lastRun.rowCount} Zeilen`}
             </p>
             {reservationStatusQuery.data.lastRun.error && (
-              <p className="mt-2 text-rose-700">{reservationStatusQuery.data.lastRun.error}</p>
+              <p className="mt-2 text-rose-400">{reservationStatusQuery.data.lastRun.error}</p>
             )}
           </div>
         )}
@@ -603,41 +601,43 @@ export default function AdminEmmaCredentialsPage() {
             type="button"
             onClick={() => syncReservationsMut.mutate()}
             disabled={syncReservationsMut.isPending || !emmaActive}
-            className="rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white hover:bg-action/90 disabled:opacity-50"
           >
             {syncReservationsMut.isPending ? 'Synchronisiere …' : 'Reservierungen synchronisieren'}
           </button>
         </div>
 
         {syncReservationsMut.isSuccess && syncReservationsMut.data && (
-          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+          <div className="mt-4 rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-200">
             <p className="font-semibold">Reservierungs-Sync abgeschlossen.</p>
-            <p className="mt-1 text-xs text-emerald-900/80">
+            <p className="mt-1 text-xs text-emerald-300/80">
               {syncReservationsMut.data.upserted} upserted ·{' '}
               {new Date(syncReservationsMut.data.syncedAt).toLocaleString('de-CH')}
             </p>
           </div>
         )}
         {syncReservationsMut.isError && (
-          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+          <div className="mt-4 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
             <p className="font-semibold">Reservierungs-Sync fehlgeschlagen.</p>
             <p className="mt-1 break-words">{(syncReservationsMut.error as Error).message}</p>
           </div>
         )}
 
-        <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4 text-sm text-indigo-950">
-          <p className="font-semibold">Anreise-Check Vorschau</p>
-          <p className="mt-1 text-indigo-900/80">
+        <div className="mt-4 rounded-lg border border-indigo-400/30 bg-indigo-400/10 p-4 text-sm text-indigo-200">
+          <p className="font-semibold text-white">Anreise-Check Vorschau</p>
+          <p className="mt-1 text-indigo-200/80">
             Den Lauf-Bildschirm (Fortschritt, manuelle Fälle, VCC) ohne echten EMMA-Lauf testen.
           </p>
           <Link
             href="/a/arrival-check"
-            className="mt-3 inline-flex rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-900 hover:bg-indigo-50"
+            className="mt-3 inline-flex rounded-lg border border-indigo-400/40 bg-white/5 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/10"
           >
             Vorschau öffnen →
           </Link>
         </div>
       </section>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

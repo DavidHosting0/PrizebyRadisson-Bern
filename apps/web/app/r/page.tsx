@@ -7,12 +7,15 @@ import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { KpiStat } from '@/components/supervisor/KpiStat';
 import { ReceptionRoomBoard } from '@/components/reception/ReceptionRoomBoard';
-import { PageHeader, PageSection, PageShell } from '@/components/ui/PageShell';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 type RoomRow = { id: string; roomNumber: string; floor: number | null; derivedStatus: string };
 type ReqRow = { id: string; status: string };
 
 export default function ReceptionDashboardPage() {
+  const { enterMobile } = useReceptionMobileMode();
   const { data: rooms = [] } = useQuery(roomsListQueryOptions<RoomRow>());
 
   const { data: requests = [] } = useQuery({
@@ -30,21 +33,22 @@ export default function ReceptionDashboardPage() {
   }, [rooms, requests]);
 
   return (
-    <PageShell>
-      <PageHeader
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
         title="Dashboard"
         description="Live operational snapshot"
         actions={
           <>
+            <AppChromeTools onEnterMobile={enterMobile} />
             <Link
               href="/r/rooms"
-              className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-border px-4 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-sidebar-border px-4 text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
             >
               Room board
             </Link>
             <Link
               href="/r/requests"
-              className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-border px-4 text-sm font-medium text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink"
+              className="inline-flex min-h-[40px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90"
             >
               Service requests
             </Link>
@@ -52,22 +56,30 @@ export default function ReceptionDashboardPage() {
         }
       />
 
-      <PageSection title="Overview">
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
-          <KpiStat label="Total rooms" value={stats.total} />
-          <KpiStat label="Clean / ready" value={stats.clean} sub="Turn-down complete" />
-          <KpiStat label="In progress" value={stats.progress} />
-          <KpiStat label="Dirty" value={stats.dirty} />
-          <KpiStat label="Active requests" value={stats.activeReq} sub="Open pipeline" />
-        </div>
-      </PageSection>
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
+          <section>
+            <h2 className="text-base font-semibold text-white">Overview</h2>
+            <div className="mt-4 grid grid-cols-2 gap-4 xl:grid-cols-5">
+              <KpiStat tone="dark" label="Total rooms" value={stats.total} />
+              <KpiStat tone="dark" label="Clean / ready" value={stats.clean} sub="Turn-down complete" />
+              <KpiStat tone="dark" label="In progress" value={stats.progress} />
+              <KpiStat tone="dark" label="Dirty" value={stats.dirty} />
+              <KpiStat tone="dark" label="Active requests" value={stats.activeReq} sub="Open pipeline" />
+            </div>
+          </section>
 
-      <PageSection
-        title="Live room status"
-        description="Click a room for details. Urgent request flags highlighted."
-      >
-        <ReceptionRoomBoard compact />
-      </PageSection>
-    </PageShell>
+          <section>
+            <h2 className="text-base font-semibold text-white">Live room status</h2>
+            <p className="mt-1 text-sm text-sidebar-muted">
+              Click a room for details. Urgent request flags highlighted.
+            </p>
+            <div className={APP_DARK_CARD + ' mt-4 p-4 md:p-6'}>
+              <ReceptionRoomBoard compact />
+            </div>
+          </section>
+        </div>
+      </AppPageBody>
+    </div>
   );
 }

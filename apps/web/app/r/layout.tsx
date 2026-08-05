@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import clsx from 'clsx';
@@ -32,8 +31,6 @@ import { NotificationsRuntime } from '@/components/notifications/NotificationsRu
 import { PushPermissionBanner } from '@/components/notifications/PushPermissionBanner';
 import { EmmaSyncAlertBanner } from '@/components/emma/EmmaSyncAlertBanner';
 import { useEmmaIntegrationStatus } from '@/lib/hooks/useEmmaIntegrationStatus';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { ReceptionMobileModeProvider, useReceptionMobileMode } from '@/lib/reception-mobile-context';
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
@@ -52,7 +49,6 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
   const t = useTranslations('common');
-  const tCmd = useTranslations('commandPalette');
   const allowedNav = filterNavByPermission(user, RECEPTION_NAV);
   const { backupModeActive } = useEmmaIntegrationStatus(!!user);
   const visibleNav = allowedNav.filter(
@@ -74,12 +70,6 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       if (e.type === 'reception:openRoom') openRoom(e.roomId);
     });
   }, [openNewRequest, openRoom]);
-
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: () => api<{ name: string }>('/settings'),
-    enabled: !!user,
-  });
 
   useEffect(() => {
     if (loading) return;
@@ -170,13 +160,13 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const hotelTitle = settings?.name ?? 'Prize by Radisson Bern';
+  const isChat = path === '/r/chat';
 
   return (
     <div
       className={clsx(
-        'flex flex-col bg-surface-muted md:h-dvh md:flex-row md:overflow-hidden',
-        path === '/r/chat' ? 'h-dvh overflow-hidden' : 'min-h-screen',
+        'flex flex-col bg-sidebar md:h-dvh md:flex-row md:overflow-hidden',
+        isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
       <AppSidebar
@@ -213,33 +203,25 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       <div
         className={clsx(
           'flex min-h-0 min-w-0 flex-1 flex-col md:h-dvh',
-          path === '/r/chat' ? 'h-full overflow-hidden' : 'md:overflow-hidden',
+          isChat ? 'h-full overflow-hidden' : 'md:overflow-hidden',
         )}
       >
         <header
           className={clsx(
-            'sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 px-5 md:px-8',
+            'flex items-center justify-between gap-3 px-5 py-3 md:hidden',
             APP_TOP_BAR_CLASS,
           )}
         >
-          <BrandLogo compact className="shrink-0 brightness-0 invert md:hidden" />
-          <div className="hidden min-w-0 flex-1 items-baseline gap-3 sm:flex">
-            <p className="truncate text-lg font-semibold tracking-tight text-white">{hotelTitle}</p>
-            <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-sidebar-muted">
-              {t('beta')}
-            </span>
-          </div>
-          <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
-            <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-3 text-xs" label={tCmd('title')} />
+          <BrandLogo compact className="shrink-0 brightness-0 invert" />
+          <div className="flex items-center gap-2">
+            <CommandPaletteTrigger onDark className="min-h-[36px] gap-2 px-2 text-xs" />
             <LanguageSwitcher compact onDark />
-            <div className="md:hidden">
-              <NotificationBell variant="onDark" />
-            </div>
+            <NotificationBell variant="onDark" />
             <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 text-xs" onClick={enterMobile}>
               {t('mobileView')}
             </Button>
             {canCreateRequest && (
-              <Button type="button" variant="action" className="min-h-[36px] px-4 text-xs" onClick={openNewRequest}>
+              <Button type="button" variant="action" className="min-h-[36px] px-3 text-xs" onClick={openNewRequest}>
                 {t('newRequest')}
               </Button>
             )}
@@ -252,10 +234,10 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
 
         <main
           className={clsx(
-            'min-h-0 min-w-0 flex-1',
-            path === '/r/chat'
+            'min-h-0 min-w-0 flex-1 bg-[#121a26]',
+            isChat
               ? 'flex h-full flex-col overflow-hidden'
-              : 'overflow-y-auto pb-20 md:pb-8',
+              : 'overflow-y-auto pb-20 md:overflow-hidden md:pb-0',
           )}
         >
           {children}

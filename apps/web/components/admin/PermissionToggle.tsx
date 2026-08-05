@@ -26,18 +26,18 @@ export function PermissionToggle({
       disabled={disabled}
       className={clsx(
         'group flex w-full items-center justify-between gap-4 rounded-lg border border-transparent px-3 py-3 text-left transition-colors',
-        disabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-surface-muted',
+        disabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-white/10',
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-ink">{title}</p>
-        {description && <p className="mt-0.5 text-sm text-ink-muted">{description}</p>}
+        <p className="font-medium text-white">{title}</p>
+        {description && <p className="mt-0.5 text-sm text-sidebar-muted">{description}</p>}
       </div>
       <span
         aria-hidden
         className={clsx(
           'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-          checked ? 'bg-success' : 'bg-ink/15',
+          checked ? 'bg-success' : 'bg-white/15',
         )}
       >
         <span

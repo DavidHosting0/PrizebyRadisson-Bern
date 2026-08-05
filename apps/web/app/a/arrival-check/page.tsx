@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ArrivalCheckRunDetail } from '@housekeeping/shared';
 import { ArrivalCheckRunView } from '@/components/reception/ArrivalCheckRunView';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
   advanceMockRun,
@@ -12,6 +11,8 @@ import {
   startAnimatedMockRun,
   type ArrivalCheckMockPreset,
 } from '@/lib/arrival-check-mock';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 const PRESETS = Object.keys(MOCK_PRESET_LABELS) as ArrivalCheckMockPreset[];
 
@@ -67,22 +68,19 @@ export default function AdminArrivalCheckPreviewPage() {
   }
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Arrival Check Preview</h1>
-        <p className="mt-1 max-w-2xl text-sm text-ink-muted">
-          Simulate the reception arrival-check run screen without waiting for real arrivals or
-          starting an EMMA run. Admin only — open via{' '}
-          <span className="font-mono text-xs text-ink">/a/arrival-check</span> or the nav link{' '}
-          <strong className="font-medium text-ink">Analytics → Anreise-Check Vorschau</strong>.
-        </p>
-      </div>
-
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Arrival Check Preview"
+        description="Simulate the reception arrival-check run screen without waiting for real arrivals or starting an EMMA run."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
       <div className="grid gap-8 xl:grid-cols-[minmax(0,340px)_1fr]">
-        <Card className="h-fit space-y-5">
+        <div className={APP_DARK_CARD + ' h-fit space-y-5 p-5'}>
           <div>
-            <h2 className="text-sm font-semibold text-ink">Scenario</h2>
-            <p className="mt-1 text-xs text-ink-muted">
+            <h2 className="text-sm font-semibold text-white">Scenario</h2>
+            <p className="mt-1 text-xs text-sidebar-muted">
               Pick a finished state or run the live animation.
             </p>
           </div>
@@ -95,8 +93,8 @@ export default function AdminArrivalCheckPreviewPage() {
                 onClick={() => applyPreset(key)}
                 className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm transition ${
                   preset === key
-                    ? 'border-ink/20 bg-ink/[0.04] font-medium text-ink ring-1 ring-ink/10'
-                    : 'border-border text-ink-muted hover:bg-surface-muted hover:text-ink'
+                    ? 'border-action/40 bg-action/10 font-medium text-white ring-1 ring-action/20'
+                    : 'border-sidebar-border text-sidebar-muted hover:bg-white/5 hover:text-white'
                 }`}
               >
                 {MOCK_PRESET_LABELS[key]}
@@ -105,7 +103,7 @@ export default function AdminArrivalCheckPreviewPage() {
           </div>
 
           <label className="block text-sm">
-            <span className="font-medium text-ink">Reservations in queue</span>
+            <span className="font-medium text-white">Reservations in queue</span>
             <input
               type="range"
               min={3}
@@ -114,11 +112,11 @@ export default function AdminArrivalCheckPreviewPage() {
               onChange={(e) => handleItemCountChange(Number(e.target.value))}
               className="mt-2 w-full"
             />
-            <span className="mt-1 block text-xs tabular-nums text-ink-muted">{itemCount}</span>
+            <span className="mt-1 block text-xs tabular-nums text-sidebar-muted">{itemCount}</span>
           </label>
 
-          <div className="flex flex-col gap-2 border-t border-border pt-4">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+          <div className="flex flex-col gap-2 border-t border-sidebar-border/60 pt-4">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
               <input
                 type="checkbox"
                 checked={animate}
@@ -129,14 +127,14 @@ export default function AdminArrivalCheckPreviewPage() {
                     setAnimate(false);
                   }
                 }}
-                className="rounded border-border"
+                className="rounded border-sidebar-border"
               />
               Auto-advance animation
             </label>
             <Button
               type="button"
               variant="secondary"
-              className="min-h-[40px]"
+              className="min-h-[40px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
               onClick={handleStepForward}
             >
               Step forward
@@ -144,25 +142,27 @@ export default function AdminArrivalCheckPreviewPage() {
             <Button
               type="button"
               variant="secondary"
-              className="min-h-[40px]"
+              className="min-h-[40px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
               onClick={handleRestartAnimation}
             >
               Restart animation
             </Button>
           </div>
 
-          <p className="text-xs leading-relaxed text-ink-muted">
+          <p className="text-xs leading-relaxed text-sidebar-muted">
             The live reception page polls the API every second while a run is active. This preview
             uses mock data only — no EMMA calls.
           </p>
-        </Card>
+        </div>
 
         <div className="min-w-0">
-          <div className="rounded-2xl border border-border bg-surface-muted/40 p-4 md:p-8">
+          <div className="rounded-2xl border border-sidebar-border/60 bg-white/5 p-4 md:p-8">
             <ArrivalCheckRunView run={run} preview />
           </div>
         </div>
       </div>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

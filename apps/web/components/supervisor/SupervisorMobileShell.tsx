@@ -33,36 +33,36 @@ export function SupervisorMobileShell({
   return (
     <div
       className={clsx(
-        'flex flex-col bg-surface-muted pb-[calc(5rem+var(--safe-bottom))]',
+        'flex flex-col bg-[#121a26] pb-[calc(5rem+var(--safe-bottom))]',
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-surface/95 px-3 py-2.5 shadow-card backdrop-blur-sm">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar/95 px-3 py-2.5 shadow-sidebar backdrop-blur-sm">
         <div className="min-w-0">
-          <BrandLogo compact />
-          <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+          <BrandLogo compact className="brightness-0 invert" />
+          <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
             Supervisor · mobile
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <NotificationBell />
-          <span className="max-w-[140px] truncate text-[11px] font-medium text-ink-muted">
+          <NotificationBell variant="onDark" />
+          <span className="max-w-[140px] truncate text-[11px] font-medium text-sidebar-muted">
             {formatUserWithTitlePrefix(userName, titlePrefix)}
           </span>
-          <Button type="button" variant="secondary" className="min-h-[36px] px-3 py-1.5 text-xs" onClick={exitMobile}>
+          <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 py-1.5 text-xs" onClick={exitMobile}>
             Desktop site
           </Button>
         </div>
       </header>
       <main
         className={clsx(
-          'flex min-h-0 min-w-0 flex-1 flex-col',
+          'flex min-h-0 min-w-0 flex-1 flex-col bg-[#121a26]',
           isChat && 'overflow-hidden',
         )}
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
         {tabs.map((t) => {
           const active = t.home
             ? path === '/s/m' ||
@@ -76,10 +76,10 @@ export function SupervisorMobileShell({
               href={t.href}
               className={clsx(
                 'flex flex-1 flex-col items-center gap-1 py-3 text-[11px] font-medium transition-colors duration-tap',
-                active ? 'text-ink' : 'text-ink-muted',
+                active ? 'text-white' : 'text-sidebar-muted',
               )}
             >
-              <Icon className={clsx(active ? 'text-ink' : 'text-ink-muted')} />
+              <Icon className={clsx(active ? 'text-white' : 'text-sidebar-muted')} />
               {t.label}
             </Link>
           );

@@ -2,10 +2,12 @@
 
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import type { LoanCatalogItemDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 function formatChf(cents: number) {
   return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(cents / 100);
@@ -83,27 +85,29 @@ export default function AdminLoansCatalogPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Leihartikel-Katalog</h1>
-        <p className="mt-1 text-sm text-ink-muted">Name und Pfand für die Rezeption / Extension.</p>
-      </div>
-
-      <Card>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Leihartikel-Katalog"
+        description="Name und Pfand für die Rezeption / Extension."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-6">
+      <div className={APP_DARK_CARD + ' p-5'}>
         <form className="flex flex-wrap items-end gap-3" onSubmit={onCreate}>
           <label className="min-w-[160px] flex-1 text-sm">
-            <span className="font-medium text-ink">Name</span>
+            <span className="font-medium text-white">Name</span>
             <input
-              className="mt-1 w-full rounded-btn border border-border px-3 py-2 text-sm"
+              className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </label>
           <label className="w-28 text-sm">
-            <span className="font-medium text-ink">Pfand CHF</span>
+            <span className="font-medium text-white">Pfand CHF</span>
             <input
-              className="mt-1 w-full rounded-btn border border-border px-3 py-2 text-sm"
+              className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
               value={depositChf}
               onChange={(e) => setDepositChf(e.target.value)}
               inputMode="decimal"
@@ -114,29 +118,29 @@ export default function AdminLoansCatalogPage() {
             Hinzufügen
           </Button>
         </form>
-        {err && <p className="mt-2 text-sm text-danger">{err}</p>}
-      </Card>
+        {err && <p className="mt-2 text-sm text-red-400">{err}</p>}
+      </div>
 
-      {catalogQ.isLoading && <p className="text-sm text-ink-muted">Laden…</p>}
+      {catalogQ.isLoading && <p className="text-sm text-sidebar-muted">Laden…</p>}
       <ul className="space-y-2">
         {(catalogQ.data ?? []).map((item) => (
           <li key={item.id}>
-            <Card>
+            <div className={APP_DARK_CARD + ' p-4'}>
               {editId === item.id ? (
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-3">
                     <input
-                      className="min-w-[140px] flex-1 rounded-btn border border-border px-3 py-2 text-sm"
+                      className={clsx(APP_DARK_INPUT, 'min-w-[140px] flex-1 py-2')}
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
                     />
                     <input
-                      className="w-24 rounded-btn border border-border px-3 py-2 text-sm"
+                      className={clsx(APP_DARK_INPUT, 'w-24 py-2')}
                       value={editDeposit}
                       onChange={(e) => setEditDeposit(e.target.value)}
                       inputMode="decimal"
                     />
-                    <label className="inline-flex items-center gap-2 text-sm">
+                    <label className="inline-flex items-center gap-2 text-sm text-white">
                       <input
                         type="checkbox"
                         checked={editActive}
@@ -154,7 +158,7 @@ export default function AdminLoansCatalogPage() {
                     >
                       Speichern
                     </Button>
-                    <Button type="button" variant="ghost" onClick={() => setEditId(null)}>
+                    <Button type="button" variant="ghostOnDark" onClick={() => setEditId(null)}>
                       Abbrechen
                     </Button>
                   </div>
@@ -162,17 +166,17 @@ export default function AdminLoansCatalogPage() {
               ) : (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-ink">
+                    <p className="text-sm font-semibold text-white">
                       {item.name}{' '}
                       {!item.active && (
-                        <span className="text-xs font-normal text-ink-muted">(inaktiv)</span>
+                        <span className="text-xs font-normal text-sidebar-muted">(inaktiv)</span>
                       )}
                     </p>
-                    <p className="text-xs text-ink-muted">Pfand {formatChf(item.depositCents)}</p>
+                    <p className="text-xs text-sidebar-muted">Pfand {formatChf(item.depositCents)}</p>
                   </div>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="ghostOnDark"
                     className="min-h-0 px-2 py-1 text-xs"
                     onClick={() => startEdit(item)}
                   >
@@ -180,10 +184,12 @@ export default function AdminLoansCatalogPage() {
                   </Button>
                 </div>
               )}
-            </Card>
+            </div>
           </li>
         ))}
       </ul>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

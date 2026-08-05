@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import {
   RECEPTION_HANDOVER_SHIFTS,
   SHIFT_HANDOVER_LABELS_DE,
@@ -13,7 +14,8 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/components/toast/ToastProvider';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 type DraftTask = {
   id?: string;
@@ -154,26 +156,28 @@ export default function AdminShiftHandoverPage() {
   };
 
   if (me?.role !== 'ADMIN') {
-    return <p className="p-4 text-sm text-ink-muted">Nur für Administratoren.</p>;
+    return <p className="p-4 text-sm text-sidebar-muted">Nur für Administratoren.</p>;
   }
 
   return (
-    <div className="space-y-8 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Schichtübergabe</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Checklisten für Nacht-, Früh- und Spätschicht bearbeiten. Pflichtaufgaben blockieren die
-          Übergabe an die nächste Schicht.
-        </p>
-      </div>
-
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Schichtübergabe"
+        description="Checklisten für Nacht-, Früh- und Spätschicht bearbeiten. Pflichtaufgaben blockieren die Übergabe an die nächste Schicht."
+        actions={<AppChromeTools />}
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
       <div className="flex flex-wrap gap-2">
         {RECEPTION_HANDOVER_SHIFTS.map((s) => (
           <Button
             key={s}
             type="button"
-            variant={shift === s ? 'primary' : 'secondary'}
-            className="min-h-[44px]"
+            variant={shift === s ? 'action' : 'secondary'}
+            className={clsx(
+              'min-h-[44px]',
+              shift !== s && 'border border-sidebar-border bg-transparent text-white hover:bg-white/10',
+            )}
             onClick={() => selectShift(s)}
           >
             {SHIFT_HANDOVER_LABELS_DE[s]}
@@ -181,19 +185,24 @@ export default function AdminShiftHandoverPage() {
         ))}
       </div>
 
-      {isLoading && <p className="text-sm text-ink-muted">Laden…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">Laden…</p>}
 
       {current && (
-        <Card className="space-y-4">
+        <div className={APP_DARK_CARD + ' space-y-4 p-5'}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-ink">{SHIFT_HANDOVER_LABELS_DE[shift]}</p>
+            <p className="text-sm font-medium text-white">{SHIFT_HANDOVER_LABELS_DE[shift]}</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" className="min-h-[44px]" onClick={addTask}>
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-[44px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
+                onClick={addTask}
+              >
                 Aufgabe hinzufügen
               </Button>
               <Button
                 type="button"
-                variant="primary"
+                variant="action"
                 className="min-h-[44px]"
                 disabled={!dirty || save.isPending || sortedDraft.length === 0}
                 onClick={() => save.mutate(sortedDraft)}
@@ -207,12 +216,12 @@ export default function AdminShiftHandoverPage() {
             {sortedDraft.map((t, index) => (
               <li
                 key={t.id ?? `draft-${index}`}
-                className="rounded-card border border-border bg-surface-muted/40 p-3 sm:p-4"
+                className="rounded-card border border-sidebar-border/60 bg-white/5 p-3 sm:p-4"
               >
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-ink-muted">Aufgabe</span>
+                  <span className="text-xs text-sidebar-muted">Aufgabe</span>
                   <input
-                    className="min-h-[44px] rounded-btn border border-border bg-surface px-3 text-sm"
+                    className={clsx(APP_DARK_INPUT, 'min-h-[44px]')}
                     value={t.label}
                     onChange={(e) => updateAt(index, { label: e.target.value })}
                   />
@@ -220,16 +229,16 @@ export default function AdminShiftHandoverPage() {
                 <label className="mt-3 flex min-h-[44px] cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
-                    className="h-5 w-5 rounded border-border accent-brand"
+                    className="h-5 w-5 rounded border-sidebar-border accent-action"
                     checked={t.essential}
                     onChange={(e) => updateAt(index, { essential: e.target.checked })}
                   />
-                  <span className="text-sm text-ink">Pflicht für Schichtübergabe</span>
+                  <span className="text-sm text-white">Pflicht für Schichtübergabe</span>
                 </label>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="ghostOnDark"
                     className="min-h-[40px] min-w-[40px] px-2"
                     disabled={index === 0}
                     onClick={() => move(index, -1)}
@@ -239,7 +248,7 @@ export default function AdminShiftHandoverPage() {
                   </Button>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="ghostOnDark"
                     className="min-h-[40px] min-w-[40px] px-2"
                     disabled={index === sortedDraft.length - 1}
                     onClick={() => move(index, 1)}
@@ -249,8 +258,8 @@ export default function AdminShiftHandoverPage() {
                   </Button>
                   <Button
                     type="button"
-                    variant="ghost"
-                    className="min-h-[40px] text-danger"
+                    variant="ghostOnDark"
+                    className="min-h-[40px] text-red-400"
                     onClick={() => removeAt(index)}
                   >
                     Entfernen
@@ -261,10 +270,12 @@ export default function AdminShiftHandoverPage() {
           </ul>
 
           {sortedDraft.length === 0 && (
-            <p className="text-sm text-ink-muted">Noch keine Aufgaben. Mindestens eine Aufgabe hinzufügen.</p>
+            <p className="text-sm text-sidebar-muted">Noch keine Aufgaben. Mindestens eine Aufgabe hinzufügen.</p>
           )}
-        </Card>
+        </div>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

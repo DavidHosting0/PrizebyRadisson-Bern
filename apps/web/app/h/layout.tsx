@@ -63,8 +63,8 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
 
   if (loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">
-        <p className="text-sm text-ink-muted">{tCommon('loading')}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#121a26] p-4">
+        <p className="text-sm text-sidebar-muted">{tCommon('loading')}</p>
       </div>
     );
   }
@@ -78,16 +78,16 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
   return (
     <div
       className={clsx(
-        'flex flex-col bg-surface-muted pb-[calc(5rem+var(--safe-bottom))]',
+        'flex flex-col bg-[#121a26] pb-[calc(5rem+var(--safe-bottom))]',
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface/95 px-4 py-3 shadow-card backdrop-blur-sm">
-        <BrandLogo compact />
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar/95 px-4 py-3 shadow-sidebar backdrop-blur-sm">
+        <BrandLogo compact className="brightness-0 invert" />
         <div className="flex items-center gap-2">
-          <LanguageSwitcher compact />
-          <NotificationBell />
-          <span className="max-w-[55%] truncate text-right text-xs font-medium text-ink-muted">
+          <LanguageSwitcher compact onDark />
+          <NotificationBell variant="onDark" />
+          <span className="max-w-[55%] truncate text-right text-xs font-medium text-sidebar-muted">
             {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
           </span>
         </div>
@@ -96,13 +96,13 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
       <NotificationsRuntime />
       <main
         className={clsx(
-          'flex min-h-0 min-w-0 flex-1 flex-col',
+          'flex min-h-0 min-w-0 flex-1 flex-col bg-[#121a26]',
           isChat && 'overflow-hidden',
         )}
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-surface/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
         {tabItems.map((t) => {
           const active = t.href === '/h' ? path === '/h' : path === t.href || path.startsWith(`${t.href}/`);
           const Icon = t.Icon;
@@ -112,10 +112,10 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
               href={t.href}
               className={clsx(
                 'flex flex-1 flex-col items-center gap-1 py-3 text-[11px] font-medium transition-colors duration-tap',
-                active ? 'text-ink' : 'text-ink-muted',
+                active ? 'text-white' : 'text-sidebar-muted',
               )}
             >
-              <Icon className={clsx(active ? 'text-ink' : 'text-ink-muted')} />
+              <Icon className={clsx(active ? 'text-white' : 'text-sidebar-muted')} />
               {t.label}
             </Link>
           );

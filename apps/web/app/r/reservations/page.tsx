@@ -6,6 +6,9 @@ import { useMemo, useState } from 'react';
 import type { ReservationListItem } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
+import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 function statusLabel(r: ReservationListItem) {
   if (r.checkOut) return { text: 'Ausgecheckt', className: 'text-ink-muted' };
@@ -16,6 +19,7 @@ function statusLabel(r: ReservationListItem) {
 
 export default function ReceptionReservationsPage() {
   const router = useRouter();
+  const { enterMobile } = useReceptionMobileMode();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -45,13 +49,15 @@ export default function ReceptionReservationsPage() {
   }, [debouncedSearch, listQuery.isLoading, rows.length]);
 
   return (
-    <div className="space-y-6 p-4 md:p-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">Reservierungen</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Alle lokal gespeicherten EMMA-Reservierungen durchsuchen und Details ansehen.
-        </p>
-      </header>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title="Reservierungen"
+        description="Alle lokal gespeicherten EMMA-Reservierungen durchsuchen und Details ansehen"
+        actions={<AppChromeTools onEnterMobile={enterMobile} />}
+      />
+
+      <AppPageBody>
+        <div className="space-y-6 p-4 md:p-6">
 
       <Card className="p-4">
         <form onSubmit={handleSearchSubmit} className="flex flex-wrap gap-2">
@@ -143,6 +149,8 @@ export default function ReceptionReservationsPage() {
       {listQuery.isError && (
         <p className="text-sm text-rose-700">{(listQuery.error as Error).message}</p>
       )}
+        </div>
+      </AppPageBody>
     </div>
   );
 }

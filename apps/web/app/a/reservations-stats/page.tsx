@@ -18,6 +18,8 @@ import { PipelineAreaChart } from '@/components/admin/reservation-stats/Pipeline
 import { DailySummaryChart } from '@/components/admin/reservation-stats/DailySummaryChart';
 import { BreakdownTable } from '@/components/admin/reservation-stats/BreakdownTable';
 import { DateInput } from '@/components/ui/DateInput';
+import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
+import { AppChromeTools } from '@/components/nav/AppChromeTools';
 
 function todayIso(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Zurich' }).format(new Date());
@@ -90,26 +92,29 @@ export default function AdminReservationStatsPage() {
     breakdownQuery.isLoading;
 
   return (
-    <div className="space-y-8 px-4 py-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('title')}</h1>
-          <p className="mt-1 text-sm text-ink-muted">{t('subtitle')}</p>
-        </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-            {t('businessDate')}
-          </span>
-          <DateInput
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="min-w-[11rem] shadow-card"
-          />
-        </label>
-      </header>
-
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AppPageChrome
+        title={t('title')}
+        description={t('subtitle')}
+        actions={
+          <>
+            <AppChromeTools />
+            <label className="flex flex-col gap-1">
+              <span className="sr-only">{t('businessDate')}</span>
+              <DateInput
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                size="sm"
+                className="min-w-[9rem]"
+              />
+            </label>
+          </>
+        }
+      />
+      <AppPageBody>
+        <div className="space-y-8 p-4 md:p-6">
       {timelineQuery.data?.firstDataAt && (
-        <p className="text-xs text-ink-muted">
+        <p className="text-xs text-sidebar-muted">
           {t('dataNote', {
             from: new Date(timelineQuery.data.firstDataAt).toLocaleString('de-CH', {
               timeZone: 'Europe/Zurich',
@@ -119,30 +124,32 @@ export default function AdminReservationStatsPage() {
         </p>
       )}
 
-      {loading && <p className="text-sm text-ink-muted">{t('loading')}</p>}
+      {loading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
           {t('kpiSection')}
         </h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <KpiStat
+            tone="dark"
             label={t('kpiArrivals')}
             value={latestPoint?.arrivals ?? breakdownQuery.data?.totalArrivals ?? 0}
           />
           <KpiStat
+            tone="dark"
             label={t('kpiRemaining')}
             value={latestPoint?.remainingCheckIns ?? 0}
           />
-          <KpiStat label={t('kpiQueue')} value={latestPoint?.checkInQueue ?? 0} />
-          <KpiStat label={t('kpiCheckInDone')} value={latestPoint?.checkInDone ?? 0} />
-          <KpiStat label={t('kpiInHouse')} value={latestPoint?.inHouse ?? 0} />
-          <KpiStat label={t('kpiDepartures')} value={latestPoint?.departures ?? 0} />
+          <KpiStat tone="dark" label={t('kpiQueue')} value={latestPoint?.checkInQueue ?? 0} />
+          <KpiStat tone="dark" label={t('kpiCheckInDone')} value={latestPoint?.checkInDone ?? 0} />
+          <KpiStat tone="dark" label={t('kpiInHouse')} value={latestPoint?.inHouse ?? 0} />
+          <KpiStat tone="dark" label={t('kpiDepartures')} value={latestPoint?.departures ?? 0} />
         </div>
       </section>
 
       {rateQuery.data?.peakWindow && (
-        <div className="rounded-2xl border border-border bg-action-muted px-5 py-4 text-sm text-ink">
+        <div className="rounded-2xl border border-action/30 bg-action/10 px-5 py-4 text-sm text-white">
           <span className="font-medium">{t('peakCheckIn')}:</span>{' '}
           {rateQuery.data.peakWindow.label}–
           {new Date(rateQuery.data.peakWindow.bucketEnd).toLocaleTimeString('de-CH', {
@@ -190,16 +197,19 @@ export default function AdminReservationStatsPage() {
       {breakdownQuery.data && (
         <section className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiStat label={t('totalPax')} value={breakdownQuery.data.totalPax} />
+            <KpiStat tone="dark" label={t('totalPax')} value={breakdownQuery.data.totalPax} />
             <KpiStat
+              tone="dark"
               label={t('avgNights')}
               value={breakdownQuery.data.avgNightsStay ?? '—'}
             />
             <KpiStat
+              tone="dark"
               label={t('arrivalCheckDone')}
               value={breakdownQuery.data.arrivalCheckCompleted}
             />
             <KpiStat
+              tone="dark"
               label={t('arrivalCheckOpen')}
               value={breakdownQuery.data.arrivalCheckPending}
             />
@@ -224,7 +234,9 @@ export default function AdminReservationStatsPage() {
         </section>
       )}
 
-      <p className="text-xs text-ink-muted">{t('disclaimer')}</p>
+      <p className="text-xs text-sidebar-muted">{t('disclaimer')}</p>
+        </div>
+      </AppPageBody>
     </div>
   );
 }

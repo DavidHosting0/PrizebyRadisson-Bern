@@ -31,31 +31,31 @@ export function PermissionCategoryList({
         return (
           <section
             key={g.id}
-            className="overflow-hidden rounded-lg border border-border bg-surface-muted/30"
+            className="overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5"
           >
             <button
               type="button"
               onClick={() => setOpen((prev) => ({ ...prev, [g.id]: !isOpen }))}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-muted/60"
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/10"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span
                   className={clsx(
-                    'text-xs text-ink-muted transition-transform',
+                    'text-xs text-sidebar-muted transition-transform',
                     isOpen && 'rotate-90',
                   )}
                   aria-hidden
                 >
                   ▶
                 </span>
-                <span className="text-sm font-semibold text-ink">{g.label}</span>
+                <span className="text-sm font-semibold text-white">{g.label}</span>
               </div>
-              <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-ink-muted">
+              <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-sidebar-muted">
                 {enabled}/{g.codes.length}
               </span>
             </button>
             {isOpen && (
-              <div className="border-t border-border/60 bg-surface px-1 pb-1">
+              <div className="border-t border-sidebar-border/40 bg-[#1A2332] px-1 pb-1">
                 {g.codes.map((code) => (
                   <PermissionToggle
                     key={code}

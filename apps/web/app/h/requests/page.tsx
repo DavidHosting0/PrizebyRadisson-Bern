@@ -41,7 +41,7 @@ export default function HousekeeperRequestsPage() {
   if (isLoading) {
     return (
       <div className="p-4">
-        <p className="text-sm text-ink-muted">Loading requests…</p>
+        <p className="text-sm text-sidebar-muted">Loading requests…</p>
       </div>
     );
   }
@@ -54,23 +54,25 @@ export default function HousekeeperRequestsPage() {
       (r.status === 'CLAIMED' || r.status === 'IN_PROGRESS'),
   );
 
+  const cardClass = 'border-sidebar-border/60 bg-[#1A2332] text-slate-100';
+
   return (
     <div className="space-y-8 p-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Requests</h1>
-        <p className="mt-1 text-sm text-ink-muted">Claim open work or complete what you started.</p>
+        <h1 className="text-xl font-semibold tracking-tight text-white">Requests</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">Claim open work or complete what you started.</p>
       </div>
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Open</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Open</h2>
         <ul className="mt-3 space-y-3">
           {open.map((r) => (
             <li key={r.id}>
-              <Card>
+              <Card className={cardClass}>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-lg font-semibold text-ink">Room {r.room.roomNumber}</p>
-                    <p className="mt-1 text-sm text-ink-muted">{r.type.label}</p>
+                    <p className="text-lg font-semibold text-slate-100">Room {r.room.roomNumber}</p>
+                    <p className="mt-1 text-sm text-slate-400">{r.type.label}</p>
                     <div className="mt-2">
                       <PriorityBadge priority={r.priority} />
                     </div>
@@ -88,21 +90,21 @@ export default function HousekeeperRequestsPage() {
             </li>
           ))}
         </ul>
-        {open.length === 0 && <p className="mt-2 text-sm text-ink-muted">No open requests.</p>}
+        {open.length === 0 && <p className="mt-2 text-sm text-sidebar-muted">No open requests.</p>}
       </section>
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">My active tasks</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">My active tasks</h2>
         <ul className="mt-3 space-y-3">
           {mine.map((r) => (
             <li key={r.id}>
-              <Card>
+              <Card className={cardClass}>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-lg font-semibold text-ink">Room {r.room.roomNumber}</p>
-                    <p className="mt-1 text-sm text-ink-muted">{r.type.label}</p>
+                    <p className="text-lg font-semibold text-slate-100">Room {r.room.roomNumber}</p>
+                    <p className="mt-1 text-sm text-slate-400">{r.type.label}</p>
                   </div>
-                  <Button variant="secondary" disabled={resolve.isPending} onClick={() => resolve.mutate(r.id)}>
+                  <Button variant="ghostOnDark" disabled={resolve.isPending} onClick={() => resolve.mutate(r.id)}>
                     Mark as done
                   </Button>
                 </div>
@@ -111,7 +113,7 @@ export default function HousekeeperRequestsPage() {
           ))}
         </ul>
         {mine.length === 0 && (
-          <p className="mt-2 text-sm text-ink-muted">You have no claimed requests in progress.</p>
+          <p className="mt-2 text-sm text-sidebar-muted">You have no claimed requests in progress.</p>
         )}
       </section>
     </div>

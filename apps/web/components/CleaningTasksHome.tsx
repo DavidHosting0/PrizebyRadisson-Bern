@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import clsx from 'clsx';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { InspectionQueueResponse, MyDailyTaskDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
@@ -101,10 +102,12 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
   );
   const inspectionTasks = inspectionQueue?.onDuty ? inspectionQueue.tasks : [];
 
+  const cardClass = 'border-sidebar-border/60 bg-[#1A2332] text-slate-100';
+
   if (roomsLoading) {
     return (
       <div className="p-4">
-        <p className="text-sm text-ink-muted">Loading your rooms…</p>
+        <p className="text-sm text-sidebar-muted">Loading your rooms…</p>
       </div>
     );
   }
@@ -119,51 +122,51 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
   return (
     <div className="space-y-8 p-4">
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">My rooms</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">My rooms</h2>
         <ul className="mt-3 space-y-3">
           {rooms?.map((r) => (
             <li key={r.id}>
               <Link href={paths.room(r.id)} className="block tap-scale">
-                <Card className="transition-shadow hover:shadow-lift">
+                <Card className={clsx(cardClass, 'transition-shadow hover:shadow-lift')}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-lg font-semibold tracking-tight text-ink">Room {r.roomNumber}</p>
+                      <p className="text-lg font-semibold tracking-tight text-slate-100">Room {r.roomNumber}</p>
                       {r.floor != null && (
-                        <p className="mt-0.5 text-xs text-ink-muted">Floor {r.floor}</p>
+                        <p className="mt-0.5 text-xs text-slate-400">Floor {r.floor}</p>
                       )}
                       {overdueByRoom.has(r.id) && (
-                        <p className="mt-1 text-xs font-semibold text-red-600">
+                        <p className="mt-1 text-xs font-semibold text-red-400">
                           Overdue {overdueByRoom.get(r.id)} day
                           {overdueByRoom.get(r.id) === 1 ? '' : 's'}
                         </p>
                       )}
                     </div>
-                    <StatusBadge status={r.derivedStatus} />
+                    <StatusBadge status={r.derivedStatus} variant="dark" />
                   </div>
-                  <p className="mt-3 text-sm text-ink-muted">Tap to finish cleaning</p>
+                  <p className="mt-3 text-sm text-slate-400">Tap to finish cleaning</p>
                 </Card>
               </Link>
             </li>
           ))}
         </ul>
         {rooms?.length === 0 && (
-          <p className="mt-2 text-sm text-ink-muted">No rooms assigned right now.</p>
+          <p className="mt-2 text-sm text-sidebar-muted">No rooms assigned right now.</p>
         )}
       </section>
 
       {publicTasks.length > 0 && (
         <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
             Public areas
           </h2>
           <ul className="mt-3 space-y-3">
             {publicTasks.map((t) => (
               <li key={t.id}>
-                <Card className="flex flex-wrap items-center justify-between gap-3">
+                <Card className={clsx(cardClass, 'flex flex-wrap items-center justify-between gap-3')}>
                   <div>
-                    <p className="font-semibold text-ink">{t.publicAreaName}</p>
+                    <p className="font-semibold text-slate-100">{t.publicAreaName}</p>
                     {t.floor != null && (
-                      <p className="text-xs text-ink-muted">Floor {t.floor}</p>
+                      <p className="text-xs text-slate-400">Floor {t.floor}</p>
                     )}
                   </div>
                   <Button
@@ -183,14 +186,14 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
 
       {inspectionQueue?.onDuty && (
         <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
             Inspections
           </h2>
-          <p className="mt-1 text-xs text-ink-muted">
+          <p className="mt-1 text-xs text-sidebar-muted">
             Claim a cleaned room, then inspect. Shared with today’s other inspectors.
           </p>
           {inspectionTasks.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-muted">No rooms waiting for inspection.</p>
+            <p className="mt-3 text-sm text-sidebar-muted">No rooms waiting for inspection.</p>
           ) : (
             <ul className="mt-3 space-y-3">
               {inspectionTasks.map((t) => {
@@ -198,22 +201,22 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                 const claimed = t.status === 'CLAIMED';
                 return (
                   <li key={t.id}>
-                    <Card>
+                    <Card className={cardClass}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-lg font-semibold tabular-nums text-ink">
+                          <p className="text-lg font-semibold tabular-nums text-slate-100">
                             Room {t.roomNumber}
                           </p>
                           {t.floor != null && (
-                            <p className="mt-0.5 text-xs text-ink-muted">Floor {t.floor}</p>
+                            <p className="mt-0.5 text-xs text-slate-400">Floor {t.floor}</p>
                           )}
                           {claimed && t.claimedByName && (
-                            <p className="mt-1 text-xs text-ink-muted">
+                            <p className="mt-1 text-xs text-slate-400">
                               Claimed by {t.claimedByName}
                             </p>
                           )}
                         </div>
-                        <StatusBadge status="CLEAN" />
+                        <StatusBadge status="CLEAN" variant="dark" />
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {!claimed && (
@@ -237,7 +240,7 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                             </Link>
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="ghostOnDark"
                               className="min-h-[44px]"
                               disabled={releaseInspection.isPending}
                               onClick={() => releaseInspection.mutate(t.id)}
@@ -257,19 +260,19 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
       )}
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Open requests</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Open requests</h2>
         {reqLoading ? (
-          <p className="mt-3 text-sm text-ink-muted">Loading requests…</p>
+          <p className="mt-3 text-sm text-sidebar-muted">Loading requests…</p>
         ) : (
           <ul className="mt-3 space-y-3">
             {open.map((r) => (
               <li key={r.id}>
-                <Card>
+                <Card className={cardClass}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-ink">
+                      <p className="font-semibold text-slate-100">
                         Room {r.room.roomNumber}
-                        <span className="font-normal text-ink-muted"> · {r.type.label}</span>
+                        <span className="font-normal text-slate-400"> · {r.type.label}</span>
                       </p>
                       <div className="mt-2">
                         <PriorityBadge priority={r.priority} />
@@ -290,25 +293,25 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           </ul>
         )}
         {!reqLoading && open.length === 0 && (
-          <p className="mt-2 text-sm text-ink-muted">No open requests.</p>
+          <p className="mt-2 text-sm text-sidebar-muted">No open requests.</p>
         )}
       </section>
 
       {mine.length > 0 && (
         <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">My active tasks</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">My active tasks</h2>
           <ul className="mt-3 space-y-3">
             {mine.map((r) => (
               <li key={r.id}>
-                <Card>
-                  <p className="font-semibold text-ink">
+                <Card className={cardClass}>
+                  <p className="font-semibold text-slate-100">
                     Room {r.room.roomNumber}
-                    <span className="font-normal text-ink-muted"> · {r.type.label}</span>
+                    <span className="font-normal text-slate-400"> · {r.type.label}</span>
                   </p>
-                  <p className="mt-1 text-xs text-ink-muted">In progress — finish on Requests tab</p>
+                  <p className="mt-1 text-xs text-slate-400">In progress — finish on Requests tab</p>
                   <Link
                     href={paths.requests}
-                    className="mt-3 inline-block text-sm font-medium text-ink underline underline-offset-2"
+                    className="mt-3 inline-block text-sm font-medium text-slate-100 underline underline-offset-2"
                   >
                     Go to requests
                   </Link>
