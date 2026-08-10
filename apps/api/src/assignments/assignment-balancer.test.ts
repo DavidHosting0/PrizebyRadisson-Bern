@@ -82,8 +82,52 @@ describe('balanceDailyCleaningAssignments', () => {
     const { summaries } = balanceDailyCleaningAssignments([...rooms, ...publics], cleaners);
     const early = summaries.find((s) => s.housekeeperId === 'early')!;
     const late = summaries.find((s) => s.housekeeperId === 'late')!;
-    assert.ok(early.roomCount >= late.roomCount);
+    assert.ok(early.roomCount > late.roomCount);
     assert.ok(late.publicCount >= early.publicCount);
+  });
+
+  it('carves contiguous floor clusters instead of scattering', () => {
+    // 3 rooms on each of floors 1–4
+    const rooms: BalanceWorkItem[] = [];
+    for (const floor of [1, 2, 3, 4]) {
+      for (const unit of [1, 2, 3]) {
+        rooms.push(dirtyRoom(`${floor}0${unit}`));
+      }
+    }
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'b', isLateShift: false, roomWeight: 1 },
+    ];
+    const { summaries, assignments } = balanceDailyCleaningAssignments(rooms, cleaners);
+    assert.equal(assignments.length, 12);
+    for (const s of summaries) {
+      assert.equal(s.roomCount, 6);
+      const floors = [...s.floors].sort((x, y) => x - y);
+      // Contiguous block: max - min + 1 === number of distinct floors (no holes)
+      assert.equal(floors[floors.length - 1]! - floors[0]! + 1, floors.length);
+    }
+    // No interleaving: floors of a and b should be disjoint ranges
+    const floorsA = new Set(summaries.find((s) => s.housekeeperId === 'a')!.floors);
+    const floorsB = new Set(summaries.find((s) => s.housekeeperId === 'b')!.floors);
+    for (const f of floorsA) assert.equal(floorsB.has(f), false);
+  });
+
+  it('gives restant assignee fewer dirty rooms', () => {
+    const rooms = ['101', '102', '103', '104', '105', '106', '107', '108', '109', '110'].map((n) =>
+      dirtyRoom(n),
+    );
+    const restants = [restant('201'), restant('202'), restant('203'), restant('204')];
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'rest', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'full', isLateShift: false, roomWeight: 1 },
+    ];
+    const { summaries } = balanceDailyCleaningAssignments([...rooms, ...restants], cleaners, {
+      preferredRestantId: 'rest',
+    });
+    const rest = summaries.find((s) => s.housekeeperId === 'rest')!;
+    const full = summaries.find((s) => s.housekeeperId === 'full')!;
+    assert.equal(rest.restantCount, 4);
+    assert.ok(rest.roomCount < full.roomCount);
   });
 });
 

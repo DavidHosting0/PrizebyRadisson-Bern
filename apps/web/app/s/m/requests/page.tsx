@@ -68,11 +68,11 @@ export default function SupervisorMobileRequestsPage() {
                 )}
                 <select
                   className="min-h-[44px] flex-1 rounded-btn border border-sidebar-border/70 bg-[#121a26] px-2 text-sm text-slate-100"
-                  value={r.status}
+                  value={r.status === 'CREATED' ? 'OPEN' : r.status}
                   onChange={(e) => patch.mutate({ id: r.id, status: e.target.value })}
                   disabled={patch.isPending}
                 >
-                  {['CREATED', 'OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'].map((s) => (
+                  {['OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'].map((s) => (
                     <option key={s} value={s}>
                       {s.replace(/_/g, ' ')}
                     </option>

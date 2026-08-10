@@ -17,7 +17,7 @@ type Req = {
   claimedBy: { id: string; name: string; titlePrefix: string } | null;
 };
 
-const STATUSES = ['CREATED', 'OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'] as const;
+const STATUSES = ['OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'] as const;
 
 export default function SupervisorRequestsPage() {
   const qc = useQueryClient();
@@ -92,7 +92,7 @@ export default function SupervisorRequestsPage() {
                     )}
                     <select
                       className={APP_DARK_INPUT + ' min-h-[44px]'}
-                      value={r.status}
+                      value={r.status === 'CREATED' ? 'OPEN' : r.status}
                       onChange={(e) => patch.mutate({ id: r.id, status: e.target.value })}
                       disabled={patch.isPending}
                     >

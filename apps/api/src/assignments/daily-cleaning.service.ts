@@ -13,6 +13,7 @@ import {
   type DailyCleaningPlanResponse,
   type DailyCleaningTaskDto,
   type DailyCleaningAssignee,
+  type DeferredRoomDto,
   type MyDailyTaskDto,
   type PublicAreaDto,
 } from '@housekeeping/shared';
@@ -152,40 +153,10 @@ export class DailyCleaningService implements OnModuleInit {
     eligible: DailyCleaningAssignee[];
     manual: DailyCleaningAssignee[];
     warnings: string[];
+    onShift: DailyCleaningAssignee[];
+    allCleaners: DailyCleaningAssignee[];
   }> {
-    const { from, to } = dayBoundsFromIso(dateIso);
-    const shifts = await this.prisma.shift.findMany({
-      where: { startsAt: { lt: to }, endsAt: { gt: from } },
-      select: { userId: true, startsAt: true, endsAt: true },
-    });
-    const overrides = await this.prisma.dailyLateShiftOverride.findMany({
-      where: { date: dateOnlyFromIso(dateIso) },
-    });
-    const overrideByUser = new Map(overrides.map((o) => [o.userId, o.isLateShift]));
-
-    const shiftByUser = new Map<string, { startsAt: Date; endsAt: Date }>();
-    for (const s of shifts) {
-      const prev = shiftByUser.get(s.userId);
-      if (!prev || s.startsAt < prev.startsAt) {
-        shiftByUser.set(s.userId, { startsAt: s.startsAt, endsAt: s.endsAt });
-      }
-    }
-
-    const warnings: string[] = [];
-    if (shiftByUser.size === 0) {
-      warnings.push('No shifts found for this day — auto-assign has no eligible cleaners.');
-    }
-
-    const cleaners = await this.prisma.user.findMany({
-      where: {
-        role: UserRole.HOUSEKEEPER,
-        titlePrefix: UserTitlePrefix.CLEANER,
-        isActive: true,
-        id: { in: [...shiftByUser.keys()] },
-      },
-      select: { id: true, name: true, titlePrefix: true, role: true },
-      orderBy: { name: 'asc' },
-    });
+    const { shiftByUser, overrideByUser } = await this.loadShiftContext(dateIso);
 
     const toAssignee = (u: {
       id: string;
@@ -207,7 +178,42 @@ export class DailyCleaningService implements OnModuleInit {
       };
     };
 
-    const eligible = cleaners.map(toAssignee);
+    const allCleanerUsers = await this.prisma.user.findMany({
+      where: {
+        role: UserRole.HOUSEKEEPER,
+        titlePrefix: UserTitlePrefix.CLEANER,
+        isActive: true,
+      },
+      select: { id: true, name: true, titlePrefix: true, role: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const allCleaners = allCleanerUsers.map(toAssignee);
+    const onShift = allCleaners.filter((c) => shiftByUser.has(c.id));
+
+    const workingRows = await this.prisma.dailyWorkingStaff.findMany({
+      where: { date: dateOnlyFromIso(dateIso) },
+      select: { userId: true },
+    });
+
+    let eligible: DailyCleaningAssignee[];
+    const warnings: string[] = [];
+    if (workingRows.length > 0) {
+      const selected = new Set(workingRows.map((r) => r.userId));
+      eligible = allCleaners.filter((c) => selected.has(c.id));
+      if (eligible.length === 0) {
+        warnings.push('Working-today list is empty — add cleaners before running auto-assign.');
+      }
+    } else {
+      eligible = onShift;
+      if (eligible.length === 0) {
+        warnings.push(
+          shiftByUser.size === 0
+            ? 'No shifts found for this day — select who works today manually.'
+            : 'No cleaners on shift for this day — select who works today manually.',
+        );
+      }
+    }
 
     const supervisors = await this.prisma.user.findMany({
       where: {
@@ -222,7 +228,7 @@ export class DailyCleaningService implements OnModuleInit {
     });
 
     const manualMap = new Map<string, DailyCleaningAssignee>();
-    for (const a of eligible) manualMap.set(a.id, a);
+    for (const a of allCleaners) manualMap.set(a.id, a);
     for (const s of supervisors) {
       if (!manualMap.has(s.id)) {
         manualMap.set(s.id, {
@@ -236,7 +242,57 @@ export class DailyCleaningService implements OnModuleInit {
       }
     }
 
-    return { eligible, manual: [...manualMap.values()], warnings };
+    return {
+      eligible,
+      manual: [...manualMap.values()],
+      warnings,
+      onShift,
+      allCleaners,
+    };
+  }
+
+  private async loadShiftContext(dateIso: string) {
+    const { from, to } = dayBoundsFromIso(dateIso);
+    const shifts = await this.prisma.shift.findMany({
+      where: { startsAt: { lt: to }, endsAt: { gt: from } },
+      select: { userId: true, startsAt: true, endsAt: true },
+    });
+    const overrides = await this.prisma.dailyLateShiftOverride.findMany({
+      where: { date: dateOnlyFromIso(dateIso) },
+    });
+    const overrideByUser = new Map(overrides.map((o) => [o.userId, o.isLateShift]));
+
+    const shiftByUser = new Map<string, { startsAt: Date; endsAt: Date }>();
+    for (const s of shifts) {
+      const prev = shiftByUser.get(s.userId);
+      if (!prev || s.startsAt < prev.startsAt) {
+        shiftByUser.set(s.userId, { startsAt: s.startsAt, endsAt: s.endsAt });
+      }
+    }
+
+    return { shiftByUser, overrideByUser };
+  }
+
+  async setWorkingToday(dateIso: string, userIds: string[]) {
+    const date = dateOnlyFromIso(dateIso);
+    const unique = [...new Set(userIds.filter(Boolean))];
+    const { allCleaners } = await this.listEligibleCleaners(dateIso);
+    const allowed = new Set(allCleaners.map((c) => c.id));
+    for (const id of unique) {
+      if (!allowed.has(id)) {
+        throw new ForbiddenException(`User ${id} is not an active cleaner`);
+      }
+    }
+    await this.prisma.$transaction([
+      this.prisma.dailyWorkingStaff.deleteMany({ where: { date } }),
+      ...(unique.length
+        ? [
+            this.prisma.dailyWorkingStaff.createMany({
+              data: unique.map((userId) => ({ date, userId })),
+            }),
+          ]
+        : []),
+    ]);
   }
 
   private async buildDirtyRoomWork(dateIso: string) {
@@ -471,10 +527,18 @@ export class DailyCleaningService implements OnModuleInit {
     const plan = await this.loadPlan(dateIso);
     if (!plan) throw new NotFoundException('Plan not found');
 
-    const { eligible, manual, warnings } = await this.listEligibleCleaners(dateIso);
+    const { eligible, manual, warnings, onShift, allCleaners } =
+      await this.listEligibleCleaners(dateIso);
     const inspectorCandidates = await this.inspectionQueue.listInspectorCandidates();
     const inspectorsToday = await this.inspectionQueue.listInspectorsForDate(dateIso);
     const tasks = plan.tasks.map((t) => this.toTaskDto(t));
+
+    const openTasks = tasks.filter((t) => !t.completedAt);
+    const workPreview = {
+      dirtyRoomCount: openTasks.filter((t) => t.workType === 'DIRTY').length,
+      restantCount: openTasks.filter((t) => t.workType === 'RESTANT').length,
+      publicCount: openTasks.filter((t) => t.workType === 'PUBLIC').length,
+    };
 
     const { summaries } = balanceDailyCleaningAssignments(
       tasks.map((t) => ({
@@ -495,19 +559,51 @@ export class DailyCleaningService implements OnModuleInit {
       })),
     );
 
+    const deferredRooms = await this.listDeferredRooms(dateIso);
+
     return {
       date: dateIso,
       status: plan.status,
       savedAt: plan.savedAt?.toISOString() ?? null,
       suggested: plan.tasks.some((t) => t.assigneeUserId != null),
       warnings,
+      workingToday: eligible,
       eligibleCleaners: eligible,
+      onShiftCleaners: onShift,
+      allCleaners,
       manualAssignees: manual,
       inspectorCandidates,
       inspectorsToday,
+      workPreview,
+      deferredRooms,
       tasks,
       summaries,
     };
+  }
+
+  /** Rooms skipped until a later hotel day (shown in board “Tomorrow” column). */
+  async listDeferredRooms(dateIso: string): Promise<DeferredRoomDto[]> {
+    const rows = await this.prisma.roomCleaningDeferral.findMany({
+      where: {
+        clearedAt: null,
+        deferredUntil: { gt: dateOnlyFromIso(dateIso) },
+      },
+      include: { room: { select: { id: true, roomNumber: true, floor: true } } },
+      orderBy: [{ room: { roomNumber: 'asc' } }],
+    });
+    return rows.map((d) => {
+      const first = formatHotelDateOnly(d.firstDeferredOn);
+      const until = formatHotelDateOnly(d.deferredUntil);
+      const days = daysBetweenIso(first, dateIso);
+      return {
+        roomId: d.room.id,
+        roomNumber: d.room.roomNumber,
+        floor: d.room.floor,
+        deferredUntil: until,
+        firstDeferredOn: first,
+        overdueDays: Math.max(0, days),
+      };
+    });
   }
 
   async suggest(date?: string): Promise<DailyCleaningPlanResponse> {
@@ -521,6 +617,7 @@ export class DailyCleaningService implements OnModuleInit {
   async runAutoAssign(
     date: string | undefined,
     options: {
+      workingTodayUserIds?: string[];
       restantAssigneeUserId?: string | null;
       lateShiftUserIds?: string[];
       publicAssigneeUserIds?: string[];
@@ -543,6 +640,13 @@ export class DailyCleaningService implements OnModuleInit {
       if (!plan) throw new NotFoundException('Plan not found');
     }
 
+    if (options.workingTodayUserIds !== undefined) {
+      if (options.workingTodayUserIds.length === 0) {
+        throw new BadRequestException('Select at least one cleaner who works today.');
+      }
+      await this.setWorkingToday(dateIso, options.workingTodayUserIds);
+    }
+
     if (options.inspectorUserIds !== undefined) {
       await this.inspectionQueue.setInspectorsForDate(dateIso, options.inspectorUserIds);
       await this.syncInspectReadyRooms(dateIso);
@@ -551,13 +655,22 @@ export class DailyCleaningService implements OnModuleInit {
     const lateIds = new Set(options.lateShiftUserIds ?? []);
     const { eligible } = await this.listEligibleCleaners(dateIso);
 
+    if (eligible.length === 0) {
+      throw new BadRequestException(
+        'No cleaners on the working-today list — select who works today before running.',
+      );
+    }
+
     // Apply late-shift overrides for everyone we know about today
-    const allKnownIds = new Set([
-      ...eligible.map((e) => e.id),
-      ...(options.lateShiftUserIds ?? []),
-      ...(options.publicAssigneeUserIds ?? []),
-      options.restantAssigneeUserId,
-    ].filter(Boolean) as string[]);
+    const allKnownIds = new Set(
+      [
+        ...eligible.map((e) => e.id),
+        ...(options.workingTodayUserIds ?? []),
+        ...(options.lateShiftUserIds ?? []),
+        ...(options.publicAssigneeUserIds ?? []),
+        options.restantAssigneeUserId,
+      ].filter(Boolean) as string[],
+    );
 
     for (const userId of allKnownIds) {
       await this.prisma.dailyLateShiftOverride.upsert({
@@ -927,29 +1040,63 @@ export class DailyCleaningService implements OnModuleInit {
   }
 
   async completePublicTask(taskId: string, user: User) {
+    return this.completeDailyTask(taskId, user);
+  }
+
+  /**
+   * Mark a public-area or RESTANT room task done.
+   * RESTANT does not change PrizeBern room status or push Emma.
+   * DIRTY rooms must use mark-clean instead.
+   */
+  async completeDailyTask(taskId: string, user: User) {
     const task = await this.prisma.dailyCleaningTask.findUnique({
       where: { id: taskId },
       include: { plan: true, publicArea: true },
     });
-    if (!task || task.kind !== DailyCleaningTaskKind.PUBLIC_AREA || !task.publicAreaId) {
-      throw new NotFoundException('Public area task not found');
-    }
+    if (!task) throw new NotFoundException('Task not found');
+
     const isAssignee = task.assigneeUserId === user.id;
     const isSupervisor = user.role === UserRole.SUPERVISOR || user.role === UserRole.ADMIN;
     if (!isAssignee && !isSupervisor) throw new ForbiddenException();
+    if (task.completedAt) {
+      const dateIso = formatHotelDateOnly(task.plan.date);
+      return this.getDailyPlan(dateIso);
+    }
 
-    const dateIso = formatHotelDateOnly(task.plan.date);
-    await this.prisma.dailyCleaningTask.update({
-      where: { id: taskId },
-      data: { completedAt: new Date() },
-    });
-    await this.prisma.publicArea.update({
-      where: { id: task.publicAreaId },
-      data: { lastCompletedOn: dateOnlyFromIso(dateIso) },
-    });
+    if (task.kind === DailyCleaningTaskKind.PUBLIC_AREA && task.publicAreaId) {
+      const dateIso = formatHotelDateOnly(task.plan.date);
+      await this.prisma.dailyCleaningTask.update({
+        where: { id: taskId },
+        data: { completedAt: new Date() },
+      });
+      await this.prisma.publicArea.update({
+        where: { id: task.publicAreaId },
+        data: { lastCompletedOn: dateOnlyFromIso(dateIso) },
+      });
+      return this.getDailyPlan(dateIso);
+    }
 
-    // Clear deferral when room cleaned? N/A for public.
-    return this.getDailyPlan(dateIso);
+    if (
+      task.kind === DailyCleaningTaskKind.ROOM &&
+      task.workType === DailyCleaningWorkType.RESTANT &&
+      task.roomId
+    ) {
+      const dateIso = formatHotelDateOnly(task.plan.date);
+      await this.prisma.dailyCleaningTask.update({
+        where: { id: taskId },
+        data: { completedAt: new Date() },
+      });
+      return this.getDailyPlan(dateIso);
+    }
+
+    if (
+      task.kind === DailyCleaningTaskKind.ROOM &&
+      task.workType === DailyCleaningWorkType.DIRTY
+    ) {
+      throw new BadRequestException('Dirty rooms must be finished with mark-clean');
+    }
+
+    throw new NotFoundException('Completable task not found');
   }
 
   async myDailyTasks(user: User): Promise<{ date: string; tasks: MyDailyTaskDto[] }> {

@@ -625,7 +625,7 @@ export function TeamChatView({
     [openMenu],
   );
 
-  const isHk = user?.role === 'HOUSEKEEPER';
+  const isHk = user?.role === 'HOUSEKEEPER' || user?.role === 'SUPERVISOR';
 
   const menuLabels = useMemo(
     () => ({

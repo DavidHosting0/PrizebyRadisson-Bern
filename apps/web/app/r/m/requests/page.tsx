@@ -7,7 +7,7 @@ import { PriorityBadge } from '@/components/PriorityBadge';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
 import { usePermission } from '@/lib/auth-context';
-import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 
 type Req = {
   id: string;
@@ -40,12 +40,6 @@ export default function ReceptionMobileRequestsPage() {
         method: 'PATCH',
         body: JSON.stringify({ priority: 'URGENT' }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
-  });
-
-  const patch = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api(`/service-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
   });
 
@@ -85,18 +79,6 @@ export default function ReceptionMobileRequestsPage() {
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
-                <select
-                  className={APP_DARK_INPUT + ' min-h-[40px] flex-1 px-2'}
-                  value={r.status}
-                  onChange={(e) => patch.mutate({ id: r.id, status: e.target.value })}
-                  disabled={patch.isPending}
-                >
-                  {['CREATED', 'OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'].map((s) => (
-                    <option key={s} value={s}>
-                      {s.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
                 {r.priority === 'NORMAL' && (
                   <Button
                     type="button"

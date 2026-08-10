@@ -5,6 +5,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { UpdateRoomDto } from './dto/update-room.dto';
+import { SetRoomStatusDto } from './dto/set-room-status.dto';
 
 @Controller('rooms')
 export class RoomsController {
@@ -29,6 +30,16 @@ export class RoomsController {
   @RequirePermissions(PermissionCode.CHECKLIST_TASK_UPDATE)
   markClean(@Param('roomId') roomId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.rooms.markHousekeepingClean(roomId, user);
+  }
+
+  @Post(':roomId/status')
+  @RequirePermissions(PermissionCode.ROOM_STATUS_WRITE)
+  setStatus(
+    @Param('roomId') roomId: string,
+    @Body() dto: SetRoomStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.rooms.setRoomStatus(roomId, dto.status, user);
   }
 
   @Get(':roomId')

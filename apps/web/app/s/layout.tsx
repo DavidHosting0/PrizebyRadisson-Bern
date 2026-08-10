@@ -69,6 +69,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
     if (!mobileUi && isSupervisorMobilePath(path)) {
       if (path.startsWith('/s/m/chat')) router.replace('/s/chat');
       else if (path.startsWith('/s/m/requests')) router.replace('/s/requests');
+      else if (path.startsWith('/s/m/tasks')) router.replace('/s/open-tasks');
       else router.replace('/s');
     }
   }, [hydrated, mobileUi, path, router, user]);

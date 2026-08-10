@@ -9,11 +9,13 @@ Confirmed live against `https://neo.mirus.ch/webapp/shifts/shift` (Aug 2026).
 
 ## Interaction (required)
 
-The first paint is a **compact avatar strip** (initials / photos). Shift times are **not** visible until the day detail list is opened:
+The first paint is a **compact avatar strip** (initials / photos). Team shift times are **not** visible until the day detail list is opened:
 
 1. Wait for `.team-color-container`
-2. Click the first `.team-color-container`
-3. Wait until body text contains `Arbeitszeit` + a time range
+2. Click the first `.team-color-container` (do **not** treat the own day card `Arbeitszeit` as “already open”)
+3. Wait until team rows exist: `.card … .row.mb-3` with `Arbeitszeit` (or heading `Anwesend`)
+
+Failing step 2 when the sync account already shows own `Arbeitszeit` scrapes **only the logged-in user**.
 
 ## Expanded day list
 

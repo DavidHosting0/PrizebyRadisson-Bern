@@ -43,6 +43,7 @@ export function SupervisorMobileModeProvider({ children }: { children: React.Rea
     let dest = '/s';
     if (path.startsWith('/s/m/chat')) dest = '/s/chat';
     else if (path.startsWith('/s/m/requests')) dest = '/s/requests';
+    else if (path.startsWith('/s/m/tasks')) dest = '/s/open-tasks';
     router.replace(dest);
   }, [path, persistMobile, router]);
 

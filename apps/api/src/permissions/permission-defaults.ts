@@ -4,6 +4,7 @@ import { PermissionCode, UserRole, UserTitlePrefix } from '@prisma/client';
 export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.ROOMS_READ,
   PermissionCode.ROOMS_UPDATE,
+  PermissionCode.ROOM_STATUS_WRITE,
   PermissionCode.CHECKLIST_TASK_UPDATE,
   PermissionCode.CHECKLIST_REOPEN,
   PermissionCode.PHOTO_UPLOAD,
@@ -109,6 +110,7 @@ export function buildTechnicianSet(): Set<PermissionCode> {
 export function buildReceptionSet(): Set<PermissionCode> {
   const s = new Set<PermissionCode>();
   s.add(PermissionCode.ROOMS_READ);
+  s.add(PermissionCode.ROOM_STATUS_WRITE);
   s.add(PermissionCode.SERVICE_REQUEST_READ);
   s.add(PermissionCode.SERVICE_REQUEST_CREATE);
   s.add(PermissionCode.SERVICE_REQUEST_PATCH);
@@ -145,6 +147,7 @@ export function buildSupervisorSet(): Set<PermissionCode> {
   const s = new Set<PermissionCode>();
   s.add(PermissionCode.ROOMS_READ);
   s.add(PermissionCode.ROOMS_UPDATE);
+  s.add(PermissionCode.ROOM_STATUS_WRITE);
   s.add(PermissionCode.CHECKLIST_TASK_UPDATE);
   s.add(PermissionCode.CHECKLIST_REOPEN);
   s.add(PermissionCode.PHOTO_UPLOAD);

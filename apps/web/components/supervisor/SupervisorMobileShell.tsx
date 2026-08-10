@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
-import { IconChat, IconRequests, IconRooms } from '@/components/icons';
+import { IconChat, IconRequests, IconRooms, IconTasks } from '@/components/icons';
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
@@ -14,6 +14,7 @@ import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 const tabs = [
   { href: '/s/m', label: 'Rooms', Icon: IconRooms, home: true },
+  { href: '/s/m/tasks', label: 'Tasks', Icon: IconTasks, home: false },
   { href: '/s/m/requests', label: 'Requests', Icon: IconRequests, home: false },
   { href: '/s/m/chat', label: 'Chat', Icon: IconChat, home: false },
 ];

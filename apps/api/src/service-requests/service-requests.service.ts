@@ -113,7 +113,7 @@ export class ServiceRequestsService {
       const n = await tx.serviceRequest.updateMany({
         where: {
           id,
-          status: ServiceRequestStatus.OPEN,
+          status: { in: [ServiceRequestStatus.OPEN, ServiceRequestStatus.CREATED] },
         },
         data: {
           status: ServiceRequestStatus.CLAIMED,
@@ -183,22 +183,49 @@ export class ServiceRequestsService {
     const row = await this.prisma.serviceRequest.findUnique({ where: { id } });
     if (!row) throw new NotFoundException();
 
+    const isSupervisorOrAdmin =
+      user.role === UserRole.SUPERVISOR || user.role === UserRole.ADMIN;
+    const isHkOrSupervisor =
+      user.role === UserRole.HOUSEKEEPER || user.role === UserRole.SUPERVISOR;
+
+    // Legacy UI status — treat as open queue.
+    if (status === ServiceRequestStatus.CREATED) {
+      status = ServiceRequestStatus.OPEN;
+    }
+
+    if (status === ServiceRequestStatus.CLAIMED) {
+      if (!isHkOrSupervisor && !isSupervisorOrAdmin) {
+        throw new ForbiddenException();
+      }
+      if (!row.claimedByUserId && !isHkOrSupervisor && !isSupervisorOrAdmin) {
+        throw new ForbiddenException('Claim the request before setting claimed');
+      }
+    }
+
     if (status === ServiceRequestStatus.IN_PROGRESS) {
-      if (row.claimedByUserId !== user.id && user.role !== UserRole.SUPERVISOR && user.role !== UserRole.ADMIN) {
+      if (row.claimedByUserId !== user.id && !isSupervisorOrAdmin) {
         throw new ForbiddenException();
       }
     }
     if (status === ServiceRequestStatus.RESOLVED) {
-      if (row.claimedByUserId !== user.id && user.role !== UserRole.SUPERVISOR && user.role !== UserRole.ADMIN) {
+      if (row.claimedByUserId !== user.id && !isSupervisorOrAdmin) {
         throw new ForbiddenException();
       }
     }
+
+    const claimNow =
+      status === ServiceRequestStatus.CLAIMED &&
+      !row.claimedByUserId &&
+      (isHkOrSupervisor || isSupervisorOrAdmin);
 
     const updated = await this.prisma.serviceRequest.update({
       where: { id },
       data: {
         status,
         ...(priority !== undefined ? { priority } : {}),
+        ...(claimNow
+          ? { claimedByUserId: user.id, claimedAt: new Date() }
+          : {}),
         resolvedAt: status === ServiceRequestStatus.RESOLVED ? new Date() : undefined,
       },
       include: {
@@ -209,6 +236,8 @@ export class ServiceRequestsService {
     });
     if (status === ServiceRequestStatus.RESOLVED) {
       this.realtime.emitServiceRequest('service_request.resolved', updated);
+    } else if (claimNow) {
+      this.realtime.emitServiceRequest('service_request.claimed', updated);
     } else {
       this.realtime.emitServiceRequest('service_request.updated', updated);
     }

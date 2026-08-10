@@ -38,19 +38,46 @@ export type DailyCleaningSummary = {
   floors: number[];
 };
 
+export type DailyCleaningWorkPreview = {
+  dirtyRoomCount: number;
+  restantCount: number;
+  publicCount: number;
+};
+
+/** Room held for a later day (supervisor skip) — not in today's auto-assign pool. */
+export type DeferredRoomDto = {
+  roomId: string;
+  roomNumber: string;
+  floor: number | null;
+  deferredUntil: string;
+  firstDeferredOn: string;
+  overdueDays: number;
+};
+
 export type DailyCleaningPlanResponse = {
   date: string;
   status: DailyCleaningPlanStatus;
   savedAt: string | null;
   suggested: boolean;
   warnings: string[];
+  /** Resolved crew for balancing / board (persisted DailyWorkingStaff or shift default). */
+  workingToday: DailyCleaningAssignee[];
+  /** Alias of workingToday — used by balancer and older clients. */
   eligibleCleaners: DailyCleaningAssignee[];
-  /** Cleaners on shift plus supervisors (for manual restant assignment). */
+  /** Cleaners with overlapping shifts today (preselect hint). */
+  onShiftCleaners: DailyCleaningAssignee[];
+  /** All active CLEANER housekeepers. */
+  allCleaners: DailyCleaningAssignee[];
+  /** All cleaners plus supervisors (restant / public pickers). */
   manualAssignees: DailyCleaningAssignee[];
   /** Housekeeping staff eligible to inspect (CLEANER + supervisors; excludes HTC). */
   inspectorCandidates: DailyCleaningAssignee[];
   /** Who is on inspection duty for this date. */
   inspectorsToday: DailyCleaningAssignee[];
+  /** Open work counts for the auto-assign preview. */
+  workPreview: DailyCleaningWorkPreview;
+  /** Rooms left for tomorrow (excluded from today's assign / auto-assign). */
+  deferredRooms: DeferredRoomDto[];
   tasks: DailyCleaningTaskDto[];
   summaries: DailyCleaningSummary[];
 };
@@ -58,6 +85,8 @@ export type DailyCleaningPlanResponse = {
 /** Options chosen in the board auto-assign setup dialog. */
 export type AutoAssignRunOptions = {
   date?: string;
+  /** Who is on the cleaning crew today (overrides shift-only eligibility). */
+  workingTodayUserIds?: string[];
   /** Who cleans all restant rooms today (cleaner or housekeeping supervisor). */
   restantAssigneeUserId?: string | null;
   /** User ids marked as late shift (fewer rooms). */

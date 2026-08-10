@@ -10,13 +10,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-
-type RoomRow = {
-  id: string;
-  roomNumber: string;
-  floor: number | null;
-  derivedStatus: string;
-};
+import { useToast } from '@/components/toast/ToastProvider';
 
 type Req = {
   id: string;
@@ -33,19 +27,30 @@ export type CleaningTasksHomePaths = {
   requests: string;
 };
 
-/** Shared housekeeper / supervisor-mobile home: rooms, public areas, inspections, requests. */
+function parseApiError(raw: string): string {
+  try {
+    const j = JSON.parse(raw) as { message?: string | string[] };
+    if (Array.isArray(j.message)) return j.message.join(', ');
+    if (typeof j.message === 'string') return j.message;
+  } catch {
+    /* plain text */
+  }
+  return raw || 'Request failed';
+}
+
+/** Shared housekeeper / supervisor-mobile home: rooms, restants, public areas, inspections, requests. */
 export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
+
   const claim = useMutation({
     mutationFn: (id: string) => api(`/service-requests/${id}/claim`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+    onError: (e: Error) => toast.push(parseApiError(e.message), 'warning'),
   });
-  const { data: rooms, isLoading: roomsLoading, error: roomsError } = useQuery({
-    queryKey: ['rooms', 'mine'],
-    queryFn: () => api<RoomRow[]>('/rooms?mine=1'),
-  });
-  const { data: daily } = useQuery({
+
+  const { data: daily, isLoading: dailyLoading, error: dailyError } = useQuery({
     queryKey: ['assignments', 'my-daily-tasks'],
     queryFn: () => api<{ date: string; tasks: MyDailyTaskDto[] }>('/assignments/my-daily-tasks'),
   });
@@ -58,12 +63,13 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
     queryFn: () => api<Req[]>('/service-requests'),
   });
 
-  const completePublic = useMutation({
+  const completeTask = useMutation({
     mutationFn: (taskId: string) =>
       api(`/assignments/daily-plan/tasks/${taskId}/complete`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
     },
+    onError: (e: Error) => toast.push(parseApiError(e.message), 'warning'),
   });
 
   const claimInspection = useMutation({
@@ -85,18 +91,18 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
   });
 
   const rows = requests ?? [];
-  const open = rows.filter((r) => r.status === 'OPEN');
+  const open = rows.filter((r) => r.status === 'OPEN' || r.status === 'CREATED');
   const mine = rows.filter(
     (r) =>
       r.claimedBy?.id === user?.id &&
       (r.status === 'CLAIMED' || r.status === 'IN_PROGRESS'),
   );
 
-  const overdueByRoom = new Map(
-    (daily?.tasks ?? [])
-      .filter((t) => t.roomId && t.overdueDays && t.overdueDays > 0)
-      .map((t) => [t.roomId!, t.overdueDays!]),
+  const openRoomTasks = (daily?.tasks ?? []).filter(
+    (t) => t.kind === 'ROOM' && t.roomId && !t.completedAt && (t.workType === 'DIRTY' || t.workType === 'RESTANT'),
   );
+  const dirtyTasks = openRoomTasks.filter((t) => t.workType === 'DIRTY');
+  const restantTasks = openRoomTasks.filter((t) => t.workType === 'RESTANT');
   const publicTasks = (daily?.tasks ?? []).filter(
     (t) => t.kind === 'PUBLIC_AREA' && !t.completedAt,
   );
@@ -104,14 +110,14 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
 
   const cardClass = 'transition-shadow hover:border-action/30 hover:shadow-lift';
 
-  if (roomsLoading) {
+  if (dailyLoading) {
     return (
       <div className="p-4">
         <p className="text-sm text-sidebar-muted">Loading your rooms…</p>
       </div>
     );
   }
-  if (roomsError) {
+  if (dailyError) {
     return (
       <div className="p-4">
         <p className="text-sm text-danger">Could not load rooms.</p>
@@ -124,24 +130,25 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">My rooms</h2>
         <ul className="mt-3 space-y-3">
-          {rooms?.map((r) => (
-            <li key={r.id}>
-              <Link href={paths.room(r.id)} className="block tap-scale">
+          {dirtyTasks.map((t) => (
+            <li key={t.id}>
+              <Link href={paths.room(t.roomId!)} className="block tap-scale">
                 <Card tone="dark" className={cardClass}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-lg font-semibold tracking-tight text-white">Room {r.roomNumber}</p>
-                      {r.floor != null && (
-                        <p className="mt-0.5 text-xs text-sidebar-muted">Floor {r.floor}</p>
+                      <p className="text-lg font-semibold tracking-tight text-white">
+                        Room {t.roomNumber}
+                      </p>
+                      {t.floor != null && (
+                        <p className="mt-0.5 text-xs text-sidebar-muted">Floor {t.floor}</p>
                       )}
-                      {overdueByRoom.has(r.id) && (
+                      {t.overdueDays != null && t.overdueDays > 0 && (
                         <p className="mt-1 text-xs font-semibold text-red-300">
-                          Overdue {overdueByRoom.get(r.id)} day
-                          {overdueByRoom.get(r.id) === 1 ? '' : 's'}
+                          Overdue {t.overdueDays} day{t.overdueDays === 1 ? '' : 's'}
                         </p>
                       )}
                     </div>
-                    <StatusBadge status={r.derivedStatus} variant="dark" />
+                    <StatusBadge status="DIRTY" variant="dark" />
                   </div>
                   <p className="mt-3 text-sm text-sidebar-muted">Tap to finish cleaning</p>
                 </Card>
@@ -149,10 +156,41 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
             </li>
           ))}
         </ul>
-        {rooms?.length === 0 && (
-          <p className="mt-2 text-sm text-sidebar-muted">No rooms assigned right now.</p>
+        {dirtyTasks.length === 0 && (
+          <p className="mt-2 text-sm text-sidebar-muted">No dirty rooms assigned right now.</p>
         )}
       </section>
+
+      {restantTasks.length > 0 && (
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
+            Restants
+          </h2>
+          <ul className="mt-3 space-y-3">
+            {restantTasks.map((t) => (
+              <li key={t.id}>
+                <Card tone="dark" className={clsx(cardClass, 'flex flex-wrap items-center justify-between gap-3')}>
+                  <div>
+                    <p className="text-lg font-semibold text-white">Room {t.roomNumber}</p>
+                    {t.floor != null && (
+                      <p className="text-xs text-sidebar-muted">Floor {t.floor}</p>
+                    )}
+                    <p className="mt-1 text-xs text-sidebar-muted">Stayover / restant</p>
+                  </div>
+                  <Button
+                    variant="action"
+                    className="min-h-[44px] px-4 py-2 text-sm"
+                    disabled={completeTask.isPending}
+                    onClick={() => completeTask.mutate(t.id)}
+                  >
+                    Fertig
+                  </Button>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {publicTasks.length > 0 && (
         <section>
@@ -172,8 +210,8 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                   <Button
                     variant="action"
                     className="min-h-[44px] px-4 py-2 text-sm"
-                    disabled={completePublic.isPending}
-                    onClick={() => completePublic.mutate(t.id)}
+                    disabled={completeTask.isPending}
+                    onClick={() => completeTask.mutate(t.id)}
                   >
                     Mark done
                   </Button>

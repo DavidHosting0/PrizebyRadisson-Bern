@@ -200,6 +200,20 @@ export function IconTasks({ className }: { className?: string }) {
   );
 }
 
+export function IconOpenTasks({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconPerformance({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -297,6 +311,7 @@ export const SUPERVISOR_NAV_ICONS: Record<string, NavIcon> = {
   '/s': IconDash,
   '/s/floor-plan': IconMap,
   '/s/board': IconBoard,
+  '/s/open-tasks': IconOpenTasks,
   '/s/departures': IconDepartures,
   '/s/room-tasks': IconTasks,
   '/s/public-areas': IconMap,

@@ -125,7 +125,7 @@ export const SUPERVISOR_NAV_GROUPS: NavGroupDef[] = [
 
     labelKey: 'overview',
 
-    hrefs: ['/s', '/s/floor-plan', '/s/board', '/s/departures', '/s/room-tasks', '/s/public-areas'],
+    hrefs: ['/s', '/s/floor-plan', '/s/board', '/s/open-tasks', '/s/departures', '/s/room-tasks', '/s/public-areas'],
 
   },
 

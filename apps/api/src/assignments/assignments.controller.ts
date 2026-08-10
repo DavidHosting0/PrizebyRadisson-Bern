@@ -67,6 +67,7 @@ export class AssignmentsController {
     return this.daily.runAutoAssign(
       dto.date,
       {
+        workingTodayUserIds: dto.workingTodayUserIds,
         restantAssigneeUserId: dto.restantAssigneeUserId,
         lateShiftUserIds: dto.lateShiftUserIds,
         publicAssigneeUserIds: dto.publicAssigneeUserIds,
@@ -116,8 +117,8 @@ export class AssignmentsController {
 
   @Post('daily-plan/tasks/:id/complete')
   @RequirePermissions(PermissionCode.ROOMS_READ)
-  completePublic(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.daily.completePublicTask(id, user);
+  completeTask(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.daily.completeDailyTask(id, user);
   }
 
   @Post()

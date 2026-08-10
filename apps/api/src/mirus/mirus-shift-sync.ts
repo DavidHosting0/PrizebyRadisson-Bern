@@ -331,19 +331,35 @@ async function tryApiPaths(
   return all;
 }
 
+/**
+ * Team times are only in the expanded day list (`.row.mb-3` under the team card).
+ * The logged-in user's own day card often already shows `Arbeitszeit` — that must NOT
+ * count as "detail open", or we skip the avatar click and only scrape self.
+ */
 async function openDayDetail(page: Page): Promise<boolean> {
-  const hasDetail = async () =>
-    page.evaluate(() => /Arbeitszeit\s*\n?\s*\d{1,2}:\d{2}/.test(document.body?.innerText || ''));
+  const teamListOpen = async () =>
+    page.evaluate(() => {
+      const teamRows = document.querySelectorAll(
+        '.card.card-default .row.mb-3, .card.p-4 .row.mb-3, .card .row.mb-3',
+      );
+      for (const row of teamRows) {
+        if (/Arbeitszeit/i.test(row.textContent ?? '')) return true;
+      }
+      // Expanded list with people but only Absenz/Ferien still means expand worked
+      if (teamRows.length > 0) return true;
+      const body = document.body?.innerText || '';
+      return /\bAnwesend\b/i.test(body) && /Arbeitszeit\s*\n?\s*\d{1,2}:\d{2}/.test(body);
+    });
 
-  if (await hasDetail()) return true;
+  if (await teamListOpen()) return true;
 
-  // Prefer in-page click — more reliable than Playwright hit-testing on Blazor layouts
+  // Prefer team strip clicks — never bare `.mud-avatar` (hits self header avatar)
   const clicked = await page.evaluate(() => {
     const candidates = [
       document.querySelector('.team-color-container'),
       document.querySelector('.bg-lightgrey.pointer'),
       document.querySelector('.card.p-4.card-default .pointer'),
-      document.querySelector('.mud-avatar'),
+      document.querySelector('.card.p-4 .team-color-container'),
       document.querySelector('.weekCalendarTableContainer'),
     ].filter(Boolean) as HTMLElement[];
     for (const el of candidates) {
@@ -354,7 +370,7 @@ async function openDayDetail(page: Page): Promise<boolean> {
   });
   if (clicked) {
     await page.waitForTimeout(3500);
-    if (await hasDetail()) return true;
+    if (await teamListOpen()) return true;
   }
 
   const avatars = page.locator('.team-color-container');
@@ -362,16 +378,26 @@ async function openDayDetail(page: Page): Promise<boolean> {
   for (let i = 0; i < Math.min(n, 5); i++) {
     await avatars.nth(i).click({ timeout: 10000, force: true }).catch(() => undefined);
     await page.waitForTimeout(3000);
-    if (await hasDetail()) return true;
+    if (await teamListOpen()) return true;
   }
 
-  await page.waitForFunction(
-    () => /Arbeitszeit\s*\n?\s*\d{1,2}:\d{2}/.test(document.body?.innerText || ''),
-    null,
-    { timeout: 15000 },
-  ).catch(() => undefined);
+  await page
+    .waitForFunction(
+      () => {
+        const teamRows = document.querySelectorAll(
+          '.card.card-default .row.mb-3, .card.p-4 .row.mb-3, .card .row.mb-3',
+        );
+        for (const row of teamRows) {
+          if (/Arbeitszeit/i.test(row.textContent ?? '')) return true;
+        }
+        return teamRows.length > 0;
+      },
+      null,
+      { timeout: 15000 },
+    )
+    .catch(() => undefined);
 
-  return hasDetail();
+  return teamListOpen();
 }
 
 async function resolveSelfPerson(page: Page, origin: string, loginHint: string): Promise<MirusSelfPerson | null> {
@@ -485,12 +511,25 @@ async function scrapeDay(
 
   const opened = await openDayDetail(page);
   if (!opened) {
-    logger.warn(`Mirus day ${dateStr}: detail list with Arbeitszeit not found`);
+    logger.warn(
+      `Mirus day ${dateStr}: team day list not opened (self Arbeitszeit alone is not enough)`,
+    );
   } else {
     await page.waitForTimeout(1500);
   }
 
   const rows = await page.evaluate(scrapeShiftsInBrowser, { dateStr, selfPerson });
+  const selfId = selfPerson?.externalUserId?.toLowerCase();
+  const selfName = selfPerson?.displayName?.toLowerCase().replace(/\s+/g, ' ');
+  const selfCount = rows.filter((r) => {
+    const id = r.externalUserId.toLowerCase();
+    const name = r.displayName.toLowerCase().replace(/\s+/g, ' ');
+    return (selfId && id === selfId) || (selfName && name === selfName);
+  }).length;
+  logger.log(
+    `Mirus ${dateStr}: scraped ${rows.length} (self=${selfCount}, team=${rows.length - selfCount}, expanded=${opened})`,
+  );
+
   return rows.map((r) => ({
     externalUserId: r.externalUserId,
     displayName: r.displayName,
@@ -550,7 +589,6 @@ async function playwrightScrapeWithSession(
       const dateStr = isoDateLocal(cursor);
       try {
         const dayShifts = await scrapeDay(page, origin, dateStr, selfPerson);
-        logger.log(`Mirus ${dateStr}: ${dayShifts.length} shifts`);
         all.push(...dayShifts);
       } catch (err) {
         logger.warn(`Mirus ${dateStr} scrape failed: ${(err as Error).message}`);

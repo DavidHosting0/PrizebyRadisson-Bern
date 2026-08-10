@@ -6,6 +6,11 @@ export class RunAutoAssignDto {
   date?: string;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  workingTodayUserIds?: string[];
+
+  @IsOptional()
   @IsString()
   restantAssigneeUserId?: string | null;
 

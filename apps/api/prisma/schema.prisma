@@ -30,6 +30,7 @@ enum UserTitlePrefix {
 enum PermissionCode {
   ROOMS_READ
   ROOMS_UPDATE
+  ROOM_STATUS_WRITE
   CHECKLIST_TASK_UPDATE
   CHECKLIST_REOPEN
   PHOTO_UPLOAD
@@ -402,6 +403,7 @@ model User {
   dailyCleaningTasksAssigned DailyCleaningTask[]    @relation("DailyCleaningTaskAssignee")
   lateShiftOverrides       DailyLateShiftOverride[]
   inspectionDuties         DailyInspectionDuty[]
+  workingStaffDuties       DailyWorkingStaff[]
   inspectionTasksClaimed   DailyInspectionTask[]    @relation("InspectionTaskClaimedBy")
 }
 
@@ -673,7 +675,7 @@ model ServiceRequest {
   type              ServiceRequestType     @relation(fields: [typeId], references: [id])
   priority          ServiceRequestPriority @default(NORMAL)
   description       String?
-  status            ServiceRequestStatus   @default(CREATED)
+  status            ServiceRequestStatus   @default(OPEN)
   createdByUserId   String
   createdBy         User                   @relation("CreatedBy", fields: [createdByUserId], references: [id])
   claimedByUserId   String?
@@ -945,6 +947,19 @@ model DailyLateShiftOverride {
 
 /// Who is on inspection duty for a hotel day (from auto-assign).
 model DailyInspectionDuty {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([date, userId])
+  @@index([date])
+  @@index([userId])
+}
+
+/// Who works today for room assignment (from auto-assign; falls back to shift plan when empty).
+model DailyWorkingStaff {
   id        String   @id @default(cuid())
   date      DateTime @db.Date
   userId    String

@@ -9,6 +9,7 @@ import { formatFloorLabel, hotelTodayIso } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BoardRoomCard, boardTileKindForRoom, type BoardRoom, type BoardTileKind } from '@/components/supervisor/BoardRoomCard';
+import { AssignRoomContextMenu } from '@/components/supervisor/AssignRoomContextMenu';
 import { AutoAssignSetupModal } from '@/components/supervisor/AutoAssignModal';
 import { RoomSlideOver } from '@/components/supervisor/RoomSlideOver';
 import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
@@ -110,6 +111,12 @@ export default function SupervisorBoardPage() {
   const [autoOpen, setAutoOpen] = useState(false);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{
+    room: BoardRoom;
+    x: number;
+    y: number;
+    fromDeferred?: boolean;
+  } | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const dropTargetRef = useRef<string | null>(null);
   const pendingPointer = useRef<{
@@ -142,11 +149,6 @@ export default function SupervisorBoardPage() {
   const { data: assignments = [] } = useQuery({
     queryKey: ['assignments'],
     queryFn: () => api<AssignmentRow[]>('/assignments'),
-  });
-
-  const { data: housekeepers = [] } = useQuery({
-    queryKey: ['housekeepers'],
-    queryFn: () => api<Hk[]>('/users/housekeepers'),
   });
 
   const { data: plan } = useQuery({
@@ -199,29 +201,61 @@ export default function SupervisorBoardPage() {
 
   const assignedIds = useMemo(() => new Set(assignments.map((a) => a.roomId)), [assignments]);
 
+  const deferredIds = useMemo(
+    () => new Set((plan?.deferredRooms ?? []).map((d) => d.roomId)),
+    [plan?.deferredRooms],
+  );
+
+  const deferredBoardRooms = useMemo(() => {
+    return (plan?.deferredRooms ?? [])
+      .map((d) => {
+        const full = roomById[d.roomId];
+        if (full) return full;
+        return {
+          id: d.roomId,
+          roomNumber: d.roomNumber,
+          floor: d.floor,
+          derivedStatus: 'DIRTY',
+        } satisfies BoardRoom;
+      })
+      .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }));
+  }, [plan?.deferredRooms, roomById]);
+
   const queueRoomsFiltered = useMemo(() => {
-    return queueRooms.filter((r) => !assignedIds.has(r.id));
-  }, [queueRooms, assignedIds]);
+    return queueRooms.filter((r) => !assignedIds.has(r.id) && !deferredIds.has(r.id));
+  }, [queueRooms, assignedIds, deferredIds]);
+
+  const toHk = (a: {
+    id: string;
+    name: string;
+    titlePrefix: string;
+    email?: string;
+  }): Hk => ({
+    id: a.id,
+    name: a.name,
+    email: a.email ?? '',
+    titlePrefix: a.titlePrefix,
+  });
 
   const reassignOptions = useMemo(() => {
     const byId = new Map<string, Hk>();
-    for (const hk of housekeepers) byId.set(hk.id, hk);
+    for (const a of plan?.workingToday ?? plan?.eligibleCleaners ?? []) {
+      byId.set(a.id, toHk(a));
+    }
     for (const a of plan?.manualAssignees ?? []) {
-      if (!byId.has(a.id)) {
-        byId.set(a.id, {
-          id: a.id,
-          name: a.name,
-          email: '',
-          titlePrefix: a.titlePrefix,
-        });
-      }
+      if (!byId.has(a.id)) byId.set(a.id, toHk(a));
+    }
+    for (const a of plan?.allCleaners ?? []) {
+      if (!byId.has(a.id)) byId.set(a.id, toHk(a));
     }
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [housekeepers, plan]);
+  }, [plan]);
 
   const boardColumns = useMemo(() => {
     const byId = new Map<string, Hk>();
-    for (const hk of housekeepers) byId.set(hk.id, hk);
+    for (const a of plan?.workingToday ?? plan?.eligibleCleaners ?? []) {
+      byId.set(a.id, toHk(a));
+    }
     for (const a of assignments) {
       if (!byId.has(a.housekeeper.id)) {
         byId.set(a.housekeeper.id, {
@@ -234,17 +268,15 @@ export default function SupervisorBoardPage() {
     }
     for (const a of plan?.manualAssignees ?? []) {
       if (!byId.has(a.id) && publicByAssignee.map.has(a.id)) {
-        byId.set(a.id, {
-          id: a.id,
-          name: a.name,
-          email: '',
-          titlePrefix: a.titlePrefix,
-        });
+        byId.set(a.id, toHk(a));
       }
     }
     for (const userId of publicByAssignee.map.keys()) {
       if (!byId.has(userId)) {
-        const fromPlan = plan?.manualAssignees.find((a) => a.id === userId);
+        const fromPlan =
+          plan?.manualAssignees.find((a) => a.id === userId) ??
+          plan?.allCleaners.find((a) => a.id === userId) ??
+          plan?.workingToday.find((a) => a.id === userId);
         byId.set(userId, {
           id: userId,
           name: fromPlan?.name ?? userId,
@@ -254,7 +286,7 @@ export default function SupervisorBoardPage() {
       }
     }
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [housekeepers, assignments, plan, publicByAssignee]);
+  }, [assignments, plan, publicByAssignee]);
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['assignments'] });
@@ -294,19 +326,57 @@ export default function SupervisorBoardPage() {
     onSuccess: invalidateAll,
   });
 
+  const skipRoom = useMutation({
+    mutationFn: (roomId: string) =>
+      api('/assignments/daily-plan/skip', {
+        method: 'POST',
+        body: JSON.stringify({ roomId, date: today }),
+      }),
+    onSuccess: invalidateAll,
+  });
+
+  const unskipRoom = useMutation({
+    mutationFn: (roomId: string) =>
+      api(`/assignments/daily-plan/skip/${roomId}?date=${encodeURIComponent(today)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: invalidateAll,
+  });
+
   const publicBusy = patchPublic.isPending || completePublic.isPending;
 
   const finishDrop = useCallback(
     (roomId: string, target: string | null) => {
       if (!target) return;
       if (target === 'unassigned') {
+        if (deferredIds.has(roomId)) {
+          unskipRoom.mutate(roomId);
+          return;
+        }
         unassign.mutate(roomId);
+        return;
+      }
+      if (target === 'tomorrow') {
+        skipRoom.mutate(roomId);
+        return;
+      }
+      if (deferredIds.has(roomId)) {
+        // Assigning a deferred room: clear deferral then assign
+        void api(`/assignments/daily-plan/skip/${roomId}?date=${encodeURIComponent(today)}`, {
+          method: 'DELETE',
+        }).then(() => {
+          assign.mutate({ roomId, housekeeperUserId: target });
+        });
         return;
       }
       assign.mutate({ roomId, housekeeperUserId: target });
     },
-    [assign, unassign],
+    [assign, unassign, skipRoom, unskipRoom, deferredIds, today],
   );
+
+  const openAssignMenu = useCallback((e: React.MouseEvent, room: BoardRoom, fromDeferred = false) => {
+    setCtxMenu({ room, x: e.clientX, y: e.clientY, fromDeferred });
+  }, []);
 
   useEffect(() => {
     function onMove(e: PointerEvent) {
@@ -549,6 +619,7 @@ export default function SupervisorBoardPage() {
                     onOpen={() => setPanelRoomId(r.id)}
                     isRestant={restantByRoomId.has(r.id)}
                     overdueDays={overdueByRoomId.get(r.id) ?? restantByRoomId.get(r.id)?.overdueDays}
+                    onContextMenu={(e, room) => openAssignMenu(e, room)}
                     onPointerDownDrag={(e, room) =>
                       startRoomDrag(e, room, {
                         isRestant: restantByRoomId.has(room.id),
@@ -640,6 +711,7 @@ export default function SupervisorBoardPage() {
                               overdueByRoomId.get(full.id) ??
                               restantByRoomId.get(full.id)?.overdueDays
                             }
+                            onContextMenu={(e, room) => openAssignMenu(e, room)}
                             onPointerDownDrag={(e, room) =>
                               startRoomDrag(e, room, {
                                 isRestant: restantByRoomId.has(room.id),
@@ -675,6 +747,48 @@ export default function SupervisorBoardPage() {
                 </div>
               );
             })}
+
+            <div
+              data-drop-zone="tomorrow"
+              className={clsx(
+                'min-h-[280px] w-[300px] shrink-0 overflow-hidden rounded-card border transition-all duration-200',
+                dropTarget === 'tomorrow'
+                  ? 'border-amber-400 bg-[#1A2332] shadow-[0_0_0_3px_rgba(245,158,11,0.25)]'
+                  : 'border-amber-900/40 bg-[#1A2332]',
+              )}
+            >
+              <div className="border-b border-amber-500/20 bg-amber-950/30 px-3.5 py-3">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-200/90">
+                  Tomorrow
+                </h2>
+                <p className="mt-0.5 text-[11px] text-sidebar-muted/80">
+                  Leave for next day · not auto-assigned
+                </p>
+              </div>
+              <div className="space-y-2.5 p-3">
+                {deferredBoardRooms.map((r) => {
+                  const overdue =
+                    plan?.deferredRooms.find((d) => d.roomId === r.id)?.overdueDays ?? null;
+                  return (
+                    <BoardRoomCard
+                      key={r.id}
+                      room={r}
+                      draggable
+                      dragging={draggingRoomId === r.id}
+                      onOpen={() => setPanelRoomId(r.id)}
+                      overdueDays={overdue && overdue > 0 ? overdue : null}
+                      onContextMenu={(e, room) => openAssignMenu(e, room, true)}
+                      onPointerDownDrag={(e, room) => startRoomDrag(e, room, {})}
+                    />
+                  );
+                })}
+                {deferredBoardRooms.length === 0 && (
+                  <p className="py-6 text-center text-sm text-sidebar-muted">
+                    Drop rooms here for tomorrow
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
       </AppPageBody>
 
@@ -705,6 +819,35 @@ export default function SupervisorBoardPage() {
         date={today}
         onRan={invalidateAll}
       />
+      {ctxMenu && (
+        <AssignRoomContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          roomNumber={ctxMenu.room.roomNumber}
+          people={reassignOptions}
+          onClose={() => setCtxMenu(null)}
+          onAssign={(housekeeperUserId) => {
+            const roomId = ctxMenu.room.id;
+            if (ctxMenu.fromDeferred || deferredIds.has(roomId)) {
+              void api(
+                `/assignments/daily-plan/skip/${roomId}?date=${encodeURIComponent(today)}`,
+                { method: 'DELETE' },
+              ).then(() => {
+                assign.mutate({ roomId, housekeeperUserId });
+              });
+            } else {
+              assign.mutate({ roomId, housekeeperUserId });
+            }
+          }}
+          onDeferTomorrow={
+            ctxMenu.fromDeferred
+              ? undefined
+              : () => {
+                  skipRoom.mutate(ctxMenu.room.id);
+                }
+          }
+        />
+      )}
     </div>
   );
 }

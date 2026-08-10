@@ -98,6 +98,7 @@ export function BoardRoomCard({
   onPointerDownDrag,
   dragging,
   ghost,
+  onContextMenu,
 }: {
   room: BoardRoom;
   onOpen?: () => void;
@@ -108,6 +109,7 @@ export function BoardRoomCard({
   onPointerDownDrag?: (e: React.PointerEvent, room: BoardRoom) => void;
   dragging?: boolean;
   ghost?: boolean;
+  onContextMenu?: (e: React.MouseEvent, room: BoardRoom) => void;
 }) {
   const kind = tileKindProp ?? boardTileKindForRoom(room, isRestant);
   const t = TILE[kind];
@@ -160,6 +162,15 @@ export function BoardRoomCard({
           ? (e) => {
               if (e.button !== 0) return;
               onPointerDownDrag(e, room);
+            }
+          : undefined
+      }
+      onContextMenu={
+        onContextMenu
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onContextMenu(e, room);
             }
           : undefined
       }

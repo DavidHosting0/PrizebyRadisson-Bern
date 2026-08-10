@@ -31,9 +31,11 @@ export function AutoAssignSetupModal({
   });
 
   const assignees = planQ.data?.manualAssignees ?? [];
-  const eligible = planQ.data?.eligibleCleaners ?? [];
+  const allCleaners = planQ.data?.allCleaners ?? [];
   const inspectorCandidates = planQ.data?.inspectorCandidates ?? [];
+  const workPreview = planQ.data?.workPreview;
 
+  const [workingIds, setWorkingIds] = useState<string[]>([]);
   const [restantId, setRestantId] = useState('');
   const [lateIds, setLateIds] = useState<string[]>([]);
   const [publicIds, setPublicIds] = useState<string[]>([]);
@@ -41,10 +43,13 @@ export function AutoAssignSetupModal({
 
   useEffect(() => {
     if (!open || !planQ.data) return;
-    const autoLate = planQ.data.eligibleCleaners.filter((c) => c.isLateShift).map((c) => c.id);
+    const working = planQ.data.workingToday.map((c) => c.id);
+    setWorkingIds(working);
+    const autoLate = planQ.data.workingToday.filter((c) => c.isLateShift).map((c) => c.id);
     setLateIds(autoLate);
     const restantTask = planQ.data.tasks.find((t) => t.workType === 'RESTANT' && t.assigneeUserId);
     if (restantTask?.assigneeUserId) setRestantId(restantTask.assigneeUserId);
+    else setRestantId('');
     const publicAssignees = [
       ...new Set(
         planQ.data.tasks
@@ -54,8 +59,16 @@ export function AutoAssignSetupModal({
     ];
     if (publicAssignees.length) setPublicIds(publicAssignees);
     else if (autoLate.length) setPublicIds(autoLate);
+    else setPublicIds([]);
     setInspectorIds(planQ.data.inspectorsToday?.map((i) => i.id) ?? []);
   }, [open, planQ.data]);
+
+  const workingSet = useMemo(() => new Set(workingIds), [workingIds]);
+
+  const lateOptions = useMemo(
+    () => allCleaners.filter((c) => workingSet.has(c.id)),
+    [allCleaners, workingSet],
+  );
 
   const restantOptions = useMemo(() => {
     const map = new Map<string, Assignee>();
@@ -63,14 +76,20 @@ export function AutoAssignSetupModal({
     return [...map.values()];
   }, [assignees]);
 
+  const onShiftIds = useMemo(
+    () => new Set(planQ.data?.onShiftCleaners.map((c) => c.id) ?? []),
+    [planQ.data?.onShiftCleaners],
+  );
+
   const run = useMutation({
     mutationFn: () =>
       api<DailyCleaningPlanResponse>('/assignments/daily-plan/run', {
         method: 'POST',
         body: JSON.stringify({
           date: date?.trim() || undefined,
+          workingTodayUserIds: workingIds,
           restantAssigneeUserId: restantId || null,
-          lateShiftUserIds: lateIds,
+          lateShiftUserIds: lateIds.filter((id) => workingSet.has(id)),
           publicAssigneeUserIds: publicIds,
           inspectorUserIds: inspectorIds,
         }),
@@ -88,6 +107,15 @@ export function AutoAssignSetupModal({
 
   function toggleId(list: string[], id: string, set: (v: string[]) => void) {
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  }
+
+  function toggleWorking(id: string) {
+    setWorkingIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      const nextSet = new Set(next);
+      setLateIds((late) => late.filter((x) => nextSet.has(x)));
+      return next;
+    });
   }
 
   if (!open) return null;
@@ -112,8 +140,8 @@ export function AutoAssignSetupModal({
               Auto room assignment
             </h2>
             <p className="mt-1 text-sm text-ink-muted">
-              Choose restant, late shift, public cleaning, and who inspects today — then the system
-              assigns dirty rooms on the board.
+              Choose who works today, restant, late shift, public cleaning, and who inspects — then
+              the system assigns dirty rooms on the board.
             </p>
           </div>
           <button
@@ -128,6 +156,22 @@ export function AutoAssignSetupModal({
 
         <div className="space-y-5 p-6">
           {planQ.isLoading && <p className="text-sm text-ink-muted">Loading staff…</p>}
+          {workPreview && (
+            <div className="rounded-btn border border-border bg-surface-muted/60 px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Today’s work</p>
+              <p className="mt-1 text-sm font-semibold text-ink">
+                {workPreview.dirtyRoomCount} room{workPreview.dirtyRoomCount === 1 ? '' : 's'}
+                <span className="font-normal text-ink-muted"> · </span>
+                {workPreview.restantCount} restant{workPreview.restantCount === 1 ? '' : 's'}
+                {workPreview.publicCount > 0 && (
+                  <>
+                    <span className="font-normal text-ink-muted"> · </span>
+                    {workPreview.publicCount} public
+                  </>
+                )}
+              </p>
+            </div>
+          )}
           {planQ.data?.warnings?.map((w) => (
             <p
               key={w}
@@ -136,6 +180,41 @@ export function AutoAssignSetupModal({
               {w}
             </p>
           ))}
+
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted">
+              Who works today
+            </legend>
+            <p className="text-xs text-ink-muted">
+              Staff on the shift plan are pre-selected. You can add or remove any cleaner.
+            </p>
+            {allCleaners.length === 0 && (
+              <p className="text-sm text-ink-muted">No active cleaners found.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {allCleaners.map((c) => {
+                const on = workingSet.has(c.id);
+                const onShift = onShiftIds.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => toggleWorking(c.id)}
+                    className={`rounded-btn border px-3 py-2 text-sm ${
+                      on
+                        ? 'border-action/40 bg-action/10 text-ink'
+                        : 'border-border bg-surface text-ink'
+                    }`}
+                  >
+                    {formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                    {onShift ? (
+                      <span className="ml-1 text-[10px] uppercase text-ink-muted">shift</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
 
           <label className="block space-y-1">
             <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
@@ -160,11 +239,11 @@ export function AutoAssignSetupModal({
             <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted">
               Late shift (11–20) — fewer rooms
             </legend>
-            {eligible.length === 0 && (
-              <p className="text-sm text-ink-muted">No cleaners on shift for this day.</p>
+            {lateOptions.length === 0 && (
+              <p className="text-sm text-ink-muted">Select who works today first.</p>
             )}
             <div className="flex flex-wrap gap-2">
-              {eligible.map((c) => {
+              {lateOptions.map((c) => {
                 const on = lateIds.includes(c.id);
                 return (
                   <button
@@ -246,7 +325,7 @@ export function AutoAssignSetupModal({
           <Button
             variant="action"
             className="min-h-[48px]"
-            disabled={run.isPending || planQ.isLoading}
+            disabled={run.isPending || planQ.isLoading || workingIds.length === 0}
             onClick={() => run.mutate()}
           >
             {run.isPending ? 'Assigning…' : 'Run auto assignment'}
@@ -254,6 +333,11 @@ export function AutoAssignSetupModal({
           <Button variant="ghost" className="min-h-[48px]" onClick={onClose}>
             Cancel
           </Button>
+          {run.isError && (
+            <p className="w-full text-sm text-danger">
+              {(run.error as Error)?.message || 'Could not run auto assignment.'}
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/toast/ToastProvider';
 
 type Req = {
   id: string;
@@ -19,14 +20,10 @@ type Req = {
 export default function HousekeeperRequestsPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
   const { data, isLoading } = useQuery({
     queryKey: ['service-requests'],
     queryFn: () => api<Req[]>('/service-requests'),
-  });
-
-  const claim = useMutation({
-    mutationFn: (id: string) => api<Req>(`/service-requests/${id}/claim`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
   });
 
   const resolve = useMutation({
@@ -36,6 +33,29 @@ export default function HousekeeperRequestsPage() {
         body: JSON.stringify({ status: 'RESOLVED' }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+    onError: (e: Error) => {
+      try {
+        const j = JSON.parse(e.message) as { message?: string | string[] };
+        const msg = Array.isArray(j.message) ? j.message.join(', ') : j.message;
+        toast.push(msg || e.message, 'warning');
+      } catch {
+        toast.push(e.message || 'Could not complete request', 'warning');
+      }
+    },
+  });
+
+  const claim = useMutation({
+    mutationFn: (id: string) => api<Req>(`/service-requests/${id}/claim`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+    onError: (e: Error) => {
+      try {
+        const j = JSON.parse(e.message) as { message?: string | string[] };
+        const msg = Array.isArray(j.message) ? j.message.join(', ') : j.message;
+        toast.push(msg || e.message, 'warning');
+      } catch {
+        toast.push(e.message || 'Could not claim request', 'warning');
+      }
+    },
   });
 
   if (isLoading) {
@@ -47,7 +67,7 @@ export default function HousekeeperRequestsPage() {
   }
 
   const rows = data ?? [];
-  const open = rows.filter((r) => r.status === 'OPEN');
+  const open = rows.filter((r) => r.status === 'OPEN' || r.status === 'CREATED');
   const mine = rows.filter(
     (r) =>
       r.claimedBy?.id === user?.id &&

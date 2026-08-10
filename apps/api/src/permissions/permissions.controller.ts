@@ -40,6 +40,11 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     entries: [
       { code: PermissionCode.ROOMS_READ, title: 'View rooms', description: 'Open the rooms list and details.' },
       { code: PermissionCode.ROOMS_UPDATE, title: 'Edit rooms', description: 'Notes, out-of-order, maintenance fields.' },
+      {
+        code: PermissionCode.ROOM_STATUS_WRITE,
+        title: 'Set room status',
+        description: 'Set Dirty / Clean / Inspected (PrizeBern + EMMA).',
+      },
       { code: PermissionCode.ROOM_TYPE_READ, title: 'View room types', description: 'See checklist templates and types.' },
       { code: PermissionCode.ROOM_TYPE_WRITE, title: 'Manage room types', description: 'Edit checklist templates.' },
       { code: PermissionCode.FLOOR_PLAN_READ, title: 'View floor plans', description: 'Open floor plan layouts.' },

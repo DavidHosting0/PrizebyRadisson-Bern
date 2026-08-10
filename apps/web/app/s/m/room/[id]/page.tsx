@@ -43,12 +43,26 @@ export default function SupervisorMobileRoomPage() {
       qc.invalidateQueries({ queryKey: ['room', id] });
       qc.invalidateQueries({ queryKey: ['rooms'] });
       qc.invalidateQueries({ queryKey: ['assignments'] });
+      qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
     },
     onError: (e: Error) => toast.push(e.message || 'Could not mark room clean', 'warning'),
   });
 
+  const { data: daily } = useQuery({
+    queryKey: ['assignments', 'my-daily-tasks'],
+    queryFn: () =>
+      api<{ date: string; tasks: Array<{ roomId: string | null; workType: string; completedAt: string | null }> }>(
+        '/assignments/my-daily-tasks',
+      ),
+  });
+
+  const isRestantTask = (daily?.tasks ?? []).some(
+    (t) => t.roomId === id && t.workType === 'RESTANT' && !t.completedAt,
+  );
+
   const canMarkClean =
     !!data &&
+    !isRestantTask &&
     !data.cleaningDeclaredAt &&
     data.derivedStatus !== 'INSPECTED' &&
     data.derivedStatus !== 'OUT_OF_ORDER';
@@ -116,33 +130,50 @@ export default function SupervisorMobileRoomPage() {
         roomNumber={data.roomNumber}
       />
 
-      {!isFinished && (
-        <p className="text-center text-sm text-sidebar-muted">
-          When you are done cleaning, mark the room clean. Inspection can follow with a photo.
-        </p>
-      )}
-
-      <Button
-        variant="primary"
-        fullWidth
-        className={`min-h-[52px] border-0 text-base font-semibold text-white ${
-          canMarkClean ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-400/80 hover:bg-emerald-400/80'
-        }`}
-        disabled={!canMarkClean || markClean.isPending}
-        onClick={() => markClean.mutate()}
-      >
-        {markClean.isPending
-          ? 'Saving…'
-          : isFinished
-            ? 'Room already marked clean'
-            : 'Mark room clean'}
-      </Button>
-
-      {isFinished && (
-        <section className="rounded-card border border-emerald-400/30 bg-emerald-500/15 p-4 text-center">
-          <p className="font-medium text-emerald-100">Room marked clean</p>
-          <p className="mt-1 text-sm text-sidebar-muted">Ready for inspection when on duty.</p>
+      {isRestantTask ? (
+        <section className="rounded-card border border-sidebar-border/70 bg-sidebar/40 p-4 text-center">
+          <p className="font-medium text-white">Restant</p>
+          <p className="mt-1 text-sm text-sidebar-muted">
+            Finish restants from your home list with Fertig — no room status change.
+          </p>
+          <Link
+            href="/s/m"
+            className="mt-3 inline-block text-sm font-medium text-action underline underline-offset-2"
+          >
+            Back to rooms
+          </Link>
         </section>
+      ) : (
+        <>
+          {!isFinished && (
+            <p className="text-center text-sm text-sidebar-muted">
+              When you are done cleaning, mark the room clean. Inspection can follow with a photo.
+            </p>
+          )}
+
+          <Button
+            variant="primary"
+            fullWidth
+            className={`min-h-[52px] border-0 text-base font-semibold text-white ${
+              canMarkClean ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-400/80 hover:bg-emerald-400/80'
+            }`}
+            disabled={!canMarkClean || markClean.isPending}
+            onClick={() => markClean.mutate()}
+          >
+            {markClean.isPending
+              ? 'Saving…'
+              : isFinished
+                ? 'Room already marked clean'
+                : 'Fertig — Mark room clean'}
+          </Button>
+
+          {isFinished && (
+            <section className="rounded-card border border-emerald-400/30 bg-emerald-500/15 p-4 text-center">
+              <p className="font-medium text-emerald-100">Room marked clean</p>
+              <p className="mt-1 text-sm text-sidebar-muted">Ready for inspection when on duty.</p>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

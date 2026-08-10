@@ -104,6 +104,8 @@ export const SUPERVISOR_NAV: NavItem[] = [
 
   { href: '/s/board', labelKey: 'assignmentBoard', permission: 'ASSIGNMENT_READ' },
 
+  { href: '/s/open-tasks', labelKey: 'openTasks', permission: 'ASSIGNMENT_READ' },
+
   { href: '/s/departures', labelKey: 'departures', permission: 'RESERVATIONS_READ' },
 
   { href: '/s/room-tasks', labelKey: 'roomTasks', permission: 'ROOMS_READ' },

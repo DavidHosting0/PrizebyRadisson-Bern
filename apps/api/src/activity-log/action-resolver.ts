@@ -46,6 +46,7 @@ const RULES: RouteRule[] = [
   // Rooms
   { method: 'PATCH', pattern: /^\/rooms\/([^/]+)$/, action: 'rooms.update', label: 'Zimmer bearbeitet', category: ActivityLogCategory.ROOM, resourceType: 'room', resourceIndex: 1 },
   { method: 'POST', pattern: /^\/rooms\/([^/]+)\/mark-clean$/, action: 'rooms.mark_clean', label: 'Zimmer als sauber gemeldet', category: ActivityLogCategory.ROOM, resourceType: 'room', resourceIndex: 1 },
+  { method: 'POST', pattern: /^\/rooms\/([^/]+)\/status$/, action: 'rooms.set_status', label: 'Zimmerstatus gesetzt', category: ActivityLogCategory.ROOM, resourceType: 'room', resourceIndex: 1 },
 
   // Checklists
   { method: 'PATCH', pattern: /^\/checklists\/tasks\/([^/]+)$/, action: 'checklists.task.update', label: 'Checklisten-Aufgabe aktualisiert', category: ActivityLogCategory.CHECKLIST, resourceType: 'checklist_task', resourceIndex: 1 },

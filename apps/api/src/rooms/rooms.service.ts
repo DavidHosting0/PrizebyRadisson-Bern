@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -9,6 +10,7 @@ import {
 import {
   AssignmentStatus,
   ChecklistTaskStatus,
+  DailyCleaningWorkType,
   DailyInspectionTaskStatus,
   PermissionCode,
   PhotoUploadStatus,
@@ -28,8 +30,15 @@ import { S3Service } from '../storage/s3.service';
 import { compareRoomNumbers, floorFromRoomNumber } from './room-layout';
 import { EmmaService } from '../emma/emma.service';
 import { readEmmaMetadata } from '../emma/emma-room-status-sync';
+import {
+  emmaCodeToDerivedStatus,
+  formatEmmaRoomId,
+  mapDerivedStatusToEmmaCode,
+  type EmmaRoomStatusPushTarget,
+} from '../emma/emma-room-status-push';
 import { ReservationsService } from '../reservations/reservations.service';
 import { dateOnlyFromIso } from '../assignments/assignment-balancer';
+import type { SettableRoomStatus } from './dto/set-room-status.dto';
 
 type RoomViewer = User & { effectivePermissions?: PermissionCode[] };
 
@@ -233,6 +242,24 @@ export class RoomsService {
     if (!a) throw new ForbiddenException('Not assigned to this room');
 
     const cleaningDeclaredAt = new Date();
+    const today = hotelTodayIso();
+    const date = dateOnlyFromIso(today);
+
+    const restantOpen = await this.prisma.dailyCleaningTask.findFirst({
+      where: {
+        roomId,
+        completedAt: null,
+        workType: DailyCleaningWorkType.RESTANT,
+        plan: { date },
+      },
+      select: { id: true },
+    });
+    if (restantOpen) {
+      throw new BadRequestException(
+        'Restant rooms are finished via the task list, not mark-clean',
+      );
+    }
+
     await this.prisma.$transaction([
       this.prisma.room.update({
         where: { id: roomId },
@@ -249,11 +276,18 @@ export class RoomsService {
         where: { roomId, clearedAt: null },
         data: { clearedAt: cleaningDeclaredAt },
       }),
+      this.prisma.dailyCleaningTask.updateMany({
+        where: {
+          roomId,
+          completedAt: null,
+          workType: DailyCleaningWorkType.DIRTY,
+          plan: { date },
+        },
+        data: { completedAt: cleaningDeclaredAt },
+      }),
     ]);
 
     // Local CLEAN only — Emma gets INSPECTED after a passed inspection.
-    const today = hotelTodayIso();
-    const date = dateOnlyFromIso(today);
     const duties = await this.prisma.dailyInspectionDuty.count({ where: { date } });
     if (duties > 0) {
       await this.prisma.dailyInspectionTask.upsert({
@@ -275,6 +309,156 @@ export class RoomsService {
     const out = await this.findOne(roomId, user);
     this.realtime.emitRoomStatus(out);
     return out;
+  }
+
+  /**
+   * Front Office / Reception (and others with ROOM_STATUS_WRITE): set Dirty / Clean / Inspected
+   * locally and push the matching EMMA code (DI / CL / IN).
+   */
+  async setRoomStatus(roomId: string, status: SettableRoomStatus, user: RoomViewer) {
+    const room = await this.prisma.room.findUnique({
+      where: { id: roomId },
+      select: { id: true, roomNumber: true, outOfOrder: true, metadata: true, cleaningDeclaredAt: true },
+    });
+    if (!room) throw new NotFoundException('Room');
+    if (room.outOfOrder) {
+      throw new BadRequestException('Cannot change status while the room is out of order');
+    }
+
+    const actionAt = new Date();
+    const today = dateOnlyFromIso(hotelTodayIso());
+    const target = status as EmmaRoomStatusPushTarget;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (status === 'CLEAN') {
+        await tx.room.update({
+          where: { id: roomId },
+          data: { cleaningDeclaredAt: actionAt },
+        });
+        await tx.roomCleaningDeferral.updateMany({
+          where: { roomId, clearedAt: null },
+          data: { clearedAt: actionAt },
+        });
+      } else if (status === 'DIRTY') {
+        await tx.room.update({
+          where: { id: roomId },
+          data: { cleaningDeclaredAt: null },
+        });
+        await tx.dailyInspectionTask.updateMany({
+          where: {
+            roomId,
+            date: today,
+            status: {
+              in: [DailyInspectionTaskStatus.PENDING, DailyInspectionTaskStatus.CLAIMED],
+            },
+          },
+          data: {
+            status: DailyInspectionTaskStatus.CANCELLED,
+            claimedByUserId: null,
+            claimedAt: null,
+          },
+        });
+      } else {
+        // INSPECTED — keep cleaningDeclaredAt so local history stays coherent; EMMA metadata wins.
+        await tx.room.update({
+          where: { id: roomId },
+          data: {
+            cleaningDeclaredAt: room.cleaningDeclaredAt ?? actionAt,
+            departureStickyOn: null,
+          },
+        });
+        await tx.dailyInspectionTask.updateMany({
+          where: {
+            roomId,
+            date: today,
+            status: {
+              in: [DailyInspectionTaskStatus.PENDING, DailyInspectionTaskStatus.CLAIMED],
+            },
+          },
+          data: {
+            status: DailyInspectionTaskStatus.DONE,
+            claimedByUserId: null,
+            claimedAt: null,
+          },
+        });
+      }
+    });
+
+    const pushResult = await this.emma?.pushRoomStatus(roomId, target, {
+      actionAt,
+      source: `rooms.setStatus.${status.toLowerCase()}`,
+    });
+
+    // Board must match FO intent if EMMA push is off, failed, or skipped (outbox retries on failure).
+    if (!pushResult || !pushResult.ok || pushResult.skipped) {
+      await this.applyLocalEmmaStatusOverride(roomId, target, actionAt, user.id);
+    }
+
+    const out = await this.findOne(roomId, user);
+    this.realtime.emitRoomStatus(out);
+    return out;
+  }
+
+  /** Persist EMMA-shaped metadata so derive() shows the FO-set status immediately. */
+  private async applyLocalEmmaStatusOverride(
+    roomId: string,
+    target: EmmaRoomStatusPushTarget,
+    actionAt: Date,
+    userId: string,
+  ) {
+    const code = mapDerivedStatusToEmmaCode(target);
+    if (!code) return;
+
+    const room = await this.prisma.room.findUnique({
+      where: { id: roomId },
+      select: { roomNumber: true, metadata: true },
+    });
+    if (!room) return;
+
+    const emmaMeta = readEmmaMetadata(room.metadata);
+    if (emmaMeta?.statusCode === code) {
+      // Push may have skipped as already_synced — keep syncedAt fresh so local activity cannot win.
+      const syncedAtMs = emmaMeta.syncedAt ? new Date(emmaMeta.syncedAt).getTime() : 0;
+      if (syncedAtMs >= actionAt.getTime()) return;
+    }
+
+    const emmaRoomId = formatEmmaRoomId(room.roomNumber, emmaMeta?.roomId);
+    const syncedAt = actionAt.toISOString();
+    const prevMeta =
+      room.metadata && typeof room.metadata === 'object' && !Array.isArray(room.metadata)
+        ? (room.metadata as Record<string, unknown>)
+        : {};
+    const prevEmma = emmaMeta ?? {
+      roomId: emmaRoomId,
+      statusCode: null,
+      statusLabel: null,
+      derivedStatus: null,
+      outOfOrder: false,
+      floorId: null,
+      buildingId: '01',
+      syncedAt: '',
+    };
+    const nextMeta = {
+      ...prevMeta,
+      emma: {
+        ...prevEmma,
+        roomId: emmaRoomId,
+        statusCode: code,
+        derivedStatus: emmaCodeToDerivedStatus(code),
+        syncedAt,
+      },
+      emmaPush: {
+        lastPushAt: syncedAt,
+        lastPushCode: code,
+        lastPushOk: false,
+        source: 'rooms.setStatus.local',
+        setByUserId: userId,
+      },
+    };
+    await this.prisma.room.update({
+      where: { id: roomId },
+      data: { metadata: nextMeta as Prisma.InputJsonValue },
+    });
   }
 
   private toRoomDto(room: {

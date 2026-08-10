@@ -11,10 +11,25 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmmaBackupModeService } from '../emma/emma-backup-mode.service';
 import { readEmmaMetadata, normalizeEmmaRoomNumber } from '../emma/emma-room-status-sync';
 import { decryptSensitivePayload } from '../reservations/reservation-sensitive';
-import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
-import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
 import { RoomStatusService } from '../rooms/room-status.service';
 import { compareRoomNumbers, floorFromRoomNumber } from '../rooms/room-layout';
+
+/** Columns needed for the backup board — omit folioEnc/detailEnc (can be MBs each). */
+const backupSnapshotSelect = {
+  id: true,
+  reservationId: true,
+  roomId: true,
+  arrivalDate: true,
+  departureDate: true,
+  checkIn: true,
+  checkOut: true,
+  checkInQueue: true,
+  inTodayArrivals: true,
+  sensitiveEnc: true,
+  folioFetchedAt: true,
+  detailFetchedAt: true,
+  syncedAt: true,
+} as const;
 
 @Injectable()
 export class FrontOfficeBackupService {
@@ -44,8 +59,15 @@ export class FrontOfficeBackupService {
           inspections: { orderBy: { inspectedAt: 'desc' }, take: 3 },
         },
       }),
+      // Only active / arriving guests — never load every historical snapshot + folio blobs
+      // (that hits Prisma's napi string limit: "Failed to convert rust String into napi string").
       this.prisma.reservationSnapshot.findMany({
-        where: { hotelId: hid },
+        where: {
+          hotelId: hid,
+          checkOut: false,
+          OR: [{ checkIn: true }, { inTodayArrivals: true }, { checkInQueue: true }],
+        },
+        select: backupSnapshotSelect,
       }),
       this.prisma.reservationSyncRun.findFirst({
         where: { status: 'ok' },
@@ -86,16 +108,20 @@ export class FrontOfficeBackupService {
 
     const toReservationRow = (row: (typeof snapshots)[number]) => {
       const s = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
-      const folio = decryptFolioBundle(this.cipher, row.folioEnc);
-      const detail = decryptDetailBundle(this.cipher, row.detailEnc);
+      // Balance is merged into sensitiveEnc after folio/detail fetches (see persistBalanceOnSnapshot).
       const resolved = resolveOutstandingBalance({
         sensitiveBalance: s?.balance,
-        folio,
-        detail,
       });
       const roomNumber = row.roomId?.trim()
         ? normalizeEmmaRoomNumber(row.roomId.trim())
         : null;
+      // Folio/detail blobs are not loaded; use their timestamps when balance was merged from them.
+      const balanceFetchedAt = outstandingBalanceFetchedAt({
+        source: row.folioFetchedAt ? 'folio' : row.detailFetchedAt ? 'detail' : resolved.source,
+        folioFetchedAt: row.folioFetchedAt,
+        detailFetchedAt: row.detailFetchedAt,
+        syncedAt: row.syncedAt,
+      });
       return {
         id: row.id,
         reservationId: row.reservationId,
@@ -109,12 +135,7 @@ export class FrontOfficeBackupService {
         checkInQueue: row.checkInQueue,
         inTodayArrivals: row.inTodayArrivals,
         balance: resolved.balance,
-        balanceFetchedAt: outstandingBalanceFetchedAt({
-          source: resolved.source,
-          folioFetchedAt: row.folioFetchedAt,
-          detailFetchedAt: row.detailFetchedAt,
-          syncedAt: row.syncedAt,
-        }),
+        balanceFetchedAt,
         syncedAt: row.syncedAt.toISOString(),
       };
     };
