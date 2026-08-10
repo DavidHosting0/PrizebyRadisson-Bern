@@ -37,26 +37,26 @@ export default function SupervisorMobileRequestsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Requests</h1>
-        <p className="mt-1 text-sm text-ink-muted">Service requests · claim or update status</p>
+        <h1 className="text-xl font-semibold tracking-tight text-white">Requests</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">Service requests · claim or update status</p>
       </div>
 
-      {isLoading && <p className="text-sm text-ink-muted">Loading…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
 
       <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
         {data.map((r) => (
           <li key={r.id}>
-            <Card className="p-4">
-              <p className="text-base font-semibold text-ink">
+            <Card tone="dark" className="p-4">
+              <p className="text-base font-semibold text-white">
                 Room {r.room.roomNumber}
-                <span className="font-normal text-ink-muted"> · {r.type.label}</span>
+                <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase text-ink-muted">{r.status.replace(/_/g, ' ')}</span>
-                <PriorityBadge priority={r.priority} />
+                <span className="text-xs uppercase text-sidebar-muted">{r.status.replace(/_/g, ' ')}</span>
+                <PriorityBadge priority={r.priority} tone="dark" />
               </div>
               {r.claimedBy && (
-                <p className="mt-2 text-xs text-ink-muted">
+                <p className="mt-2 text-xs text-sidebar-muted">
                   {formatUserWithTitlePrefix(r.claimedBy.name, r.claimedBy.titlePrefix)}
                 </p>
               )}
@@ -67,7 +67,7 @@ export default function SupervisorMobileRequestsPage() {
                   </Button>
                 )}
                 <select
-                  className="min-h-[44px] flex-1 rounded-btn border border-border bg-surface px-2 text-sm"
+                  className="min-h-[44px] flex-1 rounded-btn border border-sidebar-border/70 bg-[#121a26] px-2 text-sm text-slate-100"
                   value={r.status}
                   onChange={(e) => patch.mutate({ id: r.id, status: e.target.value })}
                   disabled={patch.isPending}
@@ -83,7 +83,7 @@ export default function SupervisorMobileRequestsPage() {
           </li>
         ))}
       </ul>
-      {data.length === 0 && !isLoading && <p className="text-sm text-ink-muted">No requests.</p>}
+      {data.length === 0 && !isLoading && <p className="text-sm text-sidebar-muted">No requests.</p>}
     </div>
   );
 }

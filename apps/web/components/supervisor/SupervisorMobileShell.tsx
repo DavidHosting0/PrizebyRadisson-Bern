@@ -7,6 +7,7 @@ import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { IconChat, IconRequests, IconRooms } from '@/components/icons';
+import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
@@ -41,16 +42,14 @@ export function SupervisorMobileShell({
         <div className="min-w-0">
           <BrandLogo compact className="brightness-0 invert" />
           <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
-            Supervisor · mobile
+            Supervisor · {formatUserWithTitlePrefix(userName, titlePrefix)}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex shrink-0 items-center gap-2">
           <NotificationBell variant="onDark" />
-          <span className="max-w-[140px] truncate text-[11px] font-medium text-sidebar-muted">
-            {formatUserWithTitlePrefix(userName, titlePrefix)}
-          </span>
-          <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 py-1.5 text-xs" onClick={exitMobile}>
-            Desktop site
+          <LanguageSwitcher touch onDark />
+          <Button type="button" variant="ghostOnDark" className="min-h-[44px] px-3 py-1.5 text-xs" onClick={exitMobile}>
+            Desktop
           </Button>
         </div>
       </header>
@@ -62,7 +61,7 @@ export function SupervisorMobileShell({
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar pb-[var(--safe-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
         {tabs.map((t) => {
           const active = t.home
             ? path === '/s/m' ||

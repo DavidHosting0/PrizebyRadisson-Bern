@@ -54,8 +54,6 @@ export default function HousekeeperRequestsPage() {
       (r.status === 'CLAIMED' || r.status === 'IN_PROGRESS'),
   );
 
-  const cardClass = 'border-sidebar-border/60 bg-[#1A2332] text-slate-100';
-
   return (
     <div className="space-y-8 p-4">
       <div>
@@ -68,17 +66,17 @@ export default function HousekeeperRequestsPage() {
         <ul className="mt-3 space-y-3">
           {open.map((r) => (
             <li key={r.id}>
-              <Card className={cardClass}>
+              <Card tone="dark">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-lg font-semibold text-slate-100">Room {r.room.roomNumber}</p>
-                    <p className="mt-1 text-sm text-slate-400">{r.type.label}</p>
+                    <p className="text-lg font-semibold text-white">Room {r.room.roomNumber}</p>
+                    <p className="mt-1 text-sm text-sidebar-muted">{r.type.label}</p>
                     <div className="mt-2">
-                      <PriorityBadge priority={r.priority} />
+                      <PriorityBadge priority={r.priority} tone="dark" />
                     </div>
                   </div>
                   <Button
-                    variant="primary"
+                    variant="action"
                     className="min-h-[48px] min-w-[96px]"
                     disabled={claim.isPending}
                     onClick={() => claim.mutate(r.id)}
@@ -98,11 +96,11 @@ export default function HousekeeperRequestsPage() {
         <ul className="mt-3 space-y-3">
           {mine.map((r) => (
             <li key={r.id}>
-              <Card className={cardClass}>
+              <Card tone="dark">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-lg font-semibold text-slate-100">Room {r.room.roomNumber}</p>
-                    <p className="mt-1 text-sm text-slate-400">{r.type.label}</p>
+                    <p className="text-lg font-semibold text-white">Room {r.room.roomNumber}</p>
+                    <p className="mt-1 text-sm text-sidebar-muted">{r.type.label}</p>
                   </div>
                   <Button variant="ghostOnDark" disabled={resolve.isPending} onClick={() => resolve.mutate(r.id)}>
                     Mark as done

@@ -82,16 +82,16 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar/95 px-4 py-3 shadow-sidebar backdrop-blur-sm">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-sidebar-border bg-sidebar/95 px-4 py-3 shadow-sidebar backdrop-blur-sm">
         <div className="min-w-0">
           <BrandLogo compact className="brightness-0 invert" />
-        </div>
-        <div className="flex items-center gap-2">
-          <LanguageSwitcher compact onDark />
-          <NotificationBell variant="onDark" />
-          <span className="max-w-[55%] truncate text-right text-xs font-medium text-sidebar-muted">
+          <p className="mt-0.5 max-w-[9rem] truncate text-[11px] font-medium text-sidebar-muted">
             {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
-          </span>
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <NotificationBell variant="onDark" />
+          <LanguageSwitcher touch onDark />
         </div>
       </header>
       <PushPermissionBanner />

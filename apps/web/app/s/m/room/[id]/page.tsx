@@ -57,7 +57,7 @@ export default function SupervisorMobileRoomPage() {
   if (isLoading || !data) {
     return (
       <div className="p-4">
-        <p className="text-sm text-ink-muted">Loading room…</p>
+        <p className="text-sm text-sidebar-muted">Loading room…</p>
       </div>
     );
   }
@@ -67,7 +67,7 @@ export default function SupervisorMobileRoomPage() {
       <div className="flex items-center gap-3">
         <Link
           href="/s/m"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-ink shadow-card tap-scale"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border/70 bg-sidebar text-white tap-scale"
           aria-label="Back to rooms"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -75,9 +75,9 @@ export default function SupervisorMobileRoomPage() {
           </svg>
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink">Room {data.roomNumber}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Room {data.roomNumber}</h1>
           <div className="mt-1">
-            <StatusBadge status={data.derivedStatus} />
+            <StatusBadge status={data.derivedStatus} variant="dark" />
           </div>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function SupervisorMobileRoomPage() {
       />
 
       {!isFinished && (
-        <p className="text-center text-sm text-ink-muted">
+        <p className="text-center text-sm text-sidebar-muted">
           When you are done cleaning, mark the room clean. Inspection can follow with a photo.
         </p>
       )}
@@ -139,9 +139,9 @@ export default function SupervisorMobileRoomPage() {
       </Button>
 
       {isFinished && (
-        <section className="rounded-card border border-success/30 bg-success-muted/50 p-4 text-center">
-          <p className="font-medium text-ink">Room marked clean</p>
-          <p className="mt-1 text-sm text-ink-muted">Ready for inspection when on duty.</p>
+        <section className="rounded-card border border-emerald-400/30 bg-emerald-500/15 p-4 text-center">
+          <p className="font-medium text-emerald-100">Room marked clean</p>
+          <p className="mt-1 text-sm text-sidebar-muted">Ready for inspection when on duty.</p>
         </section>
       )}
     </div>

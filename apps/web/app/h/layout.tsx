@@ -82,14 +82,16 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-sidebar-border bg-sidebar/95 px-4 py-3 shadow-sidebar backdrop-blur-sm">
-        <BrandLogo compact className="brightness-0 invert" />
-        <div className="flex items-center gap-2">
-          <LanguageSwitcher compact onDark />
-          <NotificationBell variant="onDark" />
-          <span className="max-w-[55%] truncate text-right text-xs font-medium text-sidebar-muted">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-sidebar-border bg-sidebar/95 px-4 py-3 shadow-sidebar backdrop-blur-sm">
+        <div className="min-w-0">
+          <BrandLogo compact className="brightness-0 invert" />
+          <p className="mt-0.5 max-w-[9rem] truncate text-[11px] font-medium text-sidebar-muted">
             {formatUserWithTitlePrefix(user.name, user.titlePrefix)}
-          </span>
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <NotificationBell variant="onDark" />
+          <LanguageSwitcher touch onDark />
         </div>
       </header>
       <PushPermissionBanner />
@@ -102,7 +104,7 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar pb-[var(--safe-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
         {tabItems.map((t) => {
           const active = t.href === '/h' ? path === '/h' : path === t.href || path.startsWith(`${t.href}/`);
           const Icon = t.Icon;

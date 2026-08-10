@@ -48,19 +48,16 @@ export function ReceptionMobileShell({
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
     >
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar/95 px-3 py-2.5 shadow-sidebar backdrop-blur-sm">
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-sidebar-border bg-sidebar/95 px-3 py-2.5 shadow-sidebar backdrop-blur-sm">
         <div className="min-w-0">
           <BrandLogo compact className="brightness-0 invert" />
-          <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
-            Reception · mobile
+          <p className="mt-0.5 truncate text-[11px] font-medium text-sidebar-muted">
+            {formatUserWithTitlePrefix(userName, titlePrefix)}
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <LanguageSwitcher compact onDark />
-          <span className="max-w-[140px] truncate text-[11px] font-medium text-sidebar-muted">
-            {formatUserWithTitlePrefix(userName, titlePrefix)}
-          </span>
-          <Button type="button" variant="ghostOnDark" className="min-h-[36px] px-3 py-1.5 text-xs" onClick={exitMobile}>
+        <div className="flex shrink-0 items-center gap-2">
+          <LanguageSwitcher touch onDark />
+          <Button type="button" variant="ghostOnDark" className="min-h-[44px] px-3 py-1.5 text-xs" onClick={exitMobile}>
             {t('desktopView')}
           </Button>
         </div>
@@ -73,7 +70,7 @@ export function ReceptionMobileShell({
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar pb-[var(--safe-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
         {tabs.map((t) => {
           const active = path === t.href || path.startsWith(`${t.href}/`);
           const Icon = t.Icon;

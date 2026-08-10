@@ -102,7 +102,7 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
   );
   const inspectionTasks = inspectionQueue?.onDuty ? inspectionQueue.tasks : [];
 
-  const cardClass = 'border-sidebar-border/60 bg-[#1A2332] text-slate-100';
+  const cardClass = 'transition-shadow hover:border-action/30 hover:shadow-lift';
 
   if (roomsLoading) {
     return (
@@ -127,15 +127,15 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           {rooms?.map((r) => (
             <li key={r.id}>
               <Link href={paths.room(r.id)} className="block tap-scale">
-                <Card className={clsx(cardClass, 'transition-shadow hover:shadow-lift')}>
+                <Card tone="dark" className={cardClass}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-lg font-semibold tracking-tight text-slate-100">Room {r.roomNumber}</p>
+                      <p className="text-lg font-semibold tracking-tight text-white">Room {r.roomNumber}</p>
                       {r.floor != null && (
-                        <p className="mt-0.5 text-xs text-slate-400">Floor {r.floor}</p>
+                        <p className="mt-0.5 text-xs text-sidebar-muted">Floor {r.floor}</p>
                       )}
                       {overdueByRoom.has(r.id) && (
-                        <p className="mt-1 text-xs font-semibold text-red-400">
+                        <p className="mt-1 text-xs font-semibold text-red-300">
                           Overdue {overdueByRoom.get(r.id)} day
                           {overdueByRoom.get(r.id) === 1 ? '' : 's'}
                         </p>
@@ -143,7 +143,7 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                     </div>
                     <StatusBadge status={r.derivedStatus} variant="dark" />
                   </div>
-                  <p className="mt-3 text-sm text-slate-400">Tap to finish cleaning</p>
+                  <p className="mt-3 text-sm text-sidebar-muted">Tap to finish cleaning</p>
                 </Card>
               </Link>
             </li>
@@ -162,15 +162,15 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           <ul className="mt-3 space-y-3">
             {publicTasks.map((t) => (
               <li key={t.id}>
-                <Card className={clsx(cardClass, 'flex flex-wrap items-center justify-between gap-3')}>
+                <Card tone="dark" className={clsx(cardClass, 'flex flex-wrap items-center justify-between gap-3')}>
                   <div>
-                    <p className="font-semibold text-slate-100">{t.publicAreaName}</p>
+                    <p className="font-semibold text-white">{t.publicAreaName}</p>
                     {t.floor != null && (
-                      <p className="text-xs text-slate-400">Floor {t.floor}</p>
+                      <p className="text-xs text-sidebar-muted">Floor {t.floor}</p>
                     )}
                   </div>
                   <Button
-                    variant="primary"
+                    variant="action"
                     className="min-h-[44px] px-4 py-2 text-sm"
                     disabled={completePublic.isPending}
                     onClick={() => completePublic.mutate(t.id)}
@@ -201,17 +201,17 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                 const claimed = t.status === 'CLAIMED';
                 return (
                   <li key={t.id}>
-                    <Card className={cardClass}>
+                    <Card tone="dark" className={cardClass}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-lg font-semibold tabular-nums text-slate-100">
+                          <p className="text-lg font-semibold tabular-nums text-white">
                             Room {t.roomNumber}
                           </p>
                           {t.floor != null && (
-                            <p className="mt-0.5 text-xs text-slate-400">Floor {t.floor}</p>
+                            <p className="mt-0.5 text-xs text-sidebar-muted">Floor {t.floor}</p>
                           )}
                           {claimed && t.claimedByName && (
-                            <p className="mt-1 text-xs text-slate-400">
+                            <p className="mt-1 text-xs text-sidebar-muted">
                               Claimed by {t.claimedByName}
                             </p>
                           )}
@@ -222,7 +222,7 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                         {!claimed && (
                           <Button
                             type="button"
-                            variant="primary"
+                            variant="action"
                             className="min-h-[44px]"
                             disabled={claimInspection.isPending}
                             onClick={() => claimInspection.mutate(t.id)}
@@ -267,19 +267,19 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           <ul className="mt-3 space-y-3">
             {open.map((r) => (
               <li key={r.id}>
-                <Card className={cardClass}>
+                <Card tone="dark" className={cardClass}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold text-slate-100">
+                      <p className="font-semibold text-white">
                         Room {r.room.roomNumber}
-                        <span className="font-normal text-slate-400"> · {r.type.label}</span>
+                        <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
                       </p>
                       <div className="mt-2">
-                        <PriorityBadge priority={r.priority} />
+                        <PriorityBadge priority={r.priority} tone="dark" />
                       </div>
                     </div>
                     <Button
-                      variant="primary"
+                      variant="action"
                       className="min-h-[44px] px-4 py-2 text-sm"
                       disabled={claim.isPending}
                       onClick={() => claim.mutate(r.id)}
@@ -303,15 +303,15 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           <ul className="mt-3 space-y-3">
             {mine.map((r) => (
               <li key={r.id}>
-                <Card className={cardClass}>
-                  <p className="font-semibold text-slate-100">
+                <Card tone="dark" className={cardClass}>
+                  <p className="font-semibold text-white">
                     Room {r.room.roomNumber}
-                    <span className="font-normal text-slate-400"> · {r.type.label}</span>
+                    <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
                   </p>
-                  <p className="mt-1 text-xs text-slate-400">In progress — finish on Requests tab</p>
+                  <p className="mt-1 text-xs text-sidebar-muted">In progress — finish on Requests tab</p>
                   <Link
                     href={paths.requests}
-                    className="mt-3 inline-block text-sm font-medium text-slate-100 underline underline-offset-2"
+                    className="mt-3 inline-block text-sm font-medium text-action underline underline-offset-2"
                   >
                     Go to requests
                   </Link>

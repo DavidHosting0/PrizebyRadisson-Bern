@@ -437,9 +437,19 @@ function MessageBody({ msg, mentions }: { msg: ChatMsg; mentions?: ChatAuthor[] 
         <button
           type="button"
           onClick={() => setShowOriginal((v) => !v)}
-          className="mt-0.5 text-[8px] font-medium text-sky-300/90 underline-offset-2 hover:underline"
+          title={showOriginal ? 'Übersetzung anzeigen' : 'Original anzeigen'}
+          aria-label={showOriginal ? 'Übersetzung anzeigen' : 'Original anzeigen'}
+          className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-sky-300/90 hover:bg-white/10 hover:text-sky-200"
         >
-          {showOriginal ? 'Übersetzung' : 'Original'}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       )}
     </>

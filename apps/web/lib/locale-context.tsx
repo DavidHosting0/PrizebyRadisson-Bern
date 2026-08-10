@@ -18,6 +18,7 @@ import {
 } from '@housekeeping/shared';
 import deMessages from '@/messages/de.json';
 import enMessages from '@/messages/en.json';
+import ptMessages from '@/messages/pt.json';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 
@@ -25,6 +26,7 @@ const COOKIE_KEY = 'hk_locale';
 const MESSAGES: Record<SupportedLocale, typeof deMessages> = {
   de: deMessages,
   en: enMessages,
+  pt: ptMessages,
 };
 
 type LocaleCtx = {

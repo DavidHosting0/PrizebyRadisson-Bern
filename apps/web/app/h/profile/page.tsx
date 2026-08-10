@@ -20,10 +20,10 @@ export default function HousekeeperProfilePage() {
     <div className="flex min-h-[calc(100dvh-8rem)] flex-col p-4">
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-ink">{t('title')}</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-white">{t('title')}</h1>
         </div>
 
-        <Card className="flex flex-col items-center gap-3 py-6 text-center">
+        <Card tone="dark" className="flex flex-col items-center gap-3 py-6 text-center">
           <button
             type="button"
             onClick={() => setPhotoOpen(true)}
@@ -36,10 +36,10 @@ export default function HousekeeperProfilePage() {
             </span>
           </button>
           <div>
-            <p className="text-lg font-semibold text-ink">{user?.name}</p>
-            <p className="text-xs text-ink-muted">{user?.email}</p>
+            <p className="text-lg font-semibold text-white">{user?.name}</p>
+            <p className="text-xs text-sidebar-muted">{user?.email}</p>
           </div>
-          <Button variant="secondary" onClick={() => setPhotoOpen(true)}>
+          <Button variant="ghostOnDark" onClick={() => setPhotoOpen(true)}>
             {t('updatePhoto')}
           </Button>
         </Card>

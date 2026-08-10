@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import clsx from 'clsx';
+import { type SupportedLocale } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatUserWithTitlePrefix, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
@@ -79,7 +80,7 @@ function buildRanges(t: (key: string) => string): Range[] {
 
 const ROSTER_TZ = 'Europe/Zurich';
 
-function formatTime(iso: string, locale: 'de' | 'en') {
+function formatTime(iso: string, locale: SupportedLocale) {
   return formatLocaleTime(iso, locale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -87,7 +88,7 @@ function formatTime(iso: string, locale: 'de' | 'en') {
   });
 }
 
-function formatDayLabel(iso: string, locale: 'de' | 'en') {
+function formatDayLabel(iso: string, locale: SupportedLocale) {
   return formatLocaleDate(iso, locale, {
     weekday: 'short',
     day: '2-digit',

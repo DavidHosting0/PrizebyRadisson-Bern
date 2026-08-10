@@ -1,55 +1,147 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
-import { type SupportedLocale } from '@housekeeping/shared';
+import {
+  localeAbbrev,
+  SUPPORTED_LOCALES,
+  type SupportedLocale,
+} from '@housekeeping/shared';
 import { useLocale } from '@/lib/locale-context';
+
+const LOCALE_META: Record<
+  SupportedLocale,
+  { flag: string; name: string }
+> = {
+  de: { flag: '🇩🇪', name: 'Deutsch' },
+  en: { flag: '🇬🇧', name: 'English' },
+  pt: { flag: '🇵🇹', name: 'Português' },
+};
 
 export function LanguageSwitcher({
   compact = false,
   onDark = false,
+  /** Larger tap target for mobile headers (housekeeper / technician). */
+  touch = false,
 }: {
   compact?: boolean;
   onDark?: boolean;
+  touch?: boolean;
 }) {
   const { locale, setLocale } = useLocale();
   const t = useTranslations('common');
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const meta = LOCALE_META[locale];
 
-  const options: { value: SupportedLocale; label: string }[] = [
-    { value: 'de', label: 'DE' },
-    { value: 'en', label: 'EN' },
-  ];
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointer(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   return (
-    <div
-      className={clsx(
-        'flex items-center gap-0.5 rounded-lg border p-0.5',
-        compact && 'text-xs',
-        onDark ? 'border-sidebar-border bg-white/5' : 'border-border bg-surface',
-      )}
-      role="group"
-      aria-label={t('language')}
-    >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => void setLocale(opt.value)}
+    <div ref={rootRef} className="relative z-[60] shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={clsx(
+          'inline-flex items-center gap-1.5 rounded-lg border font-semibold transition-colors',
+          touch
+            ? 'min-h-[44px] gap-2 px-3 py-2 text-sm'
+            : compact
+              ? 'min-h-[28px] px-2 py-1 text-xs font-medium'
+              : 'min-h-[36px] px-2.5 py-1.5 text-sm font-medium',
+          onDark
+            ? 'border-sidebar-border bg-white/10 text-white hover:bg-white/15'
+            : 'border-border bg-surface text-ink hover:bg-surface-muted',
+        )}
+        aria-label={t('language')}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className={clsx('leading-none', touch ? 'text-xl' : 'text-base')} aria-hidden>
+          {meta.flag}
+        </span>
+        <span className="tabular-nums tracking-wide">{localeAbbrev(locale)}</span>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 12 12"
+          aria-hidden
           className={clsx(
-            'min-h-[28px] rounded-md px-2 py-1 font-medium transition-colors',
-            locale === opt.value
-              ? onDark
-                ? 'bg-white/15 text-white'
-                : 'bg-ink text-surface'
-              : onDark
-                ? 'text-sidebar-muted hover:text-white'
-                : 'text-ink-muted hover:text-ink',
+            'opacity-70 transition-transform',
+            open && 'rotate-180',
+            onDark ? 'text-sidebar-muted' : 'text-ink-muted',
           )}
-          aria-pressed={locale === opt.value}
         >
-          {opt.label}
-        </button>
-      ))}
+          <path d="M3 4.5L6 7.5L9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <ul
+          role="listbox"
+          aria-label={t('language')}
+          className={clsx(
+            'absolute right-0 z-[70] mt-1 min-w-[11rem] overflow-hidden rounded-lg border py-1 shadow-lift',
+            onDark
+              ? 'border-sidebar-border bg-[#1A2332] text-white'
+              : 'border-border bg-surface text-ink',
+          )}
+        >
+          {SUPPORTED_LOCALES.map((code) => {
+            const opt = LOCALE_META[code];
+            const active = locale === code;
+            return (
+              <li key={code} role="option" aria-selected={active}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    if (code !== locale) void setLocale(code);
+                  }}
+                  className={clsx(
+                    'flex w-full items-center gap-2 px-3 text-left text-sm transition-colors',
+                    touch ? 'min-h-[44px] py-2.5' : 'py-2',
+                    active
+                      ? onDark
+                        ? 'bg-white/15 font-semibold'
+                        : 'bg-surface-muted font-semibold'
+                      : onDark
+                        ? 'hover:bg-white/10'
+                        : 'hover:bg-surface-muted',
+                  )}
+                >
+                  <span className="text-lg leading-none" aria-hidden>
+                    {opt.flag}
+                  </span>
+                  <span className="tabular-nums tracking-wide">{localeAbbrev(code)}</span>
+                  <span
+                    className={clsx(
+                      'ml-auto text-xs',
+                      onDark ? 'text-sidebar-muted' : 'text-ink-muted',
+                    )}
+                  >
+                    {opt.name}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

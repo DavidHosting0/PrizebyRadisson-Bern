@@ -42,7 +42,7 @@ export default function HousekeeperInspectRoomPage() {
   if (isLoading || !data) {
     return (
       <div className="p-4">
-        <p className="text-sm text-ink-muted">{error ? 'Could not load room.' : 'Loading…'}</p>
+        <p className="text-sm text-sidebar-muted">{error ? 'Could not load room.' : 'Loading…'}</p>
       </div>
     );
   }
@@ -52,7 +52,7 @@ export default function HousekeeperInspectRoomPage() {
       <div className="flex items-center gap-2">
         <Link
           href="/h"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-ink shadow-card tap-scale"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border/70 bg-sidebar text-white tap-scale"
           aria-label="Back"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -60,18 +60,18 @@ export default function HousekeeperInspectRoomPage() {
           </svg>
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight text-ink">Inspect {data.roomNumber}</h1>
-          {data.floor != null && <p className="text-xs text-ink-muted">Floor {data.floor}</p>}
+          <h1 className="text-xl font-semibold tracking-tight text-white">Inspect {data.roomNumber}</h1>
+          {data.floor != null && <p className="text-xs text-sidebar-muted">Floor {data.floor}</p>}
         </div>
       </div>
 
-      <Card className="p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Status</p>
+      <Card tone="dark" className="p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">Status</p>
         <div className="mt-2">
-          <StatusBadge status={data.derivedStatus} />
+          <StatusBadge status={data.derivedStatus} variant="dark" />
         </div>
         {!claimedByMe && (
-          <p className="mt-3 text-sm text-ink-muted">
+          <p className="mt-3 text-sm text-sidebar-muted">
             Claim this room from the Inspections list on Home before inspecting.
           </p>
         )}
@@ -86,7 +86,7 @@ export default function HousekeeperInspectRoomPage() {
       >
         Open inspection
       </Button>
-      <Button type="button" variant="ghost" className="min-h-[48px] w-full" onClick={() => router.push('/h')}>
+      <Button type="button" variant="ghostOnDark" className="min-h-[48px] w-full" onClick={() => router.push('/h')}>
         Back to home
       </Button>
 

@@ -78,12 +78,24 @@ function ChatMessageBody({
         <button
           type="button"
           onClick={() => setShowOriginal((v) => !v)}
+          title={showOriginal ? t('showTranslation') : t('showOriginal')}
+          aria-label={showOriginal ? t('showTranslation') : t('showOriginal')}
           className={clsx(
-            'mt-1 text-[10px] font-medium underline-offset-2 hover:underline',
-            mine ? 'text-white/70' : 'text-action',
+            'mt-1 inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors',
+            mine
+              ? 'text-white/65 hover:bg-white/10 hover:text-white'
+              : 'text-sidebar-muted hover:bg-white/10 hover:text-white',
           )}
         >
-          {showOriginal ? t('showTranslation') : t('showOriginal')}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       )}
     </>
