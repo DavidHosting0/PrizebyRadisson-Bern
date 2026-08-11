@@ -32,6 +32,7 @@ import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigge
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { SidebarSettingsButton } from '@/components/nav/SidebarSettingsButton';
 import { useRoomsRealtime } from '@/lib/hooks/useRoomsRealtime';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 /** Mobile supervisor routes live under `/s/m/` — not `/s/monitor-map` etc. */
 function isSupervisorMobilePath(path: string) {
@@ -124,6 +125,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
         <NotificationsRuntime />
         <PushPermissionBanner />
         {children}
+        <InstallAppBanner />
       </SupervisorMobileShell>
     );
   }

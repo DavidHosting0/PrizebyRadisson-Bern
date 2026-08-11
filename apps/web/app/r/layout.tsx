@@ -38,6 +38,7 @@ import { subscribeCommandBus } from '@/lib/command-bus';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { SidebarSettingsButton } from '@/components/nav/SidebarSettingsButton';
+import { InstallAppBanner } from '@/components/InstallAppBanner';
 
 /** Mobile reception routes live under `/r/m/` — not `/r/monitor-map` etc. */
 function isReceptionMobilePath(path: string) {
@@ -150,12 +151,15 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   if (mobileUi) {
     return (
       <>
+        <NotificationsRuntime />
+        <PushPermissionBanner />
         <EmmaSyncAlertBanner />
         <ReceptionMobileShell userName={user.name} titlePrefix={user.titlePrefix}>
           {children}
         </ReceptionMobileShell>
         <NewRequestModal open={newRequestOpen} onClose={closeNewRequest} />
         <ReceptionRoomDetailPanel roomId={roomPanelId} open={!!roomPanelId} onClose={() => openRoom(null)} />
+        <InstallAppBanner />
       </>
     );
   }

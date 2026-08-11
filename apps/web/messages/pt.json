@@ -254,6 +254,7 @@
   },
   "damage": {
     "FURNITURE": "Mobiliário",
+    "CURTAINS": "Cortinas",
     "FIXTURES": "Instalações e acessórios",
     "WALL_OR_CEILING": "Parede / teto",
     "FLOOR": "Chão",
@@ -352,7 +353,10 @@
     "priorityNormal": "Normal",
     "enablePush": "Ativar notificações push",
     "pushDenied": "As notificações push estão bloqueadas",
-    "pushBannerMessage": "Ative as notificações do browser para novos pedidos e menções.",
+    "pushBannerMessage": "Ative notificações no telemóvel com som para novos pedidos e @menções.",
+    "pushIosInstallHint": "No iPhone: Safari → Partilhar → Adicionar ao ecrã principal, depois abra a app e permita notificações.",
+    "pushDeniedHint": "As notificações estão bloqueadas. Permita nas definições do iPhone/Android para esta app.",
+    "pushServerUnavailable": "Push não está configurado no servidor (VAPID). Contacte IT/admin.",
     "enableNotifications": "Ativar notificações"
   },
   "reception": {
@@ -988,7 +992,24 @@
       "assigning": "A atribuir…",
       "runAutoAssignment": "Executar atribuição automática",
       "selectCleanerHint": "Selecione pelo menos um colaborador para executar.",
-      "runError": "Não foi possível executar a atribuição automática."
+      "runError": "Não foi possível executar a atribuição automática.",
+      "distribution": "Distribuição de quartos",
+      "distributionHint": "Pré-visualização dos quartos dirty por pessoa. Ajuste as quantidades — as outras são reequilibradas automaticamente.",
+      "distributionTotal": "{count} quartos dirty",
+      "resetDistribution": "Repor",
+      "loadingPreview": "A calcular distribuição…",
+      "noDirtyForPreview": "Sem quartos dirty para distribuir.",
+      "legendCheckedOut": "Checkout feito",
+      "legendDepartureInRoom": "Partida, ainda no quarto",
+      "legendOther": "Outros",
+      "badgeLate": "tarde",
+      "previewRestant": "{count} restant",
+      "previewPublic": "{count} public",
+      "fewerRooms": "Menos quartos",
+      "moreRooms": "Mais quartos",
+      "roomCheckedOut": "Quarto {number} · checkout feito",
+      "roomDepartureInRoom": "Quarto {number} · partida, hóspede ainda no quarto",
+      "roomNumber": "Quarto {number}"
     }
   },
   "technician": {

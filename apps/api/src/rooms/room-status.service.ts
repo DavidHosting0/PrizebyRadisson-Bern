@@ -21,14 +21,11 @@ export type EmmaStatusForDerive = {
 @Injectable()
 export class RoomStatusService {
   /**
-   * PrizeBern board status.
+   * PrizeBern board status — EMMA is authoritative when synced.
    *
-   * Housekeeping pipeline (local, wins over EMMA):
- * - Cleaner mark-clean → CLEAN in PrizeBern and push CL to EMMA
- * - Passed inspection → INSPECTED (EMMA gets IN on inspect)
-   *
-   * EMMA is used when the room is not in that local clean→inspect pipeline
-   * (e.g. overnight dirty from PMS).
+   * Local cleaner mark-clean / inspection only win when they are newer than the
+   * last Emma sync (so PrizeBern can show CLEAN right after mark-clean until
+   * Emma catches up with CL, then IN after inspect).
    */
   derive(
     room: Pick<Room, 'outOfOrder' | 'cleaningDeclaredAt'>,
@@ -44,14 +41,12 @@ export class RoomStatusService {
     const latestPassed = sorted.find((i) => i.passed);
     const cleanAt = room.cleaningDeclaredAt?.getTime() ?? 0;
     const inspectedAt = latestPassed?.inspectedAt.getTime() ?? 0;
+    const localActivityAt = Math.max(cleanAt, inspectedAt);
+    const emmaSyncedAt = emma?.syncedAt ? new Date(emma.syncedAt).getTime() : 0;
+    const localNewerThanEmma = emmaSyncedAt > 0 && localActivityAt > emmaSyncedAt;
 
-    // Cleaner declared clean more recently than the last passed inspection →
-    // awaiting inspection. Prefer local CLEAN so a lagging Emma Dirty sync cannot hide it.
-    if (cleanAt > inspectedAt) {
-      return DerivedRoomStatus.CLEAN;
-    }
-
-    if (emma?.syncedAt) {
+    // Emma is the source of truth unless PrizeBern just changed status more recently.
+    if (emma?.syncedAt && !localNewerThanEmma) {
       if (emma.derivedStatus) return emma.derivedStatus;
       const fromEmma = mapEmmaToDerivedStatus({
         statusCode: emma.statusCode,
@@ -61,7 +56,9 @@ export class RoomStatusService {
       if (fromEmma) return fromEmma;
     }
 
-    if (inspectedAt > 0) return DerivedRoomStatus.INSPECTED;
+    // Local housekeeping pipeline (no Emma, or local action newer than Emma).
+    if (inspectedAt > 0 && inspectedAt >= cleanAt) return DerivedRoomStatus.INSPECTED;
+    if (cleanAt > inspectedAt) return DerivedRoomStatus.CLEAN;
 
     if (!tasks.length) return DerivedRoomStatus.DIRTY;
     const allComplete = tasks.every((t) => t.status === ChecklistTaskStatus.COMPLETED);
@@ -73,18 +70,16 @@ export class RoomStatusService {
     return DerivedRoomStatus.IN_PROGRESS;
   }
 
-  /** True when PrizeBern has a local clean awaiting inspection (not from EMMA). */
+  /**
+   * Rooms that should sit on the inspection queue: board status CLEAN
+   * (Emma CL, or local mark-clean newer than Emma).
+   */
   isAwaitingInspection(
     room: Pick<Room, 'outOfOrder' | 'cleaningDeclaredAt'>,
     inspections: Pick<RoomInspection, 'passed' | 'inspectedAt'>[],
+    emma?: EmmaStatusForDerive | null,
   ): boolean {
-    if (room.outOfOrder) return false;
-    const cleanAt = room.cleaningDeclaredAt?.getTime() ?? 0;
-    if (!cleanAt) return false;
-    const latestPassed = [...inspections]
-      .filter((i) => i.passed)
-      .sort((a, b) => b.inspectedAt.getTime() - a.inspectedAt.getTime())[0];
-    const inspectedAt = latestPassed?.inspectedAt.getTime() ?? 0;
-    return cleanAt > inspectedAt;
+    if (room.outOfOrder || emma?.outOfOrder) return false;
+    return this.derive(room, [], inspections, emma) === DerivedRoomStatus.CLEAN;
   }
 }

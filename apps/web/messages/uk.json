@@ -254,6 +254,7 @@
   },
   "damage": {
     "FURNITURE": "Меблі",
+    "CURTAINS": "Штори",
     "FIXTURES": "Обладнання та фурнітура",
     "WALL_OR_CEILING": "Стіна / стеля",
     "FLOOR": "Підлога",
@@ -352,7 +353,10 @@
     "priorityNormal": "Звичайний",
     "enablePush": "Увімкнути push-сповіщення",
     "pushDenied": "Push-сповіщення заблоковано",
-    "pushBannerMessage": "Увімкніть сповіщення браузера для нових запитів і згадок.",
+    "pushBannerMessage": "Увімкніть телефонні сповіщення зі звуком для нових запитів і @згадок.",
+    "pushIosInstallHint": "На iPhone: Safari → Поділитися → На початковий екран, потім відкрийте додаток і дозвольте сповіщення.",
+    "pushDeniedHint": "Сповіщення заблоковано. Дозвольте їх у налаштуваннях iPhone/Android для цієї програми.",
+    "pushServerUnavailable": "Push не налаштовано на сервері (VAPID). Зверніться до IT/адміна.",
     "enableNotifications": "Увімкнути сповіщення"
   },
   "reception": {

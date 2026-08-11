@@ -147,6 +147,7 @@ export class NotificationsService {
           title: input.title,
           body: input.body,
           linkPath,
+          tag: `hk-${input.type}`,
         });
       } catch (e) {
         this.log.warn(

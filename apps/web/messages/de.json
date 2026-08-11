@@ -254,6 +254,7 @@
   },
   "damage": {
     "FURNITURE": "Möbel",
+    "CURTAINS": "Vorhänge",
     "FIXTURES": "Einrichtung & Zubehör",
     "WALL_OR_CEILING": "Wand / Decke",
     "FLOOR": "Boden",
@@ -352,7 +353,10 @@
     "priorityNormal": "Normal",
     "enablePush": "Push-Benachrichtigungen aktivieren",
     "pushDenied": "Push-Benachrichtigungen sind blockiert",
-    "pushBannerMessage": "Browser-Benachrichtigungen für neue Anfragen und Erwähnungen aktivieren.",
+    "pushBannerMessage": "Handy-Benachrichtigungen mit Ton für neue Anfragen und @-Erwähnungen aktivieren.",
+    "pushIosInstallHint": "Auf dem iPhone: Safari → Teilen → Zum Home-Bildschirm, dann App öffnen und Benachrichtigungen erlauben.",
+    "pushDeniedHint": "Benachrichtigungen sind blockiert. In den iPhone-/Android-Einstellungen für diese App erlauben.",
+    "pushServerUnavailable": "Push ist auf dem Server nicht konfiguriert (VAPID). Bitte IT/Admin informieren.",
     "enableNotifications": "Benachrichtigungen aktivieren"
   },
   "reception": {
@@ -988,7 +992,24 @@
       "assigning": "Wird zugewiesen…",
       "runAutoAssignment": "Auto-Zuweisung starten",
       "selectCleanerHint": "Mindestens eine Reinigungskraft auswählen.",
-      "runError": "Auto-Zuweisung konnte nicht gestartet werden."
+      "runError": "Auto-Zuweisung konnte nicht gestartet werden.",
+      "distribution": "Zimmerverteilung",
+      "distributionHint": "Vorschau der Dirty-Zimmer pro Person. Anzahl anpassen — die anderen werden automatisch neu verteilt.",
+      "distributionTotal": "{count} Dirty-Zimmer",
+      "resetDistribution": "Zurücksetzen",
+      "loadingPreview": "Verteilung wird berechnet…",
+      "noDirtyForPreview": "Keine Dirty-Zimmer zum Verteilen.",
+      "legendCheckedOut": "Ausgecheckt",
+      "legendDepartureInRoom": "Abreise, noch im Zimmer",
+      "legendOther": "Sonstiges",
+      "badgeLate": "spät",
+      "previewRestant": "{count} Restant",
+      "previewPublic": "{count} Public",
+      "fewerRooms": "Weniger Zimmer",
+      "moreRooms": "Mehr Zimmer",
+      "roomCheckedOut": "Zimmer {number} · ausgecheckt",
+      "roomDepartureInRoom": "Zimmer {number} · Abreise, Gast noch im Zimmer",
+      "roomNumber": "Zimmer {number}"
     }
   },
   "technician": {
@@ -1431,7 +1452,7 @@
   },
   "installApp": {
     "title": "App installieren",
-    "iosHint": "In Safari: Teilen → Zum Home-Bildschirm",
+    "iosHint": "In Safari: Teilen → Zum Home-Bildschirm. Danach die App vom Home-Bildschirm öffnen und Benachrichtigungen erlauben (sonst keine Töne auf dem iPhone).",
     "androidPrompt": "Zum Startbildschirm hinzufügen für Vollbild-Modus.",
     "chromeHint": "Chrome-Menü (⋮) → App installieren",
     "installNow": "Jetzt installieren",

@@ -254,6 +254,7 @@
   },
   "damage": {
     "FURNITURE": "Furniture",
+    "CURTAINS": "Curtains",
     "FIXTURES": "Fixtures & fittings",
     "WALL_OR_CEILING": "Wall / ceiling",
     "FLOOR": "Floor",
@@ -352,7 +353,10 @@
     "priorityNormal": "Normal",
     "enablePush": "Enable push notifications",
     "pushDenied": "Push notifications are blocked",
-    "pushBannerMessage": "Enable browser notifications for new requests and mentions.",
+    "pushBannerMessage": "Enable phone notifications with sound for new requests and @mentions.",
+    "pushIosInstallHint": "On iPhone: Safari → Share → Add to Home Screen, then open the app and allow notifications.",
+    "pushDeniedHint": "Notifications are blocked. Allow them in iPhone/Android settings for this app.",
+    "pushServerUnavailable": "Push is not configured on the server (VAPID). Please contact IT/admin.",
     "enableNotifications": "Enable notifications"
   },
   "reception": {
@@ -988,7 +992,24 @@
       "assigning": "Assigning…",
       "runAutoAssignment": "Run auto assignment",
       "selectCleanerHint": "Select at least one cleaner to run.",
-      "runError": "Could not run auto assignment."
+      "runError": "Could not run auto assignment.",
+      "distribution": "Room distribution",
+      "distributionHint": "Preview dirty rooms per person. Adjust counts — others are rebalanced automatically.",
+      "distributionTotal": "{count} dirty rooms",
+      "resetDistribution": "Reset",
+      "loadingPreview": "Calculating distribution…",
+      "noDirtyForPreview": "No dirty rooms to distribute.",
+      "legendCheckedOut": "Checked out",
+      "legendDepartureInRoom": "Departure, still in room",
+      "legendOther": "Other",
+      "badgeLate": "late",
+      "previewRestant": "{count} restant",
+      "previewPublic": "{count} public",
+      "fewerRooms": "Fewer rooms",
+      "moreRooms": "More rooms",
+      "roomCheckedOut": "Room {number} · checked out",
+      "roomDepartureInRoom": "Room {number} · departure, guest still in room",
+      "roomNumber": "Room {number}"
     }
   },
   "technician": {
@@ -1431,7 +1452,7 @@
   },
   "installApp": {
     "title": "Install app",
-    "iosHint": "In Safari: Share → Add to Home Screen",
+    "iosHint": "In Safari: Share → Add to Home Screen. Then open the app from the home screen and allow notifications (required for iPhone alert sounds).",
     "androidPrompt": "Add to home screen for fullscreen mode.",
     "chromeHint": "Chrome menu (⋮) → Install app",
     "installNow": "Install now",

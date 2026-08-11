@@ -103,8 +103,20 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
   const openRoomTasks = (daily?.tasks ?? []).filter(
     (t) => t.kind === 'ROOM' && t.roomId && !t.completedAt && (t.workType === 'DIRTY' || t.workType === 'RESTANT'),
   );
-  const dirtyTasks = openRoomTasks.filter((t) => t.workType === 'DIRTY');
-  const restantTasks = openRoomTasks.filter((t) => t.workType === 'RESTANT');
+
+  function compareCleaningPriority(a: MyDailyTaskDto, b: MyDailyTaskDto) {
+    // Checked-out departure rooms first — ready to clean now.
+    const aOut = a.guestCheckedOut ? 1 : 0;
+    const bOut = b.guestCheckedOut ? 1 : 0;
+    if (aOut !== bOut) return bOut - aOut;
+    const aDep = a.isDepartureToday ? 1 : 0;
+    const bDep = b.isDepartureToday ? 1 : 0;
+    if (aDep !== bDep) return bDep - aDep;
+    return (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true });
+  }
+
+  const dirtyTasks = openRoomTasks.filter((t) => t.workType === 'DIRTY').sort(compareCleaningPriority);
+  const restantTasks = openRoomTasks.filter((t) => t.workType === 'RESTANT').sort(compareCleaningPriority);
   const publicTasks = (daily?.tasks ?? []).filter(
     (t) => t.kind === 'PUBLIC_AREA' && !t.completedAt,
   );

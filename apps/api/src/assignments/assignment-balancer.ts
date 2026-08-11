@@ -144,6 +144,8 @@ export function balanceDailyCleaningAssignments(
     preferredRestantId?: string | null;
     preferredRestantIds?: string[];
     publicAssigneeIds?: string[];
+    /** Exact dirty-room counts per housekeeper (must cover all dirty work). */
+    dirtyRoomTargets?: Map<string, number>;
   },
 ): { assignments: BalancedAssignment[]; summaries: DailyCleaningSummary[] } {
   const assigned = new Map<string, string>();
@@ -272,7 +274,40 @@ export function balanceDailyCleaningAssignments(
     const cleanerIds = cleaners.map((c) => c.housekeeperId);
     const totalDirtyIncludingPinned =
       dirty.length + cleanerIds.reduce((s, id) => s + (dirtyAssignedCount.get(id) ?? 0), 0);
-    const targets = allocateTargets(cleanerIds, dirtyWeights, totalDirtyIncludingPinned);
+
+    let targets: Map<string, number>;
+    if (options?.dirtyRoomTargets && options.dirtyRoomTargets.size > 0) {
+      targets = new Map<string, number>();
+      for (const id of cleanerIds) {
+        targets.set(id, Math.max(0, Math.floor(options.dirtyRoomTargets.get(id) ?? 0)));
+      }
+      // Ensure every cleaner id from targets is considered even if not in cleaners (skip)
+      let sum = cleanerIds.reduce((s, id) => s + (targets.get(id) ?? 0), 0);
+      if (sum !== totalDirtyIncludingPinned && cleanerIds.length > 0) {
+        // Normalize so targets sum to total dirty rooms
+        if (sum <= 0) {
+          targets = allocateTargets(cleanerIds, dirtyWeights, totalDirtyIncludingPinned);
+        } else {
+          const scaled = new Map<string, number>();
+          let allocated = 0;
+          for (const id of cleanerIds) {
+            const t = Math.floor(((targets.get(id) ?? 0) * totalDirtyIncludingPinned) / sum);
+            scaled.set(id, t);
+            allocated += t;
+          }
+          let rem = totalDirtyIncludingPinned - allocated;
+          const ordered = [...cleanerIds].sort((a, b) => a.localeCompare(b));
+          for (const id of ordered) {
+            if (rem <= 0) break;
+            scaled.set(id, (scaled.get(id) ?? 0) + 1);
+            rem -= 1;
+          }
+          targets = scaled;
+        }
+      }
+    } else {
+      targets = allocateTargets(cleanerIds, dirtyWeights, totalDirtyIncludingPinned);
+    }
 
     // Carve only unassigned rooms; reduce each cleaner's remaining by pinned dirty already held
     const remaining = new Map<string, number>();

@@ -1,4 +1,4 @@
-const CACHE = 'hk-shell-v2';
+const CACHE = 'hk-shell-v3';
 const SHELL = ['/manifest.json', '/apple-touch-icon.png', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -32,7 +32,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'Housekeeping', body: '', linkPath: '/' };
+  let data = { title: 'Housekeeping', body: '', linkPath: '/', tag: 'housekeeping' };
   try {
     if (event.data) {
       data = { ...data, ...event.data.json() };
@@ -41,14 +41,21 @@ self.addEventListener('push', (event) => {
     /* use defaults */
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
-      data: { linkPath: data.linkPath },
-    }),
-  );
+  // silent: false → OS plays the default notification sound (iOS/Android).
+  // Custom sound files are not reliably supported for Web Push.
+  const options = {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { linkPath: data.linkPath || '/' },
+    tag: data.tag || 'housekeeping',
+    renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200],
+    requireInteraction: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title || 'Housekeeping', options));
 });
 
 self.addEventListener('notificationclick', (event) => {

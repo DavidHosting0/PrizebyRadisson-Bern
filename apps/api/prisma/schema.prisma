@@ -166,6 +166,7 @@ enum LostFoundStatus {
 
 enum RoomDamageType {
   FURNITURE
+  CURTAINS
   FIXTURES
   WALL_OR_CEILING
   FLOOR

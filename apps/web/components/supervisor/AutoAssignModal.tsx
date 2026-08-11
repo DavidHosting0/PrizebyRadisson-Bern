@@ -1,9 +1,12 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { DailyCleaningPlanResponse } from '@housekeeping/shared';
+import type {
+  AutoAssignPreviewResponse,
+  DailyCleaningPlanResponse,
+} from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
@@ -11,6 +14,41 @@ import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 import { useTranslations } from 'next-intl';
 
 type Assignee = DailyCleaningPlanResponse['manualAssignees'][number];
+
+function redistributeDirtyTargets(
+  current: Record<string, number>,
+  userId: string,
+  newCount: number,
+  total: number,
+  orderedIds: string[],
+): Record<string, number> {
+  const others = orderedIds.filter((id) => id !== userId);
+  const clamped = Math.max(0, Math.min(total, Math.round(newCount)));
+  const next: Record<string, number> = { ...current, [userId]: clamped };
+  const remaining = total - clamped;
+  if (others.length === 0) {
+    next[userId] = total;
+    return next;
+  }
+  const weights = others.map((id) => Math.max(0, current[id] ?? 0));
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  let allocated = 0;
+  for (let i = 0; i < others.length; i++) {
+    const id = others[i]!;
+    if (i === others.length - 1) {
+      next[id] = Math.max(0, remaining - allocated);
+    } else if (weightSum <= 0) {
+      const share = Math.floor(remaining / others.length);
+      next[id] = share;
+      allocated += share;
+    } else {
+      const share = Math.floor((remaining * (weights[i] ?? 0)) / weightSum);
+      next[id] = share;
+      allocated += share;
+    }
+  }
+  return next;
+}
 
 type Tone = 'action' | 'amber' | 'emerald';
 
@@ -172,6 +210,8 @@ export function AutoAssignSetupModal({
   const [lateIds, setLateIds] = useState<string[]>([]);
   const [publicIds, setPublicIds] = useState<string[]>([]);
   const [inspectorIds, setInspectorIds] = useState<string[]>([]);
+  const [dirtyTargets, setDirtyTargets] = useState<Record<string, number> | null>(null);
+  const [targetsTouched, setTargetsTouched] = useState(false);
 
   useEffect(() => {
     if (!open || !planQ.data) return;
@@ -198,6 +238,8 @@ export function AutoAssignSetupModal({
     else if (autoLate.length) setPublicIds(autoLate);
     else setPublicIds([]);
     setInspectorIds(planQ.data.inspectorsToday?.map((i) => i.id) ?? []);
+    setDirtyTargets(null);
+    setTargetsTouched(false);
   }, [open, planQ.data]);
 
   const workingSet = useMemo(() => new Set(workingIds), [workingIds]);
@@ -220,6 +262,55 @@ export function AutoAssignSetupModal({
 
   const onShiftCleaners = planQ.data?.onShiftCleaners ?? [];
 
+  const crewKey = useMemo(
+    () =>
+      [
+        workingIds.slice().sort().join(','),
+        lateIds.filter((id) => workingSet.has(id)).slice().sort().join(','),
+        restantIds.slice().sort().join(','),
+        publicIds.slice().sort().join(','),
+      ].join('|'),
+    [workingIds, lateIds, restantIds, publicIds, workingSet],
+  );
+
+  useEffect(() => {
+    setDirtyTargets(null);
+    setTargetsTouched(false);
+  }, [crewKey]);
+
+  const previewPayload = useMemo(
+    () => ({
+      date: date?.trim() || undefined,
+      workingTodayUserIds: workingIds,
+      restantAssigneeUserIds: restantIds,
+      lateShiftUserIds: lateIds.filter((id) => workingSet.has(id)),
+      publicAssigneeUserIds: publicIds,
+      dirtyRoomTargets:
+        targetsTouched && dirtyTargets
+          ? Object.entries(dirtyTargets).map(([userId, count]) => ({ userId, count }))
+          : undefined,
+    }),
+    [date, workingIds, restantIds, lateIds, publicIds, workingSet, targetsTouched, dirtyTargets],
+  );
+
+  const previewQ = useQuery({
+    queryKey: ['assignments', 'daily-plan', 'preview', previewPayload],
+    queryFn: () =>
+      api<AutoAssignPreviewResponse>('/assignments/daily-plan/preview', {
+        method: 'POST',
+        body: JSON.stringify(previewPayload),
+      }),
+    enabled: open && workingIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
+
+  useEffect(() => {
+    if (!previewQ.data || targetsTouched) return;
+    const next: Record<string, number> = {};
+    for (const p of previewQ.data.people) next[p.userId] = p.dirtyRoomCount;
+    setDirtyTargets(next);
+  }, [previewQ.data, targetsTouched]);
+
   const run = useMutation({
     mutationFn: () =>
       api<DailyCleaningPlanResponse>('/assignments/daily-plan/run', {
@@ -231,6 +322,10 @@ export function AutoAssignSetupModal({
           lateShiftUserIds: lateIds.filter((id) => workingSet.has(id)),
           publicAssigneeUserIds: publicIds,
           inspectorUserIds: inspectorIds,
+          dirtyRoomTargets:
+            targetsTouched && dirtyTargets
+              ? Object.entries(dirtyTargets).map(([userId, count]) => ({ userId, count }))
+              : undefined,
         }),
       }),
     onSuccess: async () => {
@@ -258,9 +353,22 @@ export function AutoAssignSetupModal({
     setWorking(workingIds.includes(id) ? workingIds.filter((x) => x !== id) : [...workingIds, id]);
   }
 
+  function adjustDirtyCount(userId: string, delta: number) {
+    if (!previewQ.data || !dirtyTargets) return;
+    const total = previewQ.data.dirtyRoomTotal;
+    const current = dirtyTargets[userId] ?? 0;
+    const nextCount = Math.max(0, Math.min(total, current + delta));
+    if (nextCount === current) return;
+    setDirtyTargets(
+      redistributeDirtyTargets(dirtyTargets, userId, nextCount, total, workingIds),
+    );
+    setTargetsTouched(true);
+  }
+
   if (!open) return null;
 
   const canRun = !run.isPending && !planQ.isLoading && workingIds.length > 0;
+  const previewPeople = previewQ.data?.people ?? [];
 
   return (
     <div
@@ -272,7 +380,7 @@ export function AutoAssignSetupModal({
         ref={panelRef}
         className={clsx(
           APP_DARK_CARD,
-          'flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-card shadow-lift sm:rounded-card',
+          'flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-card shadow-lift sm:rounded-card',
         )}
         role="dialog"
         aria-modal="true"
@@ -540,6 +648,139 @@ export function AutoAssignSetupModal({
                     tone="emerald"
                   />
                 ))}
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title={t('distribution')}
+            description={t('distributionHint')}
+            count={
+              previewQ.data
+                ? t('distributionTotal', { count: previewQ.data.dirtyRoomTotal })
+                : undefined
+            }
+            actions={
+              targetsTouched ? (
+                <QuickLink
+                  label={t('resetDistribution')}
+                  onClick={() => {
+                    setTargetsTouched(false);
+                    setDirtyTargets(null);
+                  }}
+                />
+              ) : null
+            }
+          >
+            {workingIds.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">{t('selectWhoWorksFirst')}</p>
+            ) : previewQ.isLoading && !previewQ.data ? (
+              <p className="text-sm text-sidebar-muted">{t('loadingPreview')}</p>
+            ) : previewPeople.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">{t('noDirtyForPreview')}</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-3 text-[10px] text-sidebar-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-400/90" />
+                    {t('legendCheckedOut')}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/80" />
+                    {t('legendDepartureInRoom')}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-white/25" />
+                    {t('legendOther')}
+                  </span>
+                </div>
+                {previewPeople.map((person) => {
+                  const count = dirtyTargets?.[person.userId] ?? person.dirtyRoomCount;
+                  return (
+                    <div
+                      key={person.userId}
+                      className="rounded-btn border border-white/10 bg-white/[0.03] px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-white">
+                            {person.name}
+                            {person.isLateShift ? (
+                              <span className="ml-1.5 text-[10px] font-semibold uppercase text-amber-200/80">
+                                {t('badgeLate')}
+                              </span>
+                            ) : null}
+                          </p>
+                          {(person.restantCount > 0 || person.publicCount > 0) && (
+                            <p className="text-[11px] text-sidebar-muted">
+                              {[
+                                person.restantCount > 0
+                                  ? t('previewRestant', { count: person.restantCount })
+                                  : null,
+                                person.publicCount > 0
+                                  ? t('previewPublic', { count: person.publicCount })
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-btn border border-sidebar-border text-white hover:bg-white/10 disabled:opacity-40"
+                            disabled={count <= 0}
+                            aria-label={t('fewerRooms')}
+                            onClick={() => adjustDirtyCount(person.userId, -1)}
+                          >
+                            −
+                          </button>
+                          <span className="min-w-[2rem] text-center text-sm font-semibold tabular-nums text-white">
+                            {count}
+                          </span>
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-btn border border-sidebar-border text-white hover:bg-white/10 disabled:opacity-40"
+                            disabled={
+                              !previewQ.data || count >= previewQ.data.dirtyRoomTotal
+                            }
+                            aria-label={t('moreRooms')}
+                            onClick={() => adjustDirtyCount(person.userId, 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      {person.rooms.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {person.rooms.map((room) => (
+                            <span
+                              key={room.roomId}
+                              title={
+                                room.guestCheckedOut
+                                  ? t('roomCheckedOut', { number: room.roomNumber })
+                                  : room.isDepartureToday
+                                    ? t('roomDepartureInRoom', { number: room.roomNumber })
+                                    : t('roomNumber', { number: room.roomNumber })
+                              }
+                              className={clsx(
+                                'rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
+                                room.guestCheckedOut
+                                  ? 'bg-emerald-400/25 text-emerald-100 ring-1 ring-emerald-400/40'
+                                  : room.isDepartureToday
+                                    ? 'bg-amber-400/25 text-amber-100 ring-1 ring-amber-400/40'
+                                    : 'bg-white/10 text-slate-200',
+                              )}
+                            >
+                              {room.roomNumber}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Section>

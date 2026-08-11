@@ -73,9 +73,23 @@ export class AssignmentsController {
         lateShiftUserIds: dto.lateShiftUserIds,
         publicAssigneeUserIds: dto.publicAssigneeUserIds,
         inspectorUserIds: dto.inspectorUserIds,
+        dirtyRoomTargets: dto.dirtyRoomTargets,
       },
       user,
     );
+  }
+
+  @Post('daily-plan/preview')
+  @RequirePermissions(PermissionCode.ASSIGNMENT_RUN_AUTO)
+  preview(@Body() dto: RunAutoAssignDto) {
+    return this.daily.previewAutoAssign(dto.date, {
+      workingTodayUserIds: dto.workingTodayUserIds,
+      restantAssigneeUserId: dto.restantAssigneeUserId,
+      restantAssigneeUserIds: dto.restantAssigneeUserIds,
+      lateShiftUserIds: dto.lateShiftUserIds,
+      publicAssigneeUserIds: dto.publicAssigneeUserIds,
+      dirtyRoomTargets: dto.dirtyRoomTargets,
+    });
   }
 
   @Post('daily-plan/save')

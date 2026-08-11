@@ -254,6 +254,7 @@
   },
   "damage": {
     "FURNITURE": "Mobilya",
+    "CURTAINS": "Perdeler",
     "FIXTURES": "Tesisat ve donanım",
     "WALL_OR_CEILING": "Duvar / tavan",
     "FLOOR": "Zemin",
@@ -352,7 +353,10 @@
     "priorityNormal": "Normal",
     "enablePush": "Anlık bildirimleri aç",
     "pushDenied": "Anlık bildirimler engellendi",
-    "pushBannerMessage": "Yeni talepler ve bahsetmeler için tarayıcı bildirimlerini etkinleştirin.",
+    "pushBannerMessage": "Yeni talepler ve @bahsetmeler için sesli telefon bildirimlerini açın.",
+    "pushIosInstallHint": "iPhone’da: Safari → Paylaş → Ana Ekrana Ekle, sonra uygulamayı açıp bildirimlere izin verin.",
+    "pushDeniedHint": "Bildirimler engelli. iPhone/Android ayarlarından bu uygulama için izin verin.",
+    "pushServerUnavailable": "Sunucuda push yapılandırılmamış (VAPID). IT/admin’e bildirin.",
     "enableNotifications": "Bildirimleri etkinleştir"
   },
   "reception": {

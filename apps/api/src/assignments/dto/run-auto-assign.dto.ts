@@ -1,4 +1,21 @@
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
+
+export class DirtyRoomTargetDto {
+  @IsString()
+  userId!: string;
+
+  @IsInt()
+  @Min(0)
+  count!: number;
+}
 
 export class RunAutoAssignDto {
   @IsOptional()
@@ -34,4 +51,10 @@ export class RunAutoAssignDto {
   @IsArray()
   @IsString({ each: true })
   inspectorUserIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DirtyRoomTargetDto)
+  dirtyRoomTargets?: DirtyRoomTargetDto[];
 }

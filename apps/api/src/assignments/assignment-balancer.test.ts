@@ -152,6 +152,22 @@ describe('balanceDailyCleaningAssignments', () => {
     assert.ok(rest.roomCount > full.roomCount);
   });
 
+  it('respects explicit dirty room targets', () => {
+    const rooms = ['101', '102', '103', '104', '105', '106'].map((n) => dirtyRoom(n));
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'b', isLateShift: false, roomWeight: 1 },
+    ];
+    const { summaries } = balanceDailyCleaningAssignments(rooms, cleaners, {
+      dirtyRoomTargets: new Map([
+        ['a', 4],
+        ['b', 2],
+      ]),
+    });
+    assert.equal(summaries.find((s) => s.housekeeperId === 'a')!.roomCount, 4);
+    assert.equal(summaries.find((s) => s.housekeeperId === 'b')!.roomCount, 2);
+  });
+
   it('split restant holders each get more dirty than a solo restant holder would leave others', () => {
     const rooms = Array.from({ length: 12 }, (_, i) => dirtyRoom(String(101 + i)));
     const restants = [restant('201'), restant('202'), restant('203'), restant('204')];

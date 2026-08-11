@@ -7,6 +7,7 @@ type PushPayload = {
   title: string;
   body: string;
   linkPath: string;
+  tag?: string;
 };
 
 @Injectable()
@@ -81,6 +82,11 @@ export class PushService {
         keys: { p256dh: sub.p256dh, auth: sub.auth },
       },
       body,
+      {
+        // Wake devices promptly; keep payload for a day if offline briefly.
+        TTL: 60 * 60 * 24,
+        urgency: 'high',
+      },
     );
   }
 
@@ -95,6 +101,7 @@ export class PushService {
       title: payload.title,
       body: payload.body,
       linkPath: payload.linkPath,
+      tag: payload.tag ?? `hk-${payload.linkPath || 'alert'}`,
     });
 
     const maxAttempts = 3;

@@ -16,6 +16,8 @@ import {
   type DeferredRoomDto,
   type MyDailyTaskDto,
   type PublicAreaDto,
+  type AutoAssignPreviewResponse,
+  type AutoAssignPreviewPerson,
 } from '@housekeeping/shared';
 import {
   AssignmentStatus,
@@ -340,8 +342,8 @@ export class DailyCleaningService implements OnModuleInit {
   }
 
   /**
-   * Only rooms marked Clean in PrizeBern by housekeeping (cleaningDeclaredAt
-   * newer than last passed inspection) await inspection — never EMMA status alone.
+   * Inspection queue = rooms whose board status is CLEAN (Emma CL, or local
+   * mark-clean newer than Emma). Already INSPECTED in Emma are excluded.
    */
   private async syncInspectReadyRooms(dateIso: string) {
     const rooms = await this.prisma.room.findMany({
@@ -351,7 +353,8 @@ export class DailyCleaningService implements OnModuleInit {
     });
     const readyIds: string[] = [];
     for (const room of rooms) {
-      if (this.roomStatus.isAwaitingInspection(room, room.inspections)) {
+      const emma = readEmmaMetadata(room.metadata);
+      if (this.roomStatus.isAwaitingInspection(room, room.inspections, emma)) {
         readyIds.push(room.id);
       }
     }
@@ -597,6 +600,7 @@ export class DailyCleaningService implements OnModuleInit {
       lateShiftUserIds?: string[];
       publicAssigneeUserIds?: string[];
       inspectorUserIds?: string[];
+      dirtyRoomTargets?: Array<{ userId: string; count: number }>;
     },
     assigner?: User,
   ): Promise<DailyCleaningPlanResponse> {
@@ -772,6 +776,7 @@ export class DailyCleaningService implements OnModuleInit {
     const { assignments } = balanceDailyCleaningAssignments(items, cleaners, {
       preferredRestantIds: restantIds,
       publicAssigneeIds: publicIds,
+      dirtyRoomTargets: this.toDirtyTargetMap(options.dirtyRoomTargets),
     });
     const byKey = new Map(assignments.map((a) => [a.key, a.housekeeperId]));
 
@@ -804,6 +809,142 @@ export class DailyCleaningService implements OnModuleInit {
     await this.syncRoomAssignmentsFromPlan(dateIso, assigner?.id ?? null);
 
     return this.getDailyPlan(dateIso);
+  }
+
+  /**
+   * Dry-run auto-assign for the setup dialog: returns per-person dirty room lists
+   * (with checkout flags) without writing assignments.
+   */
+  async previewAutoAssign(
+    date: string | undefined,
+    options: {
+      workingTodayUserIds?: string[];
+      restantAssigneeUserId?: string | null;
+      restantAssigneeUserIds?: string[];
+      lateShiftUserIds?: string[];
+      publicAssigneeUserIds?: string[];
+      dirtyRoomTargets?: Array<{ userId: string; count: number }>;
+    },
+  ): Promise<AutoAssignPreviewResponse> {
+    const dateIso = this.resolveDate(date);
+    await this.syncWorkItems(dateIso);
+
+    const workingIds = [...new Set((options.workingTodayUserIds ?? []).filter(Boolean))];
+    if (workingIds.length === 0) {
+      return { date: dateIso, dirtyRoomTotal: 0, people: [] };
+    }
+
+    const lateSet = new Set(options.lateShiftUserIds ?? []);
+    const restantIds = [
+      ...new Set(
+        [
+          ...(options.restantAssigneeUserIds ?? []),
+          options.restantAssigneeUserId ?? null,
+        ].filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const publicIds = options.publicAssigneeUserIds?.filter(Boolean) ?? [];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: workingIds }, isActive: true },
+      select: { id: true, name: true },
+    });
+    const nameById = new Map(users.map((u) => [u.id, u.name]));
+
+    const dirtyRooms = await this.buildDirtyRoomWork(dateIso);
+    const publics = await this.buildPublicWork(dateIso);
+
+    const items: BalanceWorkItem[] = [
+      ...dirtyRooms.map((r) => ({
+        key: `${r.workType}-${r.roomId}`,
+        kind: 'ROOM' as const,
+        workType: r.workType,
+        roomId: r.roomId,
+        roomNumber: r.roomNumber,
+        floor: r.floor,
+        pinned: false,
+        assigneeUserId: null,
+      })),
+      ...publics.map((p) => ({
+        key: `PUBLIC-${p.publicAreaId}`,
+        kind: 'PUBLIC_AREA' as const,
+        workType: 'PUBLIC' as const,
+        publicAreaId: p.publicAreaId,
+        floor: p.floor,
+        pinned: false,
+        assigneeUserId: null,
+      })),
+    ];
+
+    const cleaners: EligibleCleaner[] = workingIds.map((id) => ({
+      housekeeperId: id,
+      isLateShift: lateSet.has(id),
+      roomWeight: lateSet.has(id) ? LATE_ROOM_WEIGHT : 1,
+    }));
+
+    const { assignments } = balanceDailyCleaningAssignments(items, cleaners, {
+      preferredRestantIds: restantIds,
+      publicAssigneeIds: publicIds,
+      dirtyRoomTargets: this.toDirtyTargetMap(options.dirtyRoomTargets),
+    });
+
+    const occ = await this.occupancy.mapForRoomNumbers(dirtyRooms.map((r) => r.roomNumber));
+    const itemByKey = new Map(items.map((i) => [i.key, i]));
+
+    const peopleMap = new Map<string, AutoAssignPreviewPerson>();
+    for (const id of workingIds) {
+      peopleMap.set(id, {
+        userId: id,
+        name: nameById.get(id) ?? id,
+        isLateShift: lateSet.has(id),
+        dirtyRoomCount: 0,
+        restantCount: 0,
+        publicCount: 0,
+        rooms: [],
+      });
+    }
+
+    for (const a of assignments) {
+      const person = peopleMap.get(a.housekeeperId);
+      const item = itemByKey.get(a.key);
+      if (!person || !item) continue;
+      if (item.workType === 'DIRTY' && item.roomId && item.roomNumber) {
+        const o = occ.get(item.roomNumber);
+        person.dirtyRoomCount += 1;
+        person.rooms.push({
+          roomId: item.roomId,
+          roomNumber: item.roomNumber,
+          floor: item.floor,
+          isDepartureToday: o?.isDepartureToday ?? false,
+          guestCheckedOut: o ? Boolean(o.checkOut || o.ocoDone) : false,
+        });
+      } else if (item.workType === 'RESTANT') {
+        person.restantCount += 1;
+      } else if (item.workType === 'PUBLIC') {
+        person.publicCount += 1;
+      }
+    }
+
+    for (const p of peopleMap.values()) {
+      p.rooms.sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }));
+    }
+
+    const people = [...peopleMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const dirtyRoomTotal = dirtyRooms.filter((r) => r.workType === 'DIRTY').length;
+
+    return { date: dateIso, dirtyRoomTotal, people };
+  }
+
+  private toDirtyTargetMap(
+    targets?: Array<{ userId: string; count: number }>,
+  ): Map<string, number> | undefined {
+    if (!targets?.length) return undefined;
+    const m = new Map<string, number>();
+    for (const t of targets) {
+      if (!t?.userId) continue;
+      m.set(t.userId, Math.max(0, Math.floor(Number(t.count) || 0)));
+    }
+    return m.size ? m : undefined;
   }
 
   async save(date: string | undefined, user: User): Promise<DailyCleaningPlanResponse> {
@@ -1219,27 +1360,36 @@ export class DailyCleaningService implements OnModuleInit {
       .filter((n): n is string => Boolean(n));
     const occupancyByRoom = await this.occupancy.mapForRoomNumbers(roomNumbers);
 
-    return {
-      date: dateIso,
-      tasks: plan.tasks.map((t) => {
-        const occ = t.room?.roomNumber ? occupancyByRoom.get(t.room.roomNumber) : undefined;
-        return {
-          id: t.id,
-          kind: t.kind,
-          workType: t.workType,
-          roomId: t.roomId,
-          roomNumber: t.room?.roomNumber ?? null,
-          floor: t.room?.floor ?? t.publicArea?.floor ?? null,
-          publicAreaId: t.publicAreaId,
-          publicAreaName: t.publicArea?.name ?? null,
-          overdueDays: t.overdueDays,
-          completedAt: t.completedAt?.toISOString() ?? null,
-          isDepartureToday: occ?.isDepartureToday ?? false,
-          guestCheckedOut: occ ? Boolean(occ.checkOut || occ.ocoDone) : false,
-          guestName: occ?.mainGuestName ?? null,
-        };
-      }),
-    };
+    const tasks: MyDailyTaskDto[] = plan.tasks.map((t) => {
+      const occ = t.room?.roomNumber ? occupancyByRoom.get(t.room.roomNumber) : undefined;
+      return {
+        id: t.id,
+        kind: t.kind,
+        workType: t.workType,
+        roomId: t.roomId,
+        roomNumber: t.room?.roomNumber ?? null,
+        floor: t.room?.floor ?? t.publicArea?.floor ?? null,
+        publicAreaId: t.publicAreaId,
+        publicAreaName: t.publicArea?.name ?? null,
+        overdueDays: t.overdueDays,
+        completedAt: t.completedAt?.toISOString() ?? null,
+        isDepartureToday: occ?.isDepartureToday ?? false,
+        guestCheckedOut: occ ? Boolean(occ.checkOut || occ.ocoDone) : false,
+        guestName: occ?.mainGuestName ?? null,
+      };
+    });
+
+    tasks.sort((a, b) => {
+      const aOut = a.guestCheckedOut ? 1 : 0;
+      const bOut = b.guestCheckedOut ? 1 : 0;
+      if (aOut !== bOut) return bOut - aOut;
+      const aDep = a.isDepartureToday ? 1 : 0;
+      const bDep = b.isDepartureToday ? 1 : 0;
+      if (aDep !== bDep) return bDep - aDep;
+      return (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true });
+    });
+
+    return { date: dateIso, tasks };
   }
 
   /** Clear overdue deferral when room is no longer dirty (called optionally). */

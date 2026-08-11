@@ -254,6 +254,7 @@
   },
   "damage": {
     "FURNITURE": "Mobiliario",
+    "CURTAINS": "Cortinas",
     "FIXTURES": "Instalaciones y accesorios",
     "WALL_OR_CEILING": "Pared / techo",
     "FLOOR": "Suelo",
@@ -352,7 +353,10 @@
     "priorityNormal": "Normal",
     "enablePush": "Activar notificaciones push",
     "pushDenied": "Las notificaciones push están bloqueadas",
-    "pushBannerMessage": "Active las notificaciones del navegador para nuevas solicitudes y menciones.",
+    "pushBannerMessage": "Active notificaciones del móvil con sonido para nuevas solicitudes y @menciones.",
+    "pushIosInstallHint": "En iPhone: Safari → Compartir → Añadir a pantalla de inicio, luego abra la app y permita notificaciones.",
+    "pushDeniedHint": "Las notificaciones están bloqueadas. Permítalas en Ajustes de iPhone/Android para esta app.",
+    "pushServerUnavailable": "Push no está configurado en el servidor (VAPID). Contacte a IT/admin.",
     "enableNotifications": "Activar notificaciones"
   },
   "reception": {

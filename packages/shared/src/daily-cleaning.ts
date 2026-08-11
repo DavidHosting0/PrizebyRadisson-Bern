@@ -97,6 +97,32 @@ export type AutoAssignRunOptions = {
   publicAssigneeUserIds?: string[];
   /** Who inspects cleaned rooms today (CLEANER + supervisors; not HTC). */
   inspectorUserIds?: string[];
+  /** Optional exact dirty-room counts per user (supervisor override in preview). */
+  dirtyRoomTargets?: Array<{ userId: string; count: number }>;
+};
+
+export type AutoAssignPreviewRoom = {
+  roomId: string;
+  roomNumber: string;
+  floor: number | null;
+  isDepartureToday: boolean;
+  guestCheckedOut: boolean;
+};
+
+export type AutoAssignPreviewPerson = {
+  userId: string;
+  name: string;
+  isLateShift: boolean;
+  dirtyRoomCount: number;
+  restantCount: number;
+  publicCount: number;
+  rooms: AutoAssignPreviewRoom[];
+};
+
+export type AutoAssignPreviewResponse = {
+  date: string;
+  dirtyRoomTotal: number;
+  people: AutoAssignPreviewPerson[];
 };
 
 export type DailyInspectionTaskStatus = 'PENDING' | 'CLAIMED' | 'DONE' | 'CANCELLED';

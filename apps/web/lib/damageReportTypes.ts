@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 /** Matches API enum `RoomDamageType`. */
 export const DAMAGE_TYPE_VALUES = [
   'FURNITURE',
+  'CURTAINS',
   'FIXTURES',
   'WALL_OR_CEILING',
   'FLOOR',
