@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
 import { RoomPhotoTimelineModal } from '@/components/rooms/RoomPhotoTimelineModal';
@@ -18,13 +19,6 @@ export type LastCleaningDto = {
   at: string;
   source: 'inspection_photo' | 'housekeeper_declared' | 'cleaning_session' | 'inspection';
 } | null;
-
-const SOURCE_LABEL: Record<NonNullable<LastCleaningDto>['source'], string> = {
-  inspection_photo: 'Inspection photo',
-  housekeeper_declared: 'Marked clean by housekeeper',
-  cleaning_session: 'Cleaning session',
-  inspection: 'Passed inspection',
-};
 
 function formatWhen(iso: string) {
   try {
@@ -61,8 +55,23 @@ export function RoomDetailInsights({
   maintenanceReadOnly = true,
   tone = 'light',
 }: Props) {
+  const t = useTranslations('room.insights');
+  const tCommon = useTranslations('common');
   const [timelineOpen, setTimelineOpen] = useState(false);
   const dark = tone === 'dark';
+
+  const sourceLabel = (source: NonNullable<LastCleaningDto>['source']) => {
+    switch (source) {
+      case 'inspection_photo':
+        return t('sourceInspectionPhoto');
+      case 'housekeeper_declared':
+        return t('sourceHousekeeperDeclared');
+      case 'cleaning_session':
+        return t('sourceCleaningSession');
+      case 'inspection':
+        return t('sourceInspection');
+    }
+  };
 
   return (
     <>
@@ -74,7 +83,7 @@ export function RoomDetailInsights({
               : 'text-xs font-semibold uppercase tracking-wider text-ink-muted'
           }
         >
-          Last cleaning
+          {t('lastCleaning')}
         </h3>
         {lastCleaning ? (
           <div
@@ -89,12 +98,12 @@ export function RoomDetailInsights({
             </p>
             <p className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>{formatWhen(lastCleaning.at)}</p>
             <p className={dark ? 'mt-1 text-xs text-sidebar-muted' : 'mt-1 text-xs text-ink-muted'}>
-              {SOURCE_LABEL[lastCleaning.source]}
+              {sourceLabel(lastCleaning.source)}
             </p>
           </div>
         ) : (
           <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>
-            No cleaning or inspection activity on record yet.
+            {t('noCleaningActivity')}
           </p>
         )}
       </section>
@@ -107,7 +116,7 @@ export function RoomDetailInsights({
               : 'text-xs font-semibold uppercase tracking-wider text-ink-muted'
           }
         >
-          Latest inspection photo
+          {t('latestInspectionPhoto')}
         </h3>
         {lastCleaningPhoto?.url ? (
           <button
@@ -120,7 +129,11 @@ export function RoomDetailInsights({
             onClick={() => setTimelineOpen(true)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lastCleaningPhoto.url} alt={`Room ${roomNumber} inspection`} className="aspect-video w-full object-cover" />
+            <img
+              src={lastCleaningPhoto.url}
+              alt={t('inspectionPhotoAlt', { roomNumber })}
+              className="aspect-video w-full object-cover"
+            />
             <p className={dark ? 'px-2 py-1.5 text-xs text-sidebar-muted' : 'px-2 py-1.5 text-xs text-ink-muted'}>
               {formatUserWithTitlePrefix(
                 lastCleaningPhoto.uploadedBy.name,
@@ -131,10 +144,10 @@ export function RoomDetailInsights({
           </button>
         ) : lastCleaningPhoto && !lastCleaningPhoto.url ? (
           <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>
-            Photo is stored but could not be loaded (check S3 configuration).
+            {t('photoStoredNotLoaded')}
           </p>
         ) : (
-          <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>No inspection photos yet.</p>
+          <p className={dark ? 'text-sm text-sidebar-muted' : 'text-sm text-ink-muted'}>{t('noInspectionPhotos')}</p>
         )}
         <Button
           type="button"
@@ -146,7 +159,7 @@ export function RoomDetailInsights({
           }
           onClick={() => setTimelineOpen(true)}
         >
-          Photo timeline
+          {t('photoTimeline')}
         </Button>
       </section>
 
@@ -158,7 +171,7 @@ export function RoomDetailInsights({
               : 'text-xs font-semibold uppercase tracking-wider text-ink-muted'
           }
         >
-          Maintenance &amp; housekeeping notes
+          {t('maintenanceNotes')}
         </h3>
         <div
           className={
@@ -168,26 +181,26 @@ export function RoomDetailInsights({
           }
         >
           <p>
-            <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>Out of order: </span>
+            <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>{t('outOfOrderLabel')} </span>
             <span className={dark ? 'font-medium text-white' : 'font-medium text-ink'}>
-              {outOfOrder ? 'Yes' : 'No'}
+              {outOfOrder ? tCommon('yes') : tCommon('no')}
             </span>
           </p>
           {(oooReason || outOfOrder) && (
             <p className={dark ? 'mt-2 text-white' : 'mt-2 text-ink'}>
-              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>Reason: </span>
+              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>{t('reasonLabel')} </span>
               {oooReason || '—'}
             </p>
           )}
           {oooUntil && (
             <p className={dark ? 'mt-1 text-white' : 'mt-1 text-ink'}>
-              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>OOO until: </span>
+              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>{t('oooUntilLabel')} </span>
               {formatWhen(oooUntil)}
             </p>
           )}
           {!maintenanceReadOnly && (
             <p className={dark ? 'mt-2 text-xs text-sidebar-muted' : 'mt-2 text-xs text-ink-muted'}>
-              Use the maintenance fields below to update reason and expected return.
+              {t('maintenanceEditHint')}
             </p>
           )}
         </div>

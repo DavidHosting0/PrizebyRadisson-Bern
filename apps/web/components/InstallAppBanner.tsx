@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/lib/auth-context';
 
 const DISMISS_KEY = 'hk_install_dismissed';
@@ -26,6 +27,8 @@ function isStandalone(): boolean {
 
 export function InstallAppBanner() {
   const { user, loading } = useAuth();
+  const t = useTranslations('installApp');
+  const tCommon = useTranslations('common');
   const [visible, setVisible] = useState(false);
   const [ios, setIos] = useState(false);
   const [installEvt, setInstallEvt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -80,29 +83,24 @@ export function InstallAppBanner() {
         'rounded-xl border border-border bg-surface px-4 py-3 shadow-lift',
       )}
       role="region"
-      aria-label="App installieren"
+      aria-label={t('title')}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-ink">App installieren</p>
+          <p className="text-sm font-semibold text-ink">{t('title')}</p>
           {ios ? (
-            <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-              In Safari: <span className="font-medium text-ink">Teilen</span> →{' '}
-              <span className="font-medium text-ink">Zum Home-Bildschirm</span>
-            </p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-muted">{t('iosHint')}</p>
           ) : installEvt ? (
-            <p className="mt-1 text-xs text-ink-muted">Zum Startbildschirm hinzufügen für Vollbild-Modus.</p>
+            <p className="mt-1 text-xs text-ink-muted">{t('androidPrompt')}</p>
           ) : (
-            <p className="mt-1 text-xs text-ink-muted">
-              Chrome-Menü (⋮) → <span className="font-medium text-ink">App installieren</span>
-            </p>
+            <p className="mt-1 text-xs text-ink-muted">{t('chromeHint')}</p>
           )}
         </div>
         <button
           type="button"
           onClick={dismiss}
           className="shrink-0 rounded-md px-2 py-1 text-xs text-ink-muted hover:bg-surface-muted hover:text-ink"
-          aria-label="Schliessen"
+          aria-label={tCommon('close')}
         >
           ✕
         </button>
@@ -114,7 +112,7 @@ export function InstallAppBanner() {
           disabled={installing}
           className="mt-3 w-full rounded-lg bg-ink py-2.5 text-sm font-medium text-white disabled:opacity-50"
         >
-          {installing ? '…' : 'Jetzt installieren'}
+          {installing ? t('installing') : t('installNow')}
         </button>
       )}
     </div>

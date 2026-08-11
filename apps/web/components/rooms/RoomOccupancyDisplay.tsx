@@ -1,4 +1,7 @@
+'use client';
+
 import type { GuestStaySignals, RoomOccupancy } from '@housekeeping/shared';
+import { useTranslations } from 'next-intl';
 import { GuestStayTypeIcons } from '@/components/reception/GuestStayTypeIcons';
 
 function toStaySignals(occupancy: RoomOccupancy): GuestStaySignals {
@@ -12,17 +15,19 @@ function toStaySignals(occupancy: RoomOccupancy): GuestStaySignals {
   };
 }
 
-function occupancyHint(occupancy: RoomOccupancy): string | null {
+type OccupancyTranslator = ReturnType<typeof useTranslations<'occupancy'>>;
+
+function occupancyHint(occupancy: RoomOccupancy, t: OccupancyTranslator): string | null {
   const guest = occupancy.mainGuestName?.trim();
   if (occupancy.isDepartureToday) {
     const checkedOut = occupancy.checkOut || occupancy.ocoDone;
-    const status = checkedOut ? 'Ausgecheckt' : 'Gast noch im Zimmer';
-    return guest ? `${guest} · ${status}` : `Abreise heute · ${status}`;
+    const status = checkedOut ? t('checkedOut') : t('guestStillInRoom');
+    return guest ? t('guestWithStatus', { guest, status }) : t('departureTodayWithStatus', { status });
   }
   if (guest) return guest;
-  if (occupancy.isArrivalToday) return 'Heute eingecheckt';
-  if (occupancy.isRestant) return 'Restant';
-  return 'Belegt';
+  if (occupancy.isArrivalToday) return t('checkedInToday');
+  if (occupancy.isRestant) return t('restant');
+  return t('occupied');
 }
 
 export function RoomOccupancyBadges({
@@ -47,8 +52,9 @@ export function RoomOccupancyGuestLine({
   compact?: boolean;
   onColor?: boolean;
 }) {
+  const t = useTranslations('occupancy');
   if (!occupancy) return null;
-  const text = occupancyHint(occupancy);
+  const text = occupancyHint(occupancy, t);
   if (!text) return null;
   return (
     <p
@@ -67,6 +73,7 @@ export function RoomOccupancySection({
   occupancy: RoomOccupancy | null | undefined;
   tone?: 'light' | 'dark';
 }) {
+  const t = useTranslations('occupancy');
   const dark = tone === 'dark';
 
   if (!occupancy) {
@@ -85,14 +92,17 @@ export function RoomOccupancySection({
               : 'text-xs font-bold uppercase tracking-wider text-ink-muted'
           }
         >
-          Gast / Belegung
+          {t('sectionTitle')}
         </h3>
         <p className={dark ? 'mt-2 text-sm text-sidebar-muted' : 'mt-2 text-sm text-ink-muted'}>
-          Kein aktiver Gast in diesem Zimmer.
+          {t('noActiveGuest')}
         </p>
       </section>
     );
   }
+
+  const departureStatus =
+    occupancy.checkOut || occupancy.ocoDone ? t('checkedOut') : t('guestStillInRoom');
 
   return (
     <section
@@ -109,7 +119,7 @@ export function RoomOccupancySection({
             : 'text-xs font-bold uppercase tracking-wider text-ink-muted'
         }
       >
-        Gast / Belegung
+        {t('sectionTitle')}
       </h3>
       <dl className="mt-3 space-y-2 text-sm">
         <div>
@@ -120,7 +130,7 @@ export function RoomOccupancySection({
                 : 'text-xs font-semibold uppercase tracking-wide text-ink-muted'
             }
           >
-            Gast
+            {t('guest')}
           </dt>
           <dd className={dark ? 'mt-0.5 font-medium text-white' : 'mt-0.5 font-medium text-ink'}>
             {occupancy.mainGuestName?.trim() || '—'}
@@ -134,7 +144,7 @@ export function RoomOccupancySection({
                 : 'text-xs font-semibold uppercase tracking-wide text-ink-muted'
             }
           >
-            Abreise
+            {t('departure')}
           </dt>
           <dd className={dark ? 'mt-0.5 text-white' : 'mt-0.5 text-ink'}>
             {occupancy.departureDate}
@@ -149,7 +159,7 @@ export function RoomOccupancySection({
                 : 'text-xs font-semibold uppercase tracking-wide text-ink-muted'
             }
           >
-            Status
+            {t('status')}
           </dt>
           <dd className="mt-1 flex flex-wrap items-center gap-2">
             <RoomOccupancyBadges occupancy={occupancy} />
@@ -165,15 +175,13 @@ export function RoomOccupancySection({
                       : 'text-sm font-medium text-amber-800'
                 }
               >
-                {occupancy.checkOut || occupancy.ocoDone
-                  ? 'Ausgecheckt'
-                  : 'Gast noch im Zimmer'}
+                {departureStatus}
               </span>
             )}
             {!occupancy.isDepartureToday &&
               !occupancy.isRestant &&
               !occupancy.isArrivalToday && (
-              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>Im Haus</span>
+              <span className={dark ? 'text-sidebar-muted' : 'text-ink-muted'}>{t('inHouse')}</span>
             )}
           </dd>
         </div>

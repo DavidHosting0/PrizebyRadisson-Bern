@@ -1,12 +1,21 @@
-/** Human-readable room board status for UI and toasts. */
-export const ROOM_STATUS_LABEL: Record<string, string> = {
-  OUT_OF_ORDER: 'Außer Betrieb',
-  DIRTY: 'Schmutzig',
-  IN_PROGRESS: 'In Bearbeitung',
-  CLEAN: 'Sauber',
-  INSPECTED: 'Inspeziert',
-};
+'use client';
 
-export function formatRoomStatusLabel(status: string): string {
-  return ROOM_STATUS_LABEL[status] ?? status.replace(/_/g, ' ');
+import { useTranslations } from 'next-intl';
+import { roomStatusLabel } from '@/components/StatusBadge';
+
+/** Human-readable room board status for UI and toasts. */
+export function useRoomStatusLabel() {
+  const t = useTranslations();
+  return (status: string) =>
+    roomStatusLabel(status, (key) => t(key as 'room.status.DIRTY'));
+}
+
+export function formatRoomStatusLabel(
+  status: string,
+  t?: (key: string) => string,
+): string {
+  if (t) {
+    return roomStatusLabel(status, t);
+  }
+  return status.replace(/_/g, ' ');
 }

@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { useTranslations } from 'next-intl';
 
 type Assignee = DailyCleaningPlanResponse['manualAssignees'][number];
 
@@ -151,6 +152,8 @@ export function AutoAssignSetupModal({
   onRan?: () => void;
 }) {
   const qc = useQueryClient();
+  const t = useTranslations('supervisor.autoAssignModal');
+  const tCommon = useTranslations('common');
   const dateParam = date?.trim() ? `?date=${encodeURIComponent(date.trim())}` : '';
 
   const planQ = useQuery({
@@ -279,16 +282,16 @@ export function AutoAssignSetupModal({
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-sidebar-border/60 px-5 py-4">
           <div className="min-w-0">
             <h2 id="auto-assign-setup-title" className="text-lg font-semibold tracking-tight text-white">
-              Auto room assignment
+              {t('title')}
             </h2>
             <p className="mt-1 text-sm text-sidebar-muted">
-              Set today’s crew, then run to distribute dirty rooms on the board.
+              {t('subtitle')}
             </p>
           </div>
           <button
             type="button"
             className="rounded-full p-2 text-sidebar-muted transition hover:bg-white/10 hover:text-white"
-            aria-label="Close"
+            aria-label={tCommon('close')}
             onClick={onClose}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -303,14 +306,14 @@ export function AutoAssignSetupModal({
         </div>
 
         <div className="sidebar-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-          {planQ.isLoading && <p className="text-sm text-sidebar-muted">Loading staff…</p>}
+          {planQ.isLoading && <p className="text-sm text-sidebar-muted">{t('loadingStaff')}</p>}
 
           {workPreview && (
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: 'Dirty rooms', value: workPreview.dirtyRoomCount },
-                { label: 'Restants', value: workPreview.restantCount },
-                { label: 'Public', value: workPreview.publicCount },
+                { label: t('dirtyRooms'), value: workPreview.dirtyRoomCount },
+                { label: t('restants'), value: workPreview.restantCount },
+                { label: t('public'), value: workPreview.publicCount },
               ].map((stat) => (
                 <div
                   key={stat.label}
@@ -335,23 +338,23 @@ export function AutoAssignSetupModal({
           ))}
 
           <Section
-            title="Who works today"
-            description="Cleaners and HSK supervisors. Shift-plan staff are pre-selected."
-            count={`${workingIds.length} selected`}
+            title={t('whoWorksToday')}
+            description={t('whoWorksTodayHint')}
+            count={t('selectedCount', { count: workingIds.length })}
             actions={
               <>
                 <QuickLink
-                  label="On shift"
+                  label={t('onShift')}
                   disabled={onShiftCleaners.length === 0}
                   onClick={() => setWorking(onShiftCleaners.map((c) => c.id))}
                 />
                 <QuickLink
-                  label="All"
+                  label={tCommon('all')}
                   disabled={allCleaners.length === 0}
                   onClick={() => setWorking(allCleaners.map((c) => c.id))}
                 />
                 <QuickLink
-                  label="Clear"
+                  label={t('clear')}
                   disabled={workingIds.length === 0}
                   onClick={() => setWorking([])}
                 />
@@ -359,15 +362,15 @@ export function AutoAssignSetupModal({
             }
           >
             {allCleaners.length === 0 ? (
-              <p className="text-sm text-sidebar-muted">No active cleaners or supervisors found.</p>
+              <p className="text-sm text-sidebar-muted">{t('noCleanersFound')}</p>
             ) : (
               <div className="grid max-h-56 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
                 {allCleaners.map((c) => {
                   const isSupervisor =
                     c.role === 'SUPERVISOR' || c.titlePrefix === 'HOUSEKEEPING_SUPERVISOR';
                   const badges = [
-                    ...(onShiftIds.has(c.id) ? ['shift'] : []),
-                    ...(isSupervisor ? ['supervisor'] : []),
+                    ...(onShiftIds.has(c.id) ? [t('badgeShift')] : []),
+                    ...(isSupervisor ? [t('badgeSupervisor')] : []),
                   ];
                   return (
                     <PersonPickRow
@@ -384,18 +387,18 @@ export function AutoAssignSetupModal({
           </Section>
 
           <Section
-            title="Restant cleaning"
-            description="Restants are split across selected staff. They also get more dirty rooms, scaled by their restant share. Leave empty to auto-pick."
-            count={restantIds.length ? `${restantIds.length} selected` : 'Auto'}
+            title={t('restantCleaning')}
+            description={t('restantCleaningHint')}
+            count={restantIds.length ? t('selectedCount', { count: restantIds.length }) : t('auto')}
             actions={
               restantOptions.length > 0 ? (
                 <>
                   <QuickLink
-                    label="All"
+                    label={tCommon('all')}
                     onClick={() => setRestantIds(restantOptions.map((a) => a.id))}
                   />
                   <QuickLink
-                    label="Clear"
+                    label={t('clear')}
                     disabled={restantIds.length === 0}
                     onClick={() => setRestantIds([])}
                   />
@@ -404,7 +407,7 @@ export function AutoAssignSetupModal({
             }
           >
             {restantOptions.length === 0 ? (
-              <p className="text-sm text-sidebar-muted">No assignees available.</p>
+              <p className="text-sm text-sidebar-muted">{t('noAssignees')}</p>
             ) : (
               <div className="grid max-h-48 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
                 {restantOptions.map((a) => (
@@ -415,7 +418,7 @@ export function AutoAssignSetupModal({
                     onToggle={() => toggleId(restantIds, a.id, setRestantIds)}
                     badges={
                       a.role === 'SUPERVISOR' || a.titlePrefix === 'HOUSEKEEPING_SUPERVISOR'
-                        ? ['supervisor']
+                        ? [t('badgeSupervisor')]
                         : undefined
                     }
                   />
@@ -425,18 +428,18 @@ export function AutoAssignSetupModal({
           </Section>
 
           <Section
-            title="Late shift (11–20)"
-            description="Late-shift cleaners get fewer rooms."
-            count={`${lateIds.filter((id) => workingSet.has(id)).length} selected`}
+            title={t('lateShift')}
+            description={t('lateShiftHint')}
+            count={t('selectedCount', { count: lateIds.filter((id) => workingSet.has(id)).length })}
             actions={
               lateOptions.length > 0 ? (
                 <>
                   <QuickLink
-                    label="All working"
+                    label={t('allWorking')}
                     onClick={() => setLateIds(lateOptions.map((c) => c.id))}
                   />
                   <QuickLink
-                    label="Clear"
+                    label={t('clear')}
                     disabled={lateIds.length === 0}
                     onClick={() => setLateIds([])}
                   />
@@ -445,7 +448,7 @@ export function AutoAssignSetupModal({
             }
           >
             {lateOptions.length === 0 ? (
-              <p className="text-sm text-sidebar-muted">Select who works today first.</p>
+              <p className="text-sm text-sidebar-muted">{t('selectWhoWorksFirst')}</p>
             ) : (
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {lateOptions.map((c) => (
@@ -462,20 +465,20 @@ export function AutoAssignSetupModal({
           </Section>
 
           <Section
-            title="Public cleaning"
-            description="Assign public-area tasks for today."
-            count={`${publicIds.length} selected`}
+            title={t('publicCleaning')}
+            description={t('publicCleaningHint')}
+            count={t('selectedCount', { count: publicIds.length })}
             actions={
               restantOptions.length > 0 ? (
                 <>
                   {lateIds.length > 0 ? (
                     <QuickLink
-                      label="Use late shift"
+                      label={t('useLateShift')}
                       onClick={() => setPublicIds(lateIds.filter((id) => workingSet.has(id)))}
                     />
                   ) : null}
                   <QuickLink
-                    label="Clear"
+                    label={t('clear')}
                     disabled={publicIds.length === 0}
                     onClick={() => setPublicIds([])}
                   />
@@ -484,7 +487,7 @@ export function AutoAssignSetupModal({
             }
           >
             {restantOptions.length === 0 ? (
-              <p className="text-sm text-sidebar-muted">No assignees available.</p>
+              <p className="text-sm text-sidebar-muted">{t('noAssignees')}</p>
             ) : (
               <div className="grid max-h-48 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
                 {restantOptions.map((a) => (
@@ -495,7 +498,7 @@ export function AutoAssignSetupModal({
                     onToggle={() => toggleId(publicIds, a.id, setPublicIds)}
                     badges={
                       a.role === 'SUPERVISOR' || a.titlePrefix === 'HOUSEKEEPING_SUPERVISOR'
-                        ? ['supervisor']
+                        ? [t('badgeSupervisor')]
                         : undefined
                     }
                   />
@@ -505,18 +508,18 @@ export function AutoAssignSetupModal({
           </Section>
 
           <Section
-            title="Who inspects today"
-            description="Cleaners and housekeeping supervisors only (not HTC). They share the inspection queue."
-            count={`${inspectorIds.length} selected`}
+            title={t('whoInspectsToday')}
+            description={t('whoInspectsTodayHint')}
+            count={t('selectedCount', { count: inspectorIds.length })}
             actions={
               inspectorCandidates.length > 0 ? (
                 <>
                   <QuickLink
-                    label="All"
+                    label={tCommon('all')}
                     onClick={() => setInspectorIds(inspectorCandidates.map((c) => c.id))}
                   />
                   <QuickLink
-                    label="Clear"
+                    label={t('clear')}
                     disabled={inspectorIds.length === 0}
                     onClick={() => setInspectorIds([])}
                   />
@@ -525,7 +528,7 @@ export function AutoAssignSetupModal({
             }
           >
             {inspectorCandidates.length === 0 ? (
-              <p className="text-sm text-sidebar-muted">No eligible inspectors.</p>
+              <p className="text-sm text-sidebar-muted">{t('noEligibleInspectors')}</p>
             ) : (
               <div className="grid max-h-48 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
                 {inspectorCandidates.map((c) => (
@@ -549,23 +552,23 @@ export function AutoAssignSetupModal({
             disabled={!canRun}
             onClick={() => run.mutate()}
           >
-            {run.isPending ? 'Assigning…' : 'Run auto assignment'}
+            {run.isPending ? t('assigning') : t('runAutoAssignment')}
           </Button>
           <Button
             variant="secondary"
             className="min-h-[44px] border-sidebar-border bg-transparent text-white hover:bg-white/10"
             onClick={onClose}
           >
-            Cancel
+            {tCommon('cancel')}
           </Button>
           {workingIds.length === 0 && !planQ.isLoading ? (
             <p className="w-full text-xs text-sidebar-muted sm:w-auto">
-              Select at least one cleaner to run.
+              {t('selectCleanerHint')}
             </p>
           ) : null}
           {run.isError && (
             <p className="w-full text-sm text-rose-400">
-              {(run.error as Error)?.message || 'Could not run auto assignment.'}
+              {(run.error as Error)?.message || t('runError')}
             </p>
           )}
         </div>

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 
 type ToastItem = {
   id: string;
@@ -33,6 +34,7 @@ export function useToast() {
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const tToast = useTranslations('toast');
   const [items, setItems] = useState<ToastItem[]>([]);
   const baseId = useId();
 
@@ -75,7 +77,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => dismiss(t.id)}
               className="shrink-0 rounded p-0.5 text-ink/50 transition hover:bg-black/5 hover:text-ink"
-              aria-label="Dismiss"
+              aria-label={tToast('dismiss')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />

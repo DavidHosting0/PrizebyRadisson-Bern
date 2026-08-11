@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { formatUserRef } from '@/lib/userTitlePrefix';
+import { serviceRequestStatusLabel } from '@/lib/service-request-status-label';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
@@ -24,6 +25,8 @@ type Req = {
 
 export default function ReceptionRequestsPage() {
   const tNav = useTranslations('nav');
+  const t = useTranslations('reception.requestsPage');
+  const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const { openNewRequest } = useReceptionUi();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
@@ -54,13 +57,13 @@ export default function ReceptionRequestsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title={tNav('serviceRequests')}
-        description="Create, track, and manage guest requests"
+        description={t('description')}
         actions={
           <>
             <AppChromeTools onEnterMobile={enterMobile} />
             {canCreateRequest && (
               <Button type="button" variant="action" className="min-h-[40px]" onClick={openNewRequest}>
-                + New request
+                {tCommon('newRequest')}
               </Button>
             )}
           </>
@@ -69,31 +72,31 @@ export default function ReceptionRequestsPage() {
 
       <AppPageBody>
         <div className="space-y-6 p-4 md:p-6">
-          {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+          {isLoading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
 
           <div className={APP_DARK_CARD + ' overflow-x-auto'}>
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead className="border-b border-sidebar-border/60 bg-white/5 text-xs uppercase tracking-wide text-sidebar-muted">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Room</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 font-semibold">Priority</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Assigned</th>
-                  <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                  <th className="px-4 py-3 font-semibold">{t('colRoom')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colType')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colPriority')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colStatus')}</th>
+                  <th className="px-4 py-3 font-semibold">{t('colAssigned')}</th>
+                  <th className="px-4 py-3 font-semibold text-right">{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {active.map((r) => (
                   <tr key={r.id} className="border-b border-sidebar-border/40 hover:bg-white/5">
-                    <td className="px-4 py-3 font-semibold text-white">Room {r.room.roomNumber}</td>
+                    <td className="px-4 py-3 font-semibold text-white">
+                      {t('roomNumber', { roomNumber: r.room.roomNumber })}
+                    </td>
                     <td className="px-4 py-3 text-sidebar-muted">{r.type.label}</td>
                     <td className="px-4 py-3">
                       <PriorityBadge priority={r.priority} />
                     </td>
-                    <td className="px-4 py-3 capitalize text-sidebar-muted">
-                      {r.status.replace(/_/g, ' ').toLowerCase()}
-                    </td>
+                    <td className="px-4 py-3 text-sidebar-muted">{serviceRequestStatusLabel(r.status, t)}</td>
                     <td className="px-4 py-3 text-sidebar-muted">
                       {r.claimedBy ? formatUserRef(r.claimedBy) : '—'}
                     </td>
@@ -107,7 +110,7 @@ export default function ReceptionRequestsPage() {
                             disabled={escalate.isPending}
                             onClick={() => escalate.mutate(r.id)}
                           >
-                            Escalate
+                            {t('escalate')}
                           </Button>
                         )}
                         <Button
@@ -117,7 +120,7 @@ export default function ReceptionRequestsPage() {
                           disabled={cancel.isPending}
                           onClick={() => cancel.mutate(r.id)}
                         >
-                          Cancel
+                          {t('cancel')}
                         </Button>
                       </div>
                     </td>
@@ -128,7 +131,7 @@ export default function ReceptionRequestsPage() {
           </div>
 
           {active.length === 0 && !isLoading && (
-            <p className="text-sm text-sidebar-muted">No active requests.</p>
+            <p className="text-sm text-sidebar-muted">{t('empty')}</p>
           )}
         </div>
       </AppPageBody>

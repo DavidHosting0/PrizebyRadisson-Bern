@@ -12,6 +12,7 @@ import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 export default function ReceptionFloorPlanPage() {
   const tNav = useTranslations('nav');
+  const t = useTranslations('reception.floorPlanPage');
   const { openRoom } = useReceptionUi();
   const { enterMobile } = useReceptionMobileMode();
 
@@ -24,7 +25,7 @@ export default function ReceptionFloorPlanPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title={tNav('floorPlan')}
-        description="Visual map of rooms by floor. Click a room to change Dirty / Clean / Inspected, or view assignments and photos."
+        description={t('description')}
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
       />
 

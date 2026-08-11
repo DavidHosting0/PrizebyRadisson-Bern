@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import type { FloorPlanRoom } from '@/components/rooms/RoomFloorPlan';
 import { RoomFloorPlan } from '@/components/rooms/RoomFloorPlan';
@@ -11,6 +12,7 @@ import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 
 export default function SupervisorFloorPlanPage() {
+  const tNav = useTranslations('nav');
   const { enterMobile } = useSupervisorMobileMode();
   const [panelRoomId, setPanelRoomId] = useState<string | null>(null);
 
@@ -22,8 +24,8 @@ export default function SupervisorFloorPlanPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Floor plan"
-        description="Room locations by floor. Click a room to set Dirty / Clean / Inspected, inspect, or update maintenance."
+        title={tNav('floorPlan')}
+        description={tNav('floorPlanDescriptionSupervisor')}
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
       />
 

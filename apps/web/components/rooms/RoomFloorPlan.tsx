@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   compareRoomNumbers,
   floorFromRoomNumber,
@@ -10,7 +11,7 @@ import {
 } from '@housekeeping/shared';
 import type { RoomOccupancy } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import { StatusBadge } from '@/components/StatusBadge';
+import { StatusBadge, roomStatusLabel } from '@/components/StatusBadge';
 import { FloorPlanCanvasFrame, floorTabClass } from '@/components/rooms/FloorPlanChrome';
 import { RoomOccupancyBadges, RoomOccupancyGuestLine } from '@/components/rooms/RoomOccupancyDisplay';
 import {
@@ -46,6 +47,20 @@ type SavedLayoutElement = {
   roomNumber?: string;
 };
 
+type FloorPlanLabels = {
+  formatStatus: (status: string) => string;
+  titleRoomComplaints: (roomNumber: string, count: number) => string;
+  titleRoomGuest: (roomNumber: string, guest: string, status: string) => string;
+  titleRoomOccupied: (roomNumber: string, status: string) => string;
+  titleRoomStatus: (roomNumber: string, status: string) => string;
+  corridor: (floor: number, ordinal: number) => string;
+  departureShort: string;
+  occupied: string;
+  elevator: string;
+  glass: string;
+  staff: string;
+};
+
 function planFloor(r: FloorPlanRoom): number | null {
   return r.floor ?? floorFromRoomNumber(r.roomNumber);
 }
@@ -60,6 +75,7 @@ function roomSuffix(roomNumber: string, floor: number): number | null {
 function roomButton(
   room: FloorPlanRoom,
   onRoomClick: (roomId: string) => void,
+  labels: FloorPlanLabels,
   complaintCount?: number,
 ) {
   const heat = complaintCount != null;
@@ -77,7 +93,9 @@ function roomButton(
           : roomTileClass(room.derivedStatus)
       }
       onClick={() => onRoomClick(room.id)}
-      title={heat ? `Zimmer ${room.roomNumber} · ${count} Beschwerde(n)` : undefined}
+      title={
+        heat ? labels.titleRoomComplaints(room.roomNumber, count) : undefined
+      }
     >
       <span className="flex items-center justify-center gap-1 text-sm font-semibold tabular-nums">
         <span>{room.roomNumber}</span>
@@ -100,19 +118,20 @@ function roomButton(
 function roomPlanButton(
   room: FloorPlanRoom,
   onRoomClick: (roomId: string) => void,
+  labels: FloorPlanLabels,
   complaintCount?: number,
 ) {
   const heat = complaintCount != null;
   const count = complaintCount ?? 0;
   const guest = room.occupancy?.mainGuestName?.trim();
-  const statusLabel = room.derivedStatus.replace(/_/g, ' ');
+  const statusLabel = labels.formatStatus(room.derivedStatus);
   const title = heat
-    ? `Zimmer ${room.roomNumber} · ${count} Beschwerde(n)`
+    ? labels.titleRoomComplaints(room.roomNumber, count)
     : guest
-      ? `Room ${room.roomNumber} · ${guest} · ${statusLabel}`
+      ? labels.titleRoomGuest(room.roomNumber, guest, statusLabel)
       : room.occupancy
-        ? `Room ${room.roomNumber} · belegt · ${statusLabel}`
-        : `Room ${room.roomNumber} · ${statusLabel}`;
+        ? labels.titleRoomOccupied(room.roomNumber, statusLabel)
+        : labels.titleRoomStatus(room.roomNumber, statusLabel);
   return (
     <button
       key={room.id}
@@ -141,17 +160,13 @@ function roomPlanButton(
           </span>
           {room.occupancy && (
             <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
-              {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
+              {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? labels.departureShort : labels.occupied}
             </span>
           )}
         </>
       )}
     </button>
   );
-}
-
-function corridorLabel(floor: number, ordinal: number): string {
-  return `Corridor ${floor}.${ordinal}`;
 }
 
 const corridorZoneClass =
@@ -193,6 +208,28 @@ function floorOneToSixPosition(suffix: number): Rect | null {
 }
 
 export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Props) {
+  const t = useTranslations('floorPlan');
+  const tOccupancy = useTranslations('occupancy');
+  const tRoom = useTranslations('room.status');
+
+  const labels: FloorPlanLabels = useMemo(
+    () => ({
+      formatStatus: (status: string) =>
+        roomStatusLabel(status, (key) => tRoom(key.replace('room.status.', '') as 'DIRTY')),
+      titleRoomComplaints: (roomNumber, count) => t('titleRoomComplaints', { roomNumber, count }),
+      titleRoomGuest: (roomNumber, guest, status) => t('titleRoomGuest', { roomNumber, guest, status }),
+      titleRoomOccupied: (roomNumber, status) => t('titleRoomOccupied', { roomNumber, status }),
+      titleRoomStatus: (roomNumber, status) => t('titleRoomStatus', { roomNumber, status }),
+      corridor: (floor, ordinal) => t('corridor', { floor, ordinal }),
+      departureShort: tOccupancy('departureShort'),
+      occupied: tOccupancy('occupied'),
+      elevator: t('elevator'),
+      glass: t('glass'),
+      staff: t('staff'),
+    }),
+    [t, tOccupancy, tRoom],
+  );
+
   const heatMode = complaintCountByRoomId != null;
   const countFor = (roomId: string) =>
     heatMode ? (complaintCountByRoomId[roomId] ?? 0) : undefined;
@@ -309,7 +346,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
   return (
     <div className="space-y-6">
       <nav
-        aria-label="Floor"
+        aria-label={t('floor')}
         className="flex w-full max-w-full overflow-x-auto rounded-xl border border-sidebar-border/60 bg-sidebar p-1 shadow-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="flex min-w-min flex-1 flex-wrap gap-1 sm:flex-nowrap">
@@ -318,7 +355,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
             onClick={() => setActiveFloor('all')}
             className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(activeFloor === 'all')}`}
           >
-            All floors
+            {t('allFloors')}
           </button>
           {floors.map((f) => (
             <button
@@ -336,7 +373,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
               onClick={() => setActiveFloor('unplaced')}
               className={`min-h-[40px] shrink-0 rounded-lg px-3.5 text-sm font-medium transition-colors sm:px-4 ${floorTabClass(activeFloor === 'unplaced')}`}
             >
-              Unplaced ({unplaced.length})
+              {t('unplaced', { count: unplaced.length })}
             </button>
           )}
         </div>
@@ -345,7 +382,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-sidebar-border/60 bg-white/5 px-4 py-2.5 text-[11px] shadow-none">
         {heatMode ? (
           <>
-            <span className="font-semibold text-white">Beschwerden</span>
+            <span className="font-semibold text-white">{t('complaints')}</span>
             <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-slate-300 bg-gradient-to-b from-slate-100 to-slate-200 shadow-sm" />
               0
@@ -369,41 +406,38 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
           </>
         ) : (
           <>
-            <span className="font-semibold text-white">Room status</span>
+            <span className="font-semibold text-white">{t('roomStatus')}</span>
             <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-red-900/35 bg-gradient-to-b from-red-600 to-red-700 shadow-sm" />
-              Dirty
+              {tRoom('DIRTY')}
             </span>
             <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-orange-900/35 bg-gradient-to-b from-orange-500 to-orange-600 shadow-sm" />
-              Clean
+              {tRoom('CLEAN')}
             </span>
             <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-emerald-900/35 bg-gradient-to-b from-emerald-600 to-emerald-700 shadow-sm" />
-              Inspected
+              {tRoom('INSPECTED')}
             </span>
             <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-amber-800/45 bg-gradient-to-b from-amber-400 to-amber-500 shadow-sm" />
-              In progress
+              {tRoom('IN_PROGRESS')}
             </span>
             <span className="inline-flex items-center gap-2 text-sidebar-muted">
               <span className="h-3.5 w-7 shrink-0 rounded border border-violet-950/40 bg-gradient-to-b from-violet-600 to-violet-700 shadow-sm" />
-              Out of order
+              {tRoom('OUT_OF_ORDER')}
             </span>
           </>
         )}
       </div>
 
-      <p className="text-xs text-sidebar-muted">
-        Corridors use numbered labels (e.g. Corridor 2.1) per floor. Select a floor to focus, or use All floors.
-        Click a room for details, photos, and maintenance.
-      </p>
+      <p className="text-xs text-sidebar-muted">{t('helpText')}</p>
 
       <div className="space-y-8">
         {activeFloor === 'unplaced' && unplaced.length > 0 && (
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sidebar-muted">
-              Unplaced (no floor in database and room number not in hotel layout)
+              {t('unplacedSectionNoFloor')}
             </h2>
             <div
               className="gap-2"
@@ -412,7 +446,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                 gridTemplateColumns: `repeat(${floorPlanGridCols(unplaced.length)}, minmax(0, 1fr))`,
               }}
             >
-              {unplaced.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
+              {unplaced.map((r) => roomButton(r, onRoomClick, labels, countFor(r.id)))}
             </div>
           </section>
         )}
@@ -422,7 +456,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold tracking-tight text-white">{formatFloorLabel(activeFloor)}</h2>
               <span className="inline-flex items-center rounded-full border border-sidebar-border/60 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
-                Custom admin layout
+                {t('customAdminLayout')}
               </span>
             </div>
             <FloorPlanCanvasFrame>
@@ -442,7 +476,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                         className="absolute p-1"
                         style={{ left, top, width, height }}
                       >
-                        {roomPlanButton(room, onRoomClick, countFor(room.id))}
+                        {roomPlanButton(room, onRoomClick, labels, countFor(room.id))}
                       </div>
                     );
                   }
@@ -455,7 +489,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                         className={`absolute ${corridorZoneClass}`}
                         style={{ left, top, width, height }}
                       >
-                        <span className={corridorTextClass}>{corridorLabel(activeFloor, ord)}</span>
+                        <span className={corridorTextClass}>{labels.corridor(activeFloor, ord)}</span>
                       </div>
                     );
                   }
@@ -474,11 +508,11 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                       style={{ left, top, width, height }}
                     >
                       {el.kind === 'elevator' ? (
-                        <span className="text-[11px] font-semibold text-[#4a4640]">Elevator</span>
+                        <span className="text-[11px] font-semibold text-[#4a4640]">{labels.elevator}</span>
                       ) : el.kind === 'glass' ? (
-                        <span className="text-[11px] font-semibold text-cyan-900">Glass</span>
+                        <span className="text-[11px] font-semibold text-cyan-900">{labels.glass}</span>
                       ) : el.kind === 'staff' ? (
-                        <span className="text-[11px] font-semibold text-[#4a4640]">Staff</span>
+                        <span className="text-[11px] font-semibold text-[#4a4640]">{labels.staff}</span>
                       ) : null}
                     </div>
                   );
@@ -491,7 +525,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold tracking-tight text-white">{formatFloorLabel(activeFloor)}</h2>
               <span className="inline-flex items-center rounded-full border border-sidebar-border/60 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
-                Physical layout
+                {t('physicalLayout')}
               </span>
             </div>
             <FloorPlanCanvasFrame>
@@ -500,22 +534,22 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                 style={{ height: 540 }}
               >
                 <div className={`absolute left-[9%] top-[6%] h-[74%] w-[14%] ${corridorZoneClass}`}>
-                  <span className={corridorTextClass}>{corridorLabel(activeFloor, 1)}</span>
+                  <span className={corridorTextClass}>{labels.corridor(activeFloor, 1)}</span>
                 </div>
                 <div className={`absolute bottom-[6%] left-[4%] h-[12%] w-[90%] ${corridorZoneClass}`}>
-                  <span className={corridorTextClass}>{corridorLabel(activeFloor, 2)}</span>
+                  <span className={corridorTextClass}>{labels.corridor(activeFloor, 2)}</span>
                 </div>
                 <div className={`absolute bottom-[18%] left-[9%] h-[12%] w-[42%] ${corridorZoneClass}`}>
-                  <span className={corridorTextClass}>{corridorLabel(activeFloor, 3)}</span>
+                  <span className={corridorTextClass}>{labels.corridor(activeFloor, 3)}</span>
                 </div>
                 <div className="absolute bottom-[14%] left-[16%] h-[12%] w-[12%] rounded-md border border-dashed border-ink/20 bg-white/50 text-center text-[11px] font-medium text-ink-muted shadow-sm">
-                  <span className="relative top-[34%]">Elevator</span>
+                  <span className="relative top-[34%]">{labels.elevator}</span>
                 </div>
                 <div className="absolute bottom-[6%] left-[4%] w-[6%] rounded-md border border-ink/12 bg-white/45 p-2 text-center text-xs font-semibold text-ink-muted shadow-sm">
-                  Staff
+                  {labels.staff}
                 </div>
                 <div className="absolute bottom-[6%] left-[52%] w-[6%] rounded-md border border-ink/12 bg-white/45 p-2 text-center text-xs font-semibold text-ink-muted shadow-sm">
-                  Staff
+                  {labels.staff}
                 </div>
 
                 {oneToSixLayout.positioned.map(({ room, rect }) => (
@@ -529,7 +563,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                       height: `${(rect.h / 14) * 100}%`,
                     }}
                   >
-                    {roomPlanButton(room, onRoomClick, countFor(room.id))}
+                    {roomPlanButton(room, onRoomClick, labels, countFor(room.id))}
                   </div>
                 ))}
               </div>
@@ -537,7 +571,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
             {oneToSixLayout.fallback.length > 0 && (
               <div className="mt-3">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
-                  Rooms without mapped physical slot
+                  {t('roomsWithoutMappedSlot')}
                 </h3>
                 <div
                   className="gap-2"
@@ -546,7 +580,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                     gridTemplateColumns: `repeat(${floorPlanGridCols(oneToSixLayout.fallback.length)}, minmax(0, 1fr))`,
                   }}
                 >
-                  {oneToSixLayout.fallback.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
+                  {oneToSixLayout.fallback.map((r) => roomButton(r, onRoomClick, labels, countFor(r.id)))}
                 </div>
               </div>
             )}
@@ -571,7 +605,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                     gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                   }}
                 >
-                  {list.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
+                  {list.map((r) => roomButton(r, onRoomClick, labels, countFor(r.id)))}
                 </div>
               </section>
             );
@@ -580,7 +614,7 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
         {activeFloor === 'all' && unplaced.length > 0 && (
           <section>
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-sidebar-muted">
-              Unplaced (set floor in admin or use a known room number)
+              {t('unplacedSectionSetFloor')}
             </h2>
             <div
               className="gap-2"
@@ -589,14 +623,14 @@ export function RoomFloorPlan({ rooms, onRoomClick, complaintCountByRoomId }: Pr
                 gridTemplateColumns: `repeat(${floorPlanGridCols(unplaced.length)}, minmax(0, 1fr))`,
               }}
             >
-              {unplaced.map((r) => roomButton(r, onRoomClick, countFor(r.id)))}
+              {unplaced.map((r) => roomButton(r, onRoomClick, labels, countFor(r.id)))}
             </div>
           </section>
         )}
       </div>
 
       {displayed.length === 0 && (
-        <p className="text-sm text-sidebar-muted">No rooms to show for this filter.</p>
+        <p className="text-sm text-sidebar-muted">{t('noRooms')}</p>
       )}
     </div>
   );

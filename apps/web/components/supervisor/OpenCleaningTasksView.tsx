@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import {
   hotelTodayIso,
   type DailyCleaningPlanResponse,
@@ -31,6 +32,10 @@ export function OpenCleaningTasksView({
 }) {
   const today = hotelTodayIso();
   const [tab, setTab] = useState<OpenCleaningTab>('DIRTY');
+  const tNav = useTranslations('nav');
+  const tSup = useTranslations('supervisor');
+  const tHk = useTranslations('housekeeper');
+  const tCommon = useTranslations('common');
 
   const planQ = useQuery({
     queryKey: ['assignments', 'daily-plan', today],
@@ -77,7 +82,7 @@ export function OpenCleaningTasksView({
         (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true }),
       );
       if (key === '__unassigned__') {
-        result.push({ key, name: 'Unassigned', titlePrefix: null, tasks });
+        result.push({ key, name: tSup('unassigned'), titlePrefix: null, tasks });
         continue;
       }
       const person = nameById.get(key);
@@ -95,19 +100,19 @@ export function OpenCleaningTasksView({
       return a.name.localeCompare(b.name);
     });
     return result;
-  }, [planQ.data?.tasks, tab, nameById]);
+  }, [planQ.data?.tasks, tab, nameById, tSup]);
 
   const totalOpen = groups.reduce((n, g) => n + g.tasks.length, 0);
+
+  const tabOptions = [
+    { id: 'DIRTY' as const, label: tNav('departures') },
+    { id: 'RESTANT' as const, label: tHk('restant') },
+  ];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex max-w-md rounded-btn border border-sidebar-border/70 bg-sidebar p-1">
-        {(
-          [
-            { id: 'DIRTY' as const, label: 'Departures' },
-            { id: 'RESTANT' as const, label: 'Restant' },
-          ] as const
-        ).map((t) => (
+        {tabOptions.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -124,12 +129,14 @@ export function OpenCleaningTasksView({
 
       <p className="mt-3 text-xs text-sidebar-muted">
         {planQ.isLoading
-          ? 'Loading…'
-          : `${totalOpen} open ${tab === 'DIRTY' ? 'departure' : 'restant'}${totalOpen === 1 ? '' : 's'}`}
+          ? tCommon('loading')
+          : tab === 'DIRTY'
+            ? tSup('openCountDepartures', { count: totalOpen })
+            : tSup('openCountRestants', { count: totalOpen })}
       </p>
 
       {planQ.isError && (
-        <p className="mt-3 text-sm text-danger">Could not load today’s cleaning plan.</p>
+        <p className="mt-3 text-sm text-danger">{tSup('loadPlanError')}</p>
       )}
 
       <ul
@@ -161,12 +168,12 @@ export function OpenCleaningTasksView({
                       className="flex items-center justify-between gap-3 rounded-btn border border-sidebar-border/50 bg-[#121a26] px-3 py-2.5 transition hover:border-action/40"
                     >
                       <span className="font-medium tabular-nums text-slate-100">
-                        Room {t.roomNumber}
+                        {tHk('room', { number: t.roomNumber ?? '—' })}
                       </span>
                       <span className="text-xs text-sidebar-muted">
-                        {t.floor != null ? `Floor ${t.floor}` : 'Open'}
+                        {t.floor != null ? tHk('floor', { floor: t.floor }) : tCommon('open')}
                         {t.overdueDays != null && t.overdueDays > 0
-                          ? ` · ${t.overdueDays}d overdue`
+                          ? ` · ${tSup('overdueDaysShort', { days: t.overdueDays })}`
                           : ''}
                       </span>
                     </Link>
@@ -180,7 +187,7 @@ export function OpenCleaningTasksView({
 
       {!planQ.isLoading && groups.length === 0 && (
         <p className="mt-2 text-sm text-sidebar-muted">
-          No open {tab === 'DIRTY' ? 'departures' : 'restants'} right now.
+          {tab === 'DIRTY' ? tSup('noOpenDepartures') : tSup('noOpenRestants')}
         </p>
       )}
     </div>

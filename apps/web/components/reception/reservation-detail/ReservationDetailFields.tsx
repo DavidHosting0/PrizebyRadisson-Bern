@@ -1,4 +1,10 @@
+'use client';
+
+import type { SupportedLocale } from '@housekeeping/shared';
+import { useTranslations } from 'next-intl';
 import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
+import { formatDateTime } from '@/lib/format-locale';
+import { useLocale } from '@/lib/locale-context';
 import { formatEmmaAmount, parseEmmaNumber } from './folioFormat';
 
 export function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -12,10 +18,11 @@ export function Field({ label, value }: { label: string; value: string | null | 
 }
 
 export function BoolField({ label, value }: { label: string; value: boolean }) {
+  const tCommon = useTranslations('common');
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{label}</dt>
-      <dd className="mt-0.5 text-sm text-white">{value ? 'Ja' : 'Nein'}</dd>
+      <dd className="mt-0.5 text-sm text-white">{value ? tCommon('yes') : tCommon('no')}</dd>
     </div>
   );
 }
@@ -49,13 +56,21 @@ export function ListSection({
   );
 }
 
-export function formatEmmaValue(value: unknown): string | null {
+export type EmmaValueLabels = {
+  yes: string;
+  no: string;
+  locale: SupportedLocale;
+};
+
+export function formatEmmaValue(value: unknown, labels?: EmmaValueLabels): string | null {
   if (value == null || value === '') return null;
-  if (typeof value === 'boolean') return value ? 'Ja' : 'Nein';
+  if (typeof value === 'boolean') return value ? labels?.yes ?? 'Yes' : labels?.no ?? 'No';
   if (typeof value === 'number') return formatEmmaAmount(value);
   if (typeof value === 'string') {
     const m = /\/Date\((-?\d+)\)\//.exec(value);
-    if (m) return new Date(parseInt(m[1], 10)).toLocaleString('de-CH');
+    if (m) {
+      return formatDateTime(new Date(parseInt(m[1], 10)), labels?.locale ?? 'en');
+    }
     const trimmed = value.trim();
     if (!trimmed) return null;
     if (parseEmmaNumber(trimmed) != null && /^-?\d+([.,]\d+)?$/.test(trimmed.replace(/\s/g, ''))) {
@@ -66,15 +81,24 @@ export function formatEmmaValue(value: unknown): string | null {
   return JSON.stringify(value);
 }
 
+export function useEmmaValueFormatter() {
+  const tCommon = useTranslations('common');
+  const { locale } = useLocale();
+  const labels: EmmaValueLabels = { yes: tCommon('yes'), no: tCommon('no'), locale };
+  return (value: unknown) => formatEmmaValue(value, labels);
+}
+
 export function RecordGrid({ rows }: { rows: Record<string, unknown>[] }) {
-  if (rows.length === 0) return <p className="text-sm text-sidebar-muted">Keine Einträge</p>;
+  const t = useTranslations('reception.reservationDetail');
+  const format = useEmmaValueFormatter();
+  if (rows.length === 0) return <p className="text-sm text-sidebar-muted">{t('noEntries')}</p>;
   return (
     <div className="space-y-3">
       {rows.map((row, i) => (
         <div key={i} className="rounded-lg border border-sidebar-border/60 bg-white/5 p-3">
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {Object.entries(row).map(([key, value]) => {
-              const formatted = formatEmmaValue(value);
+              const formatted = format(value);
               if (!formatted) return null;
               return (
                 <div key={key}>

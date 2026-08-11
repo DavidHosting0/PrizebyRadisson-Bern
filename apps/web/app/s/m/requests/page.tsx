@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -16,12 +17,30 @@ type Req = {
   claimedBy: { id: string; name: string; titlePrefix: string } | null;
 };
 
+const REQUEST_STATUSES = ['OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'] as const;
+type RequestStatusKey = (typeof REQUEST_STATUSES)[number] | 'CREATED';
+
+function requestStatusKey(status: string): RequestStatusKey | null {
+  if (status === 'CREATED') return 'CREATED';
+  if ((REQUEST_STATUSES as readonly string[]).includes(status)) return status as RequestStatusKey;
+  return null;
+}
+
 export default function SupervisorMobileRequestsPage() {
+  const tNav = useTranslations('nav');
+  const tSup = useTranslations('supervisor');
+  const tHk = useTranslations('housekeeper');
+  const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const { data = [], isLoading } = useQuery({
     queryKey: ['service-requests'],
     queryFn: () => api<Req[]>('/service-requests'),
   });
+
+  const requestStatusLabel = (status: string) => {
+    const key = requestStatusKey(status);
+    return key ? tSup(`requestStatus.${key}`) : status.replace(/_/g, ' ');
+  };
 
   const patch = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -37,22 +56,22 @@ export default function SupervisorMobileRequestsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-white">Requests</h1>
-        <p className="mt-1 text-sm text-sidebar-muted">Service requests · claim or update status</p>
+        <h1 className="text-xl font-semibold tracking-tight text-white">{tNav('requests')}</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">{tSup('requestsSubtitle')}</p>
       </div>
 
-      {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">{tCommon('loading')}</p>}
 
       <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
         {data.map((r) => (
           <li key={r.id}>
             <Card tone="dark" className="p-4">
               <p className="text-base font-semibold text-white">
-                Room {r.room.roomNumber}
+                {tHk('room', { number: r.room.roomNumber })}
                 <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase text-sidebar-muted">{r.status.replace(/_/g, ' ')}</span>
+                <span className="text-xs uppercase text-sidebar-muted">{requestStatusLabel(r.status)}</span>
                 <PriorityBadge priority={r.priority} tone="dark" />
               </div>
               {r.claimedBy && (
@@ -63,7 +82,7 @@ export default function SupervisorMobileRequestsPage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 {(r.status === 'OPEN' || r.status === 'CREATED') && (
                   <Button variant="action" className="min-h-[44px] px-4 text-sm" onClick={() => claim.mutate(r.id)}>
-                    Claim
+                    {tHk('claim')}
                   </Button>
                 )}
                 <select
@@ -72,9 +91,9 @@ export default function SupervisorMobileRequestsPage() {
                   onChange={(e) => patch.mutate({ id: r.id, status: e.target.value })}
                   disabled={patch.isPending}
                 >
-                  {['OPEN', 'CLAIMED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'].map((s) => (
+                  {REQUEST_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s.replace(/_/g, ' ')}
+                      {requestStatusLabel(s)}
                     </option>
                   ))}
                 </select>
@@ -83,7 +102,7 @@ export default function SupervisorMobileRequestsPage() {
           </li>
         ))}
       </ul>
-      {data.length === 0 && !isLoading && <p className="text-sm text-sidebar-muted">No requests.</p>}
+      {data.length === 0 && !isLoading && <p className="text-sm text-sidebar-muted">{tSup('noRequests')}</p>}
     </div>
   );
 }

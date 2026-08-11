@@ -178,13 +178,15 @@ export class TeamChatService {
     targetLocale: SupportedLocale,
   ): Promise<{ displayBody: string; bodyTranslated: string | null; isTranslated: boolean }> {
     const mentionList = this.mentionDtos(mentions);
-    const source = isSupportedLocale(sourceLocale)
-      ? sourceLocale
-      : this.translation.detectLocale(body);
+    const detected = this.translation.detectLocale(body);
 
-    if (source === targetLocale) {
+    // Only skip when detection confidently says the text is already in the UI language.
+    // Never trust a stored sourceLocale alone — TR/DE text was often mis-tagged as "en".
+    if (detected === targetLocale) {
       return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
+
+    const stored = isSupportedLocale(sourceLocale) ? sourceLocale : null;
 
     const cached = await this.prisma.teamChatMessageTranslation.findUnique({
       where: { messageId_locale: { messageId, locale: targetLocale } },
@@ -197,9 +199,22 @@ export class TeamChatService {
       body,
       targetLocale,
       mentionList,
-      source,
+      detected,
     );
     if (!result) {
+      return { displayBody: body, bodyTranslated: null, isTranslated: false };
+    }
+
+    // Model said it's already in the target language.
+    if (result.body === body && result.sourceLocale === targetLocale) {
+      if (!sourceLocale || sourceLocale !== targetLocale) {
+        void this.prisma.teamChatMessage
+          .update({
+            where: { id: messageId },
+            data: { sourceLocale: targetLocale },
+          })
+          .catch(() => undefined);
+      }
       return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
 
@@ -209,7 +224,7 @@ export class TeamChatService {
       update: { body: result.body },
     });
 
-    if (!sourceLocale) {
+    if (result.sourceLocale && result.sourceLocale !== stored) {
       void this.prisma.teamChatMessage
         .update({
           where: { id: messageId },
@@ -266,9 +281,9 @@ export class TeamChatService {
       }
     }
 
-    const sourceLocale = isSupportedLocale(row.sourceLocale)
-      ? row.sourceLocale
-      : this.translation.detectLocale(row.body);
+    const sourceLocale =
+      this.translation.detectLocale(row.body) ??
+      (isSupportedLocale(row.sourceLocale) ? row.sourceLocale : null);
 
     return {
       id: row.id,
@@ -304,6 +319,7 @@ export class TeamChatService {
 
   private setSourceLocaleAsync(messageId: string, body: string) {
     const detected = this.translation.detectLocale(body);
+    if (!detected) return;
     void this.prisma.teamChatMessage
       .update({
         where: { id: messageId },

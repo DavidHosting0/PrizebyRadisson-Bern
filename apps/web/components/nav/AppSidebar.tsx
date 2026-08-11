@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import type { SidebarNavGroup } from '@/lib/nav-groups';
 import { IconChevronLeft, IconChevronRight } from '@/components/nav/nav-icons';
 
@@ -24,6 +25,7 @@ export function AppSidebar({
   footer?: ReactNode;
   className?: string;
 }) {
+  const t = useTranslations('nav');
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -99,14 +101,14 @@ export function AppSidebar({
             'flex w-full items-center gap-2 border-t border-sidebar-border px-4 py-3 text-xs font-medium text-sidebar-muted transition-colors hover:bg-sidebar-hover hover:text-white',
             collapsed && 'justify-center px-2',
           )}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? t('expandSidebar') : t('collapseSidebar')}
         >
           {collapsed ? (
             <IconChevronRight className="h-4 w-4" />
           ) : (
             <>
               <IconChevronLeft className="h-4 w-4" />
-              <span>Collapse</span>
+              <span>{t('collapse')}</span>
             </>
           )}
         </button>

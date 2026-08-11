@@ -22,10 +22,23 @@ type Row = {
   reportedBy: { name: string; titlePrefix: string };
 };
 
-const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'];
+const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+
+function damageStatusOptionLabel(
+  status: string,
+  t: ReturnType<typeof useTranslations<'chat'>>,
+): string {
+  if (status === 'REPORTED') return t('damageStatus.reportedOption');
+  if (status === 'ACKNOWLEDGED') return t('damageStatus.acknowledgedOption');
+  if (status === 'RESOLVED') return t('damageStatus.resolvedOption');
+  return status.charAt(0) + status.slice(1).toLowerCase();
+}
 
 export default function ReceptionDamageReportsPage() {
   const tNav = useTranslations('nav');
+  const t = useTranslations('reception.damagesPage');
+  const tCommon = useTranslations('common');
+  const tChat = useTranslations('chat');
   const qc = useQueryClient();
   const damageLabel = useDamageTypeLabel();
   const [status, setStatus] = useState('');
@@ -53,20 +66,22 @@ export default function ReceptionDamageReportsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title={tNav('damageReports')}
-        description="Housekeeper reports with photos"
+        description={t('description')}
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
         toolbar={
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">Filter by status</label>
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
+              {t('filterByStatus')}
+            </label>
             <select
               className={APP_DARK_INPUT + ' mt-1 min-h-[40px] min-w-[160px]'}
               value={status}
               onChange={(e) => setStatus(e.target.value)}
             >
-              <option value="">All</option>
+              <option value="">{tCommon('all')}</option>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.charAt(0) + s.slice(1).toLowerCase()}
+                  {damageStatusOptionLabel(s, tChat)}
                 </option>
               ))}
             </select>
@@ -76,7 +91,7 @@ export default function ReceptionDamageReportsPage() {
 
       <AppPageBody>
         <div className="space-y-8 p-4 md:p-6">
-          {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+          {isLoading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
 
           <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.map((item) => (
@@ -87,12 +102,16 @@ export default function ReceptionDamageReportsPage() {
                     <img src={item.photoUrl} alt="" className="h-full w-full object-cover" />
                   </div>
                   <div className="p-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">{damageLabel(item.damageType)}</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">
+                      {damageLabel(item.damageType)}
+                    </p>
                     <p className="mt-1 font-medium leading-snug text-white">{item.description}</p>
                     <p className="mt-2 text-sm text-sidebar-muted">
-                      Room {item.room.roomNumber} ·{' '}
-                      {formatUserWithTitlePrefix(item.reportedBy.name, item.reportedBy.titlePrefix)} ·{' '}
-                      {new Date(item.reportedAt).toLocaleString()}
+                      {t('roomLine', {
+                        roomNumber: item.room.roomNumber,
+                        reporter: formatUserWithTitlePrefix(item.reportedBy.name, item.reportedBy.titlePrefix),
+                        when: new Date(item.reportedAt).toLocaleString(),
+                      })}
                     </p>
                     {canUpdate ? (
                       <select
@@ -103,13 +122,13 @@ export default function ReceptionDamageReportsPage() {
                       >
                         {STATUSES.map((s) => (
                           <option key={s} value={s}>
-                            {s.charAt(0) + s.slice(1).toLowerCase()}
+                            {damageStatusOptionLabel(s, tChat)}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      <span className="mt-3 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium capitalize text-sidebar-muted">
-                        {item.status.toLowerCase()}
+                      <span className="mt-3 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-sidebar-muted">
+                        {damageStatusOptionLabel(item.status, tChat)}
                       </span>
                     )}
                   </div>
@@ -117,7 +136,7 @@ export default function ReceptionDamageReportsPage() {
               </li>
             ))}
           </ul>
-          {data.length === 0 && !isLoading && <p className="text-sm text-sidebar-muted">No reports.</p>}
+          {data.length === 0 && !isLoading && <p className="text-sm text-sidebar-muted">{t('empty')}</p>}
         </div>
       </AppPageBody>
     </div>

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { Button } from '@/components/ui/Button';
@@ -33,6 +34,8 @@ function SelectChevron() {
 }
 
 export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const t = useTranslations('reception.newRequest');
+  const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const toast = useToast();
   const { data: rooms = [] } = useQuery({
@@ -103,11 +106,11 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
       setTypeId(types[0]?.id ?? '');
       setPriority('NORMAL');
       setRoomQ('');
-      toast.push('Request created', 'success');
+      toast.push(t('created'), 'success');
       onClose();
     },
     onError: (e: unknown) => {
-      const msg = e instanceof Error ? e.message : 'Failed to create request';
+      const msg = e instanceof Error ? e.message : t('createFailed');
       toast.push(msg, 'warning');
     },
   });
@@ -115,11 +118,11 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!roomId) {
-      toast.push('Choose a room to continue', 'warning');
+      toast.push(t('chooseRoomContinue'), 'warning');
       return;
     }
     if (!typeId) {
-      toast.push('Choose a request type', 'warning');
+      toast.push(t('chooseType'), 'warning');
       return;
     }
     create.mutate({
@@ -146,17 +149,17 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
       >
         <div className="border-b border-sidebar-border/60 px-6 py-4">
           <h2 id="new-req-title" className="text-lg font-semibold text-white">
-            New service request
+            {t('title')}
           </h2>
-          <p className="mt-1 text-sm text-sidebar-muted">Room, request type, and priority.</p>
+          <p className="mt-1 text-sm text-sidebar-muted">{t('subtitle')}</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-6">
           <div>
-            <label className="text-sm font-medium text-white">Room</label>
+            <label className="text-sm font-medium text-white">{t('room')}</label>
             <input
               type="search"
               className={fieldClass}
-              placeholder="Search room number…"
+              placeholder={t('searchRoom')}
               value={roomQ}
               onChange={(e) => setRoomQ(e.target.value)}
             />
@@ -169,7 +172,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
                 disabled={rooms.length === 0}
               >
                 {rooms.length === 0 ? (
-                  <option value="">No rooms available</option>
+                  <option value="">{t('noRooms')}</option>
                 ) : (
                   roomOptions.map((r) => (
                     <option key={r.id} value={r.id}>
@@ -182,7 +185,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-white">Request type</label>
+            <label className="text-sm font-medium text-white">{t('requestType')}</label>
             <div className="relative">
               <select
                 className={selectFieldClass}
@@ -192,11 +195,11 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
                 disabled={types.length === 0}
               >
                 {types.length === 0 ? (
-                  <option value="">No request types</option>
+                  <option value="">{t('noRequestTypes')}</option>
                 ) : (
-                  types.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label}
+                  types.map((typeOpt) => (
+                    <option key={typeOpt.id} value={typeOpt.id}>
+                      {typeOpt.label}
                     </option>
                   ))
                 )}
@@ -205,7 +208,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
           </div>
           <div>
-            <span className="text-sm font-medium text-white">Priority</span>
+            <span className="text-sm font-medium text-white">{t('priority')}</span>
             <div className="mt-2 flex gap-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
                 <input
@@ -215,7 +218,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
                   onChange={() => setPriority('NORMAL')}
                   className="text-action"
                 />
-                Normal
+                {t('normal')}
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
                 <input
@@ -225,12 +228,12 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
                   onChange={() => setPriority('URGENT')}
                   className="text-danger"
                 />
-                Urgent
+                {t('urgent')}
               </label>
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-white">Notes (optional)</label>
+            <label className="text-sm font-medium text-white">{t('notesOptional')}</label>
             <textarea
               className={`${fieldClass} min-h-[80px] resize-y`}
               rows={2}
@@ -245,7 +248,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
               className="min-h-[48px] min-w-[140px]"
               disabled={create.isPending || !roomId || !typeId}
             >
-              {create.isPending ? 'Creating…' : 'Create request'}
+              {create.isPending ? t('creating') : t('create')}
             </Button>
             <Button
               type="button"
@@ -253,7 +256,7 @@ export function NewRequestModal({ open, onClose }: { open: boolean; onClose: () 
               className="min-h-[48px] border border-sidebar-border bg-transparent text-white hover:bg-white/10"
               onClick={onClose}
             >
-              Cancel
+              {tCommon('cancel')}
             </Button>
           </div>
         </form>

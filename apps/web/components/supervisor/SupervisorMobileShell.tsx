@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Button } from '@/components/ui/Button';
@@ -11,13 +12,6 @@ import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { InstallAppBanner } from '@/components/InstallAppBanner';
-
-const tabs = [
-  { href: '/s/m', label: 'Rooms', Icon: IconRooms, home: true },
-  { href: '/s/m/tasks', label: 'Tasks', Icon: IconTasks, home: false },
-  { href: '/s/m/requests', label: 'Requests', Icon: IconRequests, home: false },
-  { href: '/s/m/chat', label: 'Chat', Icon: IconChat, home: false },
-];
 
 export function SupervisorMobileShell({
   children,
@@ -30,7 +24,17 @@ export function SupervisorMobileShell({
 }) {
   const path = usePathname();
   const { exitMobile } = useSupervisorMobileMode();
+  const tNav = useTranslations('nav');
+  const tSup = useTranslations('supervisor');
+  const tCommon = useTranslations('common');
   const isChat = path === '/s/m/chat' || path.startsWith('/s/m/chat/');
+
+  const tabs = [
+    { href: '/s/m', label: tNav('rooms'), Icon: IconRooms, home: true },
+    { href: '/s/m/tasks', label: tNav('openTasks'), Icon: IconTasks, home: false },
+    { href: '/s/m/requests', label: tNav('requests'), Icon: IconRequests, home: false },
+    { href: '/s/m/chat', label: tNav('chat'), Icon: IconChat, home: false },
+  ];
 
   return (
     <div
@@ -43,14 +47,14 @@ export function SupervisorMobileShell({
         <div className="min-w-0">
           <BrandLogo compact className="brightness-0 invert" />
           <p className="mt-0.5 truncate text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
-            Supervisor · {formatUserWithTitlePrefix(userName, titlePrefix)}
+            {tSup('roleLabel')} · {formatUserWithTitlePrefix(userName, titlePrefix)}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <NotificationBell variant="onDark" />
           <LanguageSwitcher touch onDark />
           <Button type="button" variant="ghostOnDark" className="min-h-[44px] px-3 py-1.5 text-xs" onClick={exitMobile}>
-            Desktop
+            {tCommon('desktopView')}
           </Button>
         </div>
       </header>

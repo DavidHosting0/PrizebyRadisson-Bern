@@ -137,15 +137,12 @@ function FolioTab({
 }
 
 function EmmaTab({ data, canSync }: { data: ReservationDetail; canSync: boolean }) {
+  const t = useTranslations('reception.reservationDetail');
   if (!data.emmaDetail) {
     return (
       <EmptyState
-        title="EMMA Detail noch nicht geladen"
-        description={
-          canSync
-            ? 'Nutzen Sie oben „EMMA Detail laden“, um die vollständigen Reservierungsdaten von EMMA abzurufen.'
-            : 'EMMA-Detaildaten wurden noch nicht geladen.'
-        }
+        title={t('emmaNotLoadedTitle')}
+        description={canSync ? t('emmaNotLoadedSyncHint') : t('emmaNotLoadedHint')}
       />
     );
   }
@@ -153,38 +150,39 @@ function EmmaTab({ data, canSync }: { data: ReservationDetail; canSync: boolean 
 }
 
 function GuestsTab({ data }: { data: ReservationDetail }) {
+  const t = useTranslations('reception.reservationDetail');
   const emma = data.emmaDetail;
   return (
     <div className="space-y-4">
-      <Section title="Zahlung (Snapshot)">
-        <Field label="Karte" value={data.creditCard} />
-        <Field label="Karteninhaber" value={data.cardHolder} />
-        <Field label="Ablauf" value={data.cardExpiry} />
-        <Field label="Pre-Auth" value={data.preAuthAmount} />
+      <Section title={t('paymentSnapshot')}>
+        <Field label={t('card')} value={data.creditCard} />
+        <Field label={t('cardHolder')} value={data.cardHolder} />
+        <Field label={t('cardExpiry')} value={data.cardExpiry} />
+        <Field label={t('preAuth')} value={data.preAuthAmount} />
       </Section>
 
       {emma && emma.guests.length > 0 && (
-        <ListSection title={`Gäste (${emma.guests.length})`}>
+        <ListSection title={t('guestsCount', { count: emma.guests.length })}>
           <RecordGrid rows={emma.guests} />
         </ListSection>
       )}
 
       {emma && emma.creditCards.length > 0 && (
-        <ListSection title={`Kreditkarten (${emma.creditCards.length})`}>
+        <ListSection title={t('creditCardsCount', { count: emma.creditCards.length })}>
           <RecordGrid rows={emma.creditCards} />
         </ListSection>
       )}
 
       {emma && emma.preauthorizations.length > 0 && (
-        <ListSection title={`Pre-Authorizations (${emma.preauthorizations.length})`}>
+        <ListSection title={t('preAuthCount', { count: emma.preauthorizations.length })}>
           <RecordGrid rows={emma.preauthorizations} />
         </ListSection>
       )}
 
       {!emma && (
         <EmptyState
-          title="Keine EMMA-Gästedaten"
-          description="Laden Sie EMMA Detail, um Gäste- und Zahlungsdetails aus EMMA anzuzeigen."
+          title={t('noEmmaGuestDataTitle')}
+          description={t('noEmmaGuestDataHint')}
         />
       )}
     </div>

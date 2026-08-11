@@ -1,7 +1,8 @@
 'use client';
 
 import clsx from 'clsx';
-import { StatusBadge } from '@/components/StatusBadge';
+import { useTranslations } from 'next-intl';
+import { StatusBadge, roomStatusLabel } from '@/components/StatusBadge';
 import {
   RoomOccupancyBadges,
   RoomOccupancyGuestLine,
@@ -111,9 +112,22 @@ export function BoardRoomCard({
   ghost?: boolean;
   onContextMenu?: (e: React.MouseEvent, room: BoardRoom) => void;
 }) {
+  const tBoard = useTranslations('supervisor.board');
+  const tHk = useTranslations('housekeeper');
+  const tRoot = useTranslations();
   const kind = tileKindProp ?? boardTileKindForRoom(room, isRestant);
   const t = TILE[kind];
   const onDark = kind === 'departure' || kind === 'public';
+
+  const ghostBadgeLabel = () => {
+    if (kind === 'departure') {
+      return room.occupancy?.checkOut || room.occupancy?.ocoDone
+        ? tBoard('checkedOut')
+        : tBoard('inRoom');
+    }
+    if (kind === 'restant') return tHk('restant');
+    return roomStatusLabel(room.derivedStatus, (key) => tRoot(key as 'room.status.DIRTY'));
+  };
 
   if (ghost) {
     return (
@@ -134,17 +148,11 @@ export function BoardRoomCard({
               t.ghostMuted,
             )}
           >
-            {kind === 'departure'
-              ? room.occupancy?.checkOut || room.occupancy?.ocoDone
-                ? 'Checked out'
-                : 'In room'
-              : kind === 'restant'
-                ? 'Restant'
-                : room.derivedStatus.replace(/_/g, ' ')}
+            {ghostBadgeLabel()}
           </span>
         </div>
         {room.floor != null && (
-          <p className={clsx('mt-1 text-[11px]', t.ghostMuted)}>Floor {room.floor}</p>
+          <p className={clsx('mt-1 text-[11px]', t.ghostMuted)}>{tHk('floor', { floor: room.floor })}</p>
         )}
       </div>
     );
@@ -188,7 +196,7 @@ export function BoardRoomCard({
               'flex shrink-0 flex-col items-center justify-center self-stretch rounded-btn px-1 transition',
               t.grip,
             )}
-            title="Drag to assign"
+            title={tBoard('dragToAssign')}
             aria-hidden
           >
             <span className="text-[11px] leading-none tracking-tighter">⋮⋮</span>
@@ -208,15 +216,15 @@ export function BoardRoomCard({
               {kind === 'departure' && (
                 <>
                   <span className="rounded-btn bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-50">
-                    Depart
+                    {tBoard('depart')}
                   </span>
                   {room.occupancy?.checkOut || room.occupancy?.ocoDone ? (
                     <span className="rounded-btn bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-950">
-                      Checked out
+                      {tBoard('checkedOut')}
                     </span>
                   ) : (
                     <span className="rounded-btn bg-amber-300/95 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
-                      Guest in room
+                      {tBoard('guestInRoom')}
                     </span>
                   )}
                 </>
@@ -228,7 +236,7 @@ export function BoardRoomCard({
                     t.badgeRestant,
                   )}
                 >
-                  Restant
+                  {tHk('restant')}
                 </span>
               )}
               {overdueDays != null && overdueDays > 0 && (
@@ -238,7 +246,7 @@ export function BoardRoomCard({
                     t.badgeOverdue,
                   )}
                 >
-                  Overdue {overdueDays}d
+                  {tBoard('overdueDays', { days: overdueDays })}
                 </span>
               )}
             </div>
@@ -247,7 +255,7 @@ export function BoardRoomCard({
           <RoomOccupancyBadges occupancy={room.occupancy} onColor={onDark} size="sm" />
           {kind === 'departure' && room.occupancy && !(room.occupancy.checkOut || room.occupancy.ocoDone) && (
             <p className={clsx('mt-1 text-[11px] font-medium', onDark ? 'text-amber-100' : 'text-amber-900')}>
-              Guest still in room — knock first
+              {tBoard('knockFirst')}
             </p>
           )}
           {onOpen && (
@@ -263,7 +271,7 @@ export function BoardRoomCard({
               }}
               onPointerDown={(e) => e.stopPropagation()}
             >
-              Open details
+              {tBoard('openDetails')}
             </button>
           )}
         </div>

@@ -17,6 +17,7 @@ type ReqRow = { id: string; status: string };
 
 export default function ReceptionDashboardPage() {
   const tNav = useTranslations('nav');
+  const t = useTranslations('reception.dashboard');
   const { enterMobile } = useReceptionMobileMode();
   const { data: rooms = [] } = useQuery(roomsListQueryOptions<RoomRow>());
 
@@ -38,7 +39,7 @@ export default function ReceptionDashboardPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title={tNav('dashboard')}
-        description="Live operational snapshot"
+        description={t('description')}
         actions={
           <>
             <AppChromeTools onEnterMobile={enterMobile} />
@@ -46,13 +47,13 @@ export default function ReceptionDashboardPage() {
               href="/r/rooms"
               className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-sidebar-border px-4 text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
             >
-              Room board
+              {t('roomBoard')}
             </Link>
             <Link
               href="/r/requests"
               className="inline-flex min-h-[40px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90"
             >
-              Service requests
+              {t('serviceRequests')}
             </Link>
           </>
         }
@@ -61,21 +62,19 @@ export default function ReceptionDashboardPage() {
       <AppPageBody>
         <div className="space-y-8 p-4 md:p-6">
           <section>
-            <h2 className="text-base font-semibold text-white">Overview</h2>
+            <h2 className="text-base font-semibold text-white">{t('overview')}</h2>
             <div className="mt-4 grid grid-cols-2 gap-4 xl:grid-cols-5">
-              <KpiStat tone="dark" label="Total rooms" value={stats.total} />
-              <KpiStat tone="dark" label="Clean / ready" value={stats.clean} sub="Turn-down complete" />
-              <KpiStat tone="dark" label="In progress" value={stats.progress} />
-              <KpiStat tone="dark" label="Dirty" value={stats.dirty} />
-              <KpiStat tone="dark" label="Active requests" value={stats.activeReq} sub="Open pipeline" />
+              <KpiStat tone="dark" label={t('totalRooms')} value={stats.total} />
+              <KpiStat tone="dark" label={t('cleanReady')} value={stats.clean} sub={t('turnDownComplete')} />
+              <KpiStat tone="dark" label={t('inProgress')} value={stats.progress} />
+              <KpiStat tone="dark" label={t('dirty')} value={stats.dirty} />
+              <KpiStat tone="dark" label={t('activeRequests')} value={stats.activeReq} sub={t('openPipeline')} />
             </div>
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-white">Live room status</h2>
-            <p className="mt-1 text-sm text-sidebar-muted">
-              Click a room for details. Urgent request flags highlighted.
-            </p>
+            <h2 className="text-base font-semibold text-white">{t('liveRoomStatus')}</h2>
+            <p className="mt-1 text-sm text-sidebar-muted">{t('clickRoomHint')}</p>
             <div className={APP_DARK_CARD + ' mt-4 p-4 md:p-6'}>
               <ReceptionRoomBoard compact />
             </div>

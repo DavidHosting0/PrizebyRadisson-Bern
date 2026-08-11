@@ -6,9 +6,14 @@ import type { GuideDetailDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { MarkdownContent, extractToc } from './MarkdownContent';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
+import { useLocale } from '@/lib/locale-context';
 import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 
 export function GuideReader({ guideId }: { guideId: string }) {
+  const t = useTranslations('guides');
+  const { locale } = useLocale();
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['guide', guideId],
     queryFn: () => api<GuideDetailDto>(`/guides/${guideId}`),
@@ -17,7 +22,7 @@ export function GuideReader({ guideId }: { guideId: string }) {
   if (isLoading) {
     return (
       <div className="p-4 md:p-8">
-        <p className="text-sm text-sidebar-muted">Loading guide…</p>
+        <p className="text-sm text-sidebar-muted">{t('loadingGuide')}</p>
       </div>
     );
   }
@@ -26,17 +31,17 @@ export function GuideReader({ guideId }: { guideId: string }) {
     return (
       <div className="space-y-4 p-4 md:p-8">
         <Link href="/r/guides" className="text-sm font-medium text-action hover:underline">
-          ← Back to guides
+          {t('backToGuides')}
         </Link>
         <div className={clsx(APP_DARK_CARD, 'p-5')}>
-          <p className="text-sm text-sidebar-muted">Guide not found or no longer available.</p>
+          <p className="text-sm text-sidebar-muted">{t('notFound')}</p>
         </div>
       </div>
     );
   }
 
   const toc = extractToc(data.body);
-  const updatedLabel = new Date(data.updatedAt).toLocaleString('de-CH');
+  const updatedLabel = new Date(data.updatedAt).toLocaleString(locale);
 
   return (
     <div className="p-4 md:p-8">
@@ -44,7 +49,7 @@ export function GuideReader({ guideId }: { guideId: string }) {
         href="/r/guides"
         className="inline-flex items-center gap-1 text-sm font-medium text-action hover:underline"
       >
-        ← Back to guides
+        {t('backToGuides')}
       </Link>
 
       <div className="mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:gap-10">
@@ -57,7 +62,7 @@ export function GuideReader({ guideId }: { guideId: string }) {
             )}
             <h1 className="text-3xl font-semibold tracking-tight text-white md:text-4xl">{data.title}</h1>
             {data.summary && <p className="mt-3 text-lg text-sidebar-muted">{data.summary}</p>}
-            <p className="mt-4 text-sm text-sidebar-muted">Last updated {updatedLabel}</p>
+            <p className="mt-4 text-sm text-sidebar-muted">{t('lastUpdated', { date: updatedLabel })}</p>
           </header>
 
           <MarkdownContent content={data.body} dark />
@@ -67,7 +72,7 @@ export function GuideReader({ guideId }: { guideId: string }) {
           <aside className="hidden lg:block">
             <nav className={clsx(APP_DARK_CARD, 'sticky top-6 p-4')}>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
-                On this page
+                {t('onThisPage')}
               </p>
               <ul className="space-y-2 text-sm">
                 {toc.map((entry) => (

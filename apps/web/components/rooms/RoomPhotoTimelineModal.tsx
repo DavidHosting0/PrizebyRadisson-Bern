@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
@@ -54,6 +55,8 @@ function formatDay(iso: string) {
 }
 
 export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Props) {
+  const t = useTranslations('room.photoTimeline');
+  const tCommon = useTranslations('common');
   const [lightbox, setLightbox] = useState<TimelinePhoto | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const lightboxRef = useRef<HTMLDivElement>(null);
@@ -113,7 +116,7 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
 
   return (
     <>
-      <button type="button" className="fixed inset-0 z-[60] bg-ink/40" aria-label="Close" onClick={onClose} />
+      <button type="button" className="fixed inset-0 z-[60] bg-ink/40" aria-label={tCommon('close')} onClick={onClose} />
       <div
         ref={panelRef}
         role="dialog"
@@ -122,17 +125,17 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
-            <h2 className="text-lg font-semibold text-ink">Inspection photo timeline</h2>
-            {roomNumber && <p className="text-xs text-ink-muted">Room {roomNumber}</p>}
+            <h2 className="text-lg font-semibold text-ink">{t('title')}</h2>
+            {roomNumber && <p className="text-xs text-ink-muted">{t('roomLabel', { roomNumber })}</p>}
           </div>
           <Button type="button" variant="secondary" className="min-h-[40px]" onClick={onClose}>
-            Close
+            {tCommon('close')}
           </Button>
         </div>
         <div className="max-h-[calc(85vh-56px)] overflow-y-auto p-4">
-          {isLoading && <p className="text-sm text-ink-muted">Loading photos…</p>}
+          {isLoading && <p className="text-sm text-ink-muted">{t('loadingPhotos')}</p>}
           {!isLoading && photos.length === 0 && (
-            <p className="text-sm text-ink-muted">No inspection photos yet for this room.</p>
+            <p className="text-sm text-ink-muted">{t('noPhotosForRoom')}</p>
           )}
           <div className="space-y-6">
             {grouped.map(([day, dayPhotos]) => (
@@ -155,7 +158,7 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
                             <img src={p.url} alt="" className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full items-center justify-center p-2 text-center text-xs text-ink-muted">
-                              Preview unavailable
+                              {t('previewUnavailable')}
                             </div>
                           )}
                         </div>
@@ -169,9 +172,9 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
                           <p className="mt-2 text-xs font-medium text-ink-muted">
                             {p.inspection
                               ? p.inspection.passed
-                                ? 'Passed inspection'
-                                : 'Failed inspection'
-                              : 'Legacy photo'}
+                                ? t('passedInspection')
+                                : t('failedInspection')
+                              : t('legacyPhoto')}
                           </p>
                           {p.inspection?.notes && (
                             <p className="mt-1 line-clamp-2 text-xs text-ink-muted">{p.inspection.notes}</p>
@@ -192,7 +195,7 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
           <button
             type="button"
             className="fixed inset-0 z-[80] bg-black/70"
-            aria-label="Close preview"
+            aria-label={t('closePreview')}
             onClick={() => setLightbox(null)}
           />
           <div
@@ -210,10 +213,10 @@ export function RoomPhotoTimelineModal({ roomId, roomNumber, open, onClose }: Pr
             {lightbox.inspection?.notes && (
               <p className="mt-1 text-center text-sm text-white/75">{lightbox.inspection.notes}</p>
             )}
-            <p className="mt-1 text-center text-[11px] text-white/50">← → navigate · Esc close</p>
+            <p className="mt-1 text-center text-[11px] text-white/50">{t('navigateHint')}</p>
             <div className="mt-2 flex justify-center">
               <Button type="button" variant="secondary" onClick={() => setLightbox(null)}>
-                Close preview
+                {t('closePreview')}
               </Button>
             </div>
           </div>

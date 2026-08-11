@@ -1,8 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
+import { serviceRequestStatusLabel } from '@/lib/service-request-status-label';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { Button } from '@/components/ui/Button';
 import { useReceptionUi } from '@/app/r/reception-context';
@@ -20,6 +22,7 @@ type Req = {
 };
 
 export default function ReceptionMobileRequestsPage() {
+  const t = useTranslations('reception.requestsPage');
   const qc = useQueryClient();
   const { openNewRequest } = useReceptionUi();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
@@ -49,33 +52,35 @@ export default function ReceptionMobileRequestsPage() {
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-white">Requests</h1>
-          <p className="mt-1 text-sm text-sidebar-muted">Guest and housekeeping requests</p>
+          <h1 className="text-xl font-semibold tracking-tight text-white">{t('mobileTitle')}</h1>
+          <p className="mt-1 text-sm text-sidebar-muted">{t('mobileSubtitle')}</p>
         </div>
         {canCreateRequest && (
           <Button type="button" variant="action" className="min-h-[40px] px-3 text-sm" onClick={openNewRequest}>
-            + New
+            {t('mobileNew')}
           </Button>
         )}
       </div>
 
-      {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
 
       <ul className="sidebar-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
         {active.map((r) => (
           <li key={r.id}>
             <div className={APP_DARK_CARD + ' p-4'}>
               <p className="text-base font-semibold text-white">
-                Room {r.room.roomNumber}
+                {t('roomNumber', { roomNumber: r.room.roomNumber })}
                 <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs uppercase text-sidebar-muted">{r.status.replace(/_/g, ' ')}</span>
+                <span className="text-xs uppercase text-sidebar-muted">{serviceRequestStatusLabel(r.status, t)}</span>
                 <PriorityBadge priority={r.priority} />
               </div>
               {r.claimedBy && (
                 <p className="mt-2 text-xs text-sidebar-muted">
-                  Assigned to {formatUserWithTitlePrefix(r.claimedBy.name, r.claimedBy.titlePrefix)}
+                  {t('assignedTo', {
+                    name: formatUserWithTitlePrefix(r.claimedBy.name, r.claimedBy.titlePrefix),
+                  })}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
@@ -87,7 +92,7 @@ export default function ReceptionMobileRequestsPage() {
                     disabled={escalate.isPending}
                     onClick={() => escalate.mutate(r.id)}
                   >
-                    Escalate
+                    {t('escalate')}
                   </Button>
                 )}
                 <Button
@@ -97,7 +102,7 @@ export default function ReceptionMobileRequestsPage() {
                   disabled={cancel.isPending}
                   onClick={() => cancel.mutate(r.id)}
                 >
-                  Cancel
+                  {t('cancel')}
                 </Button>
               </div>
             </div>
@@ -105,7 +110,7 @@ export default function ReceptionMobileRequestsPage() {
         ))}
       </ul>
       {active.length === 0 && !isLoading && (
-        <p className="text-sm text-sidebar-muted">No active requests.</p>
+        <p className="text-sm text-sidebar-muted">{t('empty')}</p>
       )}
     </div>
   );

@@ -8,13 +8,14 @@ import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 export default function ReceptionRoomsPage() {
   const tNav = useTranslations('nav');
+  const t = useTranslations('reception.roomsPage');
   const { enterMobile } = useReceptionMobileMode();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title={tNav('rooms')}
-        description="Live status and housekeeper assignments"
+        description={t('description')}
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
       />
       <AppPageBody>

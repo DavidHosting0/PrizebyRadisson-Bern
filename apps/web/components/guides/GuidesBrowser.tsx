@@ -7,22 +7,28 @@ import type { GuideListItemDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
+import { useLocale } from '@/lib/locale-context';
 import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 
-function formatRelativeDate(iso: string): string {
+function formatRelativeDate(
+  iso: string,
+  t: ReturnType<typeof useTranslations<'guides'>>,
+  locale: string,
+): string {
   const date = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return 'Updated today';
-  if (diffDays === 1) return 'Updated yesterday';
-  if (diffDays < 7) return `Updated ${diffDays} days ago`;
-  return `Updated ${date.toLocaleDateString('de-CH')}`;
+  if (diffDays === 0) return t('updatedToday');
+  if (diffDays === 1) return t('updatedYesterday');
+  if (diffDays < 7) return t('updatedDaysAgo', { count: diffDays });
+  return t('updatedOn', { date: date.toLocaleDateString(locale) });
 }
 
 export function GuidesBrowser() {
   const t = useTranslations('guides');
   const tCommon = useTranslations('common');
+  const { locale } = useLocale();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>(null);
 
@@ -56,9 +62,7 @@ export function GuidesBrowser() {
     <div className="space-y-8 p-4 md:p-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">{t('title')}</h1>
-        <p className="mt-1 text-sm text-sidebar-muted">
-          Procedures, references, and how-tos for the reception desk.
-        </p>
+        <p className="mt-1 text-sm text-sidebar-muted">{t('subtitle')}</p>
       </header>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -108,9 +112,7 @@ export function GuidesBrowser() {
         <div className={clsx(APP_DARK_CARD, 'py-12 text-center')}>
           <p className="text-sm font-medium text-white">{t('noGuides')}</p>
           <p className="mt-1 text-sm text-sidebar-muted">
-            {data.length === 0
-              ? 'No guides have been published yet.'
-              : 'Try a different search or category.'}
+            {data.length === 0 ? t('emptyPublished') : t('emptyFiltered')}
           </p>
         </div>
       )}
@@ -129,7 +131,9 @@ export function GuidesBrowser() {
                 {guide.summary && (
                   <p className="mt-2 line-clamp-3 flex-1 text-sm text-sidebar-muted">{guide.summary}</p>
                 )}
-                <p className="mt-4 text-xs text-sidebar-muted">{formatRelativeDate(guide.updatedAt)}</p>
+                <p className="mt-4 text-xs text-sidebar-muted">
+                  {formatRelativeDate(guide.updatedAt, t, locale)}
+                </p>
               </div>
             </Link>
           </li>
