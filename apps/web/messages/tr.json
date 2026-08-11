@@ -992,7 +992,24 @@
       "assigning": "Atanıyor…",
       "runAutoAssignment": "Otomatik atamayı çalıştır",
       "selectCleanerHint": "Çalıştırmak için en az bir temizlik personeli seçin.",
-      "runError": "Otomatik atama çalıştırılamadı."
+      "runError": "Otomatik atama çalıştırılamadı.",
+      "distribution": "Oda dağılımı",
+      "distributionHint": "Kişi başına kirli oda önizlemesi. Sayıları ayarlayın — diğerleri otomatik yeniden dengelenir.",
+      "distributionTotal": "{count} kirli oda",
+      "resetDistribution": "Sıfırla",
+      "loadingPreview": "Dağılım hesaplanıyor…",
+      "noDirtyForPreview": "Dağıtılacak kirli oda yok.",
+      "legendCheckedOut": "Çıkış yapılmış",
+      "legendDepartureInRoom": "Ayrılış, hâlâ odada",
+      "legendOther": "Diğer",
+      "badgeLate": "geç",
+      "previewRestant": "{count} restant",
+      "previewPublic": "{count} genel alan",
+      "fewerRooms": "Daha az oda",
+      "moreRooms": "Daha fazla oda",
+      "roomCheckedOut": "Oda {number} · çıkış yapılmış",
+      "roomDepartureInRoom": "Oda {number} · ayrılış, misafir hâlâ odada",
+      "roomNumber": "Oda {number}"
     }
   },
   "technician": {

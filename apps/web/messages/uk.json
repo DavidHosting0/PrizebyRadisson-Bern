@@ -992,7 +992,24 @@
       "assigning": "Призначення…",
       "runAutoAssignment": "Запустити автопризначення",
       "selectCleanerHint": "Оберіть щонайменше одного прибиральника для запуску.",
-      "runError": "Не вдалося запустити автопризначення."
+      "runError": "Не вдалося запустити автопризначення.",
+      "distribution": "Розподіл номерів",
+      "distributionHint": "Попередній перегляд брудних номерів на особу. Змініть кількість — інші перерозподіляються автоматично.",
+      "distributionTotal": "{count} брудних номерів",
+      "resetDistribution": "Скинути",
+      "loadingPreview": "Розрахунок розподілу…",
+      "noDirtyForPreview": "Немає брудних номерів для розподілу.",
+      "legendCheckedOut": "Виїзд зроблено",
+      "legendDepartureInRoom": "Виїзд, ще в номері",
+      "legendOther": "Інше",
+      "badgeLate": "пізно",
+      "previewRestant": "{count} restant",
+      "previewPublic": "{count} публічні",
+      "fewerRooms": "Менше номерів",
+      "moreRooms": "Більше номерів",
+      "roomCheckedOut": "Номер {number} · виїзд зроблено",
+      "roomDepartureInRoom": "Номер {number} · виїзд, гість ще в номері",
+      "roomNumber": "Номер {number}"
     }
   },
   "technician": {

@@ -992,7 +992,24 @@
       "assigning": "Asignando…",
       "runAutoAssignment": "Ejecutar asignación automática",
       "selectCleanerHint": "Seleccione al menos un limpiador para ejecutar.",
-      "runError": "No se pudo ejecutar la asignación automática."
+      "runError": "No se pudo ejecutar la asignación automática.",
+      "distribution": "Distribución de habitaciones",
+      "distributionHint": "Vista previa de habitaciones sucias por persona. Ajuste las cantidades: las demás se reequilibran automáticamente.",
+      "distributionTotal": "{count} habitaciones sucias",
+      "resetDistribution": "Restablecer",
+      "loadingPreview": "Calculando distribución…",
+      "noDirtyForPreview": "No hay habitaciones sucias para distribuir.",
+      "legendCheckedOut": "Checkout hecho",
+      "legendDepartureInRoom": "Salida, aún en la habitación",
+      "legendOther": "Otros",
+      "badgeLate": "tarde",
+      "previewRestant": "{count} restant",
+      "previewPublic": "{count} público",
+      "fewerRooms": "Menos habitaciones",
+      "moreRooms": "Más habitaciones",
+      "roomCheckedOut": "Habitación {number} · checkout hecho",
+      "roomDepartureInRoom": "Habitación {number} · salida, huésped aún en la habitación",
+      "roomNumber": "Habitación {number}"
     }
   },
   "technician": {
