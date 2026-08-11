@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { InspectionQueueResponse } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -20,6 +21,8 @@ type RoomDetail = {
 };
 
 export default function HousekeeperInspectRoomPage() {
+  const t = useTranslations('housekeeper');
+  const tCommon = useTranslations('common');
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
@@ -36,13 +39,15 @@ export default function HousekeeperInspectRoomPage() {
     queryFn: () => api<InspectionQueueResponse>('/assignments/my-inspection-tasks'),
   });
 
-  const task = queueQ.data?.tasks.find((t) => t.roomId === roomId);
+  const task = queueQ.data?.tasks.find((row) => row.roomId === roomId);
   const claimedByMe = task?.claimedByUserId === user?.id && task?.status === 'CLAIMED';
 
   if (isLoading || !data) {
     return (
       <div className="p-4">
-        <p className="text-sm text-sidebar-muted">{error ? 'Could not load room.' : 'Loading…'}</p>
+        <p className="text-sm text-sidebar-muted">
+          {error ? t('couldNotLoadRoom') : tCommon('loading')}
+        </p>
       </div>
     );
   }
@@ -53,27 +58,29 @@ export default function HousekeeperInspectRoomPage() {
         <Link
           href="/h"
           className="flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border/70 bg-sidebar text-white tap-scale"
-          aria-label="Back"
+          aria-label={tCommon('back')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight text-white">Inspect {data.roomNumber}</h1>
-          {data.floor != null && <p className="text-xs text-sidebar-muted">Floor {data.floor}</p>}
+          <h1 className="text-xl font-semibold tracking-tight text-white">
+            {t('inspectTitle', { number: data.roomNumber })}
+          </h1>
+          {data.floor != null && (
+            <p className="text-xs text-sidebar-muted">{t('floor', { floor: data.floor })}</p>
+          )}
         </div>
       </div>
 
       <Card tone="dark" className="p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">Status</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">{t('status')}</p>
         <div className="mt-2">
           <StatusBadge status={data.derivedStatus} variant="dark" />
         </div>
         {!claimedByMe && (
-          <p className="mt-3 text-sm text-sidebar-muted">
-            Claim this room from the Inspections list on Home before inspecting.
-          </p>
+          <p className="mt-3 text-sm text-sidebar-muted">{t('claimBeforeInspect')}</p>
         )}
       </Card>
 
@@ -84,10 +91,15 @@ export default function HousekeeperInspectRoomPage() {
         disabled={!claimedByMe}
         onClick={() => setInspectOpen(true)}
       >
-        Open inspection
+        {t('openInspection')}
       </Button>
-      <Button type="button" variant="ghostOnDark" className="min-h-[48px] w-full" onClick={() => router.push('/h')}>
-        Back to home
+      <Button
+        type="button"
+        variant="ghostOnDark"
+        className="min-h-[48px] w-full"
+        onClick={() => router.push('/h')}
+      >
+        {t('backToHome')}
       </Button>
 
       <InspectRoomModal

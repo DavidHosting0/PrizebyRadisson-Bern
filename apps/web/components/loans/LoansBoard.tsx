@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import type { LoanCatalogItemDto, RoomLoanDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { usePermission } from '@/lib/auth-context';
@@ -17,6 +18,8 @@ function formatChf(cents: number) {
 }
 
 export function LoansBoard() {
+  const t = useTranslations('loans');
+  const tCommon = useTranslations('common');
   const canWrite = usePermission('LOANS_WRITE');
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -66,7 +69,7 @@ export function LoansBoard() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!roomId || !catalogItemId) {
-      setErr('Zimmer und Artikel wählen.');
+      setErr(t('errorSelectRoomAndItem'));
       return;
     }
     createMut.mutate();
@@ -76,14 +79,12 @@ export function LoansBoard() {
     <div className="space-y-6 p-4 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Leihartikel</h1>
-          <p className="mt-1 text-sm text-sidebar-muted">
-            Aktive Ausleihen an Zimmer — Pfand aus dem Katalog.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">{t('title')}</h1>
+          <p className="mt-1 text-sm text-sidebar-muted">{t('subtitle')}</p>
         </div>
         {canWrite && (
           <Button type="button" variant="action" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Abbrechen' : 'Ausleihen'}
+            {showForm ? tCommon('cancel') : t('lend')}
           </Button>
         )}
       </div>
@@ -92,14 +93,14 @@ export function LoansBoard() {
         <div className={clsx(APP_DARK_CARD, 'p-5')}>
           <form className="space-y-4" onSubmit={onSubmit}>
             <label className="block text-sm">
-              <span className="font-medium text-white">Zimmer</span>
+              <span className="font-medium text-white">{t('room')}</span>
               <select
                 className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
                 value={roomId}
                 onChange={(e) => setRoomId(e.target.value)}
                 required
               >
-                <option value="">— wählen —</option>
+                <option value="">{t('selectPlaceholder')}</option>
                 {(roomsQ.data ?? []).map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.roomNumber}
@@ -108,14 +109,14 @@ export function LoansBoard() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="font-medium text-white">Artikel</span>
+              <span className="font-medium text-white">{t('item')}</span>
               <select
                 className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
                 value={catalogItemId}
                 onChange={(e) => setCatalogItemId(e.target.value)}
                 required
               >
-                <option value="">— wählen —</option>
+                <option value="">{t('selectPlaceholder')}</option>
                 {(catalogQ.data ?? []).map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.name} ({formatChf(i.depositCents)})
@@ -125,18 +126,18 @@ export function LoansBoard() {
             </label>
             {selectedItem && (
               <p className="text-sm text-sidebar-muted">
-                Pfand: <span className="font-semibold text-white">{formatChf(selectedItem.depositCents)}</span>
+                {t('deposit', { amount: formatChf(selectedItem.depositCents) })}
               </p>
             )}
             {err && <p className="text-sm text-rose-300">{err}</p>}
             <Button type="submit" variant="action" disabled={createMut.isPending}>
-              {createMut.isPending ? 'Speichern…' : 'Speichern'}
+              {createMut.isPending ? t('saving') : tCommon('save')}
             </Button>
           </form>
         </div>
       )}
 
-      {loansQ.isLoading && <p className="text-sm text-sidebar-muted">Laden…</p>}
+      {loansQ.isLoading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
       <ul className="space-y-3">
         {(loansQ.data ?? []).map((loan) => (
           <li key={loan.id}>
@@ -144,11 +145,14 @@ export function LoansBoard() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-white">
-                    Zimmer {loan.room.roomNumber} · {loan.catalogItem.name}
+                    {t('loanTitle', { roomNumber: loan.room.roomNumber, itemName: loan.catalogItem.name })}
                   </p>
                   <p className="mt-0.5 text-xs text-sidebar-muted">
-                    Pfand {formatChf(loan.depositCents)} · seit{' '}
-                    {new Date(loan.loanedAt).toLocaleString('de-CH')} · {loan.loanedBy.name}
+                    {t('loanMeta', {
+                      amount: formatChf(loan.depositCents),
+                      when: new Date(loan.loanedAt).toLocaleString('de-CH'),
+                      name: loan.loanedBy.name,
+                    })}
                   </p>
                 </div>
                 {canWrite && (
@@ -159,7 +163,7 @@ export function LoansBoard() {
                     onClick={() => returnMut.mutate(loan.id)}
                     disabled={returnMut.isPending}
                   >
-                    Zurückgeben
+                    {t('return')}
                   </Button>
                 )}
               </div>
@@ -167,7 +171,7 @@ export function LoansBoard() {
           </li>
         ))}
         {!loansQ.isLoading && !(loansQ.data ?? []).length && (
-          <p className="text-sm text-sidebar-muted">Keine aktiven Ausleihen.</p>
+          <p className="text-sm text-sidebar-muted">{t('empty')}</p>
         )}
       </ul>
     </div>

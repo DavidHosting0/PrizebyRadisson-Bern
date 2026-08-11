@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useDamageTypeOptions } from '@/lib/damageReportTypes';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +17,8 @@ type Props = {
 };
 
 export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) {
+  const t = useTranslations('housekeeper');
+  const tToast = useTranslations('toast');
   const qc = useQueryClient();
   const damageTypeOptions = useDamageTypeOptions();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -84,12 +87,12 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
       >
         <div className="border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-ink">Report damage</h2>
-          <p className="mt-1 text-sm text-ink-muted">Room {roomNumber}</p>
+          <h2 className="text-lg font-semibold text-ink">{t('damageTitle')}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{t('room', { number: roomNumber })}</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-5">
           <div>
-            <label className="text-sm font-medium text-ink">Type of damage *</label>
+            <label className="text-sm font-medium text-ink">{t('damageType')}</label>
             <select
               className={field}
               value={damageType}
@@ -104,18 +107,18 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Description *</label>
+            <label className="text-sm font-medium text-ink">{t('descriptionRequired')}</label>
             <textarea
               className={`${field} min-h-[88px] resize-y`}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is damaged and where?"
+              placeholder={t('descriptionPlaceholder')}
               rows={4}
               required
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Photo *</label>
+            <label className="text-sm font-medium text-ink">{t('photoRequired')}</label>
             <input
               ref={fileRef}
               type="file"
@@ -128,23 +131,23 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button type="button" variant="secondary" className="min-h-[44px]" onClick={() => fileRef.current?.click()}>
-                {file ? 'Change photo' : 'Take or choose photo'}
+                {file ? t('changePhoto') : t('takeOrChoosePhoto')}
               </Button>
               {file && <span className="text-xs text-ink-muted">{file.name}</span>}
             </div>
-            {!file && <p className="mt-1 text-xs text-ink-muted">A picture is required for maintenance.</p>}
+            {!file && <p className="mt-1 text-xs text-ink-muted">{t('photoRequiredHint')}</p>}
           </div>
           {submit.isError && (
             <p className="text-sm text-danger">
-              {submit.error instanceof Error ? submit.error.message : 'Something went wrong'}
+              {submit.error instanceof Error ? submit.error.message : tToast('error')}
             </p>
           )}
           <div className="flex flex-wrap gap-3 pt-2">
             <Button type="submit" variant="action" className="min-h-[48px]" disabled={submit.isPending}>
-              {submit.isPending ? 'Submitting…' : 'Submit report'}
+              {submit.isPending ? t('submitting') : t('submitReport')}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
+              {t('cancel')}
             </Button>
           </div>
         </form>

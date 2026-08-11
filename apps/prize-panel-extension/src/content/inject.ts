@@ -11,6 +11,7 @@ import {
   storageGetBoolean,
   storageSet,
 } from '../lib/storage';
+import { startChatAlertWatcher } from './chat-alert';
 
 const HOST_ID = 'prize-panel-host';
 
@@ -64,6 +65,11 @@ async function togglePanel(
 
 function injectPanel() {
   if (document.getElementById(HOST_ID)) return;
+
+  let panelChatOpen = false;
+  let panelCollapsed = true;
+
+  const chatFocused = () => panelChatOpen && !panelCollapsed;
 
   const radius = `${PANEL_BORDER_RADIUS_PX}px 0 0 ${PANEL_BORDER_RADIUS_PX}px`;
 
@@ -147,6 +153,7 @@ function injectPanel() {
   document.documentElement.appendChild(host);
 
   void storageGetBoolean(STORAGE_KEYS.panelCollapsed).then((collapsed) => {
+    panelCollapsed = collapsed;
     applyCollapsed(shell, tab, collapsed);
   });
 
@@ -154,7 +161,26 @@ function injectPanel() {
     if (event.data?.type === PANEL_MESSAGE.toggle) {
       void togglePanel(shell, tab);
     }
+    if (event.data?.type === PANEL_MESSAGE.chatOpen) {
+      panelChatOpen = true;
+      if (chatFocused()) {
+        document.getElementById('prize-panel-chat-toast')?.remove();
+      }
+    }
+    if (event.data?.type === PANEL_MESSAGE.chatClosed) {
+      panelChatOpen = false;
+    }
   });
+
+  // Keep collapsed flag in sync when togglePanel updates storage
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    if (changes[STORAGE_KEYS.panelCollapsed]) {
+      panelCollapsed = Boolean(changes[STORAGE_KEYS.panelCollapsed].newValue);
+    }
+  });
+
+  startChatAlertWatcher(chatFocused);
 }
 
 if (document.readyState === 'loading') {

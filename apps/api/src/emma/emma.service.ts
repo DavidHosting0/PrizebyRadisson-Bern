@@ -284,6 +284,11 @@ export class EmmaService {
       this.log.warn(
         '[EMMA] Tipp: EMMA_DEBUG=true setzen und pm2 restart — Logs zeigen dann $batch-Label, Pfade und Parsing.',
       );
+      try {
+        await this.settings.mergeEmmaRoomStatusSyncMeta({ lastError: msg });
+      } catch {
+        /* ignore meta persistence failures */
+      }
     } finally {
       this.backgroundSyncInProgress = false;
     }
@@ -369,8 +374,8 @@ export class EmmaService {
             this.prisma.room.findMany({
               select: { id: true, roomNumber: true, metadata: true, outOfOrder: true },
             }),
-          updateRoom: async (id, data) => {
-            updatedRoomIds.push(id);
+          updateRoom: async (id, data, meta) => {
+            if (meta.statusChanged) updatedRoomIds.push(id);
             await this.prisma.room.update({
               where: { id },
               data: {
@@ -394,6 +399,19 @@ export class EmmaService {
       } catch {
         /* room removed mid-sync */
       }
+    }
+
+    try {
+      await this.settings.mergeEmmaRoomStatusSyncMeta({
+        lastSyncedAt: result.syncedAt,
+        lastError: null,
+        matched: result.matched,
+        updated: result.updated,
+      });
+    } catch (err) {
+      this.log.warn(
+        `[EMMA] could not persist room-status sync meta: ${(err as Error).message}`,
+      );
     }
 
     this.log.log(

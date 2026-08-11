@@ -23,6 +23,9 @@ export const PANEL_MESSAGE = {
   toggle: 'prize-panel:toggle',
   collapsed: 'prize-panel:collapsed',
   expanded: 'prize-panel:expanded',
+  /** Panel iframe → content script: user is viewing team chat in this tab's panel. */
+  chatOpen: 'prize-panel:chat-open',
+  chatClosed: 'prize-panel:chat-closed',
 } as const;
 
 export async function storageGet<T extends string>(

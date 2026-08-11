@@ -29,10 +29,10 @@ export default function FrontOfficeBackupPage() {
         className="print:hidden"
       />
       <AppPageBody>
-        <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+        <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
           {query.isLoading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
           {query.isError && (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
               {t('loadError')}
             </div>
           )}

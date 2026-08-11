@@ -34,7 +34,11 @@ export function FrontOfficeBackupPrint({ data, locale }: Props) {
         </p>
         <p className="mt-3 text-xs text-gray-700">
           Generated {formatTimestamp(data.freshness.generatedAt, locale)} · Reservations cache{' '}
-          {formatAge(data.freshness.reservationsLastSyncedAt, locale)} · Oldest room EMMA data{' '}
+          {formatAge(data.freshness.reservationsLastSyncedAt, locale)} · Room status sync{' '}
+          {formatAge(
+            data.freshness.roomsLastStatusSyncedAt ?? data.freshness.roomsNewestEmmaSyncedAt,
+            locale,
+          )} · Oldest room EMMA data{' '}
           {formatAge(data.freshness.roomsOldestEmmaSyncedAt, locale)}
         </p>
       </header>

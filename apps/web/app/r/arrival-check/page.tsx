@@ -3,13 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { ArrivalCheckRunDetail, CheckInListTab, ReservationListItem } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { getFirstAllowedPath, RECEPTION_NAV } from '@/lib/permission-routes';
 import {
   ArrivalsTable,
-  arrivalsSortLabel,
+  useArrivalsSortLabel,
   compareArrivalRows,
   type ArrivalsSortDir,
   type ArrivalsSortKey,
@@ -18,25 +19,13 @@ import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/com
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
-const CHECKIN_TABS: { id: CheckInListTab; label: string; empty: string }[] = [
-  {
-    id: 'arrivals',
-    label: 'Anreisen',
-    empty: 'Keine Anreisen in der EMMA Check-In-Liste. Bitte Reservierungen synchronisieren.',
-  },
-  {
-    id: 'queue',
-    label: 'Queue',
-    empty: 'Keine Reservierungen in der Check-In-Queue.',
-  },
-  {
-    id: 'checkInsDone',
-    label: 'Check-Ins erledigt',
-    empty: 'Noch keine erledigten Check-Ins für das Hotel-Datum.',
-  },
-];
-
 export default function ArrivalCheckPage() {
+  const tNav = useTranslations('nav');
+  const t = useTranslations('reception.arrivalCheck');
+  const tReception = useTranslations('reception');
+  const tArrivalsTable = useTranslations('reception.arrivalsTable');
+  const tCommon = useTranslations('common');
+  const sortLabel = useArrivalsSortLabel();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user, loading } = useAuth();
@@ -50,13 +39,22 @@ export default function ArrivalCheckPage() {
   const [forceRerun, setForceRerun] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
+  const CHECKIN_TABS: { id: CheckInListTab; label: string; empty: string }[] = useMemo(
+    () => [
+      { id: 'arrivals', label: t('tabArrivals'), empty: t('emptyArrivals') },
+      { id: 'queue', label: t('tabQueue'), empty: t('emptyQueue') },
+      { id: 'checkInsDone', label: t('tabCheckInsDone'), empty: t('emptyCheckInsDone') },
+    ],
+    [t],
+  );
+
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace('/login');
     else if (!canArrivalCheck) router.replace(getFirstAllowedPath(user, RECEPTION_NAV) ?? '/login');
   }, [user, loading, canArrivalCheck, router]);
 
-  const tabMeta = CHECKIN_TABS.find((t) => t.id === activeTab)!;
+  const tabMeta = CHECKIN_TABS.find((tab) => tab.id === activeTab)!;
 
   const listQuery = useQuery({
     queryKey: ['arrival-check', 'lists', activeTab, search],
@@ -108,10 +106,7 @@ export default function ArrivalCheckPage() {
     return copy;
   }, [rows, sortKey, sortDir]);
 
-  const visibleIds = useMemo(
-    () => sortedRows.map((r) => r.reservationId),
-    [sortedRows],
-  );
+  const visibleIds = useMemo(() => sortedRows.map((r) => r.reservationId), [sortedRows]);
   const allVisibleSelected =
     visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
@@ -152,7 +147,7 @@ export default function ArrivalCheckPage() {
   if (loading || !user || !canArrivalCheck) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center bg-[#121a26]">
-        <p className="text-sm text-sidebar-muted">Lädt…</p>
+        <p className="text-sm text-sidebar-muted">{tCommon('loading')}</p>
       </div>
     );
   }
@@ -160,8 +155,8 @@ export default function ArrivalCheckPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Anreise-Check"
-        description="Reservierungen auswählen und Check starten"
+        title={tNav('arrivalCheck')}
+        description={t('description')}
         actions={
           <>
             <AppChromeTools onEnterMobile={enterMobile} />
@@ -171,7 +166,7 @@ export default function ArrivalCheckPage() {
               disabled={syncMut.isPending}
               className="inline-flex min-h-[40px] items-center justify-center rounded-btn border border-sidebar-border bg-transparent px-4 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
             >
-              {syncMut.isPending ? 'Synchronisiere…' : 'Reservierungen synchronisieren'}
+              {syncMut.isPending ? tReception('syncing') : t('syncReservations')}
             </button>
           </>
         }
@@ -200,7 +195,7 @@ export default function ArrivalCheckPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-sidebar-border/60 px-4 py-3">
               <input
                 type="search"
-                placeholder="Gast, Res.-Nr., Zimmer…"
+                placeholder={tReception('searchGuestResRoom')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className={`${APP_DARK_INPUT} min-h-[40px] min-w-[12rem] flex-1 px-4 py-2.5`}
@@ -213,10 +208,10 @@ export default function ArrivalCheckPage() {
                     disabled={sortedRows.length === 0}
                     className="rounded-lg border border-sidebar-border bg-transparent px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-50"
                   >
-                    {allVisibleSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+                    {allVisibleSelected ? t('deselectAll') : t('selectAll')}
                   </button>
                   <span className="text-sm text-sidebar-muted">
-                    {selectedCount} von {sortedRows.length} ausgewählt
+                    {t('selectedCount', { selected: selectedCount, total: sortedRows.length })}
                   </span>
                   <label className="flex cursor-pointer items-center gap-2 text-sm text-white">
                     <input
@@ -225,7 +220,7 @@ export default function ArrivalCheckPage() {
                       onChange={(e) => setForceRerun(e.target.checked)}
                       className="rounded border-sidebar-border"
                     />
-                    Bereits erledigte erneut ausführen
+                    {t('forceRerun')}
                   </label>
                   <button
                     type="button"
@@ -235,14 +230,14 @@ export default function ArrivalCheckPage() {
                     disabled={selectedCount === 0 || startMut.isPending}
                     className="rounded-lg bg-action px-4 py-2 text-sm font-semibold text-white transition hover:bg-action/90 disabled:opacity-50"
                   >
-                    {startMut.isPending ? 'Startet…' : 'Anreise-Check starten'}
+                    {startMut.isPending ? t('starting') : t('startCheck')}
                   </button>
                 </div>
               )}
             </div>
 
             {listQuery.isLoading ? (
-              <p className="px-6 py-10 text-sm text-sidebar-muted">Lädt…</p>
+              <p className="px-6 py-10 text-sm text-sidebar-muted">{tCommon('loading')}</p>
             ) : sortedRows.length === 0 ? (
               <p className="px-6 py-10 text-sm text-sidebar-muted">{tabMeta.empty}</p>
             ) : (
@@ -266,8 +261,13 @@ export default function ArrivalCheckPage() {
 
             {!listQuery.isLoading && sortedRows.length > 0 && (
               <div className="border-t border-sidebar-border/60 px-4 py-2.5 text-xs text-sidebar-muted">
-                {sortedRows.length} Einträge · {tabMeta.label} · Sortiert nach{' '}
-                {arrivalsSortLabel(sortKey)} ({sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
+                {t('listFooter', {
+                  count: sortedRows.length,
+                  tab: tabMeta.label,
+                  sort: sortLabel(sortKey),
+                  dir:
+                    sortDir === 'asc' ? tArrivalsTable('sortAsc') : tArrivalsTable('sortDesc'),
+                })}
               </div>
             )}
           </div>

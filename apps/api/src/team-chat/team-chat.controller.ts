@@ -12,8 +12,14 @@ export class TeamChatController {
 
   @Get('messages')
   @RequirePermissions(PermissionCode.TEAM_CHAT_READ)
-  list(@CurrentUser() user: User, @Query('limit') limit?: string, @Query('lang') lang?: string) {
-    return this.svc.list(limit ? parseInt(limit, 10) : 200, user, lang);
+  list(
+    @CurrentUser() user: User,
+    @Query('limit') limit?: string,
+    @Query('lang') lang?: string,
+    @Query('order') order?: string,
+  ) {
+    const dir = order === 'desc' ? 'desc' : 'asc';
+    return this.svc.list(limit ? parseInt(limit, 10) : 200, user, lang, dir);
   }
 
   @Get('mentionables')

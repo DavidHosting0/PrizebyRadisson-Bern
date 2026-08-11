@@ -40,7 +40,14 @@ export function useNotifications() {
       void qc.invalidateQueries({ queryKey: NOTIFICATIONS_QUERY_KEY });
       void qc.invalidateQueries({ queryKey: NOTIFICATIONS_UNREAD_KEY });
 
-      if (n?.linkPath && pathname === n.linkPath) return;
+      if (n?.linkPath) {
+        const path = pathname ?? '';
+        if (path === n.linkPath || path.startsWith(`${n.linkPath}/`)) return;
+        // Mobile chat lives under /r/m/chat while linkPath is /r/chat
+        if (n.linkPath.endsWith('/chat') && (path.endsWith('/chat') || path.includes('/chat/'))) {
+          return;
+        }
+      }
       if (n?.title) {
         toast.push(n.title, 'success');
       }

@@ -76,6 +76,9 @@ const RULES: RouteRule[] = [
   { method: 'POST', pattern: /^\/assignments$/, action: 'assignments.create', label: 'Zimmer zugewiesen', category: ActivityLogCategory.ASSIGNMENT },
   { method: 'POST', pattern: /^\/assignments\/suggestions$/, action: 'assignments.suggestions', label: 'Zuweisungs-Vorschläge abgerufen', category: ActivityLogCategory.ASSIGNMENT },
   { method: 'POST', pattern: /^\/assignments\/run-auto$/, action: 'assignments.run_auto', label: 'Auto-Zuweisung gestartet', category: ActivityLogCategory.ASSIGNMENT },
+  { method: 'POST', pattern: /^\/assignments\/daily-plan\/run$/, action: 'assignments.daily_plan.run', label: 'Auto-Zuweisung (Tagesplan) gestartet', category: ActivityLogCategory.ASSIGNMENT },
+  { method: 'POST', pattern: /^\/assignments\/daily-plan\/save$/, action: 'assignments.daily_plan.save', label: 'Tagesplan gespeichert', category: ActivityLogCategory.ASSIGNMENT },
+  { method: 'POST', pattern: /^\/assignments\/daily-plan\/reset$/, action: 'assignments.daily_plan.reset', label: 'Tagesplan zurückgesetzt', category: ActivityLogCategory.ASSIGNMENT },
 
   // Inspections
   { method: 'POST', pattern: /^\/inspections$/, action: 'inspections.create', label: 'Inspektion erfasst', category: ActivityLogCategory.INSPECTION },

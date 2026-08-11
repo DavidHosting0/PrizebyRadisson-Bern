@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
+import { useToast } from '@/components/toast/ToastProvider';
 
 type AssignmentRow = {
   id: string;
@@ -103,6 +104,7 @@ function PublicTaskCard({
 
 export default function SupervisorBoardPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const today = hotelTodayIso();
   const { enterMobile } = useSupervisorMobileMode();
   const [floor, setFloor] = useState<string>('');
@@ -309,6 +311,24 @@ export default function SupervisorBoardPage() {
     mutationFn: () =>
       api(`/assignments/daily-plan/save?date=${encodeURIComponent(today)}`, { method: 'POST' }),
     onSuccess: invalidateAll,
+  });
+
+  const resetDay = useMutation({
+    mutationFn: () =>
+      api(`/assignments/daily-plan/reset?date=${encodeURIComponent(today)}`, { method: 'POST' }),
+    onSuccess: () => {
+      invalidateAll();
+      toast.push('Day restarted — crew back to Mirus shift defaults.', 'success');
+    },
+    onError: (e: Error) => {
+      try {
+        const j = JSON.parse(e.message) as { message?: string | string[] };
+        const msg = Array.isArray(j.message) ? j.message.join(', ') : j.message;
+        toast.push(msg || e.message || 'Could not restart day', 'warning');
+      } catch {
+        toast.push(e.message || 'Could not restart day', 'warning');
+      }
+    },
   });
 
   const patchPublic = useMutation({
@@ -542,6 +562,19 @@ export default function SupervisorBoardPage() {
                 {savePlan.isPending ? 'Saving…' : 'Save for today'}
               </Button>
             )}
+            <Button
+              variant="ghost"
+              className="min-h-[40px] shrink-0 border border-rose-400/40 bg-transparent px-3 text-xs text-rose-200 hover:bg-rose-500/15 hover:text-rose-100"
+              disabled={resetDay.isPending}
+              onClick={() => {
+                const ok = window.confirm(
+                  'Restart today?\n\nThis clears all room assignments, working-today crew picks (back to Mirus shifts), late/public/restant choices, inspectors, skips, and unsaves the day.\n\nRoom clean/dirty status is not changed.',
+                );
+                if (ok) resetDay.mutate();
+              }}
+            >
+              {resetDay.isPending ? 'Restarting…' : 'Restart day'}
+            </Button>
             <Button
               variant="action"
               className="min-h-[40px] shrink-0 shadow-md"

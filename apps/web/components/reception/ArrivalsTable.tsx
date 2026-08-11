@@ -67,21 +67,21 @@ export function useArrivalsSortLabel() {
   return (key: ArrivalsSortKey): string => {
     switch (key) {
       case 'guest':
-        return t('sortGuest');
+        return t('arrivalsTable.colGuest');
       case 'reservationId':
-        return t('sortReservation');
+        return t('arrivalsTable.colReservation');
       case 'roomId':
-        return t('sortRoom');
+        return t('arrivalsTable.colRoom');
       case 'arrivalDate':
-        return t('sortDates');
+        return t('arrivalsTable.colDates');
       case 'roomType':
-        return t('sortType');
+        return t('arrivalsTable.colType');
       case 'numPax':
-        return t('sortPax');
+        return t('arrivalsTable.colPax');
       case 'vip':
-        return t('sortVip');
+        return t('arrivalsTable.colVip');
       case 'creditCard':
-        return t('sortCreditCard');
+        return t('arrivalsTable.colCreditCard');
       default:
         return key;
     }
@@ -196,6 +196,7 @@ export function ArrivalsTable({
   selection?: ArrivalsTableSelection;
   onView?: (reservationId: string) => void;
 }) {
+  const t = useTranslations('reception');
   const browseMode = !selection;
 
   return (
@@ -205,46 +206,46 @@ export function ArrivalsTable({
           <tr>
             {selection && (
               <th className="w-10 px-4 py-3">
-                <span className="sr-only">Auswahl</span>
+                <span className="sr-only">{t('arrivalsTable.selection')}</span>
               </th>
             )}
             <SortableTh
-              label="Gast"
+              label={t('arrivalsTable.colGuest')}
               column="guest"
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={onSort}
             />
             <SortableTh
-              label="Res."
+              label={t('arrivalsTable.colReservation')}
               column="reservationId"
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={onSort}
             />
             <SortableTh
-              label="Zimmer"
+              label={t('arrivalsTable.colRoom')}
               column="roomId"
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={onSort}
             />
             <SortableTh
-              label="An / Ab"
+              label={t('arrivalsTable.colDates')}
               column="arrivalDate"
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={onSort}
             />
             <SortableTh
-              label="Typ"
+              label={t('arrivalsTable.colType')}
               column="roomType"
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={onSort}
             />
             <SortableTh
-              label="Pax"
+              label={t('arrivalsTable.colPax')}
               column="numPax"
               sortKey={sortKey}
               sortDir={sortDir}
@@ -253,14 +254,14 @@ export function ArrivalsTable({
             {browseMode && (
               <>
                 <SortableTh
-                  label="VIP"
+                  label={t('arrivalsTable.colVip')}
                   column="vip"
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
                 />
                 <SortableTh
-                  label="Karte"
+                  label={t('arrivalsTable.colCreditCard')}
                   column="creditCard"
                   sortKey={sortKey}
                   sortDir={sortDir}
@@ -288,7 +289,9 @@ export function ArrivalsTable({
                       type="checkbox"
                       checked={selected}
                       onChange={() => selection.onToggle(r.reservationId)}
-                      aria-label={`${r.mainGuestName ?? r.reservationId} auswählen`}
+                      aria-label={t('arrivalsTable.selectRow', {
+                        name: r.mainGuestName ?? r.reservationId,
+                      })}
                       className="h-4 w-4 rounded border-sidebar-border bg-sidebar text-action focus:ring-action/30"
                     />
                   </td>
@@ -297,10 +300,12 @@ export function ArrivalsTable({
                   {r.mainGuestName ?? '—'}
                   {r.arrivalCheckCompletedAt && (
                     <span
-                      title={`Anreise-Check erledigt am ${new Date(r.arrivalCheckCompletedAt).toLocaleString('de-CH')}`}
+                      title={t('arrivalsTable.checkDoneTitle', {
+                        when: new Date(r.arrivalCheckCompletedAt).toLocaleString('de-CH'),
+                      })}
                       className="ml-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
                     >
-                      Check erledigt
+                      {t('arrivalsTable.checkDone')}
                     </span>
                   )}
                 </td>
@@ -331,7 +336,7 @@ export function ArrivalsTable({
                           onClick={() => onView(r.reservationId)}
                           className="rounded-md px-3 py-1.5 text-xs font-medium text-sidebar-muted transition hover:bg-white/10 hover:text-white"
                         >
-                          Ansehen
+                          {t('arrivalsTable.view')}
                         </button>
                       )}
                     </td>

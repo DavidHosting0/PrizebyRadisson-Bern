@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { ReservationListItem, ReservationOverview } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import {
@@ -31,6 +32,9 @@ function Kpi({ label, value }: { label: string; value: number }) {
 }
 
 export default function ReceptionArrivalsPage() {
+  const tNav = useTranslations('nav');
+  const t = useTranslations('reception');
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const sortLabel = useArrivalsSortLabel();
   const queryClient = useQueryClient();
@@ -90,10 +94,12 @@ export default function ReceptionArrivalsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Anreisen"
+        title={tNav('arrivals')}
         description={
           overview?.lastSyncedAt
-            ? `Zuletzt synchronisiert ${new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH')}`
+            ? t('lastSyncedAt', {
+                time: new Date(overview.lastSyncedAt).toLocaleTimeString('de-CH'),
+              })
             : undefined
         }
         actions={
@@ -105,7 +111,7 @@ export default function ReceptionArrivalsPage() {
               disabled={syncMut.isPending}
               className="inline-flex min-h-[40px] items-center justify-center rounded-btn bg-action px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-action/90 disabled:opacity-50"
             >
-              {syncMut.isPending ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
+              {syncMut.isPending ? t('syncing') : t('syncNow')}
             </button>
           </>
         }
@@ -113,69 +119,71 @@ export default function ReceptionArrivalsPage() {
 
       <AppPageBody>
         <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
-
-      {overview && (
-        <div className="flex flex-wrap items-end gap-3">
-          <Kpi label="Anreisen" value={overview.arrivals || overview.checkInPending} />
-          <Kpi label="In Liste" value={overview.visibleArrivals ?? rows.length} />
-          <details className="ml-auto text-sm text-sidebar-muted">
-            <summary className="cursor-pointer select-none rounded-lg px-3 py-2 hover:bg-white/5">
-              Weitere Kennzahlen
-            </summary>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <Kpi label="Pending" value={overview.checkInPending} />
-              <Kpi label="Queue" value={overview.checkInQueue} />
-              <Kpi label="Check-in" value={overview.checkInDone} />
-              <Kpi label="Im Haus" value={overview.inHouse} />
+          {overview && (
+            <div className="flex flex-wrap items-end gap-3">
+              <Kpi label={t('kpiArrivals')} value={overview.arrivals || overview.checkInPending} />
+              <Kpi label={t('kpiInList')} value={overview.visibleArrivals ?? rows.length} />
+              <details className="ml-auto text-sm text-sidebar-muted">
+                <summary className="cursor-pointer select-none rounded-lg px-3 py-2 hover:bg-white/5">
+                  {t('moreMetrics')}
+                </summary>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <Kpi label={t('kpiPending')} value={overview.checkInPending} />
+                  <Kpi label={t('kpiQueue')} value={overview.checkInQueue} />
+                  <Kpi label={t('kpiCheckIn')} value={overview.checkInDone} />
+                  <Kpi label={t('kpiInHouse')} value={overview.inHouse} />
+                </div>
+              </details>
             </div>
-          </details>
-        </div>
-      )}
+          )}
 
-      <div className={`${APP_DARK_CARD} overflow-hidden`}>
-        <div className="border-b border-sidebar-border/60 px-4 py-3">
-          <input
-            type="search"
-            placeholder="Gast, Res.-Nr., Zimmer…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={`${APP_DARK_INPUT} w-full py-2.5`}
-          />
-        </div>
+          <div className={`${APP_DARK_CARD} overflow-hidden`}>
+            <div className="border-b border-sidebar-border/60 px-4 py-3">
+              <input
+                type="search"
+                placeholder={t('searchGuestResRoom')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className={`${APP_DARK_INPUT} w-full py-2.5`}
+              />
+            </div>
 
-        {listQuery.isLoading ? (
-          <p className="px-6 py-10 text-sm text-sidebar-muted">Lädt…</p>
-        ) : sortedRows.length === 0 ? (
-          <p className="px-6 py-10 text-sm text-sidebar-muted">
-            {overview && (overview.arrivals || overview.checkInPending) === 0
-              ? 'EMMA meldet derzeit 0 Anreisen für heute.'
-              : 'Keine Anreisen in der Liste. Bitte erneut synchronisieren.'}
-          </p>
-        ) : (
-          <ArrivalsTable
-            rows={sortedRows}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={onSort}
-            onView={(reservationId) =>
-              router.push(`/r/reservations/${reservationId}?from=arrivals`)
-            }
-          />
-        )}
+            {listQuery.isLoading ? (
+              <p className="px-6 py-10 text-sm text-sidebar-muted">{tCommon('loading')}</p>
+            ) : sortedRows.length === 0 ? (
+              <p className="px-6 py-10 text-sm text-sidebar-muted">
+                {overview && (overview.arrivals || overview.checkInPending) === 0
+                  ? t('arrivalsTable.emptyZeroToday')
+                  : t('arrivalsTable.emptySync')}
+              </p>
+            ) : (
+              <ArrivalsTable
+                rows={sortedRows}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={onSort}
+                onView={(reservationId) =>
+                  router.push(`/r/reservations/${reservationId}?from=arrivals`)
+                }
+              />
+            )}
 
-        {!listQuery.isLoading && sortedRows.length > 0 && (
-          <div className="border-t border-sidebar-border/60 px-4 py-2.5 text-xs text-sidebar-muted">
-            {sortedRows.length} Einträge · Sortiert nach {sortLabel(sortKey)} (
-            {sortDir === 'asc' ? 'aufsteigend' : 'absteigend'})
+            {!listQuery.isLoading && sortedRows.length > 0 && (
+              <div className="border-t border-sidebar-border/60 px-4 py-2.5 text-xs text-sidebar-muted">
+                {t('arrivalsTable.footer', {
+                  count: sortedRows.length,
+                  sort: sortLabel(sortKey),
+                  dir: sortDir === 'asc' ? t('arrivalsTable.sortAsc') : t('arrivalsTable.sortDesc'),
+                })}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {syncMut.isError && (
-        <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
-          {(syncMut.error as Error).message}
-        </p>
-      )}
+          {syncMut.isError && (
+            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              {(syncMut.error as Error).message}
+            </p>
+          )}
         </div>
       </AppPageBody>
     </div>

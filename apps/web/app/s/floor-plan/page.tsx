@@ -20,7 +20,7 @@ export default function SupervisorFloorPlanPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title="Floor plan"
-        description="Room locations by floor with live housekeeping status. Open a room for cleaning history, photos, and maintenance."
+        description="Room locations by floor. Click a room to set Dirty / Clean / Inspected, inspect, or update maintenance."
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
       />
 

@@ -26,8 +26,8 @@ export function AppPageChrome({
 }) {
   return (
     <div className={clsx('shrink-0 bg-sidebar text-white', className)}>
-      <div className="flex flex-nowrap items-center justify-between gap-3 overflow-x-auto border-b border-sidebar-border px-4 py-5 md:px-5">
-        <div className="flex min-h-12 min-w-0 flex-1 flex-col justify-center gap-0.5">
+      <div className="flex flex-nowrap items-center justify-between gap-3 overflow-visible border-b border-sidebar-border px-4 py-5 md:px-5">
+        <div className="flex min-h-12 min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden">
           <div className="flex min-w-0 items-center gap-3">
             <h1 className="truncate text-lg font-semibold tracking-tight text-white md:text-xl">
               {title}

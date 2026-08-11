@@ -135,13 +135,13 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatDayLabel(iso: string): string {
+function formatDayLabel(iso: string, t: (key: 'today' | 'yesterday') => string): string {
   const d = new Date(iso);
   const now = new Date();
   const yesterday = new Date();
   yesterday.setDate(now.getDate() - 1);
-  if (sameDay(d, now)) return 'Today';
-  if (sameDay(d, yesterday)) return 'Yesterday';
+  if (sameDay(d, now)) return t('today');
+  if (sameDay(d, yesterday)) return t('yesterday');
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
@@ -153,31 +153,47 @@ function formatClock(iso: string): string {
   }
 }
 
-function statusLine(r: ReqRow): string {
+type ChatT = ReturnType<typeof useTranslations<'chat'>>;
+
+function statusLine(r: ReqRow, t: ChatT): string {
   const s = r.status;
-  if (s === 'OPEN' || s === 'CREATED') return 'Open — not claimed yet';
+  if (s === 'OPEN' || s === 'CREATED') return t('requestStatus.open');
   if (s === 'CLAIMED') {
-    return r.claimedBy ? `Claimed by ${userTitlePrefixLabel(r.claimedBy.titlePrefix)} · ${r.claimedBy.name}` : 'Claimed';
+    return r.claimedBy
+      ? t('requestStatus.claimedBy', {
+          prefix: userTitlePrefixLabel(r.claimedBy.titlePrefix),
+          name: r.claimedBy.name,
+        })
+      : t('requestStatus.claimed');
   }
   if (s === 'IN_PROGRESS') {
     return r.claimedBy
-      ? `In progress · ${userTitlePrefixLabel(r.claimedBy.titlePrefix)} · ${r.claimedBy.name}`
-      : 'In progress';
+      ? t('requestStatus.inProgressBy', {
+          prefix: userTitlePrefixLabel(r.claimedBy.titlePrefix),
+          name: r.claimedBy.name,
+        })
+      : t('requestStatus.inProgress');
   }
-  if (s === 'RESOLVED') return 'Done';
-  if (s === 'CANCELLED') return 'Cancelled';
+  if (s === 'RESOLVED') return t('requestStatus.done');
+  if (s === 'CANCELLED') return t('requestStatus.cancelled');
   return s.replace(/_/g, ' ');
 }
 
-function damageStatusLine(d: DmgRow): string {
+function damageStatusLine(d: DmgRow, t: ChatT): string {
   const s = d.status;
-  if (s === 'REPORTED') return 'Reported — awaiting review';
-  if (s === 'ACKNOWLEDGED') return 'Acknowledged';
-  if (s === 'RESOLVED') return 'Resolved';
+  if (s === 'REPORTED') return t('damageStatus.reported');
+  if (s === 'ACKNOWLEDGED') return t('damageStatus.acknowledged');
+  if (s === 'RESOLVED') return t('damageStatus.resolved');
   return s.charAt(0) + s.slice(1).toLowerCase();
 }
 
 const DAMAGE_STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+
+function damageStatusOptionLabel(status: (typeof DAMAGE_STATUSES)[number], t: ChatT): string {
+  if (status === 'REPORTED') return t('damageStatus.reportedOption');
+  if (status === 'ACKNOWLEDGED') return t('damageStatus.acknowledgedOption');
+  return t('damageStatus.resolvedOption');
+}
 
 function truncateBody(s: string, max = 100) {
   const t = s.trim();
@@ -320,14 +336,14 @@ export function TeamChatView({
           kind: 'day',
           at: item.at,
           key: `d-${d.toDateString()}`,
-          label: formatDayLabel(item.at),
+          label: formatDayLabel(item.at, tChat),
         });
         lastDay = d;
       }
       withDividers.push(item);
     }
     return withDividers;
-  }, [messages, requests, damages]);
+  }, [messages, requests, damages, tChat]);
 
   const groupTails = useMemo(() => computeIsGroupTail(timeline), [timeline]);
   const groupHeads = useMemo(() => computeIsGroupHead(timeline), [timeline]);
@@ -482,7 +498,7 @@ export function TeamChatView({
       qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
     },
     onError: (e: unknown) => {
-      toast.push(e instanceof Error ? e.message : 'Could not send message', 'warning');
+      toast.push(e instanceof Error ? e.message : tChat('sendFailed'), 'warning');
     },
   });
 
@@ -651,14 +667,14 @@ export function TeamChatView({
       >
         <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end">
         {(loadingMsg || loadingReq || (canReadDamage && loadingDmg)) && (
-          <p className="text-sm text-sidebar-muted">Loading…</p>
+          <p className="text-sm text-sidebar-muted">{tChat('loading')}</p>
         )}
         {!loadingMsg &&
           !loadingReq &&
           !(canReadDamage && loadingDmg) &&
           timeline.filter((i) => i.kind !== 'day').length === 0 && (
           <p className="mt-12 text-center text-sm text-sidebar-muted">
-            No messages or requests yet. Say hi to your team 👋
+            {tChat('emptyFeed')}
           </p>
         )}
 
@@ -690,13 +706,13 @@ export function TeamChatView({
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                          Service request
+                          {tChat('serviceRequest')}
                         </p>
                         <p className="mt-1 text-base font-semibold text-white">
-                          Room {r.room.roomNumber}
+                          {tChat('room', { roomNumber: r.room.roomNumber })}
                           <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
                         </p>
-                        <p className="mt-1 text-sm text-sidebar-muted">{statusLine(r)}</p>
+                        <p className="mt-1 text-sm text-sidebar-muted">{statusLine(r, tChat)}</p>
                         <div className="mt-2 flex items-center gap-2">
                           <PriorityBadge priority={r.priority} />
                           <span className="text-[10px] text-sidebar-muted/80">{formatClock(r.createdAt)}</span>
@@ -711,7 +727,7 @@ export function TeamChatView({
                             disabled={claim.isPending}
                             onClick={() => claim.mutate(r.id)}
                           >
-                            Claim
+                            {tChat('claim')}
                           </Button>
                         )}
                         {isHk &&
@@ -720,12 +736,12 @@ export function TeamChatView({
                           (r.status === 'CLAIMED' || r.status === 'IN_PROGRESS') && (
                             <Button
                               type="button"
-                              variant="secondary"
-                              className="min-h-[36px] border border-sidebar-border bg-transparent px-3 text-xs text-white hover:bg-white/10"
+                              variant="action"
+                              className="min-h-[36px] px-3 text-xs"
                               disabled={resolve.isPending}
                               onClick={() => resolve.mutate(r.id)}
                             >
-                              Mark done
+                              {tChat('markDone')}
                             </Button>
                           )}
                       </div>
@@ -756,16 +772,16 @@ export function TeamChatView({
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                            Damage report
+                            {tChat('damageReport')}
                           </p>
                           <p className="mt-1 text-base font-semibold text-white">
-                            Room {d.room.roomNumber}
+                            {tChat('room', { roomNumber: d.room.roomNumber })}
                             <span className="font-normal text-sidebar-muted"> · {damageLabel(d.damageType)}</span>
                           </p>
                           <p className="mt-1 text-sm leading-snug text-white">{truncateBody(d.description, 160)}</p>
                           <p className="mt-1 text-sm text-sidebar-muted">
                             {formatUserWithTitlePrefix(d.reportedBy.name, d.reportedBy.titlePrefix)} ·{' '}
-                            {damageStatusLine(d)}
+                            {damageStatusLine(d, tChat)}
                           </p>
                           <span className="mt-2 inline-block text-[10px] text-sidebar-muted/80">
                             {formatClock(d.reportedAt)}
@@ -782,7 +798,7 @@ export function TeamChatView({
                           >
                             {DAMAGE_STATUSES.map((s) => (
                               <option key={s} value={s}>
-                                {s.charAt(0) + s.slice(1).toLowerCase()}
+                                {damageStatusOptionLabel(s, tChat)}
                               </option>
                             ))}
                           </select>
@@ -926,10 +942,10 @@ export function TeamChatView({
             type="button"
             onClick={() => scrollToBottom('smooth', true)}
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sidebar-border bg-sidebar px-3 py-1.5 text-xs font-medium text-white shadow-none transition hover:bg-sidebar-hover"
-            aria-label="Jump to latest messages"
+            aria-label={tChat('jumpToLatest')}
           >
             <span aria-hidden>↓</span>
-            New messages
+            {tChat('newMessages')}
           </button>
         </div>
       )}
@@ -939,7 +955,9 @@ export function TeamChatView({
           {replyTo && (
             <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-2 border-b border-sidebar-border/60 bg-action/10 px-3 py-2 text-xs">
               <div className="min-w-0 border-l-[3px] border-action/60 pl-2">
-                <p className="font-semibold text-white">Replying to {replyTo.author.name}</p>
+                <p className="font-semibold text-white">
+                  {tChat('replyingToName', { name: replyTo.author.name })}
+                </p>
                 <p className="mt-0.5 truncate text-sidebar-muted">{truncateBody(replyTo.body, 160)}</p>
               </div>
               <button
@@ -947,7 +965,7 @@ export function TeamChatView({
                 className="shrink-0 rounded-md px-2 py-1 font-medium text-sidebar-muted hover:bg-white/10 hover:text-white"
                 onClick={() => setReplyTo(null)}
               >
-                Cancel
+                {tCommon('cancel')}
               </button>
             </div>
           )}
@@ -956,8 +974,8 @@ export function TeamChatView({
               type="button"
               onClick={() => setProfileOpen(true)}
               className="shrink-0 rounded-full transition-transform hover:scale-[1.03]"
-              aria-label="Edit your profile photo"
-              title="Your profile photo"
+              aria-label={tChat('editProfilePhoto')}
+              title={tChat('yourProfilePhoto')}
             >
               <Avatar name={user?.name ?? '?'} url={user?.avatarUrl} size={40} ring />
             </button>
@@ -967,8 +985,8 @@ export function TeamChatView({
                 type="button"
                 onClick={() => setNewReqOpen(true)}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white"
-                aria-label="New service request"
-                title="New service request"
+                aria-label={tChat('newServiceRequest')}
+                title={tChat('newServiceRequest')}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
                   <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -981,7 +999,7 @@ export function TeamChatView({
               onChange={setBody}
               mentionUserIds={mentionUserIds}
               onMentionUserIdsChange={setMentionUserIds}
-              placeholder={replyTo ? 'Write a reply…' : 'Message the team…'}
+              placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
               maxLength={2000}
               onSubmitShortcut={() => {
                 const t = body.trim();
@@ -999,7 +1017,7 @@ export function TeamChatView({
                   ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
                   : 'bg-white/10 text-sidebar-muted',
               )}
-              aria-label="Send message"
+              aria-label={tChat('sendMessage')}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path

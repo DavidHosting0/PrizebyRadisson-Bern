@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import type { ArrivalCheckRunDetail, ArrivalCheckRunItem } from '@housekeeping/shared';
 import {
   activeItem,
@@ -9,17 +10,14 @@ import {
   isDeclinedVcc,
   isRunActive,
   isRunFinished,
-  itemStatusLabel,
-  manualReasonText,
   needsManual,
   runNeedsContinue,
-  stepLabel,
 } from '@/components/reception/arrival-check-run-utils';
+import { useArrivalCheckLabels } from '@/components/reception/useArrivalCheckLabels';
 import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 
 type Props = {
   run: ArrivalCheckRunDetail;
-  /** Hide back/cancel controls (admin preview embed). */
   preview?: boolean;
   onBack?: () => void;
   onCancel?: () => void;
@@ -76,11 +74,8 @@ function StatChip({
 }
 
 function StepPills({ item }: { item: ArrivalCheckRunItem }) {
-  const steps: ArrivalCheckRunItem['currentStep'][] = [
-    'FOLIO_LOAD',
-    'CHARGE_ASSIGN',
-    'PREPAID_SETTLE',
-  ];
+  const { stepLabel } = useArrivalCheckLabels();
+  const steps: ArrivalCheckRunItem['currentStep'][] = ['FOLIO_LOAD', 'CHARGE_ASSIGN', 'PREPAID_SETTLE'];
   const showPayment = item.scenario === 'VCC';
   const visible = showPayment ? steps : steps.slice(0, 2);
   const currentIdx = item.currentStep ? visible.indexOf(item.currentStep) : -1;
@@ -109,6 +104,11 @@ function StepPills({ item }: { item: ArrivalCheckRunItem }) {
 }
 
 function RunItemRow({ item, highlight }: { item: ArrivalCheckRunItem; highlight?: boolean }) {
+  const t = useTranslations('reception.arrivalCheck');
+  const { itemStatusLabel, manualReasonFallback } = useArrivalCheckLabels();
+  const manualReason =
+    item.manualReason ?? item.paymentError ?? item.error ?? manualReasonFallback;
+
   return (
     <li
       className={clsx(
@@ -121,7 +121,7 @@ function RunItemRow({ item, highlight }: { item: ArrivalCheckRunItem; highlight?
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="font-medium text-white">{item.mainGuestName ?? '—'}</span>
           {item.roomId && (
-            <span className="text-xs text-sidebar-muted">Zi. {item.roomId}</span>
+            <span className="text-xs text-sidebar-muted">{t('roomShort', { room: item.roomId })}</span>
           )}
           <span className="text-xs text-sidebar-muted">{itemStatusLabel(item.status)}</span>
         </div>
@@ -133,12 +133,12 @@ function RunItemRow({ item, highlight }: { item: ArrivalCheckRunItem; highlight?
         )}
         {item.status === 'IN_PROGRESS' && highlight && <StepPills item={item} />}
         {needsManual(item) && !highlight && (
-          <p className="mt-1 text-xs text-orange-300">{manualReasonText(item)}</p>
+          <p className="mt-1 text-xs text-orange-300">{manualReason}</p>
         )}
       </div>
       {!highlight && item.paymentStatus === 'PAID' && (
         <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-          VCC
+          {t('statVcc')}
         </span>
       )}
     </li>
@@ -159,6 +159,8 @@ export function ArrivalCheckRunView({
   continuePending,
   continueError,
 }: Props) {
+  const t = useTranslations('reception.arrivalCheck');
+  const { manualReasonFallback } = useArrivalCheckLabels();
   const active = isRunActive(run);
   const paused = runNeedsContinue(run);
   const finished = isRunFinished(run);
@@ -166,15 +168,16 @@ export function ArrivalCheckRunView({
   const current = activeItem(run);
   const manualItems = run.items.filter(needsManual);
 
-  const headline = active && !paused
-    ? 'Anreise-Check läuft'
-    : paused
-      ? 'Anreise-Check pausiert'
-    : run.status === 'CANCELLED'
-      ? 'Anreise-Check abgebrochen'
-      : manualItems.length > 0
-        ? 'Anreise-Check abgeschlossen'
-        : 'Alles erledigt';
+  const headline =
+    active && !paused
+      ? t('running')
+      : paused
+        ? t('paused')
+        : run.status === 'CANCELLED'
+          ? t('cancelled')
+          : manualItems.length > 0
+            ? t('completedManual')
+            : t('allDone');
 
   return (
     <div className="w-full min-w-0 space-y-6">
@@ -186,11 +189,11 @@ export function ArrivalCheckRunView({
               onClick={onBack}
               className="text-sm text-sidebar-muted hover:text-white"
             >
-              ← Zurück
+              ← {t('back')}
             </button>
           ) : (
             <Link href="/r/arrival-check" className="text-sm text-sidebar-muted hover:text-white">
-              ← Zurück
+              ← {t('back')}
             </Link>
           )}
           {active && run.status === 'RUNNING' && onCancel && (
@@ -200,7 +203,7 @@ export function ArrivalCheckRunView({
               disabled={cancelPending}
               className="text-sm text-rose-400 hover:text-rose-300 disabled:opacity-50"
             >
-              {cancelPending ? 'Wird abgebrochen…' : 'Abbrechen'}
+              {cancelPending ? t('cancelling') : t('cancel')}
             </button>
           )}
         </header>
@@ -210,10 +213,10 @@ export function ArrivalCheckRunView({
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-white">{headline}</h2>
           <p className="mt-1 text-sm text-sidebar-muted">
-            {run.itemCount} Reservierung{run.itemCount === 1 ? '' : 'en'}
+            {t('reservationCount', { count: run.itemCount })}
             {preview && (
               <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-300">
-                Vorschau
+                {t('preview')}
               </span>
             )}
           </p>
@@ -239,21 +242,20 @@ export function ArrivalCheckRunView({
         )}
 
         <div className="flex flex-wrap gap-2">
-          <StatChip label="Erledigt" value={run.completedCount} tone="success" />
-          <StatChip label="VCC" value={run.paidCount} tone="success" />
-          <StatChip label="Manuell" value={run.manualCount} tone="warning" />
-          <StatChip label="Fehler" value={run.failedCount} tone="danger" />
-          <StatChip label="Abgelehnt" value={run.declinedCount} tone="danger" />
-          <StatChip label="Übersprungen" value={run.skippedCount} tone="muted" />
-          {active && <StatChip label="Ausstehend" value={run.pendingCount} tone="neutral" />}
+          <StatChip label={t('statCompleted')} value={run.completedCount} tone="success" />
+          <StatChip label={t('statVcc')} value={run.paidCount} tone="success" />
+          <StatChip label={t('statManual')} value={run.manualCount} tone="warning" />
+          <StatChip label={t('statFailed')} value={run.failedCount} tone="danger" />
+          <StatChip label={t('statDeclined')} value={run.declinedCount} tone="danger" />
+          <StatChip label={t('statSkipped')} value={run.skippedCount} tone="muted" />
+          {active && <StatChip label={t('statPending')} value={run.pendingCount} tone="neutral" />}
         </div>
       </section>
 
       {paused && onContinue && !preview && (
         <section className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 p-4">
           <p className="text-sm text-indigo-100">
-            {run.pendingCount} Reservierung{run.pendingCount === 1 ? '' : 'en'} in der Warteschlange
-            — nach einem Neustart oder einer Unterbrechung manuell fortsetzen.
+            {t('continueQueue', { count: run.pendingCount })}
           </p>
           <button
             type="button"
@@ -261,7 +263,7 @@ export function ArrivalCheckRunView({
             disabled={continuePending}
             className="mt-3 rounded-lg border border-indigo-400/40 bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
           >
-            {continuePending ? 'Wird fortgesetzt…' : 'Fortsetzen'}
+            {continuePending ? t('continuing') : t('continue')}
           </button>
         </section>
       )}
@@ -270,7 +272,7 @@ export function ArrivalCheckRunView({
         <section className={clsx(APP_DARK_CARD, 'overflow-hidden border-indigo-400/30')}>
           <div className="border-b border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
-              Aktuelle Reservierung
+              {t('currentReservation')}
             </p>
           </div>
           <RunItemRow item={current} highlight />
@@ -281,7 +283,7 @@ export function ArrivalCheckRunView({
         <section className={clsx(APP_DARK_CARD, 'overflow-hidden')}>
           <div className="border-b border-sidebar-border/60 bg-sidebar-hover/40 px-4 py-2.5">
             <h3 className="text-sm font-semibold text-white">
-              {active ? 'Warteschlange' : 'Reservierungen'}
+              {active ? t('queueHeading') : t('reservationsHeading')}
             </h3>
           </div>
           <ul className="max-h-[min(480px,50vh)] divide-y divide-sidebar-border/50 overflow-y-auto">
@@ -294,7 +296,7 @@ export function ArrivalCheckRunView({
 
       {finished && run.categoryCounts.length > 0 && (
         <section className={clsx(APP_DARK_CARD, 'p-4')}>
-          <h3 className="text-sm font-semibold text-white">Kategorien</h3>
+          <h3 className="text-sm font-semibold text-white">{t('categories')}</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             {run.categoryCounts.map((cat) => (
               <span
@@ -313,12 +315,12 @@ export function ArrivalCheckRunView({
         <section className="space-y-4">
           {run.status !== 'CANCELLED' && manualItems.length === 0 && (
             <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-              Keine manuelle Nachbearbeitung nötig.
+              {t('noManualNeeded')}
               {run.completedCount > 0 && (
                 <span className="mt-1 block text-emerald-300/80">
-                  {run.completedCount} erfolgreich
-                  {run.paidCount > 0 ? ` · ${run.paidCount} VCC belastet` : ''}
-                  {run.skippedCount > 0 ? ` · ${run.skippedCount} übersprungen` : ''}
+                  {t('successfulCount', { count: run.completedCount })}
+                  {run.paidCount > 0 ? ` · ${t('vccCharged', { count: run.paidCount })}` : ''}
+                  {run.skippedCount > 0 ? ` · ${t('skippedCount', { count: run.skippedCount })}` : ''}
                 </span>
               )}
             </p>
@@ -326,14 +328,14 @@ export function ArrivalCheckRunView({
 
           {run.status === 'CANCELLED' && (
             <p className="rounded-xl border border-sidebar-border/60 bg-white/5 px-4 py-3 text-sm text-sidebar-muted">
-              Ausstehende Reservierungen wurden nicht verarbeitet.
+              {t('pendingNotProcessed')}
             </p>
           )}
 
           {manualItems.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-white">
-                Manuelle Bearbeitung nötig ({manualItems.length})
+                {t('manualNeeded', { count: manualItems.length })}
               </h3>
               <ul className={clsx(APP_DARK_CARD, 'divide-y divide-sidebar-border/50 overflow-hidden')}>
                 {manualItems.map((item) => (
@@ -344,7 +346,7 @@ export function ArrivalCheckRunView({
                           {item.mainGuestName ?? '—'}
                           {item.roomId && (
                             <span className="ml-2 font-normal text-sidebar-muted">
-                              Zi. {item.roomId}
+                              {t('roomShort', { room: item.roomId })}
                             </span>
                           )}
                         </p>
@@ -357,11 +359,14 @@ export function ArrivalCheckRunView({
                             isDeclinedVcc(item) ? 'text-rose-300' : 'text-orange-300',
                           )}
                         >
-                          {manualReasonText(item)}
+                          {item.manualReason ??
+                            item.paymentError ??
+                            item.error ??
+                            manualReasonFallback}
                         </p>
                         {isDeclinedVcc(item) && (
                           <span className="mt-1 inline-block rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-medium text-rose-300">
-                            VCC abgelehnt
+                            {t('vccDeclined')}
                           </span>
                         )}
                       </div>
@@ -370,7 +375,7 @@ export function ArrivalCheckRunView({
                           href={`/r/reservations/${item.reservationId}?from=arrivals`}
                           className="shrink-0 rounded-lg border border-sidebar-border px-3 py-1.5 text-sm font-medium text-white hover:bg-white/10"
                         >
-                          Öffnen
+                          {t('openReservation')}
                         </Link>
                       )}
                     </div>
@@ -383,8 +388,7 @@ export function ArrivalCheckRunView({
           {finished && run.failedCount > 0 && onRetryFailed && !preview && (
             <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
               <p className="text-sm text-rose-200">
-                {run.failedCount} Reservierung{run.failedCount === 1 ? '' : 'en'} mit technischem
-                Fehler — nach Prüfung erneut versuchen.
+                {t('failedRetry', { count: run.failedCount })}
               </p>
               <button
                 type="button"
@@ -392,7 +396,7 @@ export function ArrivalCheckRunView({
                 disabled={retryFailedPending}
                 className="mt-3 rounded-lg border border-rose-400/40 bg-sidebar px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
               >
-                {retryFailedPending ? 'Wird wiederholt…' : 'Fehlgeschlagene wiederholen'}
+                {retryFailedPending ? t('retrying') : t('retryFailed')}
               </button>
             </div>
           )}
@@ -401,7 +405,7 @@ export function ArrivalCheckRunView({
 
       {!active && !finished && (
         <section className="space-y-4 py-6">
-          <p className="text-sm text-sidebar-muted">Warte auf Start…</p>
+          <p className="text-sm text-sidebar-muted">{t('waitingStart')}</p>
           <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
             <div className="h-full w-1/4 animate-pulse rounded-full bg-indigo-400/40" />
           </div>

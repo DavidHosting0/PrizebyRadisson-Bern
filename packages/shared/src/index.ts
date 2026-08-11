@@ -41,6 +41,7 @@ export const WS_EVENTS = {
   ROOM_STATUS_UPDATED: 'room.status_updated',
   CHECKLIST_TASK_UPDATED: 'checklist.task_updated',
   NOTIFICATION_CREATED: 'notification.created',
+  TEAM_CHAT_MESSAGE: 'team_chat.message',
 } as const;
 
 export type NotificationType = 'SERVICE_REQUEST_CREATED' | 'TEAM_CHAT_MENTION';

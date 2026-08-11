@@ -27,6 +27,8 @@ export type FrontOfficeBackupFreshness = {
   reservationsLastSyncedAt: string | null;
   reservationsLastSyncStatus: 'ok' | 'error' | 'running' | null;
   reservationsLastSyncError: string | null;
+  /** Last successful EMMA room-status sync (authoritative board freshness). */
+  roomsLastStatusSyncedAt: string | null;
   roomsNewestEmmaSyncedAt: string | null;
   roomsOldestEmmaSyncedAt: string | null;
 };

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { formatUserRef } from '@/lib/userTitlePrefix';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -22,6 +23,7 @@ type Req = {
 };
 
 export default function ReceptionRequestsPage() {
+  const tNav = useTranslations('nav');
   const qc = useQueryClient();
   const { openNewRequest } = useReceptionUi();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
@@ -51,7 +53,7 @@ export default function ReceptionRequestsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Service requests"
+        title={tNav('serviceRequests')}
         description="Create, track, and manage guest requests"
         actions={
           <>

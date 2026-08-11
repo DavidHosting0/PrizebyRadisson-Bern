@@ -71,6 +71,19 @@ export class PushService {
     return { ok: true };
   }
 
+  private async sendOnce(
+    sub: { endpoint: string; p256dh: string; auth: string },
+    body: string,
+  ) {
+    await webpush.sendNotification(
+      {
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth },
+      },
+      body,
+    );
+  }
+
   async sendToUser(userId: string, payload: PushPayload) {
     if (!this.configured) return;
     const subs = await this.prisma.pushSubscription.findMany({
@@ -84,24 +97,26 @@ export class PushService {
       linkPath: payload.linkPath,
     });
 
+    const maxAttempts = 3;
     await Promise.all(
       subs.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            },
-            body,
-          );
-        } catch (e: unknown) {
-          const status = (e as { statusCode?: number })?.statusCode;
-          if (status === 404 || status === 410) {
-            await this.prisma.pushSubscription.delete({ where: { id: sub.id } });
-          } else {
-            this.log.warn(
-              `push failed for ${sub.endpoint}: ${e instanceof Error ? e.message : String(e)}`,
-            );
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            await this.sendOnce(sub, body);
+            return;
+          } catch (e: unknown) {
+            const status = (e as { statusCode?: number })?.statusCode;
+            if (status === 404 || status === 410) {
+              await this.prisma.pushSubscription.delete({ where: { id: sub.id } });
+              return;
+            }
+            const msg = e instanceof Error ? e.message : String(e);
+            if (attempt >= maxAttempts) {
+              this.log.warn(`push failed for ${sub.endpoint} after ${attempt} attempts: ${msg}`);
+              return;
+            }
+            this.log.debug(`push retry ${attempt}/${maxAttempts} for ${sub.endpoint}: ${msg}`);
+            await new Promise((r) => setTimeout(r, 200 * attempt));
           }
         }
       }),

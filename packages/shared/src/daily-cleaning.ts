@@ -66,9 +66,9 @@ export type DailyCleaningPlanResponse = {
   eligibleCleaners: DailyCleaningAssignee[];
   /** Cleaners with overlapping shifts today (preselect hint). */
   onShiftCleaners: DailyCleaningAssignee[];
-  /** All active CLEANER housekeepers. */
+  /** Active CLEANER housekeepers + housekeeping supervisors (working-today pool). */
   allCleaners: DailyCleaningAssignee[];
-  /** All cleaners plus supervisors (restant / public pickers). */
+  /** Same pool as allCleaners — used for restant / public pickers. */
   manualAssignees: DailyCleaningAssignee[];
   /** Housekeeping staff eligible to inspect (CLEANER + supervisors; excludes HTC). */
   inspectorCandidates: DailyCleaningAssignee[];
@@ -142,4 +142,9 @@ export type MyDailyTaskDto = {
   publicAreaName: string | null;
   overdueDays: number | null;
   completedAt: string | null;
+  /** Departure today from EMMA occupancy (room tasks only). */
+  isDepartureToday?: boolean;
+  /** Guest has checked out (or OCO done) — relevant when isDepartureToday. */
+  guestCheckedOut?: boolean;
+  guestName?: string | null;
 };

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { InspectionQueueResponse } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
@@ -23,6 +24,8 @@ type RoomDetail = {
 };
 
 export default function SupervisorMobileInspectionRoomPage() {
+  const t = useTranslations('housekeeper');
+  const tCommon = useTranslations('common');
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
@@ -43,18 +46,18 @@ export default function SupervisorMobileInspectionRoomPage() {
   });
 
   const useQueue = (queueQ.data?.duties.length ?? 0) > 0;
-  const task = queueQ.data?.tasks.find((t) => t.roomId === roomId);
+  const task = queueQ.data?.tasks.find((row) => row.roomId === roomId);
   const claimedByMe = task?.claimedByUserId === user?.id && task?.status === 'CLAIMED';
   const isSupervisor = user?.role === 'SUPERVISOR' || user?.role === 'ADMIN';
   const canInspect =
-    !useQueue ||
-    claimedByMe ||
-    (isSupervisor && (!task || task.status === 'PENDING'));
+    !useQueue || claimedByMe || (isSupervisor && (!task || task.status === 'PENDING'));
 
   if (isLoading || !data) {
     return (
       <div className="p-4">
-        <p className="text-sm text-sidebar-muted">{error ? 'Could not load room.' : 'Loading…'}</p>
+        <p className="text-sm text-sidebar-muted">
+          {error ? t('couldNotLoadRoom') : tCommon('loading')}
+        </p>
       </div>
     );
   }
@@ -65,33 +68,32 @@ export default function SupervisorMobileInspectionRoomPage() {
         <Link
           href="/s/m"
           className="flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border/70 bg-sidebar text-white tap-scale"
-          aria-label="Back"
+          aria-label={tCommon('back')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold tracking-tight text-white">Room {data.roomNumber}</h1>
-          {data.floor != null && <p className="text-xs text-sidebar-muted">Floor {data.floor}</p>}
+          <h1 className="text-xl font-semibold tracking-tight text-white">
+            {t('inspectTitle', { number: data.roomNumber })}
+          </h1>
+          {data.floor != null && (
+            <p className="text-xs text-sidebar-muted">{t('floor', { floor: data.floor })}</p>
+          )}
         </div>
       </div>
 
       <Card tone="dark" className="p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">Housekeeping status</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-sidebar-muted">{t('status')}</p>
         <div className="mt-2">
           <StatusBadge status={data.derivedStatus} variant="dark" />
         </div>
         {useQueue && !claimedByMe && (
-          <p className="mt-3 text-sm text-sidebar-muted">
-            Claim this room on the inspections list before starting the inspection.
-          </p>
+          <p className="mt-3 text-sm text-sidebar-muted">{t('claimBeforeInspect')}</p>
         )}
         {data.derivedStatus !== 'CLEAN' && (
-          <p className="mt-3 text-sm text-sidebar-muted">
-            This room is not in &quot;clean&quot; status. You can still inspect, report lost &amp; found, or report damage if
-            needed.
-          </p>
+          <p className="mt-3 text-sm text-sidebar-muted">{t('inspectNotCleanHint')}</p>
         )}
       </Card>
 
@@ -103,10 +105,10 @@ export default function SupervisorMobileInspectionRoomPage() {
           disabled={!canInspect}
           onClick={() => setInspectOpen(true)}
         >
-          Inspect room
+          {t('openInspection')}
         </Button>
         <Button type="button" variant="secondary" className="min-h-[52px] w-full" onClick={() => setLostOpen(true)}>
-          Report lost &amp; found
+          {t('reportLostFound')}
         </Button>
         {canReportDamage && (
           <Button
@@ -115,11 +117,11 @@ export default function SupervisorMobileInspectionRoomPage() {
             className="min-h-[52px] w-full border-0 bg-red-800 text-white shadow-sm hover:bg-red-900 hover:text-white"
             onClick={() => setDamageOpen(true)}
           >
-            Report damage
+            {t('reportDamage')}
           </Button>
         )}
         <Button type="button" variant="ghostOnDark" className="min-h-[48px] w-full" onClick={() => router.push('/s/m')}>
-          Back to list
+          {t('backToHome')}
         </Button>
       </div>
 

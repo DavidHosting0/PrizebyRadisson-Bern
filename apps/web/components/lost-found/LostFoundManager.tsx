@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import imageCompression from 'browser-image-compression';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -31,9 +32,27 @@ type Tab = 'unsorted' | 'stored' | 'archive';
 
 const STATUSES = ['FOUND', 'STORED', 'CLAIMED', 'CLOSED'] as const;
 
+function lfStatusLabel(
+  status: (typeof STATUSES)[number],
+  t: ReturnType<typeof useTranslations<'lostFound'>>,
+) {
+  switch (status) {
+    case 'FOUND':
+      return t('statusFound');
+    case 'STORED':
+      return t('statusStored');
+    case 'CLAIMED':
+      return t('statusClaimed');
+    case 'CLOSED':
+      return t('statusClosed');
+    default:
+      return status;
+  }
+}
+
 export function LostFoundManager({
-  title = 'Lost & found',
-  subtitle = 'Triage cleaner reports, manage storage boxes, and track items through to claim.',
+  title,
+  subtitle,
   tone = 'light',
   onEnterMobile,
 }: {
@@ -42,6 +61,9 @@ export function LostFoundManager({
   tone?: 'light' | 'dark';
   onEnterMobile?: () => void;
 }) {
+  const t = useTranslations('lostFound');
+  const pageTitle = title ?? t('title');
+  const pageSubtitle = subtitle ?? t('subtitle');
   const dark = tone === 'dark';
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>('unsorted');
@@ -112,11 +134,11 @@ export function LostFoundManager({
       {!dark && (
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">{title}</h1>
-            <p className="mt-1 text-sm text-ink-muted">{subtitle}</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink md:text-3xl">{pageTitle}</h1>
+            <p className="mt-1 text-sm text-ink-muted">{pageSubtitle}</p>
           </div>
           <Button variant="action" onClick={() => setAddOpen(true)}>
-            + Add item
+            {t('addItem')}
           </Button>
         </div>
       )}
@@ -127,13 +149,13 @@ export function LostFoundManager({
           dark ? 'border-sidebar-border/60' : 'border-border',
         )}
       >
-        <TabButton dark={dark} active={tab === 'unsorted'} onClick={() => setTab('unsorted')} label="Not sorted" count={counts.unsorted} />
-        <TabButton dark={dark} active={tab === 'stored'} onClick={() => setTab('stored')} label="In storage" count={counts.stored} />
-        <TabButton dark={dark} active={tab === 'archive'} onClick={() => setTab('archive')} label="Claimed / closed" count={counts.archive} />
+        <TabButton dark={dark} active={tab === 'unsorted'} onClick={() => setTab('unsorted')} label={t('tabUnsorted')} count={counts.unsorted} />
+        <TabButton dark={dark} active={tab === 'stored'} onClick={() => setTab('stored')} label={t('tabStored')} count={counts.stored} />
+        <TabButton dark={dark} active={tab === 'archive'} onClick={() => setTab('archive')} label={t('tabArchive')} count={counts.archive} />
         <div className="ml-auto flex flex-wrap gap-2">
           <input
             type="search"
-            placeholder="Search description…"
+            placeholder={t('searchPlaceholder')}
             className={clsx(
               'min-h-[36px] w-56 rounded-btn px-3 text-sm',
               dark ? APP_DARK_INPUT : 'border border-border bg-surface',
@@ -150,7 +172,7 @@ export function LostFoundManager({
               value={boxFilter}
               onChange={(e) => setBoxFilter(e.target.value)}
             >
-              <option value="">All boxes</option>
+              <option value="">{t('allBoxes')}</option>
               {LOST_FOUND_BOXES.map((b) => (
                 <option key={b} value={b}>
                   {b} ({boxCounts.get(b) ?? 0})
@@ -160,13 +182,13 @@ export function LostFoundManager({
           )}
           {dark && (
             <Button variant="action" onClick={() => setAddOpen(true)}>
-              + Add item
+              {t('addItem')}
             </Button>
           )}
         </div>
       </div>
 
-      {isLoading && <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>Loading…</p>}
+      {isLoading && <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>{t('loading')}</p>}
 
       {tab === 'unsorted' && (
         <UnsortedList
@@ -185,10 +207,10 @@ export function LostFoundManager({
       {items.length === 0 && !isLoading && (
         <p className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
           {tab === 'unsorted'
-            ? 'Nothing to sort. New items from housekeepers will appear here.'
+            ? t('emptyUnsorted')
             : tab === 'stored'
-              ? 'No items currently in storage.'
-              : 'Archive is empty.'}
+              ? t('emptyStored')
+              : t('emptyArchive')}
         </p>
       )}
 
@@ -210,8 +232,8 @@ export function LostFoundManager({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <AppPageChrome
-          title={title}
-          description={subtitle}
+          title={pageTitle}
+          description={pageSubtitle}
           actions={<AppChromeTools onEnterMobile={onEnterMobile} />}
         />
         <AppPageBody>{body}</AppPageBody>
@@ -276,6 +298,8 @@ function UnsortedList({
   pending: boolean;
   dark?: boolean;
 }) {
+  const t = useTranslations('lostFound');
+
   return (
     <ul className="space-y-3">
       {items.map((item) => (
@@ -290,7 +314,7 @@ function UnsortedList({
                 {item.photoUrl ? (
                   <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-[10px] text-sidebar-muted">No photo</span>
+                  <span className="text-[10px] text-sidebar-muted">{t('noPhoto')}</span>
                 )}
               </button>
               <button
@@ -300,17 +324,19 @@ function UnsortedList({
               >
                 <p className="font-medium text-white">{item.description}</p>
                 <p className="mt-1 text-xs text-sidebar-muted">
-                  {item.room ? `Room ${item.room.roomNumber}` : 'No room'}
-                  {item.reportedBy?.name ? ` · Reported by ${item.reportedBy.name}` : ''}
+                  {item.room ? t('room', { roomNumber: item.room.roomNumber }) : t('noRoom')}
+                  {item.reportedBy?.name ? ` · ${t('reportedBy', { name: item.reportedBy.name })}` : ''}
                 </p>
                 <p className="mt-1 text-xs text-sidebar-muted">
-                  Found: {item.foundAt ? new Date(item.foundAt).toLocaleString() : 'Not reported'}
+                  {item.foundAt
+                    ? t('found', { when: new Date(item.foundAt).toLocaleString() })
+                    : t('foundNotReported')}
                 </p>
               </button>
               <BoxPicker
                 dark
                 disabled={pending}
-                placeholder="Store in box…"
+                placeholder={t('storeInBox')}
                 value=""
                 onChange={(box) => onStore(item.id, box)}
               />
@@ -325,7 +351,7 @@ function UnsortedList({
                 {item.photoUrl ? (
                   <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-[10px] text-ink-muted">No photo</span>
+                  <span className="text-[10px] text-ink-muted">{t('noPhoto')}</span>
                 )}
               </button>
               <button
@@ -335,16 +361,18 @@ function UnsortedList({
               >
                 <p className="font-medium text-ink">{item.description}</p>
                 <p className="mt-1 text-xs text-ink-muted">
-                  {item.room ? `Room ${item.room.roomNumber}` : 'No room'}
-                  {item.reportedBy?.name ? ` · Reported by ${item.reportedBy.name}` : ''}
+                  {item.room ? t('room', { roomNumber: item.room.roomNumber }) : t('noRoom')}
+                  {item.reportedBy?.name ? ` · ${t('reportedBy', { name: item.reportedBy.name })}` : ''}
                 </p>
                 <p className="mt-1 text-xs text-ink-muted">
-                  Found: {item.foundAt ? new Date(item.foundAt).toLocaleString() : 'Not reported'}
+                  {item.foundAt
+                    ? t('found', { when: new Date(item.foundAt).toLocaleString() })
+                    : t('foundNotReported')}
                 </p>
               </button>
               <BoxPicker
                 disabled={pending}
-                placeholder="Store in box…"
+                placeholder={t('storeInBox')}
                 value=""
                 onChange={(box) => onStore(item.id, box)}
               />
@@ -367,6 +395,9 @@ function StoredGrid({
   showStatus?: boolean;
   dark?: boolean;
 }) {
+  const t = useTranslations('lostFound');
+  const tCommon = useTranslations('common');
+
   return (
     <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
@@ -390,7 +421,7 @@ function StoredGrid({
               {item.photoUrl ? (
                 <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
               ) : (
-                <span className="text-xs">No photo</span>
+                <span className="text-xs">{t('noPhoto')}</span>
               )}
             </div>
             <div className="p-4">
@@ -408,10 +439,14 @@ function StoredGrid({
                 )}
               </div>
               <p className={clsx('mt-2 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                Stored: {item.storedAt ? new Date(item.storedAt).toLocaleString() : '—'}
+                {t('stored', {
+                  when: item.storedAt ? new Date(item.storedAt).toLocaleString() : '—',
+                })}
               </p>
               <p className={clsx('mt-1 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                Guest contacted: {item.guestContactedAt ? 'Yes' : 'No'}
+                {t('guestContactedYesNo', {
+                  value: item.guestContactedAt ? tCommon('yes') : tCommon('no'),
+                })}
               </p>
               {showStatus && (
                 <span
@@ -420,7 +455,7 @@ function StoredGrid({
                     dark ? 'bg-white/10 text-sidebar-muted' : 'bg-surface-muted text-ink-muted',
                   )}
                 >
-                  {item.status.toLowerCase()}
+                  {lfStatusLabel(item.status, t)}
                 </span>
               )}
             </div>
@@ -444,6 +479,8 @@ function BoxPicker({
   placeholder?: string;
   dark?: boolean;
 }) {
+  const t = useTranslations('lostFound');
+
   return (
     <select
       disabled={disabled}
@@ -456,10 +493,10 @@ function BoxPicker({
         dark ? APP_DARK_INPUT : 'border border-border bg-surface',
       )}
     >
-      <option value="">{placeholder ?? 'Select box…'}</option>
+      <option value="">{placeholder ?? t('selectBox')}</option>
       {LOST_FOUND_BOXES.map((b) => (
         <option key={b} value={b}>
-          Box {b}
+          {t('boxOption', { box: b })}
         </option>
       ))}
     </select>
@@ -479,6 +516,8 @@ function ItemDetailModal({
   onPatch: (body: Record<string, unknown>) => void;
   pending: boolean;
 }) {
+  const t = useTranslations('lostFound');
+  const tCommon = useTranslations('common');
   const panelRef = useRef<HTMLDivElement>(null);
   useOverlayKeyboard({ open: true, onClose, containerRef: panelRef });
 
@@ -495,9 +534,9 @@ function ItemDetailModal({
       >
         <div className={clsx('flex items-start justify-between border-b px-5 py-4', dark ? 'border-sidebar-border/60' : 'border-border')}>
           <div>
-            <h2 className={clsx('text-lg font-semibold', dark ? 'text-white' : 'text-ink')}>Lost & found item</h2>
+            <h2 className={clsx('text-lg font-semibold', dark ? 'text-white' : 'text-ink')}>{t('detailTitle')}</h2>
             <p className={clsx('mt-1 text-xs capitalize', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-              Status: {item.status.toLowerCase()}
+              {t('statusLabel', { status: lfStatusLabel(item.status, t) })}
             </p>
           </div>
           <button
@@ -508,7 +547,7 @@ function ItemDetailModal({
               dark ? 'text-sidebar-muted hover:bg-white/10 hover:text-white' : 'text-ink-muted hover:bg-surface-muted',
             )}
           >
-            Close
+            {tCommon('close')}
           </button>
         </div>
         <div className="grid gap-6 p-5 md:grid-cols-5">
@@ -517,39 +556,45 @@ function ItemDetailModal({
               {item.photoUrl ? (
                 <img src={item.photoUrl} alt={item.description} className="h-full w-full object-cover" />
               ) : (
-                <span className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>No photo</span>
+                <span className={clsx('text-sm', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>{t('noPhoto')}</span>
               )}
             </div>
           </div>
           <div className="space-y-4 md:col-span-3">
             <div>
               <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                Description
+                {t('description')}
               </p>
               <p className={clsx('mt-1 whitespace-pre-wrap text-sm', dark ? 'text-slate-100' : 'text-ink')}>{item.description}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <DetailRow
                 dark={dark}
-                label="Found"
-                value={item.foundAt ? new Date(item.foundAt).toLocaleString() : 'None (not reported by cleaner)'}
+                label={t('foundLabel')}
+                value={
+                  item.foundAt ? new Date(item.foundAt).toLocaleString() : t('foundNone')
+                }
               />
               <DetailRow
                 dark={dark}
-                label="Stored"
-                value={item.storedAt ? new Date(item.storedAt).toLocaleString() : 'Not in storage'}
+                label={t('storedLabel')}
+                value={item.storedAt ? new Date(item.storedAt).toLocaleString() : t('notInStorage')}
               />
-              <DetailRow dark={dark} label="Room" value={item.room ? `Room ${item.room.roomNumber}` : '—'} />
               <DetailRow
                 dark={dark}
-                label="Reported by"
+                label={t('roomLabel')}
+                value={item.room ? t('room', { roomNumber: item.room.roomNumber }) : '—'}
+              />
+              <DetailRow
+                dark={dark}
+                label={t('reportedByLabel')}
                 value={item.reportedBy?.name ?? item.reportedBy?.email ?? '—'}
               />
             </div>
 
             <div>
               <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                Storage box
+                {t('storageBox')}
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <BoxPicker
@@ -560,7 +605,7 @@ function ItemDetailModal({
                 />
                 {item.storedLocation && (
                   <span className={clsx('text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                    Currently in <strong className={dark ? 'text-white' : 'text-ink'}>{item.storedLocation}</strong>
+                    {t('currentlyIn', { box: item.storedLocation })}
                   </span>
                 )}
               </div>
@@ -568,7 +613,7 @@ function ItemDetailModal({
 
             <div>
               <p className={clsx('text-[11px] font-semibold uppercase tracking-wide', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                Status
+                {t('status')}
               </p>
               <select
                 disabled={pending}
@@ -581,7 +626,7 @@ function ItemDetailModal({
               >
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {lfStatusLabel(s, t)}
                   </option>
                 ))}
               </select>
@@ -594,10 +639,10 @@ function ItemDetailModal({
                 disabled={pending}
                 onChange={(e) => onPatch({ guestContacted: e.target.checked })}
               />
-              Guest has been contacted
+              {t('guestContacted')}
               {item.guestContactedAt && (
                 <span className={clsx('text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-                  (on {new Date(item.guestContactedAt).toLocaleString()})
+                  {t('guestContactedOn', { when: new Date(item.guestContactedAt).toLocaleString() })}
                 </span>
               )}
             </label>
@@ -620,6 +665,8 @@ function DetailRow({ label, value, dark }: { label: string; value: string; dark?
 }
 
 function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }) {
+  const t = useTranslations('lostFound');
+  const tCommon = useTranslations('common');
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -634,7 +681,7 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
     mutationFn: async () => {
       setError(null);
       const desc = description.trim();
-      if (!desc) throw new Error('Description is required');
+      if (!desc) throw new Error(t('errorDescriptionRequired'));
 
       let photoS3Key: string | null = null;
       if (file) {
@@ -649,7 +696,7 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
           body: compressed,
           headers: { 'Content-Type': mime },
         });
-        if (!putRes.ok) throw new Error('Failed to upload photo');
+        if (!putRes.ok) throw new Error(t('errorUploadPhoto'));
         photoS3Key = presign.key;
       }
 
@@ -668,7 +715,7 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
       onClose();
     },
     onError: (err: unknown) => {
-      setError(err instanceof Error ? err.message : 'Failed to add item');
+      setError(err instanceof Error ? err.message : t('errorAddItem'));
     },
   });
 
@@ -689,14 +736,14 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
         )}
       >
         <div className={clsx('border-b px-5 py-4', dark ? 'border-sidebar-border/60' : 'border-border')}>
-          <h2 className={clsx('text-lg font-semibold', dark ? 'text-white' : 'text-ink')}>Add lost & found item</h2>
+          <h2 className={clsx('text-lg font-semibold', dark ? 'text-white' : 'text-ink')}>{t('addTitle')}</h2>
           <p className={clsx('mt-1 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-            Use this to log existing storage items or something handed in directly at reception.
+            {t('addSubtitle')}
           </p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-5">
           <div>
-            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>Description *</label>
+            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>{t('descriptionRequired')}</label>
             <textarea
               className={clsx(
                 'mt-1.5 w-full rounded-btn px-3 py-2.5 text-sm',
@@ -705,12 +752,12 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="e.g. Blue umbrella, handle slightly bent"
+              placeholder={t('descriptionPlaceholder')}
               required
             />
           </div>
           <div>
-            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>Storage box (optional)</label>
+            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>{t('storageBoxOptional')}</label>
             <select
               className={clsx(
                 'mt-1.5 min-h-[40px] w-full rounded-btn px-3 text-sm',
@@ -719,19 +766,19 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
               value={box}
               onChange={(e) => setBox(e.target.value)}
             >
-              <option value="">Leave in &quot;Not sorted&quot;</option>
+              <option value="">{t('leaveUnsorted')}</option>
               {LOST_FOUND_BOXES.map((b) => (
                 <option key={b} value={b}>
-                  Box {b}
+                  {t('boxOption', { box: b })}
                 </option>
               ))}
             </select>
             <p className={clsx('mt-1 text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>
-              Selecting a box marks the item as stored immediately.
+              {t('boxMarksStored')}
             </p>
           </div>
           <div>
-            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>Photo (optional)</label>
+            <label className={clsx('text-sm font-medium', dark ? 'text-white' : 'text-ink')}>{t('photoOptional')}</label>
             <input
               ref={fileRef}
               type="file"
@@ -746,7 +793,7 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
                 className={dark ? 'border-sidebar-border bg-transparent text-white hover:bg-white/10' : undefined}
                 onClick={() => fileRef.current?.click()}
               >
-                {file ? 'Change photo' : 'Add photo'}
+                {file ? t('changePhoto') : t('addPhoto')}
               </Button>
               {file && <span className={clsx('text-xs', dark ? 'text-sidebar-muted' : 'text-ink-muted')}>{file.name}</span>}
             </div>
@@ -754,10 +801,10 @@ function AddItemModal({ dark, onClose }: { dark?: boolean; onClose: () => void }
           {error && <p className={clsx('text-sm', dark ? 'text-rose-300' : 'text-danger')}>{error}</p>}
           <div className="flex flex-wrap gap-3 pt-2">
             <Button type="submit" variant="action" disabled={submit.isPending}>
-              {submit.isPending ? 'Saving…' : 'Save item'}
+              {submit.isPending ? t('saving') : t('saveItem')}
             </Button>
             <Button type="button" variant={dark ? 'ghostOnDark' : 'ghost'} onClick={onClose}>
-              Cancel
+              {tCommon('cancel')}
             </Button>
           </div>
         </form>

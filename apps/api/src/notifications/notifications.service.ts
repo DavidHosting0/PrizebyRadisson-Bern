@@ -5,10 +5,11 @@ import {
   Prisma,
   UserRole,
 } from '@prisma/client';
-import { WS_EVENTS } from '@housekeeping/shared';
+import { hotelTodayIso, WS_EVENTS } from '@housekeeping/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { PushService } from '../push/push.service';
+import { DailyCleaningService } from '../assignments/daily-cleaning.service';
 import { notificationLinkPath } from './notification-link-path';
 
 type CreateNotificationInput = {
@@ -29,6 +30,7 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeGateway,
     private readonly push: PushService,
+    private readonly dailyCleaning: DailyCleaningService,
   ) {}
 
   private toDto(row: Notification) {
@@ -97,6 +99,15 @@ export class NotificationsService {
     return rows.map((r) => r.id);
   }
 
+  /**
+   * Cleaners + HSK supervisors marked as working today (DailyWorkingStaff),
+   * or on shift for the hotel day when no working-today list exists.
+   */
+  async workingHousekeepingStaffIds(excludeUserId?: string): Promise<string[]> {
+    const { eligible } = await this.dailyCleaning.listEligibleCleaners(hotelTodayIso());
+    return eligible.map((u) => u.id).filter((id) => id !== excludeUserId);
+  }
+
   async createForUsers(input: CreateNotificationInput) {
     const uniqueIds = [...new Set(input.userIds)].filter(Boolean);
     if (uniqueIds.length === 0) return [];
@@ -130,11 +141,18 @@ export class NotificationsService {
           `notification socket failed for ${user.id}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      void this.push.sendToUser(user.id, {
-        title: input.title,
-        body: input.body,
-        linkPath,
-      });
+      // Await push so delivery attempts finish before the request ends (retries inside PushService).
+      try {
+        await this.push.sendToUser(user.id, {
+          title: input.title,
+          body: input.body,
+          linkPath,
+        });
+      } catch (e) {
+        this.log.warn(
+          `notification push failed for ${user.id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
     return created.map((r) => this.toDto(r));
   }
@@ -148,7 +166,13 @@ export class NotificationsService {
     },
     excludeUserId?: string,
   ) {
-    const userIds = await this.housekeepingStaffIds(excludeUserId);
+    const userIds = await this.workingHousekeepingStaffIds(excludeUserId);
+    if (userIds.length === 0) {
+      this.log.debug(
+        `service request ${req.id}: no working housekeeping staff to notify`,
+      );
+      return [];
+    }
     return this.createForUsers({
       userIds,
       type: NotificationType.SERVICE_REQUEST_CREATED,

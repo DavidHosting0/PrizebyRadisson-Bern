@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import type {
   ShiftHandoverStateDto,
   ShiftNoteDaySummaryDto,
@@ -44,6 +45,8 @@ function formatDayShort(dateIso: string) {
 }
 
 export function ShiftNotesBoard() {
+  const t = useTranslations('shiftNotes');
+  const tCommon = useTranslations('common');
   const { user } = useAuth();
   const canWrite = usePermission('SHIFT_NOTES_WRITE');
   const qc = useQueryClient();
@@ -205,22 +208,25 @@ export function ShiftNotesBoard() {
     <div className="flex h-[calc(100dvh-5.5rem)] min-h-[420px] flex-col md:h-[calc(100dvh-4rem)]">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-sidebar-border/60 px-4 py-2.5">
         <div className="min-w-0">
-          <h1 className="text-base font-semibold tracking-tight text-white">Schichtübergabe</h1>
+          <h1 className="text-base font-semibold tracking-tight text-white">{t('title')}</h1>
           <p className="truncate text-xs text-sidebar-muted">
             {mode === 'today'
               ? handoverQ.data
-                ? `${handoverQ.data.activeShiftLabel} · ${formatDayShort(operatingDay)}`
+                ? t('subtitleTodayShift', {
+                    shiftLabel: handoverQ.data.activeShiftLabel,
+                    day: formatDayShort(operatingDay),
+                  })
                 : formatDayShort(operatingDay)
               : browseDate
                 ? formatDayShort(browseDate)
-                : 'Tage mit Notizen'}
+                : t('subtitleDaysWithNotes')}
           </p>
         </div>
         <div className="flex shrink-0 rounded-btn border border-sidebar-border bg-sidebar p-0.5">
           {(
             [
-              ['today', 'Heute'],
-              ['browse', 'Durchsuchen'],
+              ['today', t('modeToday')],
+              ['browse', t('modeBrowse')],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -244,11 +250,9 @@ export function ShiftNotesBoard() {
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
         {showDayList && (
           <>
-            {loading && <p className="py-8 text-center text-sm text-sidebar-muted">Laden…</p>}
+            {loading && <p className="py-8 text-center text-sm text-sidebar-muted">{t('loading')}</p>}
             {!loading && (daysQ.data?.length ?? 0) === 0 && (
-              <p className="py-10 text-center text-sm text-sidebar-muted">
-                Noch keine Tage mit Notizen.
-              </p>
+              <p className="py-10 text-center text-sm text-sidebar-muted">{t('emptyDays')}</p>
             )}
             <ul className="mx-auto flex max-w-2xl flex-col gap-2">
               {(daysQ.data ?? []).map((day) => (
@@ -260,7 +264,7 @@ export function ShiftNotesBoard() {
                   >
                     <span className="text-sm font-medium text-white">{formatDayLabel(day.date)}</span>
                     <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-sidebar-muted">
-                      {day.count} {day.count === 1 ? 'Notiz' : 'Notizen'}
+                      {t('noteCount', { count: day.count })}
                     </span>
                   </button>
                 </li>
@@ -278,16 +282,14 @@ export function ShiftNotesBoard() {
                   onClick={() => setBrowseDate(null)}
                   className="text-xs font-medium text-action hover:underline"
                 >
-                  ← Alle Tage
+                  {t('backToAllDays')}
                 </button>
                 <span className="text-xs text-sidebar-muted">{formatDayLabel(browseDate)}</span>
               </div>
             )}
-            {loading && <p className="py-8 text-center text-sm text-sidebar-muted">Laden…</p>}
+            {loading && <p className="py-8 text-center text-sm text-sidebar-muted">{t('loading')}</p>}
             {!loading && notes.length === 0 && (
-              <p className="py-10 text-center text-sm text-sidebar-muted">
-                Noch keine Notizen für diesen Tag.
-              </p>
+              <p className="py-10 text-center text-sm text-sidebar-muted">{t('emptyNotes')}</p>
             )}
             <ul className="mx-auto flex max-w-2xl flex-col gap-3">
               {notes.map((n) => {
@@ -321,7 +323,7 @@ export function ShiftNotesBoard() {
                               className="h-5 w-5 rounded border-sidebar-border accent-action"
                               checked={n.completed}
                               disabled={toggling}
-                              aria-label={n.completed ? 'Als offen markieren' : 'Als erledigt markieren'}
+                              aria-label={n.completed ? t('markOpen') : t('markDone')}
                               onChange={(e) =>
                                 toggleCompleteMut.mutate({
                                   id: n.id,
@@ -342,15 +344,15 @@ export function ShiftNotesBoard() {
                                     : 'bg-action/15 text-action',
                                 )}
                               >
-                                {n.completed ? 'Erledigt' : 'Info'}
+                                {n.completed ? t('badgeDone') : t('badgeInfo')}
                               </span>
                               <span className="text-sm font-semibold text-white">{n.createdBy.name}</span>
                             </div>
                             <span className="text-[11px] text-sidebar-muted">
                               {formatTime(n.createdAt)}
-                              {n.updatedAt !== n.createdAt && !n.completed ? ' · bearbeitet' : ''}
+                              {n.updatedAt !== n.createdAt && !n.completed ? t('edited') : ''}
                               {n.completed && n.completedBy
-                                ? ` · erledigt von ${n.completedBy.name}`
+                                ? t('completedBy', { name: n.completedBy.name })
                                 : ''}
                             </span>
                           </div>
@@ -372,7 +374,7 @@ export function ShiftNotesBoard() {
                                     updateMut.mutate({ id: n.id, body: editBody.trim() })
                                   }
                                 >
-                                  Speichern
+                                  {tCommon('save')}
                                 </Button>
                                 <Button
                                   type="button"
@@ -383,7 +385,7 @@ export function ShiftNotesBoard() {
                                     setEditBody('');
                                   }}
                                 >
-                                  Abbrechen
+                                  {tCommon('cancel')}
                                 </Button>
                               </div>
                             </div>
@@ -407,14 +409,14 @@ export function ShiftNotesBoard() {
                                   setEditBody(n.body);
                                 }}
                               >
-                                Bearbeiten
+                                {tCommon('edit')}
                               </button>
                               <button
                                 type="button"
                                 className="text-xs font-medium text-sidebar-muted hover:text-rose-300"
                                 onClick={() => deleteMut.mutate(n.id)}
                               >
-                                Löschen
+                                {tCommon('delete')}
                               </button>
                             </div>
                           )}
@@ -469,11 +471,9 @@ export function ShiftNotesBoard() {
                   />
                 </svg>
                 {isFuture ? (
-                  <span>
-                    Geplant · <span className="font-bold">{formatDayShort(forDate)}</span>
-                  </span>
+                  <span>{t('scheduledFor', { day: formatDayShort(forDate) })}</span>
                 ) : (
-                  'Vormerken'
+                  t('reserve')
                 )}
                 <span
                   className={clsx(
@@ -493,7 +493,7 @@ export function ShiftNotesBoard() {
                     setShowSchedule(false);
                   }}
                 >
-                  Heute
+                  {t('today')}
                 </button>
               )}
             </div>
@@ -501,7 +501,7 @@ export function ShiftNotesBoard() {
             {showSchedule && (
               <div className="rounded-2xl border border-warning/30 bg-warning/10 px-3.5 py-3">
                 <label className="block text-xs">
-                  <span className="font-semibold text-amber-300">Zieltag wählen</span>
+                  <span className="font-semibold text-amber-300">{t('pickTargetDay')}</span>
                   <div className="mt-1.5 max-w-xs">
                     <DateInput
                       min={operatingDay}
@@ -511,7 +511,7 @@ export function ShiftNotesBoard() {
                   </div>
                 </label>
                 <p className="mt-2 text-[11px] text-amber-300/80">
-                  Die Notiz erscheint erst am gewählten Tag.
+                  {t('scheduleHint')}
                 </p>
               </div>
             )}
@@ -529,8 +529,8 @@ export function ShiftNotesBoard() {
                 }}
                 placeholder={
                   isFuture
-                    ? `Notiz für ${formatDayShort(forDate)}…`
-                    : 'Notiz schreiben…'
+                    ? t('placeholderForDay', { day: formatDayShort(forDate) })
+                    : t('placeholderWrite')
                 }
                 className="h-11 flex-1 rounded-full border border-sidebar-border bg-sidebar px-4 text-sm text-white placeholder:text-sidebar-muted focus:border-action focus:outline-none focus:ring-1 focus:ring-action"
               />
@@ -540,7 +540,7 @@ export function ShiftNotesBoard() {
                 disabled={createMut.isPending || !body.trim()}
                 className="h-11 shrink-0 rounded-full px-5"
               >
-                {isFuture ? 'Planen' : 'Senden'}
+                {isFuture ? t('plan') : t('send')}
               </Button>
             </div>
             {err && <p className="text-xs text-rose-300">{err}</p>}

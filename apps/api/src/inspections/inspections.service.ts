@@ -65,14 +65,29 @@ export class InspectionsService {
     });
 
     if (row.passed) {
-      await this.emma?.pushRoomStatus(dto.roomId, 'INSPECTED', {
-        actionAt: row.inspectedAt,
+      const actionAt = row.inspectedAt;
+      const pushResult = await this.emma?.pushRoomStatus(dto.roomId, 'INSPECTED', {
+        actionAt,
         source: 'inspections.create',
       });
+      // Same board guarantee as FO floor-plan setStatus: local Emma metadata must show IN
+      // when the live MERGE is disabled, skipped, or failed (outbox still retries).
+      if (!pushResult || !pushResult.ok || pushResult.skipped) {
+        await this.rooms.ensureLocalEmmaBoardStatus(
+          dto.roomId,
+          'INSPECTED',
+          actionAt,
+          user.id,
+          'inspections.create.local',
+        );
+      }
       await this.inspectionQueue.completeTaskForRoom(dto.roomId, row.id);
       await this.prisma.room.update({
         where: { id: dto.roomId },
-        data: { departureStickyOn: null },
+        data: {
+          departureStickyOn: null,
+          cleaningDeclaredAt: actionAt,
+        },
       });
     }
 

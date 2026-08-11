@@ -17,6 +17,7 @@ import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/Button';
+import { chatUi, dayLabel, type ChatUiStrings } from '@/lib/chat-ui';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 const MORE_EMOJIS = [
@@ -82,18 +83,20 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function formatDayLabel(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-  if (sameDay(d, now)) return 'Heute';
-  if (sameDay(d, yesterday)) return 'Gestern';
-  return d.toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
-function formatClock(iso: string) {
-  return new Date(iso).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+function formatClock(iso: string, locale: string) {
+  const tag =
+    locale === 'en'
+      ? 'en-CH'
+      : locale === 'pt'
+        ? 'pt-PT'
+        : locale === 'es'
+          ? 'es-ES'
+          : locale === 'tr'
+            ? 'tr-TR'
+            : locale === 'uk'
+              ? 'uk-UA'
+              : 'de-CH';
+  return new Date(iso).toLocaleTimeString(tag, { hour: '2-digit', minute: '2-digit' });
 }
 
 function truncateBody(s: string, max = 80) {
@@ -278,6 +281,7 @@ function MessageMenu({
   onReply,
   onDelete,
   onClose,
+  ui,
 }: {
   open: boolean;
   x: number;
@@ -288,6 +292,7 @@ function MessageMenu({
   onReply: () => void;
   onDelete: () => void;
   onClose: () => void;
+  ui: ChatUiStrings;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -360,8 +365,8 @@ function MessageMenu({
                   type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-full text-sidebar-muted hover:bg-white/10"
                   onClick={() => setShowMore(true)}
-                  title="Mehr"
-                  aria-label="Mehr Emojis"
+                  title={ui.more}
+                  aria-label={ui.moreEmojis}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
                     <path
@@ -376,13 +381,13 @@ function MessageMenu({
             ) : (
               <div>
                 <div className="mb-1 flex items-center justify-between px-1">
-                  <span className="text-[9px] font-semibold uppercase text-sidebar-muted">Emojis</span>
+                  <span className="text-[9px] font-semibold uppercase text-sidebar-muted">{ui.emojis}</span>
                   <button
                     type="button"
                     className="text-[9px] text-sky-300"
                     onClick={() => setShowMore(false)}
                   >
-                    Zurück
+                    {ui.back}
                   </button>
                 </div>
                 <div className="grid max-h-36 grid-cols-6 gap-0.5 overflow-y-auto">
@@ -407,7 +412,7 @@ function MessageMenu({
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-slate-100 hover:bg-white/10"
             onClick={onReply}
           >
-            Antworten
+            {ui.reply}
           </button>
           {canDelete && (
             <button
@@ -415,7 +420,7 @@ function MessageMenu({
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-red-300 hover:bg-white/10"
               onClick={onDelete}
             >
-              Löschen
+              {ui.delete}
             </button>
           )}
         </div>
@@ -425,7 +430,15 @@ function MessageMenu({
   );
 }
 
-function MessageBody({ msg, mentions }: { msg: ChatMsg; mentions?: ChatAuthor[] }) {
+function MessageBody({
+  msg,
+  mentions,
+  ui,
+}: {
+  msg: ChatMsg;
+  mentions?: ChatAuthor[];
+  ui: ChatUiStrings;
+}) {
   const [showOriginal, setShowOriginal] = useState(false);
   const hasTranslation = !!msg.isTranslated && !!msg.bodyTranslated;
   const displayBody = hasTranslation && showOriginal ? msg.bodyTranslated! : msg.body;
@@ -437,8 +450,8 @@ function MessageBody({ msg, mentions }: { msg: ChatMsg; mentions?: ChatAuthor[] 
         <button
           type="button"
           onClick={() => setShowOriginal((v) => !v)}
-          title={showOriginal ? 'Übersetzung anzeigen' : 'Original anzeigen'}
-          aria-label={showOriginal ? 'Übersetzung anzeigen' : 'Original anzeigen'}
+          title={showOriginal ? ui.showTranslation : ui.showOriginal}
+          aria-label={showOriginal ? ui.showTranslation : ui.showOriginal}
           className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-sky-300/90 hover:bg-white/10 hover:text-sky-200"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -462,6 +475,7 @@ export function TeamChatBoard() {
   const canDelete = usePermission('TEAM_CHAT_DELETE');
   const qc = useQueryClient();
   const locale = user?.preferredLocale || 'de';
+  const ui = useMemo(() => chatUi(locale), [locale]);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const [body, setBody] = useState('');
@@ -527,13 +541,17 @@ export function TeamChatBoard() {
     for (const msg of messages) {
       const d = new Date(msg.createdAt);
       if (!lastDay || !sameDay(lastDay, d)) {
-        items.push({ kind: 'day', key: `d-${d.toDateString()}`, label: formatDayLabel(msg.createdAt) });
+        items.push({
+          kind: 'day',
+          key: `d-${d.toDateString()}`,
+          label: dayLabel(msg.createdAt, locale),
+        });
         lastDay = d;
       }
       items.push({ kind: 'msg', key: `m-${msg.id}`, msg });
     }
     return items;
-  }, [messages]);
+  }, [messages, locale]);
 
   const groupHeads = useMemo(() => {
     const heads: Record<string, boolean> = {};
@@ -586,8 +604,8 @@ export function TeamChatBoard() {
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-2.5 py-1.5">
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold text-white">Chat</p>
-          <p className="truncate text-[9px] text-sidebar-muted">Team-Kanal · PrizeBern</p>
+          <p className="truncate text-[11px] font-semibold text-white">{ui.title}</p>
+          <p className="truncate text-[9px] text-sidebar-muted">{ui.subtitle}</p>
         </div>
       </header>
 
@@ -597,12 +615,10 @@ export function TeamChatBoard() {
         className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
       >
         {isLoading && (
-          <p className="py-4 text-center text-[11px] text-sidebar-muted">Laden…</p>
+          <p className="py-4 text-center text-[11px] text-sidebar-muted">{ui.loading}</p>
         )}
         {!isLoading && messages.length === 0 && (
-          <p className="py-6 text-center text-[11px] text-sidebar-muted">
-            Noch keine Nachrichten. Schreib die erste.
-          </p>
+          <p className="py-6 text-center text-[11px] text-sidebar-muted">{ui.empty}</p>
         )}
 
         <ul className="flex flex-col gap-1">
@@ -642,7 +658,7 @@ export function TeamChatBoard() {
                       <span className="truncate text-[9px] font-semibold text-slate-200">
                         {formatAuthor(m.author.name, m.author.titlePrefix)}
                       </span>
-                      <span className="text-[8px] text-sidebar-muted">{formatClock(m.createdAt)}</span>
+                      <span className="text-[8px] text-sidebar-muted">{formatClock(m.createdAt, locale)}</span>
                     </div>
                   )}
                   <button
@@ -673,7 +689,7 @@ export function TeamChatBoard() {
                       >
                         <p className="font-semibold">
                           {m.replyTo.deleted
-                            ? 'Gelöschte Nachricht'
+                            ? ui.deletedMessage
                             : formatAuthor(m.replyTo.author.name, m.replyTo.author.titlePrefix)}
                         </p>
                         <p className="truncate">
@@ -681,7 +697,7 @@ export function TeamChatBoard() {
                         </p>
                       </div>
                     )}
-                    <MessageBody msg={m} mentions={m.mentions} />
+                    <MessageBody msg={m} mentions={m.mentions} ui={ui} />
                   </button>
                   {m.reactions.length > 0 && (
                     <div
@@ -719,7 +735,7 @@ export function TeamChatBoard() {
                         mine ? 'text-right' : 'text-left',
                       )}
                     >
-                      {formatClock(m.createdAt)}
+                      {formatClock(m.createdAt, locale)}
                     </p>
                   )}
                 </div>
@@ -733,7 +749,7 @@ export function TeamChatBoard() {
         <div className="flex shrink-0 items-start gap-2 border-t border-sidebar-border bg-white/[0.04] px-2 py-1.5">
           <div className="min-w-0 flex-1 border-l-2 border-action pl-2">
             <p className="truncate text-[9px] font-semibold text-sky-300">
-              Antwort an {formatAuthor(replyTo.author.name, replyTo.author.titlePrefix)}
+              {ui.replyingTo(formatAuthor(replyTo.author.name, replyTo.author.titlePrefix))}
             </p>
             <p className="truncate text-[9px] text-sidebar-muted">{truncateBody(replyTo.body)}</p>
           </div>
@@ -755,7 +771,7 @@ export function TeamChatBoard() {
               onChange={setBody}
               mentionUserIds={mentionUserIds}
               onMentionUserIdsChange={setMentionUserIds}
-              placeholder="Nachricht… @ für Erwähnung"
+              placeholder={ui.placeholder}
               onSubmitShortcut={doSend}
               disabled={send.isPending}
             />
@@ -772,7 +788,7 @@ export function TeamChatBoard() {
         </form>
       ) : (
         <p className="shrink-0 border-t border-sidebar-border px-2 py-2 text-center text-[10px] text-sidebar-muted">
-          Keine Berechtigung zum Schreiben.
+          {ui.noPostPermission}
         </p>
       )}
 
@@ -782,6 +798,7 @@ export function TeamChatBoard() {
         y={menu?.y ?? 0}
         canReact={canPost}
         canDelete={canDelete}
+        ui={ui}
         onReact={(emoji) => {
           if (!menu) return;
           toggleReaction.mutate({ messageId: menu.message.id, emoji });

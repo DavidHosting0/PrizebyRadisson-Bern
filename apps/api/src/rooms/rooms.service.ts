@@ -391,7 +391,13 @@ export class RoomsService {
 
     // Board must match FO intent if EMMA push is off, failed, or skipped (outbox retries on failure).
     if (!pushResult || !pushResult.ok || pushResult.skipped) {
-      await this.applyLocalEmmaStatusOverride(roomId, target, actionAt, user.id);
+      await this.ensureLocalEmmaBoardStatus(
+        roomId,
+        target,
+        actionAt,
+        user.id,
+        'rooms.setStatus.local',
+      );
     }
 
     const out = await this.findOne(roomId, user);
@@ -399,12 +405,16 @@ export class RoomsService {
     return out;
   }
 
-  /** Persist EMMA-shaped metadata so derive() shows the FO-set status immediately. */
-  private async applyLocalEmmaStatusOverride(
+  /**
+   * Persist EMMA-shaped metadata so derive() shows the intended status immediately
+   * (FO set-status and passed inspections), even when the live Emma MERGE is off/failed.
+   */
+  async ensureLocalEmmaBoardStatus(
     roomId: string,
     target: EmmaRoomStatusPushTarget,
     actionAt: Date,
     userId: string,
+    source = 'rooms.localEmmaOverride',
   ) {
     const code = mapDerivedStatusToEmmaCode(target);
     if (!code) return;
@@ -417,7 +427,6 @@ export class RoomsService {
 
     const emmaMeta = readEmmaMetadata(room.metadata);
     if (emmaMeta?.statusCode === code) {
-      // Push may have skipped as already_synced — keep syncedAt fresh so local activity cannot win.
       const syncedAtMs = emmaMeta.syncedAt ? new Date(emmaMeta.syncedAt).getTime() : 0;
       if (syncedAtMs >= actionAt.getTime()) return;
     }
@@ -451,7 +460,7 @@ export class RoomsService {
         lastPushAt: syncedAt,
         lastPushCode: code,
         lastPushOk: false,
-        source: 'rooms.setStatus.local',
+        source,
         setByUserId: userId,
       },
     };

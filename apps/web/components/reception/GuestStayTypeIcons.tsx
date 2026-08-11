@@ -1,5 +1,8 @@
+'use client';
+
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import type { GuestStaySignals } from '@housekeeping/shared';
 
 type Props = {
@@ -58,19 +61,10 @@ function IconChip({
   );
 }
 
-/** Arrow entering room — Anreise heute. */
 function IconArrivalToday() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
-      <rect
-        x="12"
-        y="5"
-        width="9"
-        height="15"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth={STROKE}
-      />
+      <rect x="12" y="5" width="9" height="15" rx="1.5" stroke="currentColor" strokeWidth={STROKE} />
       <path
         d="M4 12.5h6M10 12.5l-2.5-2.5M10 12.5l-2.5 2.5"
         stroke="currentColor"
@@ -82,16 +76,10 @@ function IconArrivalToday() {
   );
 }
 
-/** Bed — Restant (bleibt im Haus). */
 function IconRestant() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
-      <path
-        d="M4 16h16v3H4z"
-        stroke="currentColor"
-        strokeWidth={STROKE}
-        strokeLinejoin="round"
-      />
+      <path d="M4 16h16v3H4z" stroke="currentColor" strokeWidth={STROKE} strokeLinejoin="round" />
       <path
         d="M4 16V13a2.5 2.5 0 012.5-2.5H9a2.5 2.5 0 012.5 2.5v3"
         stroke="currentColor"
@@ -103,19 +91,10 @@ function IconRestant() {
   );
 }
 
-/** Arrow leaving room — Abreise heute. */
 function IconDeparture() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
-      <rect
-        x="3"
-        y="5"
-        width="9"
-        height="15"
-        rx="1.5"
-        stroke="currentColor"
-        strokeWidth={STROKE}
-      />
+      <rect x="3" y="5" width="9" height="15" rx="1.5" stroke="currentColor" strokeWidth={STROKE} />
       <path
         d="M14 12.5h6M18 12.5l2.5-2.5M18 12.5l2.5 2.5"
         stroke="currentColor"
@@ -127,7 +106,6 @@ function IconDeparture() {
   );
 }
 
-/** Checkmark — ausgecheckt. */
 function IconCheckedOut() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-full w-full">
@@ -143,6 +121,7 @@ function IconCheckedOut() {
 }
 
 export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: Props) {
+  const t = useTranslations('reception.guestStay');
   if (!stay) return null;
 
   const items: Array<{
@@ -156,29 +135,29 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
   if (stay.isArrivalToday) {
     items.push({
       key: 'arrival',
-      title: 'Heute eingecheckt',
+      title: t('checkedInToday'),
       tone: 'indigo',
       icon: <IconArrivalToday />,
-      label: 'Anreise',
+      label: t('arrival'),
     });
   }
   if (stay.isRestant) {
     items.push({
       key: 'restant',
-      title: stay.stayover ? 'Restant (Stayover)' : 'Restant',
+      title: stay.stayover ? t('restantStayover') : t('restant'),
       tone: 'sky',
       icon: <IconRestant />,
-      label: 'Restant',
+      label: t('restant'),
     });
   }
   if (stay.isDepartureToday) {
     const checkedOut = stay.checkOut || stay.ocoDone;
     items.push({
       key: 'departure',
-      title: checkedOut ? 'Ausgecheckt (Abreise heute)' : 'Abreise heute',
+      title: checkedOut ? t('checkedOutDeparture') : t('departureToday'),
       tone: checkedOut ? 'emerald' : 'amber',
       icon: checkedOut ? <IconCheckedOut /> : <IconDeparture />,
-      label: checkedOut ? 'CO' : 'Abreise',
+      label: checkedOut ? t('co') : t('departure'),
     });
   }
 
@@ -201,11 +180,12 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
 }
 
 export function GuestStayTypeLegend({ compact }: { compact?: boolean }) {
+  const t = useTranslations('reception.guestStay');
   const entries = [
-    { tone: 'indigo' as const, title: 'Anreise heute', icon: <IconArrivalToday /> },
-    { tone: 'sky' as const, title: 'Restant', icon: <IconRestant /> },
-    { tone: 'amber' as const, title: 'Abreise heute', icon: <IconDeparture /> },
-    { tone: 'emerald' as const, title: 'Ausgecheckt', icon: <IconCheckedOut /> },
+    { tone: 'indigo' as const, title: t('legendArrivalToday'), icon: <IconArrivalToday /> },
+    { tone: 'sky' as const, title: t('restant'), icon: <IconRestant /> },
+    { tone: 'amber' as const, title: t('departureToday'), icon: <IconDeparture /> },
+    { tone: 'emerald' as const, title: t('legendCheckedOut'), icon: <IconCheckedOut /> },
   ];
 
   return (

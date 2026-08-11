@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -17,7 +18,6 @@ import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { useAuth } from '@/lib/auth-context';
 import { hasPermission } from '@/lib/permission-routes';
 import { useToast } from '@/components/toast/ToastProvider';
-import { formatRoomStatusLabel } from '@/lib/room-status-label';
 import clsx from 'clsx';
 
 type RoomDetail = {
@@ -40,12 +40,12 @@ type AssignmentRow = {
 };
 
 const STATUS_OPTIONS = [
-  { value: 'DIRTY' as const, label: 'Schmutzig', activeClass: 'border-red-400/50 bg-red-500/25 text-red-100' },
-  { value: 'CLEAN' as const, label: 'Sauber', activeClass: 'border-orange-400/50 bg-orange-500/25 text-orange-100' },
-  { value: 'INSPECTED' as const, label: 'Inspeziert', activeClass: 'border-emerald-400/50 bg-emerald-500/25 text-emerald-100' },
+  { value: 'DIRTY' as const, labelKey: 'statusDirty' as const, activeClass: 'border-red-400/50 bg-red-500/25 text-red-100' },
+  { value: 'CLEAN' as const, labelKey: 'statusClean' as const, activeClass: 'border-orange-400/50 bg-orange-500/25 text-orange-100' },
+  { value: 'INSPECTED' as const, labelKey: 'statusInspected' as const, activeClass: 'border-emerald-400/50 bg-emerald-500/25 text-emerald-100' },
 ];
 
-function parseApiError(raw: string): string {
+function parseApiError(raw: string, fallback: string): string {
   try {
     const j = JSON.parse(raw) as { message?: string | string[] };
     if (Array.isArray(j.message)) return j.message.join(', ');
@@ -53,7 +53,7 @@ function parseApiError(raw: string): string {
   } catch {
     /* plain text */
   }
-  return raw || 'Request failed';
+  return raw || fallback;
 }
 
 export function ReceptionRoomDetailPanel({
@@ -66,6 +66,9 @@ export function ReceptionRoomDetailPanel({
   onClose: () => void;
 }) {
   const { user } = useAuth();
+  const t = useTranslations('reception');
+  const tRoom = useTranslations('room.status');
+  const tCommon = useTranslations('common');
   const toast = useToast();
   const qc = useQueryClient();
   const canSetStatus = hasPermission(user, 'ROOM_STATUS_WRITE');
@@ -92,11 +95,14 @@ export function ReceptionRoomDetailPanel({
       qc.setQueryData(['room', roomId], next);
       void qc.invalidateQueries({ queryKey: ['rooms'] });
       toast.push(
-        `Zimmer ${next.roomNumber}: ${formatRoomStatusLabel(next.derivedStatus)}`,
+        t('roomDetail.toastStatusChanged', {
+          roomNumber: next.roomNumber,
+          status: tRoom(next.derivedStatus as 'DIRTY' | 'IN_PROGRESS' | 'CLEAN' | 'INSPECTED' | 'OUT_OF_ORDER'),
+        }),
         'success',
       );
     },
-    onError: (e: Error) => toast.push(parseApiError(e.message), 'warning'),
+    onError: (e: Error) => toast.push(parseApiError(e.message, t('roomDetail.requestFailed')), 'warning'),
   });
 
   const assign = roomId ? assignments.find((a) => a.roomId === roomId) : undefined;
@@ -114,7 +120,12 @@ export function ReceptionRoomDetailPanel({
 
   return (
     <>
-      <button type="button" className="fixed inset-0 z-40 bg-black/50" aria-label="Close" onClick={onClose} />
+      <button
+        type="button"
+        className="fixed inset-0 z-40 bg-black/55 backdrop-blur-[1px]"
+        aria-label={tCommon('close')}
+        onClick={onClose}
+      />
       <aside
         ref={panelRef}
         role="dialog"
@@ -122,20 +133,26 @@ export function ReceptionRoomDetailPanel({
         className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col border-l border-sidebar-border bg-[#1A2332] text-slate-100 shadow-lift"
       >
         <div className="flex items-center justify-between border-b border-sidebar-border/60 px-5 py-4">
-          <div>
-            <h2 className="text-xl font-semibold text-white">
-              Room {room?.roomNumber ?? '…'}
+          <div className="min-w-0">
+            <h2 className="truncate text-xl font-semibold tracking-tight text-white">
+              {t('roomDetail.roomTitle', { roomNumber: room?.roomNumber ?? '…' })}
               {room?.floor != null && (
-                <span className="ml-2 text-sm font-normal text-sidebar-muted">· Floor {room.floor}</span>
+                <span className="ml-2 text-sm font-normal text-sidebar-muted">
+                  {t('roomDetail.floorSuffix', { floor: room.floor })}
+                </span>
               )}
             </h2>
-            {room && <StatusBadge status={room.derivedStatus} />}
+            {room && (
+              <div className="mt-1.5">
+                <StatusBadge status={room.derivedStatus} variant="dark" />
+              </div>
+            )}
           </div>
           <button
             type="button"
             className="rounded-full p-2 text-sidebar-muted hover:bg-white/10 hover:text-white"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={tCommon('close')}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -143,22 +160,20 @@ export function ReceptionRoomDetailPanel({
           </button>
         </div>
         <div className="sidebar-scroll flex-1 overflow-y-auto p-5">
-          {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+          {isLoading && <p className="text-sm text-sidebar-muted">{t('roomDetail.loading')}</p>}
           {room && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {room.outOfOrder && (
                 <p className="rounded-btn border border-amber-500/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-200">
-                  Out of order
+                  {t('roomDetail.oooBlocked')}
                 </p>
               )}
               {canSetStatus && !room.outOfOrder && (
                 <section className={APP_DARK_CARD + ' p-4'}>
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
-                    Zimmerstatus
+                    {t('roomDetail.statusHeading')}
                   </h3>
-                  <p className="mt-1 text-xs text-sidebar-muted">
-                    Ändert den Status in PrizeBern und synchronisiert nach EMMA.
-                  </p>
+                  <p className="mt-1 text-xs text-sidebar-muted">{t('roomDetail.statusHint')}</p>
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     {STATUS_OPTIONS.map((opt) => {
                       const active = current === opt.value;
@@ -176,7 +191,7 @@ export function ReceptionRoomDetailPanel({
                             setStatusMut.isPending && 'opacity-60',
                           )}
                         >
-                          {opt.label}
+                          {t(`roomDetail.${opt.labelKey}`)}
                         </button>
                       );
                     })}
@@ -196,16 +211,20 @@ export function ReceptionRoomDetailPanel({
               />
               <RoomOccupancySection occupancy={room.occupancy} tone="dark" />
               <section className={APP_DARK_CARD + ' p-4'}>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Assigned to</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
+                  {t('roomDetail.assignedTo')}
+                </h3>
                 <p className="mt-2 text-sm font-medium text-white">
                   {assign
                     ? formatUserWithTitlePrefix(assign.housekeeper.name, assign.housekeeper.titlePrefix)
-                    : '— Unassigned'}
+                    : t('roomDetail.unassigned')}
                 </p>
               </section>
               {room.notes && (
                 <section className={APP_DARK_CARD + ' p-4'}>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Notes</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
+                    {t('roomDetail.notes')}
+                  </h3>
                   <p className="mt-2 whitespace-pre-wrap text-sm text-slate-100">{room.notes}</p>
                 </section>
               )}

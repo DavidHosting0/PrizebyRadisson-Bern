@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import type {
   ComplaintHeatmapEntryDto,
   GuestComplaintCategory,
@@ -19,6 +20,8 @@ import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 type RoomOpt = { id: string; roomNumber: string };
 
 export function ComplaintsBoard() {
+  const t = useTranslations('complaints');
+  const tCommon = useTranslations('common');
   const canWrite = usePermission('COMPLAINTS_WRITE');
   const qc = useQueryClient();
   const [view, setView] = useState<'list' | 'heatmap'>('list');
@@ -91,11 +94,11 @@ export function ComplaintsBoard() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!description.trim()) {
-      setErr('Beschreibung nötig.');
+      setErr(t('errorDescriptionRequired'));
       return;
     }
     if (category === 'ROOM' && !roomId) {
-      setErr('Zimmer wählen.');
+      setErr(t('errorRoomRequired'));
       return;
     }
     createMut.mutate();
@@ -105,14 +108,12 @@ export function ComplaintsBoard() {
     <div className="space-y-6 p-4 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Beschwerden</h1>
-          <p className="mt-1 text-sm text-sidebar-muted">
-            Gästebeschwerden erfassen und auf dem Floor Plan nach Häufigkeit sehen.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">{t('title')}</h1>
+          <p className="mt-1 text-sm text-sidebar-muted">{t('subtitle')}</p>
         </div>
         {canWrite && (
           <Button type="button" variant="action" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Abbrechen' : 'Neue Beschwerde'}
+            {showForm ? tCommon('cancel') : t('newComplaint')}
           </Button>
         )}
       </div>
@@ -120,8 +121,8 @@ export function ComplaintsBoard() {
       <div className="flex flex-wrap gap-2">
         {(
           [
-            ['list', 'Liste'],
-            ['heatmap', 'Heatmap'],
+            ['list', t('viewList')],
+            ['heatmap', t('viewHeatmap')],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -145,8 +146,8 @@ export function ComplaintsBoard() {
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  ['ROOM', 'Zimmer'],
-                  ['OTHER', 'Andere'],
+                  ['ROOM', t('categoryRoom')],
+                  ['OTHER', t('categoryOther')],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -165,14 +166,14 @@ export function ComplaintsBoard() {
             </div>
             {category === 'ROOM' && (
               <label className="block text-sm">
-                <span className="font-medium text-white">Zimmer</span>
+                <span className="font-medium text-white">{t('room')}</span>
                 <select
                   className={clsx(APP_DARK_INPUT, 'mt-1 w-full py-2')}
                   value={roomId}
                   onChange={(e) => setRoomId(e.target.value)}
                   required
                 >
-                  <option value="">— wählen —</option>
+                  <option value="">{t('selectRoom')}</option>
                   {roomOpts.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.roomNumber}
@@ -182,7 +183,7 @@ export function ComplaintsBoard() {
               </label>
             )}
             <label className="block text-sm">
-              <span className="font-medium text-white">Beschreibung</span>
+              <span className="font-medium text-white">{t('description')}</span>
               <textarea
                 className={clsx(APP_DARK_INPUT, 'mt-1 min-h-[100px] w-full py-2')}
                 value={description}
@@ -192,7 +193,7 @@ export function ComplaintsBoard() {
             </label>
             {err && <p className="text-sm text-rose-300">{err}</p>}
             <Button type="submit" variant="action" disabled={createMut.isPending}>
-              {createMut.isPending ? 'Speichern…' : 'Speichern'}
+              {createMut.isPending ? t('saving') : tCommon('save')}
             </Button>
           </form>
         </div>
@@ -203,9 +204,9 @@ export function ComplaintsBoard() {
           <div className="flex flex-wrap gap-2">
             {(
               [
-                ['OPEN', 'Offen'],
-                ['RESOLVED', 'Erledigt'],
-                ['ALL', 'Alle'],
+                ['OPEN', t('filterOpen')],
+                ['RESOLVED', t('filterResolved')],
+                ['ALL', t('filterAll')],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -222,7 +223,7 @@ export function ComplaintsBoard() {
               </button>
             ))}
           </div>
-          {listQ.isLoading && <p className="text-sm text-sidebar-muted">Laden…</p>}
+          {listQ.isLoading && <p className="text-sm text-sidebar-muted">{t('loading')}</p>}
           <ul className="space-y-3">
             {(listQ.data ?? []).map((c) => (
               <li key={c.id}>
@@ -231,9 +232,9 @@ export function ComplaintsBoard() {
                     <div>
                       <p className="text-sm font-semibold text-white">
                         {c.category === 'ROOM'
-                          ? `Zimmer ${c.room?.roomNumber ?? '—'}`
-                          : 'Andere'}{' '}
-                        · {c.status === 'OPEN' ? 'Offen' : 'Erledigt'}
+                          ? t('roomTitle', { roomNumber: c.room?.roomNumber ?? '—' })
+                          : t('categoryOtherTitle')}{' '}
+                        · {c.status === 'OPEN' ? t('statusOpen') : t('statusResolved')}
                       </p>
                       <p className="mt-0.5 text-xs text-sidebar-muted">
                         {c.createdBy.name} · {new Date(c.createdAt).toLocaleString('de-CH')}
@@ -246,7 +247,7 @@ export function ComplaintsBoard() {
                         className="min-h-0 border-sidebar-border bg-transparent px-2 py-1 text-xs text-white hover:bg-white/10"
                         onClick={() => resolveMut.mutate(c.id)}
                       >
-                        Erledigen
+                        {t('resolve')}
                       </Button>
                     )}
                   </div>
@@ -255,7 +256,7 @@ export function ComplaintsBoard() {
               </li>
             ))}
             {!listQ.isLoading && !(listQ.data ?? []).length && (
-              <p className="text-sm text-sidebar-muted">Keine Beschwerden.</p>
+              <p className="text-sm text-sidebar-muted">{t('empty')}</p>
             )}
           </ul>
         </>
@@ -264,7 +265,7 @@ export function ComplaintsBoard() {
       {view === 'heatmap' && (
         <>
           {heatQ.isLoading || roomsQ.isLoading ? (
-            <p className="text-sm text-sidebar-muted">Laden…</p>
+            <p className="text-sm text-sidebar-muted">{t('loading')}</p>
           ) : (
             <div className={clsx(APP_DARK_CARD, 'p-4 md:p-6')}>
               <RoomFloorPlan

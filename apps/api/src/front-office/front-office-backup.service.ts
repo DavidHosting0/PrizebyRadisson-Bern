@@ -13,6 +13,7 @@ import { readEmmaMetadata, normalizeEmmaRoomNumber } from '../emma/emma-room-sta
 import { decryptSensitivePayload } from '../reservations/reservation-sensitive';
 import { RoomStatusService } from '../rooms/room-status.service';
 import { compareRoomNumbers, floorFromRoomNumber } from '../rooms/room-layout';
+import { SettingsService } from '../settings/settings.service';
 
 /** Columns needed for the backup board — omit folioEnc/detailEnc (can be MBs each). */
 const backupSnapshotSelect = {
@@ -38,6 +39,7 @@ export class FrontOfficeBackupService {
     private readonly cipher: SecretCipherService,
     private readonly roomStatus: RoomStatusService,
     private readonly backupMode: EmmaBackupModeService,
+    private readonly settings: SettingsService,
   ) {}
 
   async getOverview(user: User, hotelId?: string): Promise<FrontOfficeBackupOverview> {
@@ -49,7 +51,7 @@ export class FrontOfficeBackupService {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
     const generatedAt = new Date();
 
-    const [rooms, snapshots, lastOkSync, lastSyncRun] = await Promise.all([
+    const [rooms, snapshots, lastOkSync, lastSyncRun, roomStatusSync] = await Promise.all([
       this.prisma.room.findMany({
         include: {
           checklistStates: {
@@ -74,6 +76,7 @@ export class FrontOfficeBackupService {
         orderBy: { finishedAt: 'desc' },
       }),
       this.prisma.reservationSyncRun.findFirst({ orderBy: { startedAt: 'desc' } }),
+      this.settings.getEmmaRoomStatusSyncMeta(),
     ]);
 
     rooms.sort((a, b) => {
@@ -89,7 +92,8 @@ export class FrontOfficeBackupService {
       const tasks = state?.tasks ?? [];
       const emmaMeta = readEmmaMetadata(room.metadata);
       if (emmaMeta?.syncedAt) {
-        emmaSyncedTimes.push(new Date(emmaMeta.syncedAt).getTime());
+        const ms = new Date(emmaMeta.syncedAt).getTime();
+        if (Number.isFinite(ms) && ms > 0) emmaSyncedTimes.push(ms);
       }
       const floor = room.floor ?? floorFromRoomNumber(room.roomNumber) ?? null;
       return {
@@ -101,7 +105,7 @@ export class FrontOfficeBackupService {
         emmaStatusCode: emmaMeta?.statusCode ?? null,
         emmaStatusLabel: emmaMeta?.statusLabel ?? null,
         cleaningDeclaredAt: room.cleaningDeclaredAt?.toISOString() ?? null,
-        emmaSyncedAt: emmaMeta?.syncedAt ?? null,
+        emmaSyncedAt: emmaMeta?.syncedAt || null,
         updatedAt: room.updatedAt.toISOString(),
       };
     });
@@ -180,7 +184,30 @@ export class FrontOfficeBackupService {
       }))
       .sort((a, b) => compareRoomNumbers(a.roomNumber, b.roomNumber));
 
-    const sortedEmmaTimes = emmaSyncedTimes.filter((t) => t > 0).sort((a, b) => a - b);
+    const sortedEmmaTimes = [...emmaSyncedTimes].sort((a, b) => a - b);
+    const newestFromRooms =
+      sortedEmmaTimes.length > 0 ? sortedEmmaTimes[sortedEmmaTimes.length - 1]! : null;
+    const lastStatusSyncMs = roomStatusSync.lastSyncedAt
+      ? new Date(roomStatusSync.lastSyncedAt).getTime()
+      : NaN;
+    const roomsLastStatusSyncedAt = Number.isFinite(lastStatusSyncMs)
+      ? new Date(lastStatusSyncMs).toISOString()
+      : newestFromRooms != null
+        ? new Date(newestFromRooms).toISOString()
+        : null;
+
+    // Ignore stale per-room timestamps left from before we refreshed syncedAt on every sync
+    // (or rooms never seen in the latest EMMA pull) when computing "oldest".
+    const freshnessAnchorMs = Number.isFinite(lastStatusSyncMs)
+      ? lastStatusSyncMs
+      : newestFromRooms;
+    const recentWindowMs = 15 * 60 * 1000;
+    const recentRoomTimes =
+      freshnessAnchorMs != null
+        ? sortedEmmaTimes.filter((t) => freshnessAnchorMs - t <= recentWindowMs)
+        : sortedEmmaTimes;
+    const oldestFromRooms =
+      (recentRoomTimes.length > 0 ? recentRoomTimes[0] : sortedEmmaTimes[0]) ?? null;
 
     return {
       freshness: {
@@ -193,14 +220,13 @@ export class FrontOfficeBackupService {
             ? lastSyncRun.status
             : null,
         reservationsLastSyncError: lastSyncRun?.status === 'error' ? lastSyncRun.error : null,
+        roomsLastStatusSyncedAt,
         roomsNewestEmmaSyncedAt:
-          sortedEmmaTimes.length > 0
-            ? new Date(sortedEmmaTimes[sortedEmmaTimes.length - 1]!).toISOString()
-            : null,
+          newestFromRooms != null ? new Date(newestFromRooms).toISOString() : roomsLastStatusSyncedAt,
         roomsOldestEmmaSyncedAt:
-          sortedEmmaTimes.length > 0
-            ? new Date(sortedEmmaTimes[0]!).toISOString()
-            : null,
+          oldestFromRooms != null
+            ? new Date(oldestFromRooms).toISOString()
+            : roomsLastStatusSyncedAt,
       },
       rooms: roomRows,
       checkedIn,

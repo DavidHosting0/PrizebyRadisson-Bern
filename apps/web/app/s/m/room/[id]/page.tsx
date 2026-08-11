@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +21,7 @@ type RoomDetail = {
 };
 
 export default function SupervisorMobileRoomPage() {
+  const t = useTranslations('housekeeper');
   const params = useParams();
   const id = params.id as string;
   const qc = useQueryClient();
@@ -39,13 +41,13 @@ export default function SupervisorMobileRoomPage() {
         method: 'POST',
       }),
     onSuccess: () => {
-      toast.push('Room marked clean', 'success');
+      toast.push(t('toastMarkedClean'), 'success');
       qc.invalidateQueries({ queryKey: ['room', id] });
       qc.invalidateQueries({ queryKey: ['rooms'] });
       qc.invalidateQueries({ queryKey: ['assignments'] });
       qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
     },
-    onError: (e: Error) => toast.push(e.message || 'Could not mark room clean', 'warning'),
+    onError: (e: Error) => toast.push(e.message || t('couldNotLoadRoom'), 'warning'),
   });
 
   const { data: daily } = useQuery({
@@ -57,7 +59,7 @@ export default function SupervisorMobileRoomPage() {
   });
 
   const isRestantTask = (daily?.tasks ?? []).some(
-    (t) => t.roomId === id && t.workType === 'RESTANT' && !t.completedAt,
+    (task) => task.roomId === id && task.workType === 'RESTANT' && !task.completedAt,
   );
 
   const canMarkClean =
@@ -71,7 +73,7 @@ export default function SupervisorMobileRoomPage() {
   if (isLoading || !data) {
     return (
       <div className="p-4">
-        <p className="text-sm text-sidebar-muted">Loading room…</p>
+        <p className="text-sm text-sidebar-muted">{t('loadingRoom')}</p>
       </div>
     );
   }
@@ -82,14 +84,16 @@ export default function SupervisorMobileRoomPage() {
         <Link
           href="/s/m"
           className="flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border/70 bg-sidebar text-white tap-scale"
-          aria-label="Back to rooms"
+          aria-label={t('backToRooms')}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Room {data.roomNumber}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            {t('room', { number: data.roomNumber })}
+          </h1>
           <div className="mt-1">
             <StatusBadge status={data.derivedStatus} variant="dark" />
           </div>
@@ -103,7 +107,7 @@ export default function SupervisorMobileRoomPage() {
           className="min-h-[48px] border-0 bg-red-600 text-white shadow-sm hover:bg-red-700 hover:text-white sm:min-w-[200px]"
           onClick={() => setLostFoundOpen(true)}
         >
-          Report lost &amp; found
+          {t('reportLostFound')}
         </Button>
         {canReportDamage && (
           <Button
@@ -112,7 +116,7 @@ export default function SupervisorMobileRoomPage() {
             className="min-h-[48px] border-0 bg-red-800 text-white shadow-sm hover:bg-red-900 hover:text-white sm:min-w-[200px]"
             onClick={() => setDamageOpen(true)}
           >
-            Report damage
+            {t('reportDamage')}
           </Button>
         )}
       </div>
@@ -132,23 +136,19 @@ export default function SupervisorMobileRoomPage() {
 
       {isRestantTask ? (
         <section className="rounded-card border border-sidebar-border/70 bg-sidebar/40 p-4 text-center">
-          <p className="font-medium text-white">Restant</p>
-          <p className="mt-1 text-sm text-sidebar-muted">
-            Finish restants from your home list with Fertig — no room status change.
-          </p>
+          <p className="font-medium text-white">{t('restant')}</p>
+          <p className="mt-1 text-sm text-sidebar-muted">{t('restantHint')}</p>
           <Link
             href="/s/m"
             className="mt-3 inline-block text-sm font-medium text-action underline underline-offset-2"
           >
-            Back to rooms
+            {t('backToRooms')}
           </Link>
         </section>
       ) : (
         <>
           {!isFinished && (
-            <p className="text-center text-sm text-sidebar-muted">
-              When you are done cleaning, mark the room clean. Inspection can follow with a photo.
-            </p>
+            <p className="text-center text-sm text-sidebar-muted">{t('markCleanHint')}</p>
           )}
 
           <Button
@@ -161,16 +161,16 @@ export default function SupervisorMobileRoomPage() {
             onClick={() => markClean.mutate()}
           >
             {markClean.isPending
-              ? 'Saving…'
+              ? t('saving')
               : isFinished
-                ? 'Room already marked clean'
-                : 'Fertig — Mark room clean'}
+                ? t('alreadyMarkedClean')
+                : t('fertigMarkClean')}
           </Button>
 
           {isFinished && (
             <section className="rounded-card border border-emerald-400/30 bg-emerald-500/15 p-4 text-center">
-              <p className="font-medium text-emerald-100">Room marked clean</p>
-              <p className="mt-1 text-sm text-sidebar-muted">Ready for inspection when on duty.</p>
+              <p className="font-medium text-emerald-100">{t('roomMarkedClean')}</p>
+              <p className="mt-1 text-sm text-sidebar-muted">{t('waitingInspection')}</p>
             </section>
           )}
         </>

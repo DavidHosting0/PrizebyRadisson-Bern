@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import type { ArrivalCheckRunDetail } from '@housekeeping/shared';
 import { api } from '@/lib/api';
@@ -14,6 +15,9 @@ import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 
 export default function ArrivalCheckRunPage() {
+  const tNav = useTranslations('nav');
+  const t = useTranslations('reception.arrivalCheck');
+  const tCommon = useTranslations('common');
   const params = useParams();
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -74,14 +78,14 @@ export default function ArrivalCheckRunPage() {
   if (loading || !user || !canArrivalCheck) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center bg-[#121a26]">
-        <p className="text-sm text-sidebar-muted">Lädt…</p>
+        <p className="text-sm text-sidebar-muted">{tCommon('loading')}</p>
       </div>
     );
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AppPageChrome title="Anreise-Check" actions={<AppChromeTools onEnterMobile={enterMobile} />} />
+      <AppPageChrome title={tNav('arrivalCheck')} actions={<AppChromeTools onEnterMobile={enterMobile} />} />
       <AppPageBody>
         <div className="p-4 md:p-6">
           {runQuery.isLoading && !run ? (
@@ -89,19 +93,19 @@ export default function ArrivalCheckRunPage() {
               <div className="h-2 w-full max-w-md overflow-hidden rounded-full bg-white/10">
                 <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-400/40" />
               </div>
-              <p className="text-sm text-sidebar-muted">Anreise-Check wird geladen…</p>
+              <p className="text-sm text-sidebar-muted">{t('loadingRun')}</p>
             </div>
           ) : runQuery.isError || !run ? (
             <div className="w-full space-y-4">
               <p className="text-sm text-rose-400">
-                {(runQuery.error as Error)?.message ?? 'Lauf nicht gefunden.'}
+                {(runQuery.error as Error)?.message ?? t('runNotFound')}
               </p>
               <button
                 type="button"
                 onClick={() => router.push('/r/arrival-check')}
                 className="text-sm font-medium text-white underline"
               >
-                Zurück zur Auswahl
+                {t('backToSelection')}
               </button>
             </div>
           ) : (

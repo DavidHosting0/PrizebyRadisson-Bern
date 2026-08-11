@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useDamageTypeLabel } from '@/lib/damageReportTypes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
@@ -24,6 +25,7 @@ type Row = {
 const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'];
 
 export default function ReceptionDamageReportsPage() {
+  const tNav = useTranslations('nav');
   const qc = useQueryClient();
   const damageLabel = useDamageTypeLabel();
   const [status, setStatus] = useState('');
@@ -50,7 +52,7 @@ export default function ReceptionDamageReportsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Damage reports"
+        title={tNav('damageReports')}
         description="Housekeeper reports with photos"
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
         toolbar={

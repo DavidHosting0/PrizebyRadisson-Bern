@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { KpiStat } from '@/components/supervisor/KpiStat';
@@ -15,6 +16,7 @@ type RoomRow = { id: string; roomNumber: string; floor: number | null; derivedSt
 type ReqRow = { id: string; status: string };
 
 export default function ReceptionDashboardPage() {
+  const tNav = useTranslations('nav');
   const { enterMobile } = useReceptionMobileMode();
   const { data: rooms = [] } = useQuery(roomsListQueryOptions<RoomRow>());
 
@@ -35,7 +37,7 @@ export default function ReceptionDashboardPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Dashboard"
+        title={tNav('dashboard')}
         description="Live operational snapshot"
         actions={
           <>

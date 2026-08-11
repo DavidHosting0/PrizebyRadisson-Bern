@@ -100,7 +100,8 @@ export class ServiceRequestsService {
     const room = await this.rooms.findOne(dto.roomId);
     this.realtime.emitRoomStatus(room);
     this.realtime.emitServiceRequest('service_request.created', req);
-    void this.notifications.notifyServiceRequestCreated(req, user.id);
+    // Persist + deliver (socket/push) before responding so notifications are reliable.
+    await this.notifications.notifyServiceRequestCreated(req, user.id);
     this.emma?.scheduleRoomStatusSync('serviceRequests.create');
     return req;
   }

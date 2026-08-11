@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
-import { isSupportedLocale, type SupportedLocale } from '@housekeeping/shared';
+import {
+  isSupportedLocale,
+  localeLangName,
+  type SupportedLocale,
+} from '@housekeeping/shared';
 import { SettingsService } from '../settings/settings.service';
 import {
   type MentionForPlaceholder,
@@ -33,17 +37,42 @@ export class TranslationService {
       /\b(and|or|not|is|are|room|please|thanks|hello|morning|departure|arrival|dirty|clean)\b/i;
     const ptHints =
       /\b(e|ou|não|nao|é|sao|são|quarto|por favor|obrigado|olá|ola|bom dia|partida|chegada|sujo|limpo)\b/i;
-    const deScore = (sample.match(deHints) ?? []).length;
-    const enScore = (sample.match(enHints) ?? []).length;
-    const ptScore = (sample.match(ptHints) ?? []).length;
-    const best = Math.max(deScore, enScore, ptScore);
+    const esHints =
+      /\b(y|o|no|es|son|habitación|habitacion|por favor|gracias|hola|mañana|manana|salida|llegada|sucio|limpio)\b/i;
+    const trHints =
+      /\b(ve|veya|değil|degil|oda|lütfen|lutfen|teşekkür|tesekkur|merhaba|sabah|çıkış|cikis|giriş|giris|kirli|temiz)\b/i;
+    const ukHints =
+      /\b(і|та|або|не|є|кімната|кімнати|будь ласка|дякую|привіт|ранок|виїзд|заїзд|брудний|чистий)\b/i;
+
+    const scores: Record<SupportedLocale, number> = {
+      de: (sample.match(deHints) ?? []).length,
+      en: (sample.match(enHints) ?? []).length,
+      pt: (sample.match(ptHints) ?? []).length,
+      es: (sample.match(esHints) ?? []).length,
+      tr: (sample.match(trHints) ?? []).length,
+      uk: (sample.match(ukHints) ?? []).length,
+    };
+
+    if (/[ієїґ]/i.test(sample) || /[а-яА-Я]{3,}/.test(sample)) scores.uk += 2;
+    if (/[ğüşöçıİĞÜŞÖÇ]/.test(sample)) scores.tr += 2;
+    if (/[ãõ]/.test(sample)) scores.pt += 2;
+    if (/[äöüß]/i.test(sample)) scores.de += 2;
+    if (/[ñ¿¡]/.test(sample)) scores.es += 2;
+
+    const best = Math.max(...Object.values(scores));
     if (best === 0) {
       if (/[äöüß]/i.test(sample)) return 'de';
       if (/[ãõáàâêéíóôúç]/i.test(sample)) return 'pt';
+      if (/[ієїґ]/i.test(sample)) return 'uk';
+      if (/[ğüşöçıİ]/.test(sample)) return 'tr';
+      if (/[ñ¿¡]/.test(sample)) return 'es';
       return 'en';
     }
-    if (ptScore === best) return 'pt';
-    if (enScore === best) return 'en';
+
+    const order: SupportedLocale[] = ['uk', 'tr', 'es', 'pt', 'en', 'de'];
+    for (const locale of order) {
+      if (scores[locale] === best) return locale;
+    }
     return 'de';
   }
 
@@ -64,8 +93,7 @@ export class TranslationService {
     if (!ctx) return null;
 
     const shielded = shieldMentions(body, mentions);
-    const langName =
-      targetLocale === 'en' ? 'English' : targetLocale === 'pt' ? 'Portuguese' : 'German';
+    const langName = localeLangName(targetLocale);
 
     try {
       const res = await ctx.openai.chat.completions.create({

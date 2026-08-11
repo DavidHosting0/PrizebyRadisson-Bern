@@ -1,4 +1,4 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import type {
@@ -399,6 +399,11 @@ function AppInner() {
   const [view, setView] = useState<PanelView>('home');
   const isLogin = !loading && !user;
   const fillHeight = view === 'home' || view === 'todo' || view === 'notes' || view === 'chat';
+
+  useEffect(() => {
+    const type = view === 'chat' ? PANEL_MESSAGE.chatOpen : PANEL_MESSAGE.chatClosed;
+    window.parent.postMessage({ type }, '*');
+  }, [view]);
 
   function collapsePanel() {
     window.parent.postMessage({ type: PANEL_MESSAGE.toggle }, '*');

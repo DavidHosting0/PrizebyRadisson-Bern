@@ -83,6 +83,12 @@ export class AssignmentsController {
     return this.daily.save(date, user!);
   }
 
+  @Post('daily-plan/reset')
+  @RequirePermissions(PermissionCode.ASSIGNMENT_RUN_AUTO)
+  reset(@CurrentUser() user: User, @Query('date') date?: string) {
+    return this.daily.resetDay(date, user);
+  }
+
   @Patch('daily-plan/tasks/:id')
   @RequirePermissions(PermissionCode.ASSIGNMENT_CREATE)
   patchTask(

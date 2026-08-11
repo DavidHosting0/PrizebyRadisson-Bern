@@ -284,13 +284,18 @@ export class TeamChatService {
     };
   }
 
-  async list(limit = 200, viewer: User, lang?: string) {
+  async list(
+    limit = 200,
+    viewer: User,
+    lang?: string,
+    order: 'asc' | 'desc' = 'asc',
+  ) {
     const take = Math.min(Math.max(1, limit), 500);
     const targetLocale = resolveLocale(lang, viewer.preferredLocale);
     const rows = (await this.prisma.teamChatMessage.findMany({
       take,
       where: { deletedAt: null },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: order },
       include: messageInclude,
     })) as unknown as MessageRow[];
     const urls = await this.buildAvatarUrlMap(rows);
@@ -417,7 +422,8 @@ export class TeamChatService {
     }
 
     if (validMentionIds.length > 0) {
-      void this.notifications.notifyTeamChatMention(
+      // Mentions always notify (on/off shift). Await so the row + push are durable.
+      await this.notifications.notifyTeamChatMention(
         row.id,
         user.name,
         validMentionIds,

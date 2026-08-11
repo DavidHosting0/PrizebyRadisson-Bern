@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { PriorityBadge } from '@/components/PriorityBadge';
@@ -18,6 +19,7 @@ type Req = {
 };
 
 export default function HousekeeperRequestsPage() {
+  const t = useTranslations('housekeeper');
   const { user } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
@@ -61,7 +63,7 @@ export default function HousekeeperRequestsPage() {
   if (isLoading) {
     return (
       <div className="p-4">
-        <p className="text-sm text-sidebar-muted">Loading requests…</p>
+        <p className="text-sm text-sidebar-muted">{t('loadingRequests')}</p>
       </div>
     );
   }
@@ -77,19 +79,21 @@ export default function HousekeeperRequestsPage() {
   return (
     <div className="space-y-8 p-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-white">Requests</h1>
-        <p className="mt-1 text-sm text-sidebar-muted">Claim open work or complete what you started.</p>
+        <h1 className="text-xl font-semibold tracking-tight text-white">{t('requestsTitle')}</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">{t('requestsSubtitle')}</p>
       </div>
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">Open</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">{t('open')}</h2>
         <ul className="mt-3 space-y-3">
           {open.map((r) => (
             <li key={r.id}>
               <Card tone="dark">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-lg font-semibold text-white">Room {r.room.roomNumber}</p>
+                    <p className="text-lg font-semibold text-white">
+                      {t('room', { number: r.room.roomNumber })}
+                    </p>
                     <p className="mt-1 text-sm text-sidebar-muted">{r.type.label}</p>
                     <div className="mt-2">
                       <PriorityBadge priority={r.priority} tone="dark" />
@@ -101,29 +105,39 @@ export default function HousekeeperRequestsPage() {
                     disabled={claim.isPending}
                     onClick={() => claim.mutate(r.id)}
                   >
-                    Claim
+                    {t('claim')}
                   </Button>
                 </div>
               </Card>
             </li>
           ))}
         </ul>
-        {open.length === 0 && <p className="mt-2 text-sm text-sidebar-muted">No open requests.</p>}
+        {open.length === 0 && (
+          <p className="mt-2 text-sm text-sidebar-muted">{t('noOpenRequests')}</p>
+        )}
       </section>
 
       <section>
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">My active tasks</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
+          {t('myActiveTasks')}
+        </h2>
         <ul className="mt-3 space-y-3">
           {mine.map((r) => (
             <li key={r.id}>
               <Card tone="dark">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p className="text-lg font-semibold text-white">Room {r.room.roomNumber}</p>
+                    <p className="text-lg font-semibold text-white">
+                      {t('room', { number: r.room.roomNumber })}
+                    </p>
                     <p className="mt-1 text-sm text-sidebar-muted">{r.type.label}</p>
                   </div>
-                  <Button variant="ghostOnDark" disabled={resolve.isPending} onClick={() => resolve.mutate(r.id)}>
-                    Mark as done
+                  <Button
+                    variant="ghostOnDark"
+                    disabled={resolve.isPending}
+                    onClick={() => resolve.mutate(r.id)}
+                  >
+                    {t('markAsDone')}
                   </Button>
                 </div>
               </Card>
@@ -131,7 +145,7 @@ export default function HousekeeperRequestsPage() {
           ))}
         </ul>
         {mine.length === 0 && (
-          <p className="mt-2 text-sm text-sidebar-muted">You have no claimed requests in progress.</p>
+          <p className="mt-2 text-sm text-sidebar-muted">{t('noClaimedRequests')}</p>
         )}
       </section>
     </div>

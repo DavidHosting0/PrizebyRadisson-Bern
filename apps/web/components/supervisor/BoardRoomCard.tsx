@@ -135,7 +135,9 @@ export function BoardRoomCard({
             )}
           >
             {kind === 'departure'
-              ? 'Depart'
+              ? room.occupancy?.checkOut || room.occupancy?.ocoDone
+                ? 'Checked out'
+                : 'In room'
               : kind === 'restant'
                 ? 'Restant'
                 : room.derivedStatus.replace(/_/g, ' ')}
@@ -204,9 +206,20 @@ export function BoardRoomCard({
             (overdueDays != null && overdueDays > 0)) && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {kind === 'departure' && (
-                <span className="rounded-btn bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-50">
-                  Depart
-                </span>
+                <>
+                  <span className="rounded-btn bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-50">
+                    Depart
+                  </span>
+                  {room.occupancy?.checkOut || room.occupancy?.ocoDone ? (
+                    <span className="rounded-btn bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-950">
+                      Checked out
+                    </span>
+                  ) : (
+                    <span className="rounded-btn bg-amber-300/95 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950">
+                      Guest in room
+                    </span>
+                  )}
+                </>
               )}
               {kind === 'restant' && (
                 <span
@@ -231,7 +244,12 @@ export function BoardRoomCard({
             </div>
           )}
           <RoomOccupancyGuestLine occupancy={room.occupancy} onColor={onDark} />
-          <RoomOccupancyBadges occupancy={room.occupancy} onColor={onDark} />
+          <RoomOccupancyBadges occupancy={room.occupancy} onColor={onDark} size="sm" />
+          {kind === 'departure' && room.occupancy && !(room.occupancy.checkOut || room.occupancy.ocoDone) && (
+            <p className={clsx('mt-1 text-[11px] font-medium', onDark ? 'text-amber-100' : 'text-amber-900')}>
+              Guest still in room — knock first
+            </p>
+          )}
           {onOpen && (
             <button
               type="button"

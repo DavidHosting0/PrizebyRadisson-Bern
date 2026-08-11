@@ -676,6 +676,7 @@ export type ApplyEmmaSnapshotsDeps = {
   updateRoom: (
     id: string,
     data: { metadata: Record<string, unknown>; outOfOrder: boolean },
+    meta: { statusChanged: boolean },
   ) => Promise<void>;
 };
 
@@ -709,9 +710,16 @@ export async function applyEmmaSnapshotsToRooms(
       prevEmma.statusCode !== nextEmma.statusCode ||
       prevEmma.outOfOrder !== nextEmma.outOfOrder;
     const oooChanged = room.outOfOrder !== nextOoo;
-    if (!statusChanged && !oooChanged) continue;
-    await deps.updateRoom(room.id, { metadata: nextMeta, outOfOrder: nextOoo });
-    updated += 1;
+    // Always refresh syncedAt so backup/freshness reflect the last successful observation,
+    // not only the last time EMMA changed the status code.
+    const contentChanged = statusChanged || oooChanged;
+    if (!contentChanged && prevEmma?.syncedAt === syncedAt) continue;
+    await deps.updateRoom(
+      room.id,
+      { metadata: nextMeta, outOfOrder: nextOoo },
+      { statusChanged: contentChanged },
+    );
+    if (contentChanged) updated += 1;
   }
 
   const unmatchedEmma = snapshots

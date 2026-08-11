@@ -14,9 +14,13 @@ function toStaySignals(occupancy: RoomOccupancy): GuestStaySignals {
 
 function occupancyHint(occupancy: RoomOccupancy): string | null {
   const guest = occupancy.mainGuestName?.trim();
+  if (occupancy.isDepartureToday) {
+    const checkedOut = occupancy.checkOut || occupancy.ocoDone;
+    const status = checkedOut ? 'Ausgecheckt' : 'Gast noch im Zimmer';
+    return guest ? `${guest} · ${status}` : `Abreise heute · ${status}`;
+  }
   if (guest) return guest;
   if (occupancy.isArrivalToday) return 'Heute eingecheckt';
-  if (occupancy.isDepartureToday) return 'Abreise heute';
   if (occupancy.isRestant) return 'Restant';
   return 'Belegt';
 }
@@ -147,8 +151,25 @@ export function RoomOccupancySection({
           >
             Status
           </dt>
-          <dd className="mt-1">
+          <dd className="mt-1 flex flex-wrap items-center gap-2">
             <RoomOccupancyBadges occupancy={occupancy} />
+            {occupancy.isDepartureToday && (
+              <span
+                className={
+                  dark
+                    ? occupancy.checkOut || occupancy.ocoDone
+                      ? 'text-sm font-medium text-emerald-300'
+                      : 'text-sm font-medium text-amber-200'
+                    : occupancy.checkOut || occupancy.ocoDone
+                      ? 'text-sm font-medium text-emerald-700'
+                      : 'text-sm font-medium text-amber-800'
+                }
+              >
+                {occupancy.checkOut || occupancy.ocoDone
+                  ? 'Ausgecheckt'
+                  : 'Gast noch im Zimmer'}
+              </span>
+            )}
             {!occupancy.isDepartureToday &&
               !occupancy.isRestant &&
               !occupancy.isArrivalToday && (

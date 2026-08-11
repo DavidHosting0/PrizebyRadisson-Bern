@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { DerivedRoomStatus } from '@housekeeping/shared';
 import {
+  applyEmmaSnapshotsToRooms,
   applyRackDaysOutOfOrder,
   isOoRackStatus,
   isRackDayActiveOnDate,
@@ -58,5 +59,60 @@ describe('emma room rack-day out of order', () => {
     const patched = applyRackDaysOutOfOrder([base], new Set(['104']));
     assert.equal(patched[0]?.outOfOrder, true);
     assert.equal(mapEmmaToDerivedStatus(patched[0]!), DerivedRoomStatus.OUT_OF_ORDER);
+  });
+});
+
+describe('applyEmmaSnapshotsToRooms syncedAt refresh', () => {
+  it('refreshes syncedAt even when status is unchanged', async () => {
+    const oldSyncedAt = '2026-08-01T10:00:00.000Z';
+    const room = {
+      id: 'r1',
+      roomNumber: '104',
+      outOfOrder: false,
+      metadata: {
+        emma: {
+          roomId: '0104',
+          statusCode: 'DI',
+          statusLabel: 'Dirty',
+          derivedStatus: DerivedRoomStatus.DIRTY,
+          outOfOrder: false,
+          floorId: '01',
+          buildingId: '01',
+          syncedAt: oldSyncedAt,
+        },
+      },
+    };
+    const writes: Array<{ statusChanged: boolean; syncedAt: string }> = [];
+    const snap: EmmaRoomStatusSnapshot = {
+      emmaRoomId: '0104',
+      roomNumber: '104',
+      statusCode: 'DI',
+      statusLabel: 'Dirty',
+      outOfOrder: false,
+      floorId: '01',
+      buildingId: '01',
+      raw: {},
+    };
+
+    const result = await applyEmmaSnapshotsToRooms(
+      {
+        findRooms: async () => [room],
+        updateRoom: async (_id, data, meta) => {
+          const emma = (data.metadata as { emma: { syncedAt: string } }).emma;
+          writes.push({ statusChanged: meta.statusChanged, syncedAt: emma.syncedAt });
+          room.metadata = data.metadata as typeof room.metadata;
+          room.outOfOrder = data.outOfOrder;
+        },
+      },
+      [snap],
+      'CHBRNPR',
+    );
+
+    assert.equal(result.updated, 0);
+    assert.equal(result.matched, 1);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0]?.statusChanged, false);
+    assert.notEqual(writes[0]?.syncedAt, oldSyncedAt);
+    assert.equal(writes[0]?.syncedAt, result.syncedAt);
   });
 });

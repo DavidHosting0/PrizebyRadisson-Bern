@@ -73,6 +73,7 @@ const PUZZEL_TICKET_SYNC_KEY = 'puzzelTicketSync';
 const PUZZEL_TICKET_FILTER_KEY = 'puzzelTicketFilter';
 const EMMA_KEY = 'emmaLogin';
 const EMMA_HTTP_SESSION_KEY = 'emmaHttpSession';
+const EMMA_ROOM_STATUS_SYNC_KEY = 'emmaRoomStatusSync';
 const AI_KEY = 'aiConfig';
 
 export type EmmaHttpSessionStored = {
@@ -86,6 +87,13 @@ export type PuzzelTicketSyncStored = {
   lastTicketCount?: number;
   inProgress?: boolean;
   startedAt?: string | null;
+};
+
+export type EmmaRoomStatusSyncStored = {
+  lastSyncedAt?: string | null;
+  lastError?: string | null;
+  matched?: number;
+  updated?: number;
 };
 
 export type PuzzelTicketFilterStored = {
@@ -212,6 +220,24 @@ export class SettingsService {
       where: { id: row.id },
       data: {
         settings: { ...s, [PUZZEL_TICKET_SYNC_KEY]: next } as object,
+      },
+    });
+  }
+
+  async getEmmaRoomStatusSyncMeta(): Promise<EmmaRoomStatusSyncStored> {
+    const row = await this.ensureRow();
+    return this.parseEmmaRoomStatusSync(this.asRecord(row.settings)[EMMA_ROOM_STATUS_SYNC_KEY]);
+  }
+
+  async mergeEmmaRoomStatusSyncMeta(patch: Partial<EmmaRoomStatusSyncStored>) {
+    const row = await this.ensureRow();
+    const s = this.asRecord(row.settings);
+    const prev = this.parseEmmaRoomStatusSync(s[EMMA_ROOM_STATUS_SYNC_KEY]);
+    const next: EmmaRoomStatusSyncStored = { ...prev, ...patch };
+    await this.prisma.hotelSettings.update({
+      where: { id: row.id },
+      data: {
+        settings: { ...s, [EMMA_ROOM_STATUS_SYNC_KEY]: next } as object,
       },
     });
   }
@@ -373,6 +399,18 @@ export class SettingsService {
       lastTicketCount: typeof o.lastTicketCount === 'number' ? o.lastTicketCount : 0,
       inProgress: o.inProgress === true,
       startedAt: typeof o.startedAt === 'string' ? o.startedAt : o.startedAt === null ? null : undefined,
+    };
+  }
+
+  private parseEmmaRoomStatusSync(raw: unknown): EmmaRoomStatusSyncStored {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const o = raw as Record<string, unknown>;
+    return {
+      lastSyncedAt:
+        typeof o.lastSyncedAt === 'string' ? o.lastSyncedAt : o.lastSyncedAt === null ? null : undefined,
+      lastError: typeof o.lastError === 'string' ? o.lastError : o.lastError === null ? null : undefined,
+      matched: typeof o.matched === 'number' ? o.matched : undefined,
+      updated: typeof o.updated === 'number' ? o.updated : undefined,
     };
   }
 

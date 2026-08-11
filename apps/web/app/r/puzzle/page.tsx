@@ -4,12 +4,14 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { AppPageChrome, AppPageBody, APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
+import { usePuzzleLabels } from '@/lib/puzzle-labels';
 
 /** Secondary button on the dark chrome — outline instead of the light "secondary" fill. */
 const DARK_SECONDARY_BTN = 'border border-sidebar-border bg-transparent text-white hover:bg-white/10';
@@ -128,13 +130,13 @@ type PuzzelTicketAnalysis = {
   updatedAt: string;
 };
 
-const PRIZE_CATEGORY_LABEL: Record<PuzzelTicketPrizeCategory, string> = {
-  SPAM: 'Spam',
-  RECHNUNG_ANGEFRAGT: 'Rechnung angefragt',
-  RECHNUNGSKORREKTUR: 'Rechnungskorrektur',
-  MEHRERE_RECHNUNGSANFRAGEN: 'Mehrere Rechnungsanfragen',
-  SONSTIGES: 'Sonstiges (Rechnung)',
-};
+const ALL_PRIZE_CATEGORIES: PuzzelTicketPrizeCategory[] = [
+  'SPAM',
+  'RECHNUNG_ANGEFRAGT',
+  'RECHNUNGSKORREKTUR',
+  'MEHRERE_RECHNUNGSANFRAGEN',
+  'SONSTIGES',
+];
 
 const PRIZE_CATEGORY_TONE: Record<PuzzelTicketPrizeCategory, string> = {
   SPAM: 'border-slate-400/30 bg-slate-500/15 text-slate-300',
@@ -143,8 +145,6 @@ const PRIZE_CATEGORY_TONE: Record<PuzzelTicketPrizeCategory, string> = {
   MEHRERE_RECHNUNGSANFRAGEN: 'border-violet-400/30 bg-violet-500/15 text-violet-300',
   SONSTIGES: 'border-teal-400/30 bg-teal-500/15 text-teal-300',
 };
-
-const ALL_PRIZE_CATEGORIES = Object.keys(PRIZE_CATEGORY_LABEL) as PuzzelTicketPrizeCategory[];
 
 function countTicketsByPrizeCategory(source: PuzzelTicket[]) {
   const counts: Record<PuzzelTicketPrizeCategory, number> = {
@@ -166,17 +166,6 @@ function countTicketsByPrizeCategory(source: PuzzelTicket[]) {
   return { counts, none };
 }
 
-const INVOICE_ACTION_LABEL: Record<PuzzelInvoiceAction, string> = {
-  resend_only: 'Nur Zusendung — gleicher Inhalt (PDF/E-Mail)',
-  correct_and_reissue: 'Korrektur — Rechnung inhaltlich ändern & neu',
-  new_or_additional_invoice: 'Zusätzliche / geteilte / Pro-forma-Rechnung',
-  vat_tax_legal: 'USt / Steuer / VAT / Formulierung auf Beleg',
-  payment_refund: 'Zahlung / Rückerstattung / Abbuchung',
-  invoice_question: 'Rückfrage zur Rechnung (kein klarer Auftrag)',
-  other_billing: 'Sonstiges Buchhaltungs-/Zahlungsthema',
-  unclear: 'Anliegen unklar',
-};
-
 /** Distinct badge colour so “resend” vs “correct” is scannable. */
 const INVOICE_ACTION_TONE: Record<PuzzelInvoiceAction, string> = {
   resend_only: 'border-sky-400/30 bg-sky-500/15 text-sky-300',
@@ -189,13 +178,6 @@ const INVOICE_ACTION_TONE: Record<PuzzelInvoiceAction, string> = {
   unclear: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
 };
 
-const REQUEST_TYPE_LABEL: Record<PuzzelTicketAnalysisRequestType, string> = {
-  invoice_correction: 'Rechnungskorrektur',
-  invoice_resend: 'Rechnung zusenden',
-  invoice_other: 'Sonstige Rechnungsfrage',
-  unknown: 'Unklar',
-};
-
 const REQUEST_TYPE_TONE: Record<PuzzelTicketAnalysisRequestType, string> = {
   invoice_correction: 'border-amber-400/30 bg-amber-500/15 text-amber-300',
   invoice_resend: 'border-sky-400/30 bg-sky-500/15 text-sky-300',
@@ -203,43 +185,11 @@ const REQUEST_TYPE_TONE: Record<PuzzelTicketAnalysisRequestType, string> = {
   unknown: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
 };
 
-const CONFIDENCE_LABEL: Record<'high' | 'medium' | 'low', string> = {
-  high: 'Hohe Sicherheit',
-  medium: 'Mittlere Sicherheit',
-  low: 'Niedrige Sicherheit',
-};
-
-const URGENCY_LABEL: Record<PuzzelTicketUrgency, string> = {
-  critical: 'Critical',
-  high: 'High',
-  normal: 'Normal',
-  low: 'Low',
-};
-
 const URGENCY_TONE: Record<PuzzelTicketUrgency, string> = {
   critical: 'border-rose-400/30 bg-rose-500/15 text-rose-300',
   high: 'border-amber-400/30 bg-amber-500/15 text-amber-300',
   normal: 'border-slate-400/30 bg-slate-500/15 text-slate-300',
   low: 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
-};
-
-const MISSING_FIELD = 'Not detected';
-
-const COMPANY_BILLING_INTENT_LABEL: Record<CompanyBillingOnInvoiceIntent, string> = {
-  yes: 'Guest wants company / full billing details on the invoice',
-  no: 'Private billing only / no company invoice requested',
-  unclear: 'Unclear whether company details belong on the invoice',
-  not_mentioned: 'Not mentioned',
-};
-
-const COMPANY_BILLING_FIELD_LABEL: Record<keyof CompanyInvoiceBillingDetails['fieldsRequestedOnInvoice'], string> = {
-  companyName: 'Company name',
-  street: 'Street',
-  houseNumber: 'No.',
-  postalCode: 'Postal code',
-  city: 'City',
-  country: 'Country',
-  vatNumber: 'VAT / UID',
 };
 
 function mergeIntervals(intervals: { start: number; end: number }[]) {
@@ -345,9 +295,12 @@ function formatDateTime(value: string | null | undefined) {
   return new Date(value).toLocaleString('de-CH');
 }
 
-function ticketSearchText(ticket: PuzzelTicket) {
+function ticketSearchText(
+  ticket: PuzzelTicket,
+  prizeCategoryLabel: Record<PuzzelTicketPrizeCategory, string>,
+) {
   const cat = ticket.analysis?.prizeCategory
-    ? PRIZE_CATEGORY_LABEL[ticket.analysis.prizeCategory]
+    ? prizeCategoryLabel[ticket.analysis.prizeCategory]
     : '';
   return [
     ticket.reference,
@@ -426,6 +379,9 @@ function canReplyOrResolveInBucket(
 }
 
 export default function ReceptionPuzzlePage() {
+  const tNav = useTranslations('nav');
+  const t = useTranslations('puzzle');
+  const labels = usePuzzleLabels();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { enterMobile } = useReceptionMobileMode();
@@ -516,10 +472,10 @@ export default function ReceptionPuzzlePage() {
       const matchesStatus = !statusFilter || ticket.status === statusFilter;
       const matchesCategory =
         !categoryFilter || ticket.analysis?.prizeCategory === categoryFilter;
-      const matchesSearch = !q || ticketSearchText(ticket).includes(q);
+      const matchesSearch = !q || ticketSearchText(ticket, labels.prizeCategoryLabel).includes(q);
       return matchesStatus && matchesCategory && matchesSearch;
     });
-  }, [search, statusFilter, categoryFilter, bucketTickets]);
+  }, [search, statusFilter, categoryFilter, bucketTickets, labels.prizeCategoryLabel]);
 
   useEffect(() => {
     if (statusFilter && !statuses.includes(statusFilter)) {
@@ -691,8 +647,8 @@ export default function ReceptionPuzzlePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title="Puzzel Tickets"
-        description="Alle synchronisierten Tickets aus Puzzel CM für die Rezeption"
+        title={tNav('puzzleTickets')}
+        description={t('pageDescription')}
         actions={
           <>
             <AppChromeTools onEnterMobile={enterMobile} />
@@ -704,7 +660,7 @@ export default function ReceptionPuzzlePage() {
                 disabled={syncMut.isPending || status?.inProgress}
                 onClick={() => syncMut.mutate()}
               >
-                {status?.inProgress ? 'Läuft…' : syncMut.isPending ? 'Starte…' : 'Jetzt synchronisieren'}
+                {status?.inProgress ? t('syncRunning') : syncMut.isPending ? t('syncStarting') : t('syncNow')}
               </Button>
             )}
           </>
@@ -718,18 +674,20 @@ export default function ReceptionPuzzlePage() {
         <div className="flex flex-col items-start gap-1 sm:items-end">
           {status?.lastSyncedAt != null && (
             <p className="text-xs text-sidebar-muted">
-              Zuletzt synchronisiert: {formatDateTime(status.lastSyncedAt)}
-              {typeof status.lastTicketCount === 'number' ? ` · ${status.lastTicketCount} Tickets` : ''}
+              {t('lastSynced', { time: formatDateTime(status.lastSyncedAt) })}
+              {typeof status.lastTicketCount === 'number'
+                ? t('ticketCount', { count: status.lastTicketCount })
+                : ''}
             </p>
           )}
           {status?.inProgress && (
-            <p className="text-xs font-medium text-amber-300">Synchronisation läuft…</p>
+            <p className="text-xs font-medium text-amber-300">{t('syncInProgress')}</p>
           )}
           {status?.lastError && !status?.inProgress && (
             <p className="max-w-xl text-xs text-rose-300">{status.lastError}</p>
           )}
           {isAdmin && syncMut.data?.status === 'already_running' && (
-            <span className="text-xs text-sidebar-muted">Bereits aktiv.</span>
+            <span className="text-xs text-sidebar-muted">{t('alreadyRunning')}</span>
           )}
           {isAdmin && syncMut.isError && (
             <span className="text-xs text-rose-300">{(syncMut.error as Error).message}</span>
@@ -739,27 +697,27 @@ export default function ReceptionPuzzlePage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className={clsx(APP_DARK_CARD, 'p-4')}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Aktive Tickets</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('kpiActive')}</p>
           <p className="mt-1 text-2xl font-semibold text-white">{activeTickets.length}</p>
         </div>
         <div className={clsx(APP_DARK_CARD, 'p-4')}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Erledigt (Resolved)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('kpiResolved')}</p>
           <p className="mt-1 text-2xl font-semibold text-white">{resolvedTickets.length}</p>
         </div>
         <div className={clsx(APP_DARK_CARD, 'p-4')}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">In dieser Ansicht</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('kpiInView')}</p>
           <p className="mt-1 text-2xl font-semibold text-white">{filteredTickets.length}</p>
         </div>
         <div className={clsx(APP_DARK_CARD, 'p-4')}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Sync-Status</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('kpiSyncStatus')}</p>
           <p className="mt-1 text-sm font-medium text-white">
-            {status?.inProgress ? 'Synchronisation läuft' : status?.lastError ? 'Letzter Lauf mit Fehler' : 'Bereit'}
+            {status?.inProgress ? t('syncInProgress') : status?.lastError ? t('syncLastError') : t('syncReady')}
           </p>
         </div>
       </div>
 
       <div className={clsx(APP_DARK_CARD, 'p-4')}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Ticket-Ansicht</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('ticketView')}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             type="button"
@@ -770,7 +728,7 @@ export default function ReceptionPuzzlePage() {
               setExpandedId(null);
             }}
           >
-            Aktive Tickets ({activeTickets.length})
+            {t('bucketActive', { count: activeTickets.length })}
           </Button>
           <Button
             type="button"
@@ -781,7 +739,7 @@ export default function ReceptionPuzzlePage() {
               setExpandedId(null);
             }}
           >
-            Erledigt — Resolved ({resolvedTickets.length})
+            {t('bucketResolved', { count: resolvedTickets.length })}
           </Button>
           <Button
             type="button"
@@ -792,26 +750,20 @@ export default function ReceptionPuzzlePage() {
               setExpandedId(null);
             }}
           >
-            Alle Tickets ({tickets.length})
+            {t('bucketAll', { count: tickets.length })}
           </Button>
         </div>
-        <p className="mt-2 text-xs text-sidebar-muted">
-          Unter „Alle Status“ (Filter) siehst du nur Status-Werte der aktuellen Ansicht — bei „Aktiv“ bzw. „Erledigt“
-          jeweils eine Teilmenge. Für die komplette Liste „Alle Tickets“ wählen. Resolved/Closed erscheinen unter
-          „Erledigt“. Nach dem Senden einer Antwort über PrizeBern wird der Status wie in Puzzel auf Resolved gesetzt.
-        </p>
+        <p className="mt-2 text-xs text-sidebar-muted">{t('bucketHint')}</p>
       </div>
 
       <div className={clsx(APP_DARK_CARD, 'p-4')}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Tickets nach KI-Kategorie</p>
-        <p className="mt-1 text-sm text-sidebar-muted">
-          Anzahl pro PrizeBern-Kategorie (Spam, Rechnung angefragt, …), basierend auf der gespeicherten KI-Auswertung.
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('categoryBreakdownTitle')}</p>
+        <p className="mt-1 text-sm text-sidebar-muted">{t('categoryBreakdownHint')}</p>
         <div className="mt-4 grid gap-5 sm:grid-cols-2">
           {(
             [
-              { key: 'active' as const, title: 'Aktive Tickets', list: activeTickets },
-              { key: 'resolved' as const, title: 'Erledigt (Resolved/Closed)', list: resolvedTickets },
+              { key: 'active' as const, title: t('activeTicketsTitle'), list: activeTickets },
+              { key: 'resolved' as const, title: t('resolvedTicketsTitle'), list: resolvedTickets },
             ] as const
           ).map(({ key, title, list }) => {
             const { counts, none } = countTicketsByPrizeCategory(list);
@@ -819,7 +771,7 @@ export default function ReceptionPuzzlePage() {
               <div key={key}>
                 <p className="text-xs font-semibold text-white">
                   {title}{' '}
-                  <span className="font-normal text-sidebar-muted">({list.length} gesamt)</span>
+                  <span className="font-normal text-sidebar-muted">{t('totalCount', { count: list.length })}</span>
                 </p>
                 <ul className="mt-2 space-y-1.5 text-sm">
                   {ALL_PRIZE_CATEGORIES.map((cat) => (
@@ -828,13 +780,13 @@ export default function ReceptionPuzzlePage() {
                       className="flex items-center justify-between gap-2 rounded-lg border border-sidebar-border/60 bg-white/5 px-2.5 py-1.5"
                     >
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[cat]}`}>
-                        {PRIZE_CATEGORY_LABEL[cat]}
+                        {labels.prizeCategoryLabel[cat]}
                       </span>
                       <span className="font-mono tabular-nums text-sm font-semibold text-white">{counts[cat]}</span>
                     </li>
                   ))}
                   <li className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-sidebar-border/60 bg-white/[0.02] px-2.5 py-1.5 text-sidebar-muted">
-                    <span className="text-xs font-medium">Keine KI-Auswertung</span>
+                    <span className="text-xs font-medium">{t('noAiAnalysis')}</span>
                     <span className="font-mono tabular-nums text-sm font-semibold text-white">{none}</span>
                   </li>
                 </ul>
@@ -844,18 +796,16 @@ export default function ReceptionPuzzlePage() {
         </div>
       </div>
 
-      {ticketsQuery.isLoading && <p className="text-sm text-sidebar-muted">Lädt Tickets…</p>}
+      {ticketsQuery.isLoading && <p className="text-sm text-sidebar-muted">{t('loadingTickets')}</p>}
 
       <div className={clsx(APP_DARK_CARD, 'p-4')}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-white">Puzzel-Filter</h2>
-            <p className="text-sm text-sidebar-muted">
-              Diese Werte nutzt der Sync in Puzzel, bevor er die Ticketliste ausliest.
-            </p>
+            <h2 className="text-lg font-semibold text-white">{t('filterTitle')}</h2>
+            <p className="text-sm text-sidebar-muted">{t('filterHint')}</p>
           </div>
           {saveFilterMut.isSuccess && !saveFilterMut.isPending && (
-            <span className="text-xs font-medium text-emerald-300">Filter gespeichert.</span>
+            <span className="text-xs font-medium text-emerald-300">{t('filterSaved')}</span>
           )}
         </div>
         <form
@@ -871,7 +821,7 @@ export default function ReceptionPuzzlePage() {
           }}
         >
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Saved Search</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('filterSavedSearch')}</span>
             <input
               value={filterDraft.savedSearchName}
               onChange={(e) => setFilterDraft((f) => ({ ...f, savedSearchName: e.target.value }))}
@@ -880,7 +830,7 @@ export default function ReceptionPuzzlePage() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Team</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('filterTeam')}</span>
             <input
               value={filterDraft.teamName}
               onChange={(e) => setFilterDraft((f) => ({ ...f, teamName: e.target.value }))}
@@ -889,7 +839,7 @@ export default function ReceptionPuzzlePage() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Status</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('status')}</span>
             <input
               value={filterDraft.statusName}
               onChange={(e) => setFilterDraft((f) => ({ ...f, statusName: e.target.value }))}
@@ -898,7 +848,7 @@ export default function ReceptionPuzzlePage() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Time Period</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('filterTimePeriod')}</span>
             <input
               value={filterDraft.timePeriod}
               onChange={(e) => setFilterDraft((f) => ({ ...f, timePeriod: e.target.value }))}
@@ -914,7 +864,7 @@ export default function ReceptionPuzzlePage() {
                 className={clsx('min-h-[44px]', DARK_SECONDARY_BTN)}
                 disabled={saveFilterMut.isPending}
               >
-                {saveFilterMut.isPending ? 'Speichert…' : 'Filter speichern'}
+                {saveFilterMut.isPending ? t('filterSaving') : t('filterSave')}
               </Button>
               {saveFilterMut.isError && (
                 <span className="ml-3 text-sm text-rose-300">{(saveFilterMut.error as Error).message}</span>
@@ -926,12 +876,7 @@ export default function ReceptionPuzzlePage() {
 
       {!ticketsQuery.isLoading && tickets.length === 0 && (
         <div className={clsx(APP_DARK_CARD, 'p-6')}>
-          <p className="text-sm text-sidebar-muted">
-            Noch keine Tickets. Sobald ein Admin unter <strong className="text-white">Puzzle → Zugangsdaten</strong> E-Mail,
-            Passwort und 2FA-Seed eingetragen hat, holt der Server die Liste automatisch etwa alle 15&nbsp;Minuten
-            (deaktivieren: Umgebungsvariable <code className="rounded bg-white/10 px-1 text-white">PUZZEL_AUTO_SYNC=false</code>).
-            Zusätzlich kann ein Admin <strong className="text-white">Jetzt synchronisieren</strong> auslösen.
-          </p>
+          <p className="text-sm text-sidebar-muted">{t('emptyTickets')}</p>
         </div>
       )}
 
@@ -939,7 +884,7 @@ export default function ReceptionPuzzlePage() {
         <div className="grid items-start gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
           <div className={clsx(APP_DARK_CARD, 'p-4')}>
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Suchen</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('search')}</span>
               <input
                 type="search"
                 value={search}
@@ -947,12 +892,12 @@ export default function ReceptionPuzzlePage() {
                   setSearch(e.target.value);
                   setExpandedId(null);
                 }}
-                placeholder="Referenz, Betreff, Status oder Text suchen…"
+                placeholder={t('searchPlaceholder')}
                 className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               />
             </label>
             <label className="mt-3 block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Status</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('status')}</span>
               <select
                 value={statusFilter}
                 onChange={(e) => {
@@ -961,7 +906,7 @@ export default function ReceptionPuzzlePage() {
                 }}
                 className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               >
-                <option value="">Alle Status</option>
+                <option value="">{t('allStatuses')}</option>
                 {statuses.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -970,7 +915,7 @@ export default function ReceptionPuzzlePage() {
               </select>
             </label>
             <label className="mt-3 block">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">Kategorie (KI)</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-sidebar-muted">{t('categoryAi')}</span>
               <select
                 value={categoryFilter}
                 onChange={(e) => {
@@ -979,10 +924,10 @@ export default function ReceptionPuzzlePage() {
                 }}
                 className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               >
-                <option value="">Alle Kategorien</option>
-                {(Object.keys(PRIZE_CATEGORY_LABEL) as PuzzelTicketPrizeCategory[]).map((c) => (
+                <option value="">{t('allCategories')}</option>
+                {ALL_PRIZE_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
-                    {PRIZE_CATEGORY_LABEL[c]}
+                    {labels.prizeCategoryLabel[c]}
                   </option>
                 ))}
               </select>
@@ -999,7 +944,7 @@ export default function ReceptionPuzzlePage() {
                   setExpandedId(null);
                 }}
               >
-                Filter löschen
+                {t('clearFilters')}
               </Button>
             </div>
 
@@ -1027,15 +972,15 @@ export default function ReceptionPuzzlePage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs text-sidebar-muted">{ticket.reference ?? 'No reference'}</span>
+                          <span className="font-mono text-xs text-sidebar-muted">{ticket.reference ?? t('noReference')}</span>
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusTone(ticket.status)}`}>
-                            {ticket.status ?? 'Unknown'}
+                            {ticket.status ?? t('unknownStatus')}
                           </span>
                           {ticket.analysis?.prizeCategory && (
                             <span
                               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[ticket.analysis.prizeCategory]}`}
                             >
-                              {PRIZE_CATEGORY_LABEL[ticket.analysis.prizeCategory]}
+                              {labels.prizeCategoryLabel[ticket.analysis.prizeCategory]}
                             </span>
                           )}
                         </div>
@@ -1046,8 +991,10 @@ export default function ReceptionPuzzlePage() {
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-sidebar-muted">
-                      {team && <span className="rounded-full bg-white/10 px-2 py-1">Team: {team}</span>}
-                      {lastActivity && <span className="rounded-full bg-white/10 px-2 py-1">Last activity: {lastActivity}</span>}
+                      {team && <span className="rounded-full bg-white/10 px-2 py-1">{t('teamLabel', { team })}</span>}
+                      {lastActivity && (
+                        <span className="rounded-full bg-white/10 px-2 py-1">{t('lastActivityLabel', { time: lastActivity })}</span>
+                      )}
                     </div>
                     <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-sidebar-muted">{ticket.rowSummary}</p>
                   </button>
@@ -1056,7 +1003,7 @@ export default function ReceptionPuzzlePage() {
             </div>
             {filteredTickets.length === 0 && (
               <p className="mt-4 rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
-                Keine Tickets passen zu den aktuellen Filtern.
+                {t('noFilterMatch')}
               </p>
             )}
           </div>
@@ -1068,20 +1015,22 @@ export default function ReceptionPuzzlePage() {
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-sidebar-muted">{selectedTicket.reference ?? 'No reference'}</span>
+                        <span className="font-mono text-xs text-sidebar-muted">{selectedTicket.reference ?? t('noReference')}</span>
                         <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone(selectedTicket.status)}`}>
-                          {selectedTicket.status ?? 'Unknown'}
+                          {selectedTicket.status ?? t('unknownStatus')}
                         </span>
                         {assignedAt(selectedTicket) && (
                           <span className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-                            Assigned to me
+                            {t('assignedToMe')}
                           </span>
                         )}
                       </div>
                       <h2 className="mt-2 text-xl font-semibold leading-tight text-white">{selectedTicket.subject}</h2>
                       <p className="mt-1 text-sm text-sidebar-muted">
-                        Synced {formatDateTime(selectedTicket.scrapedAt)}
-                        {metaText(selectedTicket, 'lastActivity') ? ` · Last activity ${metaText(selectedTicket, 'lastActivity')}` : ''}
+                        {t('syncedAt', { time: formatDateTime(selectedTicket.scrapedAt) })}
+                        {metaText(selectedTicket, 'lastActivity')
+                          ? t('lastActivityPrefix', { time: metaText(selectedTicket, 'lastActivity')! })
+                          : ''}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -1092,7 +1041,11 @@ export default function ReceptionPuzzlePage() {
                         disabled={assignMut.isPending || Boolean(assignedAt(selectedTicket))}
                         onClick={() => assignMut.mutate(selectedTicket.id)}
                       >
-                        {assignMut.isPending ? 'Assigning…' : assignedAt(selectedTicket) ? 'Assigned to me' : 'Assign to me'}
+                        {assignMut.isPending
+                          ? t('assigning')
+                          : assignedAt(selectedTicket)
+                            ? t('assignedToMe')
+                            : t('assignToMe')}
                       </Button>
                       {canReplyOrResolveInBucket(ticketBucket, selectedTicket.status) &&
                         showPuzzelResolveTicketAction(selectedTicket.status) && (
@@ -1103,7 +1056,7 @@ export default function ReceptionPuzzlePage() {
                           disabled={resolveMut.isPending}
                           onClick={() => resolveMut.mutate(selectedTicket.id)}
                         >
-                          {resolveMut.isPending ? 'Resolving…' : 'Resolve Ticket'}
+                          {resolveMut.isPending ? t('resolving') : t('resolveTicket')}
                         </Button>
                       )}
                       {selectedTicket.detailHref && (
@@ -1113,7 +1066,7 @@ export default function ReceptionPuzzlePage() {
                           rel="noopener noreferrer"
                           className="inline-flex min-h-[40px] items-center rounded-btn border border-sidebar-border px-3 text-sm font-medium text-white hover:bg-white/10"
                         >
-                          Open in Puzzel
+                          {t('openInPuzzel')}
                         </a>
                       )}
                     </div>
@@ -1148,13 +1101,9 @@ export default function ReceptionPuzzlePage() {
                     !analysisQuery.data.suggestedGuestReply?.trim() && (
                       <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm text-amber-100">
                         <p className="text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-                          Antwortvorschlag fehlt
+                          {t('missingReplyTitle')}
                         </p>
-                        <p className="mt-2 text-xs leading-relaxed text-amber-200/90">
-                          Gespeicherte KI-Analyse ohne Gast-Antwort. Oben in der KI-Übersicht{' '}
-                          <strong className="font-semibold text-amber-100">Re-analyze</strong> wählen (oder Ticket
-                          erneut öffnen), damit ein Vorschlag erzeugt wird.
-                        </p>
+                        <p className="mt-2 text-xs leading-relaxed text-amber-200/90">{t('missingReplyHint')}</p>
                       </div>
                     )}
 
@@ -1165,13 +1114,13 @@ export default function ReceptionPuzzlePage() {
                   />
 
                   <div className="rounded-2xl border border-sidebar-border/60 bg-white/5 p-4 text-xs text-sidebar-muted">
-                    <p className="font-semibold uppercase tracking-wide text-sidebar-muted">Ticket summary</p>
+                    <p className="font-semibold uppercase tracking-wide text-sidebar-muted">{t('ticketSummary')}</p>
                     <p className="mt-2 leading-relaxed">{selectedTicket.rowSummary || selectedTicket.subject}</p>
                   </div>
 
                   {messagesQuery.isLoading && (
                     <p className="rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
-                      Loading chat history from Puzzel…
+                      {t('loadingMessages')}
                     </p>
                   )}
                   {messagesQuery.isError && (
@@ -1181,7 +1130,7 @@ export default function ReceptionPuzzlePage() {
                   )}
                   {!messagesQuery.isLoading && !messagesQuery.isError && (messagesQuery.data?.length ?? 0) === 0 && (
                     <p className="rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
-                      No messages saved yet.
+                      {t('noMessages')}
                     </p>
                   )}
 
@@ -1205,10 +1154,10 @@ export default function ReceptionPuzzlePage() {
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
                                 <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
-                                  {outbound ? 'Hotel reply' : 'Guest message'}
+                                  {outbound ? t('hotelReply') : t('guestMessage')}
                                 </p>
                                 <p className="mt-1 text-sm font-medium">
-                                  {message.fromText ?? 'Unknown'} → {message.toText ?? 'Unknown'}
+                                  {message.fromText ?? t('unknownStatus')} → {message.toText ?? t('unknownStatus')}
                                 </p>
                               </div>
                               <span className="text-xs text-sidebar-muted">{message.sentAtText ?? formatDateTime(message.scrapedAt)}</span>
@@ -1230,9 +1179,7 @@ export default function ReceptionPuzzlePage() {
 
                 <div className="shrink-0 border-t border-sidebar-border/60 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-sidebar-muted">
-                      Reply and attachments are sent through Puzzel (same as the pink Send in the CM composer).
-                    </p>
+                    <p className="text-xs text-sidebar-muted">{t('replyHint')}</p>
                     {isAdmin && (
                       <button
                         type="button"
@@ -1240,7 +1187,7 @@ export default function ReceptionPuzzlePage() {
                         disabled={refreshMessagesMut.isPending}
                         onClick={() => refreshMessagesMut.mutate(selectedTicket.id)}
                       >
-                        Refresh messages
+                        {t('refreshMessages')}
                       </button>
                     )}
                   </div>
@@ -1250,11 +1197,11 @@ export default function ReceptionPuzzlePage() {
                     className="mt-3"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      const t = replyText.trim();
-                      if (!t && replyFiles.length === 0) return;
+                      const messageText = replyText.trim();
+                      if (!messageText && replyFiles.length === 0) return;
                       replyMut.mutate({
                         ticketId: selectedTicket.id,
-                        message: t,
+                        message: messageText,
                         files: replyFiles,
                       });
                     }}
@@ -1263,7 +1210,7 @@ export default function ReceptionPuzzlePage() {
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       rows={5}
-                      placeholder="Write a reply to the guest…"
+                      placeholder={t('replyPlaceholder')}
                       className="w-full rounded-2xl border border-sidebar-border bg-sidebar px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-sidebar-muted focus:border-action focus:ring-2 focus:ring-action/30"
                     />
                     {replyFiles.length > 0 && (
@@ -1276,7 +1223,7 @@ export default function ReceptionPuzzlePage() {
                               className="shrink-0 font-medium text-rose-400 hover:underline"
                               onClick={() => setReplyFiles((prev) => prev.filter((_, j) => j !== i))}
                             >
-                              Remove
+                              {t('removeAttachment')}
                             </button>
                           </li>
                         ))}
@@ -1298,7 +1245,7 @@ export default function ReceptionPuzzlePage() {
                             disabled={replyMut.isPending}
                             className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
                             accept="*/*"
-                            aria-label="Attach files"
+                            aria-label={t('attachFilesAria')}
                             onChange={(e) => {
                               const list = e.target.files;
                               if (!list?.length) return;
@@ -1312,14 +1259,12 @@ export default function ReceptionPuzzlePage() {
                             className={clsx('min-h-[44px] pointer-events-none', DARK_SECONDARY_BTN)}
                             tabIndex={-1}
                           >
-                            Attach files
+                            {t('attachFiles')}
                           </Button>
                         </div>
-                        <p className="text-xs text-sidebar-muted">Up to 10 files, 25 MB each.</p>
+                        <p className="text-xs text-sidebar-muted">{t('fileLimitHint')}</p>
                       </div>
-                      <p className="max-w-md text-xs text-sidebar-muted">
-                        Use the same signature/business data you want in Puzzel.
-                      </p>
+                      <p className="max-w-md text-xs text-sidebar-muted">{t('signatureHint')}</p>
                       <Button
                         type="submit"
                         variant="action"
@@ -1328,19 +1273,19 @@ export default function ReceptionPuzzlePage() {
                           replyMut.isPending || (!replyText.trim() && replyFiles.length === 0)
                         }
                       >
-                        {replyMut.isPending ? 'Sending…' : 'Send via Puzzel'}
+                        {replyMut.isPending ? t('sending') : t('sendViaPuzzel')}
                       </Button>
                     </div>
                     {replyMut.isSuccess && (
-                      <p className="mt-2 text-sm font-medium text-emerald-300">Sent through Puzzel.</p>
+                      <p className="mt-2 text-sm font-medium text-emerald-300">{t('sentSuccess')}</p>
                     )}
                   </form>
                   </>
                   ) : (
                     <p className="mt-3 rounded-xl border border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
                       {ticketBucket === 'resolved' || isPuzzelTicketArchivedStatus(selectedTicket.status)
-                        ? 'Archiv: Tickets mit Status Resolved oder Closed in Puzzel. Es können hier keine neuen Antworten mehr gesendet werden.'
-                        : 'Dieses Ticket ist erledigt — Antworten über PrizeBern sind deaktiviert.'}
+                        ? t('archiveNoReply')
+                        : t('ticketClosedNoReply')}
                     </p>
                   )}
                 </div>
@@ -1348,8 +1293,8 @@ export default function ReceptionPuzzlePage() {
             ) : (
               <div className="flex min-h-[520px] items-center justify-center p-8 text-center">
                 <div>
-                  <p className="text-lg font-semibold text-white">Select a ticket</p>
-                  <p className="mt-1 text-sm text-sidebar-muted">The chat history and actions will appear here.</p>
+                  <p className="text-lg font-semibold text-white">{t('selectTicket')}</p>
+                  <p className="mt-1 text-sm text-sidebar-muted">{t('selectTicketHint')}</p>
                 </div>
               </div>
             )}
@@ -1371,6 +1316,7 @@ function SuggestedGuestReplyPanel({
   showApply: boolean;
   onApply: (value: string) => void;
 }) {
+  const t = useTranslations('puzzle');
   const body = text?.trim() ?? '';
   if (!body) {
     return null;
@@ -1379,11 +1325,8 @@ function SuggestedGuestReplyPanel({
     <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">KI-Antwortvorschlag</p>
-          <p className="mt-1 text-xs leading-snug text-emerald-200/80">
-            Entwurf für den Gast — bitte prüfen. Wenn die KI eine Rechnung im Anhang erwähnt,{' '}
-            <strong className="font-semibold text-emerald-100">vor dem Senden das PDF anhängen</strong>.
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">{t('suggestedReplyTitle')}</p>
+          <p className="mt-1 text-xs leading-snug text-emerald-200/80">{t('suggestedReplyHint')}</p>
         </div>
         {showApply && (
           <Button
@@ -1392,7 +1335,7 @@ function SuggestedGuestReplyPanel({
             className={clsx('min-h-[40px] shrink-0', DARK_SECONDARY_BTN)}
             onClick={() => onApply(body)}
           >
-            In Antwort übernehmen
+            {t('applyToReply')}
           </Button>
         )}
       </div>
@@ -1429,6 +1372,9 @@ function AiSummaryCard({
   hasMessages,
   onRefresh,
 }: AiSummaryCardProps) {
+  const t = useTranslations('puzzle');
+  const labels = usePuzzleLabels();
+
   // Re-render hint: tie key off ticketId so React resets internal state when switching tickets.
   void ticketId;
 
@@ -1436,12 +1382,9 @@ function AiSummaryCard({
     return (
       <section className="rounded-2xl border border-dashed border-sidebar-border/60 bg-white/5 p-4 text-sm text-sidebar-muted">
         <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
-          KI-Übersicht
+          {t('aiOverview')}
         </p>
-        <p className="mt-2 leading-relaxed">
-          Sobald die Nachrichten dieses Tickets aus Puzzel geladen sind, fasst die KI das
-          Anliegen automatisch zusammen.
-        </p>
+        <p className="mt-2 leading-relaxed">{t('aiOverviewWaiting')}</p>
       </section>
     );
   }
@@ -1450,11 +1393,9 @@ function AiSummaryCard({
     return (
       <section className="rounded-2xl border border-sidebar-border/60 bg-white/5 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
-          KI-Übersicht
+          {t('aiOverview')}
         </p>
-        <p className="mt-2 text-sm text-sidebar-muted">
-          Analyse läuft … (üblicherweise 3–8 Sekunden)
-        </p>
+        <p className="mt-2 text-sm text-sidebar-muted">{t('aiOverviewLoading')}</p>
       </section>
     );
   }
@@ -1464,7 +1405,7 @@ function AiSummaryCard({
       <section className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-rose-200">
-            KI-Übersicht — Fehler
+            {t('aiOverviewError')}
           </p>
           <button
             type="button"
@@ -1472,13 +1413,11 @@ function AiSummaryCard({
             disabled={isRefreshing}
             className="text-xs font-medium text-rose-200 underline disabled:opacity-50"
           >
-            {isRefreshing ? 'Wiederholt …' : 'Erneut versuchen'}
+            {isRefreshing ? t('aiRetrying') : t('aiRetry')}
           </button>
         </div>
         <p className="mt-2 break-words leading-relaxed">{error}</p>
-        <p className="mt-2 text-xs text-rose-300/70">
-          Falls noch kein OpenAI-API-Key hinterlegt ist: Admin → Settings → AI Config.
-        </p>
+        <p className="mt-2 text-xs text-rose-300/70">{t('aiConfigHint')}</p>
       </section>
     );
   }
@@ -1489,33 +1428,33 @@ function AiSummaryCard({
 
   const bd = analysis.bookingDetails;
   const fmt = (value: string | null | undefined) =>
-    value && String(value).trim().length > 0 ? String(value).trim() : MISSING_FIELD;
+    value && String(value).trim().length > 0 ? String(value).trim() : labels.missingField;
 
   const primaryRows: { label: string; value: string }[] = [
     {
-      label: 'Invoice request (AI)',
-      value: INVOICE_ACTION_LABEL[analysis.invoiceAction] ?? analysis.invoiceAction,
+      label: labels.analysisField('invoiceRequest'),
+      value: labels.invoiceActionLabel[analysis.invoiceAction] ?? analysis.invoiceAction,
     },
-    { label: 'Guest name', value: fmt(bd.guestName) },
-    { label: 'Reservation number', value: fmt(bd.reservationNumber) },
-    { label: 'Check-in date', value: fmt(bd.checkInDate) },
-    { label: 'Check-out date', value: fmt(bd.checkOutDate) },
-    { label: 'Booking platform', value: fmt(bd.bookingPlatform) },
-    { label: 'Issue type', value: fmt(analysis.issueTypeLabel) },
+    { label: labels.analysisField('guestName'), value: fmt(bd.guestName) },
+    { label: labels.analysisField('reservationNumber'), value: fmt(bd.reservationNumber) },
+    { label: labels.analysisField('checkInDate'), value: fmt(bd.checkInDate) },
+    { label: labels.analysisField('checkOutDate'), value: fmt(bd.checkOutDate) },
+    { label: labels.analysisField('bookingPlatform'), value: fmt(bd.bookingPlatform) },
+    { label: labels.analysisField('issueType'), value: fmt(analysis.issueTypeLabel) },
     {
-      label: 'Urgency',
-      value: `${URGENCY_LABEL[analysis.urgencyLevel]} (${analysis.urgencyLevel})`,
+      label: labels.analysisField('urgency'),
+      value: `${labels.urgencyLabel[analysis.urgencyLevel]} (${analysis.urgencyLevel})`,
     },
   ];
   const secondaryRows: { label: string; value: string }[] = [
-    { label: 'Invoice number', value: fmt(bd.invoiceNumber) },
-    { label: 'Room', value: fmt(bd.roomNumber) },
-    { label: 'Puzzel-Kategorie (PrizeBern)', value: PRIZE_CATEGORY_LABEL[analysis.prizeCategory] },
-    { label: 'Technische KI-Anfrageart', value: REQUEST_TYPE_LABEL[analysis.requestType] },
-    { label: 'Extraction confidence', value: CONFIDENCE_LABEL[analysis.confidence] },
+    { label: labels.analysisField('invoiceNumber'), value: fmt(bd.invoiceNumber) },
+    { label: labels.analysisField('room'), value: fmt(bd.roomNumber) },
+    { label: labels.analysisField('puzzelCategory'), value: labels.prizeCategoryLabel[analysis.prizeCategory] },
+    { label: labels.analysisField('requestType'), value: labels.requestTypeLabel[analysis.requestType] },
+    { label: labels.analysisField('extractionConfidence'), value: labels.confidenceLabel[analysis.confidence] },
   ];
 
-  const missing = (v: string) => v === MISSING_FIELD;
+  const missing = (v: string) => v === labels.missingField;
 
   const cib = analysis.companyInvoiceBillingDetails;
   const requestedOnInvoice = (
@@ -1524,22 +1463,26 @@ function AiSummaryCard({
     >
   ).filter((k) => cib.fieldsRequestedOnInvoice[k]);
 
+  const companyBillingFieldKeys = Object.keys(
+    labels.companyBillingFieldLabel,
+  ) as Array<keyof CompanyInvoiceBillingDetails['fieldsRequestedOnInvoice']>;
+
   return (
     <section className="relative rounded-2xl border border-action/40 bg-white/5 p-4 shadow-none ring-1 ring-white/5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-action">
-              AI summary
+              {t('aiSummaryTitle')}
             </span>
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${URGENCY_TONE[analysis.urgencyLevel]}`}
             >
-              {URGENCY_LABEL[analysis.urgencyLevel]}
+              {labels.urgencyLabel[analysis.urgencyLevel]}
             </span>
             {analysis.stale && (
               <span className="rounded-full border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-                Outdated — new messages
+                {t('outdatedMessages')}
               </span>
             )}
           </div>
@@ -1548,21 +1491,21 @@ function AiSummaryCard({
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${PRIZE_CATEGORY_TONE[analysis.prizeCategory]}`}
               title={analysis.prizeCategory}
             >
-              {PRIZE_CATEGORY_LABEL[analysis.prizeCategory]}
+              {labels.prizeCategoryLabel[analysis.prizeCategory]}
             </span>
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${INVOICE_ACTION_TONE[analysis.invoiceAction]}`}
               title={analysis.invoiceAction}
             >
-              {INVOICE_ACTION_LABEL[analysis.invoiceAction]}
+              {labels.invoiceActionLabel[analysis.invoiceAction]}
             </span>
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${REQUEST_TYPE_TONE[analysis.requestType]}`}
             >
-              {REQUEST_TYPE_LABEL[analysis.requestType]}
+              {labels.requestTypeLabel[analysis.requestType]}
             </span>
             <span className="rounded-full border border-sidebar-border/60 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-sidebar-muted">
-              {CONFIDENCE_LABEL[analysis.confidence]}
+              {labels.confidenceLabel[analysis.confidence]}
             </span>
           </div>
         </div>
@@ -1572,7 +1515,7 @@ function AiSummaryCard({
           disabled={isRefreshing}
           className="shrink-0 text-xs font-medium text-action hover:underline disabled:opacity-50"
         >
-          {isRefreshing ? 'Refreshing…' : 'Re-analyze'}
+          {isRefreshing ? t('refreshing') : t('reAnalyze')}
         </button>
       </div>
 
@@ -1582,7 +1525,7 @@ function AiSummaryCard({
 
       <div className="mt-4">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-          Key fields
+          {t('keyFields')}
         </p>
         <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {primaryRows.map((row) => (
@@ -1611,10 +1554,10 @@ function AiSummaryCard({
 
       <div className="mt-4 rounded-xl border border-sidebar-border/60 bg-white/5 p-3">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-          Company / invoice address (AI)
+          {t('companyBillingTitle')}
         </p>
         <p className="mt-2 text-sm font-medium leading-snug text-white">
-          {COMPANY_BILLING_INTENT_LABEL[cib.intent]}
+          {labels.companyBillingIntentLabel[cib.intent]}
         </p>
         {requestedOnInvoice.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1623,21 +1566,15 @@ function AiSummaryCard({
                 key={k}
                 className="rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300"
               >
-                On invoice: {COMPANY_BILLING_FIELD_LABEL[k]}
+                {t('onInvoice', { field: labels.companyBillingFieldLabel[k] })}
               </span>
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-sidebar-muted">
-            No line-items explicitly flagged as “must appear on invoice” (may still be a firm booking — see intent above).
-          </p>
+          <p className="mt-2 text-xs text-sidebar-muted">{t('noInvoiceFieldsFlagged')}</p>
         )}
         <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {(
-            Object.keys(COMPANY_BILLING_FIELD_LABEL) as Array<
-              keyof typeof COMPANY_BILLING_FIELD_LABEL
-            >
-          ).map((key) => (
+          {companyBillingFieldKeys.map((key) => (
             <div
               key={key}
               className={`rounded-lg border px-3 py-2 ${
@@ -1647,7 +1584,7 @@ function AiSummaryCard({
               }`}
             >
               <dt className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-                {COMPANY_BILLING_FIELD_LABEL[key]} (from message)
+                {labels.companyBillingFieldLabel[key]} {t('fromMessage')}
               </dt>
               <dd
                 className={`mt-0.5 break-words text-sm font-medium ${
@@ -1663,7 +1600,7 @@ function AiSummaryCard({
 
       <div className="mt-3">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted">
-          Additional
+          {t('additional')}
         </p>
         <dl className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {secondaryRows.map((row) => (
@@ -1688,7 +1625,7 @@ function AiSummaryCard({
       {analysis.rationale && (
         <details className="mt-3">
           <summary className="cursor-pointer text-xs font-medium text-sidebar-muted hover:text-white">
-            AI rationale
+            {t('aiRationale')}
           </summary>
           <p className="mt-2 whitespace-pre-wrap rounded-lg border border-sidebar-border/60 bg-white/5 p-3 text-xs leading-relaxed text-sidebar-muted">
             {analysis.rationale}
@@ -1697,7 +1634,7 @@ function AiSummaryCard({
       )}
 
       <p className="mt-3 text-[10px] uppercase tracking-wide text-sidebar-muted">
-        Model: {analysis.model}
+        {t('modelLabel', { model: analysis.model })}
       </p>
     </section>
   );

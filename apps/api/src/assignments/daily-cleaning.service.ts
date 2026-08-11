@@ -178,17 +178,21 @@ export class DailyCleaningService implements OnModuleInit {
       };
     };
 
-    const allCleanerUsers = await this.prisma.user.findMany({
+    const crewUsers = await this.prisma.user.findMany({
       where: {
-        role: UserRole.HOUSEKEEPER,
-        titlePrefix: UserTitlePrefix.CLEANER,
         isActive: true,
+        OR: [
+          { role: UserRole.HOUSEKEEPER, titlePrefix: UserTitlePrefix.CLEANER },
+          { role: UserRole.SUPERVISOR },
+          { titlePrefix: UserTitlePrefix.HOUSEKEEPING_SUPERVISOR },
+        ],
       },
       select: { id: true, name: true, titlePrefix: true, role: true },
       orderBy: { name: 'asc' },
     });
 
-    const allCleaners = allCleanerUsers.map(toAssignee);
+    /** Cleaners + housekeeping supervisors — selectable for “who works today”. */
+    const allCleaners = crewUsers.map(toAssignee);
     const onShift = allCleaners.filter((c) => shiftByUser.has(c.id));
 
     const workingRows = await this.prisma.dailyWorkingStaff.findMany({
@@ -202,7 +206,9 @@ export class DailyCleaningService implements OnModuleInit {
       const selected = new Set(workingRows.map((r) => r.userId));
       eligible = allCleaners.filter((c) => selected.has(c.id));
       if (eligible.length === 0) {
-        warnings.push('Working-today list is empty — add cleaners before running auto-assign.');
+        warnings.push(
+          'Working-today list is empty — add cleaners or HSK supervisors before running auto-assign.',
+        );
       }
     } else {
       eligible = onShift;
@@ -210,41 +216,14 @@ export class DailyCleaningService implements OnModuleInit {
         warnings.push(
           shiftByUser.size === 0
             ? 'No shifts found for this day — select who works today manually.'
-            : 'No cleaners on shift for this day — select who works today manually.',
+            : 'No cleaners or HSK supervisors on shift for this day — select who works today manually.',
         );
-      }
-    }
-
-    const supervisors = await this.prisma.user.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { role: UserRole.SUPERVISOR },
-          { titlePrefix: UserTitlePrefix.HOUSEKEEPING_SUPERVISOR },
-        ],
-      },
-      select: { id: true, name: true, titlePrefix: true, role: true },
-      orderBy: { name: 'asc' },
-    });
-
-    const manualMap = new Map<string, DailyCleaningAssignee>();
-    for (const a of allCleaners) manualMap.set(a.id, a);
-    for (const s of supervisors) {
-      if (!manualMap.has(s.id)) {
-        manualMap.set(s.id, {
-          id: s.id,
-          name: s.name,
-          titlePrefix: s.titlePrefix,
-          role: s.role,
-          isLateShift: false,
-          lateShiftSource: 'none',
-        });
       }
     }
 
     return {
       eligible,
-      manual: [...manualMap.values()],
+      manual: allCleaners,
       warnings,
       onShift,
       allCleaners,
@@ -280,7 +259,9 @@ export class DailyCleaningService implements OnModuleInit {
     const allowed = new Set(allCleaners.map((c) => c.id));
     for (const id of unique) {
       if (!allowed.has(id)) {
-        throw new ForbiddenException(`User ${id} is not an active cleaner`);
+        throw new ForbiddenException(
+          `User ${id} is not an active cleaner or housekeeping supervisor`,
+        );
       }
     }
     await this.prisma.$transaction([
@@ -642,7 +623,9 @@ export class DailyCleaningService implements OnModuleInit {
 
     if (options.workingTodayUserIds !== undefined) {
       if (options.workingTodayUserIds.length === 0) {
-        throw new BadRequestException('Select at least one cleaner who works today.');
+        throw new BadRequestException(
+          'Select at least one cleaner or HSK supervisor who works today.',
+        );
       }
       await this.setWorkingToday(dateIso, options.workingTodayUserIds);
     }
@@ -657,7 +640,7 @@ export class DailyCleaningService implements OnModuleInit {
 
     if (eligible.length === 0) {
       throw new BadRequestException(
-        'No cleaners on the working-today list — select who works today before running.',
+        'No one on the working-today list — select who works today before running.',
       );
     }
 
@@ -815,6 +798,94 @@ export class DailyCleaningService implements OnModuleInit {
     });
 
     await this.syncRoomAssignmentsFromPlan(dateIso, user.id);
+    return this.getDailyPlan(dateIso);
+  }
+
+  /**
+   * Wipe supervisor choices for the hotel day and return to a fresh draft:
+   * Mirus shift defaults for working-today, no assignments, no late/inspector overrides,
+   * no skips, plan unlocked. Does not change room clean/dirty status or Mirus shifts.
+   */
+  async resetDay(date: string | undefined, user: User): Promise<DailyCleaningPlanResponse> {
+    if (user.role !== UserRole.SUPERVISOR && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException();
+    }
+    const dateIso = this.resolveDate(date);
+    const day = dateOnlyFromIso(dateIso);
+    const { from, to } = dayBoundsFromIso(dateIso);
+
+    const plan = await this.prisma.dailyCleaningPlan.findUnique({
+      where: { date: day },
+      include: { tasks: true },
+    });
+
+    const completedPublicIds = [
+      ...new Set(
+        (plan?.tasks ?? [])
+          .filter(
+            (t) =>
+              t.kind === DailyCleaningTaskKind.PUBLIC_AREA &&
+              t.publicAreaId &&
+              t.completedAt != null,
+          )
+          .map((t) => t.publicAreaId!),
+      ),
+    ];
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.dailyWorkingStaff.deleteMany({ where: { date: day } });
+      await tx.dailyLateShiftOverride.deleteMany({ where: { date: day } });
+      await tx.dailyInspectionDuty.deleteMany({ where: { date: day } });
+      await tx.dailyInspectionTask.deleteMany({ where: { date: day } });
+
+      await tx.roomCleaningDeferral.updateMany({
+        where: { clearedAt: null, deferredUntil: { gt: day } },
+        data: { clearedAt: new Date() },
+      });
+
+      await tx.roomAssignment.updateMany({
+        where: {
+          status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] },
+          assignedAt: { gte: from, lt: to },
+        },
+        data: { status: AssignmentStatus.CANCELLED },
+      });
+
+      // Also drop any live pins still tied to this plan's rooms (edge: clock skew / bounds).
+      const planRoomIds = (plan?.tasks ?? [])
+        .map((t) => t.roomId)
+        .filter((id): id is string => Boolean(id));
+      if (planRoomIds.length) {
+        await tx.roomAssignment.updateMany({
+          where: {
+            roomId: { in: planRoomIds },
+            status: { in: [AssignmentStatus.PENDING, AssignmentStatus.ACTIVE] },
+          },
+          data: { status: AssignmentStatus.CANCELLED },
+        });
+      }
+
+      if (completedPublicIds.length) {
+        await tx.publicArea.updateMany({
+          where: { id: { in: completedPublicIds }, lastCompletedOn: day },
+          data: { lastCompletedOn: null },
+        });
+      }
+
+      if (plan) {
+        await tx.dailyCleaningTask.deleteMany({ where: { planId: plan.id } });
+        await tx.dailyCleaningPlan.update({
+          where: { id: plan.id },
+          data: {
+            status: DailyCleaningPlanStatus.DRAFT,
+            savedAt: null,
+            savedByUserId: null,
+          },
+        });
+      }
+    });
+
+    this.logger.log(`Reset daily cleaning plan for ${dateIso} by user ${user.id}`);
     return this.getDailyPlan(dateIso);
   }
 
@@ -1116,20 +1187,32 @@ export class DailyCleaningService implements OnModuleInit {
     if (!plan || plan.status !== DailyCleaningPlanStatus.SAVED) {
       return { date: dateIso, tasks: [] };
     }
+
+    const roomNumbers = plan.tasks
+      .map((t) => t.room?.roomNumber)
+      .filter((n): n is string => Boolean(n));
+    const occupancyByRoom = await this.occupancy.mapForRoomNumbers(roomNumbers);
+
     return {
       date: dateIso,
-      tasks: plan.tasks.map((t) => ({
-        id: t.id,
-        kind: t.kind,
-        workType: t.workType,
-        roomId: t.roomId,
-        roomNumber: t.room?.roomNumber ?? null,
-        floor: t.room?.floor ?? t.publicArea?.floor ?? null,
-        publicAreaId: t.publicAreaId,
-        publicAreaName: t.publicArea?.name ?? null,
-        overdueDays: t.overdueDays,
-        completedAt: t.completedAt?.toISOString() ?? null,
-      })),
+      tasks: plan.tasks.map((t) => {
+        const occ = t.room?.roomNumber ? occupancyByRoom.get(t.room.roomNumber) : undefined;
+        return {
+          id: t.id,
+          kind: t.kind,
+          workType: t.workType,
+          roomId: t.roomId,
+          roomNumber: t.room?.roomNumber ?? null,
+          floor: t.room?.floor ?? t.publicArea?.floor ?? null,
+          publicAreaId: t.publicAreaId,
+          publicAreaName: t.publicArea?.name ?? null,
+          overdueDays: t.overdueDays,
+          completedAt: t.completedAt?.toISOString() ?? null,
+          isDepartureToday: occ?.isDepartureToday ?? false,
+          guestCheckedOut: occ ? Boolean(occ.checkOut || occ.ocoDone) : false,
+          guestName: occ?.mainGuestName ?? null,
+        };
+      }),
     };
   }
 

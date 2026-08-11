@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
@@ -41,6 +42,8 @@ type Props = {
 };
 
 export function ReceptionRoomBoard({ compact }: Props) {
+  const t = useTranslations('reception');
+  const tRoom = useTranslations('room.status');
   const { openRoom } = useReceptionUi();
   const [view, setView] = useState<'grid' | 'table'>('grid');
   const [floor, setFloor] = useState('');
@@ -99,11 +102,12 @@ export function ReceptionRoomBoard({ compact }: Props) {
   }, [rooms, floor, status, search]);
 
   const grouped = useMemo(() => {
-    if (groupBy === 'none') return [{ key: 'All rooms', items: filtered }];
+    if (groupBy === 'none') return [{ key: t('rooms.allRooms'), items: filtered }];
     if (groupBy === 'floor') {
       const m = new Map<string, RoomBoardRow[]>();
       filtered.forEach((r) => {
-        const k = r.floor != null ? `Floor ${r.floor}` : 'No floor';
+        const k =
+          r.floor != null ? t('rooms.floorN', { floor: r.floor }) : t('rooms.noFloor');
         if (!m.has(k)) m.set(k, []);
         m.get(k)!.push(r);
       });
@@ -113,14 +117,14 @@ export function ReceptionRoomBoard({ compact }: Props) {
     }
     const m = new Map<string, RoomBoardRow[]>();
     filtered.forEach((r) => {
-      const k = r.derivedStatus;
+      const k = tRoom(r.derivedStatus as 'DIRTY' | 'IN_PROGRESS' | 'CLEAN' | 'INSPECTED' | 'OUT_OF_ORDER');
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(r);
     });
     return Array.from(m.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, items]) => ({ key, items }));
-  }, [filtered, groupBy]);
+  }, [filtered, groupBy, t, tRoom]);
 
   function RoomTile({ r }: { r: RoomBoardRow }) {
     const hk = assignByRoom[r.id];
@@ -154,13 +158,17 @@ export function ReceptionRoomBoard({ compact }: Props) {
         <RoomOccupancyBadges occupancy={r.occupancy} onColor={onColor} />
         {r.floor != null && (
           <p className={clsx('mt-1 text-xs', onColor ? 'text-white/80' : 'text-ink-muted')}>
-            Floor {r.floor}
+            {t('rooms.floorN', { floor: r.floor })}
           </p>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className={onColor ? 'text-white/85' : 'text-ink-muted'}>HK: {hk ?? '—'}</span>
+          <span className={onColor ? 'text-white/85' : 'text-ink-muted'}>
+            {t('rooms.hk', { name: hk ?? '—' })}
+          </span>
           {urgent && (
-            <span className="rounded-full bg-danger px-2 py-0.5 font-medium text-white">Urgent</span>
+            <span className="rounded-full bg-danger px-2 py-0.5 font-medium text-white">
+              {t('rooms.urgent')}
+            </span>
           )}
         </div>
       </button>
@@ -168,30 +176,34 @@ export function ReceptionRoomBoard({ compact }: Props) {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-sidebar-muted">Loading rooms…</p>;
+    return <p className="text-sm text-sidebar-muted">{t('rooms.loading')}</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Search</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
+            {t('rooms.search')}
+          </label>
           <input
             type="search"
-            placeholder="Room #"
+            placeholder={t('rooms.searchPlaceholder')}
             className={`${APP_DARK_INPUT} mt-1 min-w-[140px]`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Floor</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
+            {t('rooms.floor')}
+          </label>
           <select
             className={`${APP_DARK_INPUT} mt-1 min-w-[120px]`}
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
           >
-            <option value="">All</option>
+            <option value="">{t('rooms.all')}</option>
             {floors.map((f) => (
               <option key={f} value={String(f)}>
                 {f}
@@ -200,30 +212,34 @@ export function ReceptionRoomBoard({ compact }: Props) {
           </select>
         </div>
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Status</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
+            {t('rooms.status')}
+          </label>
           <select
             className={`${APP_DARK_INPUT} mt-1 min-w-[140px]`}
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            <option value="">All</option>
-            <option value="DIRTY">Dirty</option>
-            <option value="IN_PROGRESS">In progress</option>
-            <option value="CLEAN">Clean</option>
-            <option value="INSPECTED">Inspected</option>
-            <option value="OUT_OF_ORDER">Out of order</option>
+            <option value="">{t('rooms.all')}</option>
+            <option value="DIRTY">{tRoom('DIRTY')}</option>
+            <option value="IN_PROGRESS">{tRoom('IN_PROGRESS')}</option>
+            <option value="CLEAN">{tRoom('CLEAN')}</option>
+            <option value="INSPECTED">{tRoom('INSPECTED')}</option>
+            <option value="OUT_OF_ORDER">{tRoom('OUT_OF_ORDER')}</option>
           </select>
         </div>
         <div>
-          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Group</label>
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
+            {t('rooms.group')}
+          </label>
           <select
             className={`${APP_DARK_INPUT} mt-1 min-w-[140px]`}
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
           >
-            <option value="none">None</option>
-            <option value="floor">By floor</option>
-            <option value="status">By status</option>
+            <option value="none">{t('rooms.groupNone')}</option>
+            <option value="floor">{t('rooms.groupByFloor')}</option>
+            <option value="status">{t('rooms.groupByStatus')}</option>
           </select>
         </div>
         <div className="ml-auto flex rounded-lg border border-sidebar-border p-0.5">
@@ -232,14 +248,14 @@ export function ReceptionRoomBoard({ compact }: Props) {
             className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === 'grid' ? 'bg-sidebar-hover text-white' : 'text-sidebar-muted hover:text-white'}`}
             onClick={() => setView('grid')}
           >
-            Grid
+            {t('rooms.viewGrid')}
           </button>
           <button
             type="button"
             className={`rounded-md px-3 py-1.5 text-xs font-medium ${view === 'table' ? 'bg-sidebar-hover text-white' : 'text-sidebar-muted hover:text-white'}`}
             onClick={() => setView('table')}
           >
-            Table
+            {t('rooms.viewTable')}
           </button>
         </div>
       </div>
@@ -265,12 +281,12 @@ export function ReceptionRoomBoard({ compact }: Props) {
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-sidebar-border/60 bg-white/5 text-xs uppercase tracking-wide text-sidebar-muted">
               <tr>
-                <th className="px-4 py-3 font-semibold">Room</th>
-                <th className="px-4 py-3 font-semibold">Floor</th>
-                <th className="px-4 py-3 font-semibold">Guest</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Housekeeper</th>
-                <th className="px-4 py-3 font-semibold">Flags</th>
+                <th className="px-4 py-3 font-semibold">{t('rooms.colRoom')}</th>
+                <th className="px-4 py-3 font-semibold">{t('rooms.colFloor')}</th>
+                <th className="px-4 py-3 font-semibold">{t('rooms.colGuest')}</th>
+                <th className="px-4 py-3 font-semibold">{t('rooms.colStatus')}</th>
+                <th className="px-4 py-3 font-semibold">{t('rooms.colHousekeeper')}</th>
+                <th className="px-4 py-3 font-semibold">{t('rooms.colFlags')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sidebar-border/40">
@@ -295,7 +311,7 @@ export function ReceptionRoomBoard({ compact }: Props) {
                     <td className="px-4 py-3">
                       {urgent && (
                         <span className="rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-xs font-medium text-rose-300">
-                          Urgent
+                          {t('rooms.urgent')}
                         </span>
                       )}
                     </td>

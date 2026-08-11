@@ -7,6 +7,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { WS_EVENTS } from '@housekeeping/shared';
 
 @WebSocketGateway({
   namespace: '/operations',
@@ -55,7 +56,7 @@ export class RealtimeGateway implements OnGatewayConnection {
   }
 
   emitTeamChatMessage(payload: unknown) {
-    this.server?.emit('team_chat.message', payload);
+    this.server?.emit(WS_EVENTS.TEAM_CHAT_MESSAGE, payload);
   }
 
   emitTeamChatReaction(payload: unknown) {

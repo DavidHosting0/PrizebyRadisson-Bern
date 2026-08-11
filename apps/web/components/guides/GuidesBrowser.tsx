@@ -102,11 +102,11 @@ export function GuidesBrowser() {
         )}
       </div>
 
-      {isLoading && <p className="text-sm text-sidebar-muted">Loading guides…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">{tCommon('loading')}</p>}
 
       {!isLoading && filtered.length === 0 && (
         <div className={clsx(APP_DARK_CARD, 'py-12 text-center')}>
-          <p className="text-sm font-medium text-white">No guides found</p>
+          <p className="text-sm font-medium text-white">{t('noGuides')}</p>
           <p className="mt-1 text-sm text-sidebar-muted">
             {data.length === 0
               ? 'No guides have been published yet.'

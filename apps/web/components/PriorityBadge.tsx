@@ -1,4 +1,7 @@
+'use client';
+
 import clsx from 'clsx';
+import { useTranslations } from 'next-intl';
 
 export function PriorityBadge({
   priority,
@@ -7,6 +10,7 @@ export function PriorityBadge({
   priority: string;
   tone?: 'default' | 'dark';
 }) {
+  const t = useTranslations('notifications');
   const urgent = priority === 'URGENT';
   return (
     <span
@@ -21,7 +25,7 @@ export function PriorityBadge({
             : 'bg-surface-muted text-ink-muted',
       )}
     >
-      {urgent ? 'Urgent' : 'Normal'}
+      {urgent ? t('priorityUrgent') : t('priorityNormal')}
     </span>
   );
 }

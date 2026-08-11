@@ -1,16 +1,25 @@
 'use client';
 
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
+import { WS_EVENTS } from '@housekeeping/shared';
 import { ROOMS_LIST_QUERY_KEY } from '@/lib/rooms-query';
 import { useToast } from '@/components/toast/ToastProvider';
 import { getSocket } from '@/lib/socket';
+import { useAuth } from '@/lib/auth-context';
 
 type RoomStatusPayload = {
   id: string;
   roomNumber: string;
   derivedStatus: string;
+};
+
+type TeamChatMessagePayload = {
+  id?: string;
+  body?: string;
+  author?: { id?: string; name?: string };
 };
 
 function findRoomInCache(
@@ -25,12 +34,34 @@ function findRoomInCache(
   return undefined;
 }
 
+function isReceptionChatPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return (
+    pathname === '/r/chat' ||
+    pathname.startsWith('/r/chat/') ||
+    pathname === '/r/m/chat' ||
+    pathname.startsWith('/r/m/chat/')
+  );
+}
+
+function previewBody(body: string, max = 80): string {
+  const trimmed = body.replace(/\s+/g, ' ').trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max - 1)}…`;
+}
+
 export function useReceptionRealtime() {
   const qc = useQueryClient();
   const toast = useToast();
   const tToast = useTranslations('toast');
   const tRoom = useTranslations('room.status');
+  const pathname = usePathname();
+  const { user } = useAuth();
   const warned = useRef(false);
+  const pathnameRef = useRef(pathname);
+  const userIdRef = useRef(user?.id);
+  pathnameRef.current = pathname;
+  userIdRef.current = user?.id;
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
@@ -76,8 +107,21 @@ export function useReceptionRealtime() {
       qc.invalidateQueries({ queryKey: ['service-requests'] });
     };
 
-    const onTeamChat = () => {
+    const onTeamChat = (payload: unknown) => {
       qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
+
+      if (isReceptionChatPath(pathnameRef.current)) return;
+
+      const msg = payload as TeamChatMessagePayload;
+      if (!msg?.id || !msg.body) return;
+      if (msg.author?.id && msg.author.id === userIdRef.current) return;
+
+      const author = msg.author?.name?.trim() || 'Team';
+      const text = tToast('newChatMessage', {
+        author,
+        preview: previewBody(msg.body),
+      });
+      toast.push(text, 'default', 8000);
     };
 
     socket.on('room.status_updated', onRoom);
@@ -85,7 +129,7 @@ export function useReceptionRealtime() {
     socket.on('service_request.claimed', onClaimed);
     socket.on('service_request.resolved', onResolved);
     socket.on('service_request.updated', onUpdated);
-    socket.on('team_chat.message', onTeamChat);
+    socket.on(WS_EVENTS.TEAM_CHAT_MESSAGE, onTeamChat);
 
     return () => {
       socket?.off('room.status_updated', onRoom);
@@ -93,7 +137,7 @@ export function useReceptionRealtime() {
       socket?.off('service_request.claimed', onClaimed);
       socket?.off('service_request.resolved', onResolved);
       socket?.off('service_request.updated', onUpdated);
-      socket?.off('team_chat.message', onTeamChat);
+      socket?.off(WS_EVENTS.TEAM_CHAT_MESSAGE, onTeamChat);
     };
   }, [qc, toast, tToast, tRoom]);
 }

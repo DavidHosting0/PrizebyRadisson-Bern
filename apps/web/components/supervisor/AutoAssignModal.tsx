@@ -1,14 +1,144 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import clsx from 'clsx';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DailyCleaningPlanResponse } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
+import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Assignee = DailyCleaningPlanResponse['manualAssignees'][number];
+
+type Tone = 'action' | 'amber' | 'emerald';
+
+const TONE_ACTIVE: Record<Tone, string> = {
+  action: 'border-action/50 bg-action/15 text-white',
+  amber: 'border-amber-400/40 bg-amber-400/15 text-amber-50',
+  emerald: 'border-emerald-400/40 bg-emerald-400/15 text-emerald-50',
+};
+
+const TONE_CHECK: Record<Tone, string> = {
+  action: 'border-action bg-action text-white',
+  amber: 'border-amber-400 bg-amber-400 text-amber-950',
+  emerald: 'border-emerald-400 bg-emerald-400 text-emerald-950',
+};
+
+function PersonPickRow({
+  label,
+  selected,
+  onToggle,
+  tone = 'action',
+  badges,
+  hint,
+  mode = 'multi',
+}: {
+  label: string;
+  selected: boolean;
+  onToggle: () => void;
+  tone?: Tone;
+  badges?: string[];
+  hint?: string;
+  mode?: 'multi' | 'single';
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={selected}
+      className={clsx(
+        'flex w-full items-center gap-3 rounded-btn border px-3 py-2.5 text-left transition',
+        selected
+          ? TONE_ACTIVE[tone]
+          : 'border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/10',
+      )}
+    >
+      <span
+        className={clsx(
+          'flex h-5 w-5 shrink-0 items-center justify-center border text-[10px] font-bold',
+          mode === 'single' ? 'rounded-full' : 'rounded-[5px]',
+          selected ? TONE_CHECK[tone] : 'border-white/25 bg-transparent text-transparent',
+        )}
+        aria-hidden
+      >
+        {mode === 'single' ? '•' : '✓'}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium">{label}</span>
+        {hint ? <span className="mt-0.5 block text-[11px] text-sidebar-muted">{hint}</span> : null}
+      </span>
+      {badges && badges.length > 0 ? (
+        <span className="flex shrink-0 flex-wrap justify-end gap-1">
+          {badges.map((b) => (
+            <span
+              key={b}
+              className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-muted"
+            >
+              {b}
+            </span>
+          ))}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function Section({
+  title,
+  description,
+  count,
+  actions,
+  children,
+}: {
+  title: string;
+  description?: string;
+  count?: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-sidebar-border/60 bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-muted">{title}</h3>
+            {count ? (
+              <span className="rounded border border-sidebar-border/80 bg-sidebar px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-200">
+                {count}
+              </span>
+            ) : null}
+          </div>
+          {description ? <p className="mt-1 text-xs text-sidebar-muted">{description}</p> : null}
+        </div>
+        {actions ? <div className="flex flex-wrap gap-1.5">{actions}</div> : null}
+      </div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function QuickLink({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="rounded-btn border border-sidebar-border/80 bg-sidebar-hover/40 px-2 py-1 text-[11px] font-medium text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {label}
+    </button>
+  );
+}
 
 export function AutoAssignSetupModal({
   open,
@@ -81,6 +211,8 @@ export function AutoAssignSetupModal({
     [planQ.data?.onShiftCleaners],
   );
 
+  const onShiftCleaners = planQ.data?.onShiftCleaners ?? [];
+
   const run = useMutation({
     mutationFn: () =>
       api<DailyCleaningPlanResponse>('/assignments/daily-plan/run', {
@@ -109,123 +241,154 @@ export function AutoAssignSetupModal({
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   }
 
+  function setWorking(next: string[]) {
+    const nextSet = new Set(next);
+    setWorkingIds(next);
+    setLateIds((late) => late.filter((x) => nextSet.has(x)));
+  }
+
   function toggleWorking(id: string) {
-    setWorkingIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      const nextSet = new Set(next);
-      setLateIds((late) => late.filter((x) => nextSet.has(x)));
-      return next;
-    });
+    setWorking(workingIds.includes(id) ? workingIds.filter((x) => x !== id) : [...workingIds, id]);
   }
 
   if (!open) return null;
 
+  const canRun = !run.isPending && !planQ.isLoading && workingIds.length > 0;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
         ref={panelRef}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-card border border-border bg-surface shadow-lift"
+        className={clsx(
+          APP_DARK_CARD,
+          'flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-card shadow-lift sm:rounded-card',
+        )}
         role="dialog"
         aria-modal="true"
         aria-labelledby="auto-assign-setup-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-4">
-          <div>
-            <h2 id="auto-assign-setup-title" className="text-lg font-semibold text-ink">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-sidebar-border/60 px-5 py-4">
+          <div className="min-w-0">
+            <h2 id="auto-assign-setup-title" className="text-lg font-semibold tracking-tight text-white">
               Auto room assignment
             </h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              Choose who works today, restant, late shift, public cleaning, and who inspects — then
-              the system assigns dirty rooms on the board.
+            <p className="mt-1 text-sm text-sidebar-muted">
+              Set today’s crew, then run to distribute dirty rooms on the board.
             </p>
           </div>
           <button
             type="button"
-            className="min-h-[44px] min-w-[44px] rounded-btn text-xl text-ink-muted hover:bg-surface-muted"
+            className="rounded-full p-2 text-sidebar-muted transition hover:bg-white/10 hover:text-white"
             aria-label="Close"
             onClick={onClose}
           >
-            ×
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M18 6L6 18M6 6l12 12"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
         </div>
 
-        <div className="space-y-5 p-6">
-          {planQ.isLoading && <p className="text-sm text-ink-muted">Loading staff…</p>}
+        <div className="sidebar-scroll min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          {planQ.isLoading && <p className="text-sm text-sidebar-muted">Loading staff…</p>}
+
           {workPreview && (
-            <div className="rounded-btn border border-border bg-surface-muted/60 px-4 py-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Today’s work</p>
-              <p className="mt-1 text-sm font-semibold text-ink">
-                {workPreview.dirtyRoomCount} room{workPreview.dirtyRoomCount === 1 ? '' : 's'}
-                <span className="font-normal text-ink-muted"> · </span>
-                {workPreview.restantCount} restant{workPreview.restantCount === 1 ? '' : 's'}
-                {workPreview.publicCount > 0 && (
-                  <>
-                    <span className="font-normal text-ink-muted"> · </span>
-                    {workPreview.publicCount} public
-                  </>
-                )}
-              </p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Dirty rooms', value: workPreview.dirtyRoomCount },
+                { label: 'Restants', value: workPreview.restantCount },
+                { label: 'Public', value: workPreview.publicCount },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-btn border border-sidebar-border/60 bg-sidebar/60 px-3 py-2.5 text-center"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
+                    {stat.label}
+                  </p>
+                  <p className="mt-1 text-xl font-semibold tabular-nums text-white">{stat.value}</p>
+                </div>
+              ))}
             </div>
           )}
+
           {planQ.data?.warnings?.map((w) => (
             <p
               key={w}
-              className="rounded-btn border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+              className="rounded-btn border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200"
             >
               {w}
             </p>
           ))}
 
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-              Who works today
-            </legend>
-            <p className="text-xs text-ink-muted">
-              Staff on the shift plan are pre-selected. You can add or remove any cleaner.
-            </p>
-            {allCleaners.length === 0 && (
-              <p className="text-sm text-ink-muted">No active cleaners found.</p>
+          <Section
+            title="Who works today"
+            description="Cleaners and HSK supervisors. Shift-plan staff are pre-selected."
+            count={`${workingIds.length} selected`}
+            actions={
+              <>
+                <QuickLink
+                  label="On shift"
+                  disabled={onShiftCleaners.length === 0}
+                  onClick={() => setWorking(onShiftCleaners.map((c) => c.id))}
+                />
+                <QuickLink
+                  label="All"
+                  disabled={allCleaners.length === 0}
+                  onClick={() => setWorking(allCleaners.map((c) => c.id))}
+                />
+                <QuickLink
+                  label="Clear"
+                  disabled={workingIds.length === 0}
+                  onClick={() => setWorking([])}
+                />
+              </>
+            }
+          >
+            {allCleaners.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">No active cleaners or supervisors found.</p>
+            ) : (
+              <div className="grid max-h-56 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
+                {allCleaners.map((c) => {
+                  const isSupervisor =
+                    c.role === 'SUPERVISOR' || c.titlePrefix === 'HOUSEKEEPING_SUPERVISOR';
+                  const badges = [
+                    ...(onShiftIds.has(c.id) ? ['shift'] : []),
+                    ...(isSupervisor ? ['supervisor'] : []),
+                  ];
+                  return (
+                    <PersonPickRow
+                      key={c.id}
+                      label={formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                      selected={workingSet.has(c.id)}
+                      onToggle={() => toggleWorking(c.id)}
+                      badges={badges.length ? badges : undefined}
+                    />
+                  );
+                })}
+              </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              {allCleaners.map((c) => {
-                const on = workingSet.has(c.id);
-                const onShift = onShiftIds.has(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => toggleWorking(c.id)}
-                    className={`rounded-btn border px-3 py-2 text-sm ${
-                      on
-                        ? 'border-action/40 bg-action/10 text-ink'
-                        : 'border-border bg-surface text-ink'
-                    }`}
-                  >
-                    {formatUserWithTitlePrefix(c.name, c.titlePrefix)}
-                    {onShift ? (
-                      <span className="ml-1 text-[10px] uppercase text-ink-muted">shift</span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
+          </Section>
 
-          <label className="block space-y-1">
-            <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-              Restant cleaning
-            </span>
+          <Section
+            title="Restant cleaning"
+            description="Who handles restant rooms. Leave on auto to let the system pick."
+          >
             <select
-              className="min-h-[44px] w-full rounded-btn border border-border bg-surface px-3 text-sm"
+              className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
               value={restantId}
               onChange={(e) => setRestantId(e.target.value)}
             >
-              <option value="">— Auto-pick one cleaner —</option>
+              <option value="">Auto-pick one cleaner</option>
               {restantOptions.map((a) => (
                 <option key={a.id} value={a.id}>
                   {formatUserWithTitlePrefix(a.name, a.titlePrefix)}
@@ -233,108 +396,145 @@ export function AutoAssignSetupModal({
                 </option>
               ))}
             </select>
-          </label>
+          </Section>
 
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-              Late shift (11–20) — fewer rooms
-            </legend>
-            {lateOptions.length === 0 && (
-              <p className="text-sm text-ink-muted">Select who works today first.</p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {lateOptions.map((c) => {
-                const on = lateIds.includes(c.id);
-                return (
-                  <button
+          <Section
+            title="Late shift (11–20)"
+            description="Late-shift cleaners get fewer rooms."
+            count={`${lateIds.filter((id) => workingSet.has(id)).length} selected`}
+            actions={
+              lateOptions.length > 0 ? (
+                <>
+                  <QuickLink
+                    label="All working"
+                    onClick={() => setLateIds(lateOptions.map((c) => c.id))}
+                  />
+                  <QuickLink
+                    label="Clear"
+                    disabled={lateIds.length === 0}
+                    onClick={() => setLateIds([])}
+                  />
+                </>
+              ) : null
+            }
+          >
+            {lateOptions.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">Select who works today first.</p>
+            ) : (
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {lateOptions.map((c) => (
+                  <PersonPickRow
                     key={c.id}
-                    type="button"
-                    onClick={() => toggleId(lateIds, c.id, setLateIds)}
-                    className={`rounded-btn border px-3 py-2 text-sm ${
-                      on
-                        ? 'border-amber-400 bg-amber-50 text-amber-950'
-                        : 'border-border bg-surface text-ink'
-                    }`}
-                  >
-                    {formatUserWithTitlePrefix(c.name, c.titlePrefix)}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
+                    label={formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                    selected={lateIds.includes(c.id)}
+                    onToggle={() => toggleId(lateIds, c.id, setLateIds)}
+                    tone="amber"
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
 
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-              Public cleaning
-            </legend>
-            <div className="flex flex-wrap gap-2">
-              {restantOptions.map((a) => {
-                const on = publicIds.includes(a.id);
-                return (
-                  <button
+          <Section
+            title="Public cleaning"
+            description="Assign public-area tasks for today."
+            count={`${publicIds.length} selected`}
+            actions={
+              restantOptions.length > 0 ? (
+                <>
+                  {lateIds.length > 0 ? (
+                    <QuickLink
+                      label="Use late shift"
+                      onClick={() => setPublicIds(lateIds.filter((id) => workingSet.has(id)))}
+                    />
+                  ) : null}
+                  <QuickLink
+                    label="Clear"
+                    disabled={publicIds.length === 0}
+                    onClick={() => setPublicIds([])}
+                  />
+                </>
+              ) : null
+            }
+          >
+            {restantOptions.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">No assignees available.</p>
+            ) : (
+              <div className="grid max-h-48 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
+                {restantOptions.map((a) => (
+                  <PersonPickRow
                     key={a.id}
-                    type="button"
-                    onClick={() => toggleId(publicIds, a.id, setPublicIds)}
-                    className={`rounded-btn border px-3 py-2 text-sm ${
-                      on
-                        ? 'border-action/40 bg-action/10 text-ink'
-                        : 'border-border bg-surface text-ink'
-                    }`}
-                  >
-                    {formatUserWithTitlePrefix(a.name, a.titlePrefix)}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <fieldset className="space-y-2">
-            <legend className="text-xs font-medium uppercase tracking-wide text-ink-muted">
-              Who inspects today
-            </legend>
-            <p className="text-xs text-ink-muted">
-              Cleaners and housekeeping supervisors only (not HTC). Selected staff share the
-              inspection queue after rooms are marked clean.
-            </p>
-            {inspectorCandidates.length === 0 && (
-              <p className="text-sm text-ink-muted">No eligible inspectors.</p>
+                    label={formatUserWithTitlePrefix(a.name, a.titlePrefix)}
+                    selected={publicIds.includes(a.id)}
+                    onToggle={() => toggleId(publicIds, a.id, setPublicIds)}
+                    badges={a.role === 'SUPERVISOR' ? ['supervisor'] : undefined}
+                  />
+                ))}
+              </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              {inspectorCandidates.map((c) => {
-                const on = inspectorIds.includes(c.id);
-                return (
-                  <button
+          </Section>
+
+          <Section
+            title="Who inspects today"
+            description="Cleaners and housekeeping supervisors only (not HTC). They share the inspection queue."
+            count={`${inspectorIds.length} selected`}
+            actions={
+              inspectorCandidates.length > 0 ? (
+                <>
+                  <QuickLink
+                    label="All"
+                    onClick={() => setInspectorIds(inspectorCandidates.map((c) => c.id))}
+                  />
+                  <QuickLink
+                    label="Clear"
+                    disabled={inspectorIds.length === 0}
+                    onClick={() => setInspectorIds([])}
+                  />
+                </>
+              ) : null
+            }
+          >
+            {inspectorCandidates.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">No eligible inspectors.</p>
+            ) : (
+              <div className="grid max-h-48 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
+                {inspectorCandidates.map((c) => (
+                  <PersonPickRow
                     key={c.id}
-                    type="button"
-                    onClick={() => toggleId(inspectorIds, c.id, setInspectorIds)}
-                    className={`rounded-btn border px-3 py-2 text-sm ${
-                      on
-                        ? 'border-emerald-400 bg-emerald-50 text-emerald-950'
-                        : 'border-border bg-surface text-ink'
-                    }`}
-                  >
-                    {formatUserWithTitlePrefix(c.name, c.titlePrefix)}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
+                    label={formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                    selected={inspectorIds.includes(c.id)}
+                    onToggle={() => toggleId(inspectorIds, c.id, setInspectorIds)}
+                    tone="emerald"
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
         </div>
 
-        <div className="flex flex-wrap gap-3 border-t border-border bg-surface-muted/50 px-6 py-4">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/30 px-5 py-4">
           <Button
             variant="action"
-            className="min-h-[48px]"
-            disabled={run.isPending || planQ.isLoading || workingIds.length === 0}
+            className="min-h-[44px] flex-1 sm:flex-none"
+            disabled={!canRun}
             onClick={() => run.mutate()}
           >
             {run.isPending ? 'Assigning…' : 'Run auto assignment'}
           </Button>
-          <Button variant="ghost" className="min-h-[48px]" onClick={onClose}>
+          <Button
+            variant="secondary"
+            className="min-h-[44px] border-sidebar-border bg-transparent text-white hover:bg-white/10"
+            onClick={onClose}
+          >
             Cancel
           </Button>
+          {workingIds.length === 0 && !planQ.isLoading ? (
+            <p className="w-full text-xs text-sidebar-muted sm:w-auto">
+              Select at least one cleaner to run.
+            </p>
+          ) : null}
           {run.isError && (
-            <p className="w-full text-sm text-danger">
+            <p className="w-full text-sm text-rose-400">
               {(run.error as Error)?.message || 'Could not run auto assignment.'}
             </p>
           )}

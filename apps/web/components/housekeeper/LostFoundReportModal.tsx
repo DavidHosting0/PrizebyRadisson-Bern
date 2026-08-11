@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Props) {
+  const t = useTranslations('housekeeper');
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [articleName, setArticleName] = useState('');
@@ -85,32 +87,32 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
       >
         <div className="border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-ink">Report lost &amp; found</h2>
-          <p className="mt-1 text-sm text-ink-muted">Room {roomNumber}</p>
+          <h2 className="text-lg font-semibold text-ink">{t('lostFoundTitle')}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{t('room', { number: roomNumber })}</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4 p-5">
           <div>
-            <label className="text-sm font-medium text-ink">Article / item name *</label>
+            <label className="text-sm font-medium text-ink">{t('articleName')}</label>
             <input
               className={field}
               value={articleName}
               onChange={(e) => setArticleName(e.target.value)}
-              placeholder="e.g. Blue scarf"
+              placeholder={t('articlePlaceholder')}
               required
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Description (optional)</label>
+            <label className="text-sm font-medium text-ink">{t('notesOptional')}</label>
             <textarea
               className={`${field} min-h-[72px] resize-y`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Where found, condition…"
+              placeholder={t('notesPlaceholder')}
               rows={3}
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-ink">Photo (optional)</label>
+            <label className="text-sm font-medium text-ink">{t('photoOptional')}</label>
             <input
               ref={fileRef}
               type="file"
@@ -123,7 +125,7 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button type="button" variant="secondary" className="min-h-[44px]" onClick={() => fileRef.current?.click()}>
-                {file ? 'Change photo' : 'Add photo'}
+                {file ? t('changePhoto') : t('addPhoto')}
               </Button>
               {file && (
                 <span className="text-xs text-ink-muted">{file.name}</span>
@@ -132,10 +134,10 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
           </div>
           <div className="flex flex-wrap gap-3 pt-2">
             <Button type="submit" variant="action" className="min-h-[48px]" disabled={submit.isPending}>
-              {submit.isPending ? 'Submitting…' : 'Submit report'}
+              {submit.isPending ? t('submitting') : t('submitReport')}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
+              {t('cancel')}
             </Button>
           </div>
         </form>

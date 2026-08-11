@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import type { ReservationDetail } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { usePermission } from '@/lib/auth-context';
@@ -12,7 +13,7 @@ import {
   ReservationDetailView,
   type ReservationDetailTab,
 } from '@/components/reception/reservation-detail/ReservationDetailView';
-import { reservationStatus } from '@/components/reception/reservation-detail/reservationStatus';
+import { useReservationStatus } from '@/components/reception/reservation-detail/useReservationStatus';
 import { useReservationEmmaFetch } from '@/components/reception/reservation-detail/useReservationEmmaFetch';
 import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
@@ -42,6 +43,10 @@ function LoadIndicator({ loaded, fetchedAt }: { loaded: boolean; fetchedAt?: str
 }
 
 export default function ReservationDetailPage() {
+  const tNav = useTranslations('nav');
+  const t = useTranslations('reception.reservationDetail');
+  const tCommon = useTranslations('common');
+  const reservationStatus = useReservationStatus();
   const params = useParams();
   const searchParams = useSearchParams();
   const reservationId = params.reservationId as string;
@@ -49,7 +54,7 @@ export default function ReservationDetailPage() {
   const backHref =
     from === 'arrivals' ? '/r/arrivals' : from === 'in-house' ? '/r/in-house' : '/r/reservations';
   const backLabel =
-    from === 'arrivals' ? 'Anreisen' : from === 'in-house' ? 'Im Haus' : 'Reservierungen';
+    from === 'arrivals' ? t('backArrivals') : from === 'in-house' ? t('backInHouse') : t('backAll');
 
   const canSync = usePermission('RESERVATIONS_SYNC');
   const { enterMobile } = useReceptionMobileMode();
@@ -78,8 +83,8 @@ export default function ReservationDetailPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
-        title={data?.mainGuestName ?? 'Reservierung'}
-        description={`Res.-Nr. ${reservationId}`}
+        title={data?.mainGuestName ?? t('title')}
+        description={t('resNo', { id: reservationId })}
         actions={
           <>
             <AppChromeTools onEnterMobile={enterMobile} />
@@ -95,97 +100,96 @@ export default function ReservationDetailPage() {
 
       <AppPageBody>
         <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
+          {status && (
+            <span
+              className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.className}`}
+            >
+              {status.label}
+            </span>
+          )}
 
-      {status && (
-        <span
-          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.className}`}
-        >
-          {status.label}
-        </span>
-      )}
+          {isLoading && <p className="text-sm text-sidebar-muted">{tCommon('loading')}</p>}
+          {isError && <p className="text-sm text-rose-400">{t('loadError')}</p>}
 
-      {isLoading && <p className="text-sm text-sidebar-muted">Lädt…</p>}
-      {isError && (
-        <p className="text-sm text-rose-400">Reservierung konnte nicht geladen werden.</p>
-      )}
-
-      {data && (
-        <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard
-              label="Anreise / Abreise"
-              value={`${data.arrivalDate} → ${data.departureDate}`}
-              sub={data.nightsStay != null ? `${data.nightsStay} Nächte` : undefined}
-            />
-            <SummaryCard
-              label="Zimmer / Typ"
-              value={data.roomId ?? '—'}
-              sub={data.roomType ?? undefined}
-            />
-            <SummaryCard label="Total offen" value={formatOpenTotal(data)} />
-            <div className={`${APP_DARK_CARD} px-4 py-3`}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">EMMA Daten</p>
-              <div className="mt-2 space-y-1 text-sm">
-                <p>
-                  <span className="text-sidebar-muted">Detail: </span>
-                  <LoadIndicator loaded={!!data.emmaDetail} fetchedAt={data.detailFetchedAt} />
-                </p>
-                <p>
-                  <span className="text-sidebar-muted">Folio: </span>
-                  <LoadIndicator loaded={!!data.emmaFolio} fetchedAt={data.folioFetchedAt} />
-                </p>
+          {data && (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryCard
+                  label={t('arrivalDeparture')}
+                  value={`${data.arrivalDate} → ${data.departureDate}`}
+                  sub={data.nightsStay != null ? t('nightsCount', { count: data.nightsStay }) : undefined}
+                />
+                <SummaryCard
+                  label={t('roomAndType')}
+                  value={data.roomId ?? '—'}
+                  sub={data.roomType ?? undefined}
+                />
+                <SummaryCard label={t('openTotal')} value={formatOpenTotal(data)} />
+                <div className={`${APP_DARK_CARD} px-4 py-3`}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-sidebar-muted">
+                    {t('emmaData')}
+                  </p>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <p>
+                      <span className="text-sidebar-muted">{t('detailLabel')} </span>
+                      <LoadIndicator loaded={!!data.emmaDetail} fetchedAt={data.detailFetchedAt} />
+                    </p>
+                    <p>
+                      <span className="text-sidebar-muted">{t('folioLabel')} </span>
+                      <LoadIndicator loaded={!!data.emmaFolio} fetchedAt={data.folioFetchedAt} />
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {canSync && (
-            <div className={`${APP_DARK_CARD} flex flex-wrap items-center gap-2 p-4`}>
-              <button
-                type="button"
-                onClick={() => fetchDetail()}
-                disabled={isFetchingDetail || isFetchingFolio || isMovingFolioCharge}
-                className="rounded-lg border border-sidebar-border bg-transparent px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-              >
-                {isFetchingDetail ? 'Lädt EMMA Detail…' : 'EMMA Detail laden'}
-              </button>
-              <button
-                type="button"
-                onClick={() => fetchFolio()}
-                disabled={isFetchingFolio || isFetchingDetail || isMovingFolioCharge}
-                className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/25 disabled:opacity-50"
-              >
-                {isFetchingFolio ? 'Lädt Folio…' : 'Folio laden'}
-              </button>
-            </div>
+              {canSync && (
+                <div className={`${APP_DARK_CARD} flex flex-wrap items-center gap-2 p-4`}>
+                  <button
+                    type="button"
+                    onClick={() => fetchDetail()}
+                    disabled={isFetchingDetail || isFetchingFolio || isMovingFolioCharge}
+                    className="rounded-lg border border-sidebar-border bg-transparent px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {isFetchingDetail ? t('loadingEmmaDetail') : t('loadEmmaDetail')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fetchFolio()}
+                    disabled={isFetchingFolio || isFetchingDetail || isMovingFolioCharge}
+                    className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/25 disabled:opacity-50"
+                  >
+                    {isFetchingFolio ? t('loadingFolio') : t('loadFolio')}
+                  </button>
+                </div>
+              )}
+
+              {fetchError && (
+                <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+                  {fetchError}
+                </p>
+              )}
+
+              <ReservationDetailView
+                data={data}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                canSync={canSync}
+                movingCharge={isMovingFolioCharge}
+                onMoveCharge={
+                  canSync
+                    ? async (sourceFolioId, chargeRowId, destinationFolioId) => {
+                        await moveFolioCharge({
+                          sourceFolioId,
+                          chargeRowId,
+                          destinationFolioId,
+                          hotelId: data.hotelId,
+                        });
+                      }
+                    : undefined
+                }
+              />
+            </>
           )}
-
-          {fetchError && (
-            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
-              {fetchError}
-            </p>
-          )}
-
-          <ReservationDetailView
-            data={data}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            canSync={canSync}
-            movingCharge={isMovingFolioCharge}
-            onMoveCharge={
-              canSync
-                ? async (sourceFolioId, chargeRowId, destinationFolioId) => {
-                    await moveFolioCharge({
-                      sourceFolioId,
-                      chargeRowId,
-                      destinationFolioId,
-                      hotelId: data.hotelId,
-                    });
-                  }
-                : undefined
-            }
-          />
-        </>
-      )}
         </div>
       </AppPageBody>
     </div>
