@@ -10,9 +10,15 @@ export class RunAutoAssignDto {
   @IsString({ each: true })
   workingTodayUserIds?: string[];
 
+  /** @deprecated Prefer restantAssigneeUserIds */
   @IsOptional()
   @IsString()
   restantAssigneeUserId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  restantAssigneeUserIds?: string[];
 
   @IsOptional()
   @IsArray()

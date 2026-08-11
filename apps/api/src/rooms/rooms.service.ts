@@ -232,18 +232,32 @@ export class RoomsService {
     if (user.role !== UserRole.HOUSEKEEPER && user.role !== UserRole.SUPERVISOR) {
       throw new ForbiddenException('Only assigned cleaning staff can mark a room clean');
     }
-    const a = await this.prisma.roomAssignment.findFirst({
+    const today = hotelTodayIso();
+    const date = dateOnlyFromIso(today);
+
+    const assignment = await this.prisma.roomAssignment.findFirst({
       where: {
         roomId,
         housekeeperUserId: user.id,
         status: AssignmentStatus.ACTIVE,
       },
     });
-    if (!a) throw new ForbiddenException('Not assigned to this room');
+    const dailyTask = await this.prisma.dailyCleaningTask.findFirst({
+      where: {
+        roomId,
+        assigneeUserId: user.id,
+        completedAt: null,
+        workType: DailyCleaningWorkType.DIRTY,
+        plan: { date },
+      },
+      select: { id: true },
+    });
+    const isSupervisor = user.role === UserRole.SUPERVISOR;
+    if (!assignment && !dailyTask && !isSupervisor) {
+      throw new ForbiddenException('Not assigned to this room');
+    }
 
     const cleaningDeclaredAt = new Date();
-    const today = hotelTodayIso();
-    const date = dateOnlyFromIso(today);
 
     const restantOpen = await this.prisma.dailyCleaningTask.findFirst({
       where: {
@@ -287,7 +301,21 @@ export class RoomsService {
       }),
     ]);
 
-    // Local CLEAN only — Emma gets INSPECTED after a passed inspection.
+    // Push CL to Emma so overnight/status sync does not overwrite PrizeBern Clean with Dirty.
+    const pushResult = await this.emma?.pushRoomStatus(roomId, 'CLEAN', {
+      actionAt: cleaningDeclaredAt,
+      source: 'rooms.markHousekeepingClean',
+    });
+    if (!pushResult || !pushResult.ok || pushResult.skipped) {
+      await this.ensureLocalEmmaBoardStatus(
+        roomId,
+        'CLEAN',
+        cleaningDeclaredAt,
+        user.id,
+        'rooms.markHousekeepingClean.local',
+      );
+    }
+
     const duties = await this.prisma.dailyInspectionDuty.count({ where: { date } });
     if (duties > 0) {
       await this.prisma.dailyInspectionTask.upsert({

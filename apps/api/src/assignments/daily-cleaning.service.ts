@@ -340,30 +340,23 @@ export class DailyCleaningService implements OnModuleInit {
   }
 
   /**
-   * CLEAN + overnight INSPECTED rooms are not cleaning work — they go on the inspection queue
-   * when inspectors are scheduled for the day.
+   * Only rooms marked Clean in PrizeBern by housekeeping (cleaningDeclaredAt
+   * newer than last passed inspection) await inspection — never EMMA status alone.
    */
   private async syncInspectReadyRooms(dateIso: string) {
     const rooms = await this.prisma.room.findMany({
       include: {
-        checklistStates: { take: 1, include: { tasks: true } },
         inspections: { orderBy: { inspectedAt: 'desc' }, take: 3 },
       },
     });
     const readyIds: string[] = [];
     for (const room of rooms) {
-      if (room.outOfOrder) continue;
-      const emma = readEmmaMetadata(room.metadata);
-      const tasks = room.checklistStates[0]?.tasks ?? [];
-      const status = this.roomStatus.derive(room, tasks, room.inspections, emma);
-      if (
-        status === DerivedRoomStatus.CLEAN ||
-        status === DerivedRoomStatus.INSPECTED
-      ) {
+      if (this.roomStatus.isAwaitingInspection(room, room.inspections)) {
         readyIds.push(room.id);
       }
     }
     await this.inspectionQueue.ensurePendingForRooms(readyIds, dateIso);
+    await this.inspectionQueue.cancelOpenTasksNotInRooms(readyIds, dateIso);
   }
 
   private async buildPublicWork(dateIso: string) {
@@ -600,6 +593,7 @@ export class DailyCleaningService implements OnModuleInit {
     options: {
       workingTodayUserIds?: string[];
       restantAssigneeUserId?: string | null;
+      restantAssigneeUserIds?: string[];
       lateShiftUserIds?: string[];
       publicAssigneeUserIds?: string[];
       inspectorUserIds?: string[];
@@ -644,6 +638,15 @@ export class DailyCleaningService implements OnModuleInit {
       );
     }
 
+    const restantIds = [
+      ...new Set(
+        [
+          ...(options.restantAssigneeUserIds ?? []),
+          options.restantAssigneeUserId ?? null,
+        ].filter((id): id is string => Boolean(id)),
+      ),
+    ];
+
     // Apply late-shift overrides for everyone we know about today
     const allKnownIds = new Set(
       [
@@ -651,7 +654,7 @@ export class DailyCleaningService implements OnModuleInit {
         ...(options.workingTodayUserIds ?? []),
         ...(options.lateShiftUserIds ?? []),
         ...(options.publicAssigneeUserIds ?? []),
-        options.restantAssigneeUserId,
+        ...restantIds,
       ].filter(Boolean) as string[],
     );
 
@@ -686,18 +689,41 @@ export class DailyCleaningService implements OnModuleInit {
     if (!plan) throw new NotFoundException('Plan not found');
 
     // Pin restant + public from supervisor choices before balancing dirty rooms
-    if (options.restantAssigneeUserId) {
-      for (const task of plan.tasks) {
-        if (task.workType !== DailyCleaningWorkType.RESTANT || task.completedAt) continue;
-        if (task.pinned && task.source === DailyCleaningTaskSource.MANUAL) continue;
-        await this.prisma.dailyCleaningTask.update({
-          where: { id: task.id },
-          data: {
-            assigneeUserId: options.restantAssigneeUserId,
-            pinned: true,
-            source: DailyCleaningTaskSource.AUTO,
-          },
+    if (restantIds.length > 0) {
+      const openRestants = plan.tasks.filter(
+        (task) =>
+          task.workType === DailyCleaningWorkType.RESTANT &&
+          !task.completedAt &&
+          !(task.pinned && task.source === DailyCleaningTaskSource.MANUAL),
+      );
+      openRestants.sort((a, b) => {
+        const fa = a.room?.floor ?? 9999;
+        const fb = b.room?.floor ?? 9999;
+        if (fa !== fb) return fa - fb;
+        return (a.room?.roomNumber ?? '').localeCompare(b.room?.roomNumber ?? '', undefined, {
+          numeric: true,
         });
+      });
+      const perPerson = Math.floor(openRestants.length / restantIds.length);
+      let remainder = openRestants.length - perPerson * restantIds.length;
+      let cursor = 0;
+      const orderedRestantIds = [...restantIds].sort((a, b) => a.localeCompare(b));
+      for (const hk of orderedRestantIds) {
+        let need = perPerson + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder -= 1;
+        while (need > 0 && cursor < openRestants.length) {
+          const task = openRestants[cursor]!;
+          cursor += 1;
+          need -= 1;
+          await this.prisma.dailyCleaningTask.update({
+            where: { id: task.id },
+            data: {
+              assigneeUserId: hk,
+              pinned: true,
+              source: DailyCleaningTaskSource.AUTO,
+            },
+          });
+        }
       }
     }
 
@@ -744,7 +770,7 @@ export class DailyCleaningService implements OnModuleInit {
     }));
 
     const { assignments } = balanceDailyCleaningAssignments(items, cleaners, {
-      preferredRestantId: options.restantAssigneeUserId,
+      preferredRestantIds: restantIds,
       publicAssigneeIds: publicIds,
     });
     const byKey = new Map(assignments.map((a) => [a.key, a.housekeeperId]));

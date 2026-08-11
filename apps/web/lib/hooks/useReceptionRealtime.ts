@@ -85,6 +85,19 @@ export function useReceptionRealtime() {
       }
 
       const prev = findRoomInCache(qc, room.id);
+
+      // Keep floor plan / room boards in sync immediately (same as supervisor hook).
+      qc.setQueriesData<RoomStatusPayload[]>({ queryKey: ROOMS_LIST_QUERY_KEY }, (list) => {
+        if (!list) return list;
+        let hit = false;
+        const next = list.map((r) => {
+          if (r.id !== room.id) return r;
+          hit = true;
+          return { ...r, derivedStatus: room.derivedStatus! };
+        });
+        return hit ? next : list;
+      });
+
       void qc.invalidateQueries({ queryKey: ROOMS_LIST_QUERY_KEY });
 
       if (prev?.derivedStatus === room.derivedStatus) return;

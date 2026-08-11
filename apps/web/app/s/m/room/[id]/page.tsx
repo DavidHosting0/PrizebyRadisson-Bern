@@ -65,10 +65,8 @@ export default function SupervisorMobileRoomPage() {
   const canMarkClean =
     !!data &&
     !isRestantTask &&
-    !data.cleaningDeclaredAt &&
-    data.derivedStatus !== 'INSPECTED' &&
-    data.derivedStatus !== 'OUT_OF_ORDER';
-  const isFinished = !!data?.cleaningDeclaredAt || data?.derivedStatus === 'INSPECTED';
+    (data.derivedStatus === 'DIRTY' || data.derivedStatus === 'IN_PROGRESS');
+  const isFinished = data?.derivedStatus === 'CLEAN' || data?.derivedStatus === 'INSPECTED';
 
   if (isLoading || !data) {
     return (

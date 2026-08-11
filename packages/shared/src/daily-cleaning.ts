@@ -87,7 +87,9 @@ export type AutoAssignRunOptions = {
   date?: string;
   /** Who is on the cleaning crew today (overrides shift-only eligibility). */
   workingTodayUserIds?: string[];
-  /** Who cleans all restant rooms today (cleaner or housekeeping supervisor). */
+  /** Who cleans restant rooms today (one or more; split evenly). Empty / omitted = auto-pick. */
+  restantAssigneeUserIds?: string[];
+  /** @deprecated Prefer restantAssigneeUserIds */
   restantAssigneeUserId?: string | null;
   /** User ids marked as late shift (fewer rooms). */
   lateShiftUserIds?: string[];

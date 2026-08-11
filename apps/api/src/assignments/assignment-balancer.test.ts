@@ -59,7 +59,7 @@ describe('balanceDailyCleaningAssignments', () => {
     assert.equal(pinned?.housekeeperId, 'pinned-hk');
   });
 
-  it('assigns all restants to one cleaner', () => {
+  it('assigns all restants to one cleaner by default', () => {
     const items = [restant('201'), restant('202'), restant('203'), dirtyRoom('101')];
     const cleaners: EligibleCleaner[] = [
       { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
@@ -70,6 +70,28 @@ describe('balanceDailyCleaningAssignments', () => {
       assignments.filter((a) => a.key.startsWith('rest-')).map((a) => a.housekeeperId),
     );
     assert.equal(restAssignees.size, 1);
+  });
+
+  it('splits restants across preferred assignees', () => {
+    const items = [
+      restant('201'),
+      restant('202'),
+      restant('203'),
+      restant('204'),
+      dirtyRoom('101'),
+    ];
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'b', isLateShift: false, roomWeight: 1 },
+    ];
+    const { summaries } = balanceDailyCleaningAssignments(items, cleaners, {
+      preferredRestantIds: ['a', 'b'],
+    });
+    const a = summaries.find((s) => s.housekeeperId === 'a')!;
+    const b = summaries.find((s) => s.housekeeperId === 'b')!;
+    assert.equal(a.restantCount + b.restantCount, 4);
+    assert.equal(a.restantCount, 2);
+    assert.equal(b.restantCount, 2);
   });
 
   it('gives late shift fewer dirty rooms and more public', () => {
@@ -112,7 +134,7 @@ describe('balanceDailyCleaningAssignments', () => {
     for (const f of floorsA) assert.equal(floorsB.has(f), false);
   });
 
-  it('gives restant assignee fewer dirty rooms', () => {
+  it('gives restant assignee more dirty rooms', () => {
     const rooms = ['101', '102', '103', '104', '105', '106', '107', '108', '109', '110'].map((n) =>
       dirtyRoom(n),
     );
@@ -127,7 +149,27 @@ describe('balanceDailyCleaningAssignments', () => {
     const rest = summaries.find((s) => s.housekeeperId === 'rest')!;
     const full = summaries.find((s) => s.housekeeperId === 'full')!;
     assert.equal(rest.restantCount, 4);
-    assert.ok(rest.roomCount < full.roomCount);
+    assert.ok(rest.roomCount > full.roomCount);
+  });
+
+  it('split restant holders each get more dirty than a solo restant holder would leave others', () => {
+    const rooms = Array.from({ length: 12 }, (_, i) => dirtyRoom(String(101 + i)));
+    const restants = [restant('201'), restant('202'), restant('203'), restant('204')];
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'b', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'c', isLateShift: false, roomWeight: 1 },
+    ];
+    const { summaries } = balanceDailyCleaningAssignments([...rooms, ...restants], cleaners, {
+      preferredRestantIds: ['a', 'b'],
+    });
+    const a = summaries.find((s) => s.housekeeperId === 'a')!;
+    const b = summaries.find((s) => s.housekeeperId === 'b')!;
+    const c = summaries.find((s) => s.housekeeperId === 'c')!;
+    assert.ok(a.restantCount > 0 && b.restantCount > 0);
+    assert.equal(c.restantCount, 0);
+    assert.ok(a.roomCount >= c.roomCount);
+    assert.ok(b.roomCount >= c.roomCount);
   });
 });
 

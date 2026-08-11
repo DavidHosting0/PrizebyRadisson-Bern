@@ -117,8 +117,8 @@ export class InspectionQueueService {
   }
 
   /**
-   * Ensure CLEAN / overnight-INSPECTED rooms appear on today's shared inspection queue
-   * when inspectors are on duty (without resetting CLAIMED/DONE).
+   * Ensure CLEAN rooms appear on today's shared inspection queue when inspectors
+   * are on duty (without resetting CLAIMED/DONE).
    */
   async ensurePendingForRooms(roomIds: string[], dateIso = hotelTodayIso()) {
     const date = dateOnlyFromIso(dateIso);
@@ -162,6 +162,27 @@ export class InspectionQueueService {
         status: {
           in: [DailyInspectionTaskStatus.PENDING, DailyInspectionTaskStatus.CLAIMED],
         },
+      },
+      data: {
+        status: DailyInspectionTaskStatus.CANCELLED,
+        claimedByUserId: null,
+        claimedAt: null,
+      },
+    });
+  }
+
+  /**
+   * Drop open inspection tasks for rooms that are no longer awaiting PrizeBern inspection
+   * (e.g. inspected, or cleaningDeclaredAt cleared / Dirty again).
+   */
+  async cancelOpenTasksNotInRooms(keepRoomIds: string[], dateIso = hotelTodayIso()) {
+    await this.prisma.dailyInspectionTask.updateMany({
+      where: {
+        date: dateOnlyFromIso(dateIso),
+        status: {
+          in: [DailyInspectionTaskStatus.PENDING, DailyInspectionTaskStatus.CLAIMED],
+        },
+        ...(keepRoomIds.length > 0 ? { roomId: { notIn: keepRoomIds } } : {}),
       },
       data: {
         status: DailyInspectionTaskStatus.CANCELLED,

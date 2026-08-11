@@ -44,6 +44,7 @@ export default function RoomChecklistPage() {
       toast.push(t('toastMarkedClean'), 'success');
       qc.invalidateQueries({ queryKey: ['room', id] });
       qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
+      qc.invalidateQueries({ queryKey: ['assignments', 'my-inspection-tasks'] });
       qc.invalidateQueries({ queryKey: ['rooms'] });
     },
     onError: (e: Error) => toast.push(e.message || 'Could not mark room clean', 'warning'),
@@ -64,10 +65,8 @@ export default function RoomChecklistPage() {
   const canMarkClean =
     !!data &&
     !isRestantTask &&
-    !data.cleaningDeclaredAt &&
-    data.derivedStatus !== 'INSPECTED' &&
-    data.derivedStatus !== 'OUT_OF_ORDER';
-  const isFinished = !!data?.cleaningDeclaredAt || data?.derivedStatus === 'INSPECTED';
+    (data.derivedStatus === 'DIRTY' || data.derivedStatus === 'IN_PROGRESS');
+  const isFinished = data?.derivedStatus === 'CLEAN' || data?.derivedStatus === 'INSPECTED';
 
   if (isLoading || !data) {
     return (

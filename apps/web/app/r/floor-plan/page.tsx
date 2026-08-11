@@ -15,7 +15,10 @@ export default function ReceptionFloorPlanPage() {
   const { openRoom } = useReceptionUi();
   const { enterMobile } = useReceptionMobileMode();
 
-  const { data: rooms = [] } = useQuery(roomsListQueryOptions<FloorPlanRoom>());
+  const { data: rooms = [] } = useQuery({
+    ...roomsListQueryOptions<FloorPlanRoom>(),
+    refetchInterval: 15000,
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

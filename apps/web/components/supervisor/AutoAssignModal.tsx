@@ -5,9 +5,8 @@ import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DailyCleaningPlanResponse } from '@housekeeping/shared';
 import { api } from '@/lib/api';
-import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
 import { Button } from '@/components/ui/Button';
-import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+import { APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Assignee = DailyCleaningPlanResponse['manualAssignees'][number];
@@ -166,7 +165,7 @@ export function AutoAssignSetupModal({
   const workPreview = planQ.data?.workPreview;
 
   const [workingIds, setWorkingIds] = useState<string[]>([]);
-  const [restantId, setRestantId] = useState('');
+  const [restantIds, setRestantIds] = useState<string[]>([]);
   const [lateIds, setLateIds] = useState<string[]>([]);
   const [publicIds, setPublicIds] = useState<string[]>([]);
   const [inspectorIds, setInspectorIds] = useState<string[]>([]);
@@ -177,9 +176,14 @@ export function AutoAssignSetupModal({
     setWorkingIds(working);
     const autoLate = planQ.data.workingToday.filter((c) => c.isLateShift).map((c) => c.id);
     setLateIds(autoLate);
-    const restantTask = planQ.data.tasks.find((t) => t.workType === 'RESTANT' && t.assigneeUserId);
-    if (restantTask?.assigneeUserId) setRestantId(restantTask.assigneeUserId);
-    else setRestantId('');
+    const restantAssignees = [
+      ...new Set(
+        planQ.data.tasks
+          .filter((t) => t.workType === 'RESTANT' && t.assigneeUserId)
+          .map((t) => t.assigneeUserId!),
+      ),
+    ];
+    setRestantIds(restantAssignees);
     const publicAssignees = [
       ...new Set(
         planQ.data.tasks
@@ -220,7 +224,7 @@ export function AutoAssignSetupModal({
         body: JSON.stringify({
           date: date?.trim() || undefined,
           workingTodayUserIds: workingIds,
-          restantAssigneeUserId: restantId || null,
+          restantAssigneeUserIds: restantIds,
           lateShiftUserIds: lateIds.filter((id) => workingSet.has(id)),
           publicAssigneeUserIds: publicIds,
           inspectorUserIds: inspectorIds,
@@ -368,7 +372,7 @@ export function AutoAssignSetupModal({
                   return (
                     <PersonPickRow
                       key={c.id}
-                      label={formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                      label={c.name}
                       selected={workingSet.has(c.id)}
                       onToggle={() => toggleWorking(c.id)}
                       badges={badges.length ? badges : undefined}
@@ -381,21 +385,43 @@ export function AutoAssignSetupModal({
 
           <Section
             title="Restant cleaning"
-            description="Who handles restant rooms. Leave on auto to let the system pick."
+            description="Restants are split across selected staff. They also get more dirty rooms, scaled by their restant share. Leave empty to auto-pick."
+            count={restantIds.length ? `${restantIds.length} selected` : 'Auto'}
+            actions={
+              restantOptions.length > 0 ? (
+                <>
+                  <QuickLink
+                    label="All"
+                    onClick={() => setRestantIds(restantOptions.map((a) => a.id))}
+                  />
+                  <QuickLink
+                    label="Clear"
+                    disabled={restantIds.length === 0}
+                    onClick={() => setRestantIds([])}
+                  />
+                </>
+              ) : null
+            }
           >
-            <select
-              className={clsx(APP_DARK_INPUT, 'min-h-[44px] w-full')}
-              value={restantId}
-              onChange={(e) => setRestantId(e.target.value)}
-            >
-              <option value="">Auto-pick one cleaner</option>
-              {restantOptions.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {formatUserWithTitlePrefix(a.name, a.titlePrefix)}
-                  {a.role === 'SUPERVISOR' ? ' (supervisor)' : ''}
-                </option>
-              ))}
-            </select>
+            {restantOptions.length === 0 ? (
+              <p className="text-sm text-sidebar-muted">No assignees available.</p>
+            ) : (
+              <div className="grid max-h-48 gap-1.5 overflow-y-auto sidebar-scroll sm:grid-cols-2">
+                {restantOptions.map((a) => (
+                  <PersonPickRow
+                    key={a.id}
+                    label={a.name}
+                    selected={restantIds.includes(a.id)}
+                    onToggle={() => toggleId(restantIds, a.id, setRestantIds)}
+                    badges={
+                      a.role === 'SUPERVISOR' || a.titlePrefix === 'HOUSEKEEPING_SUPERVISOR'
+                        ? ['supervisor']
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
           </Section>
 
           <Section
@@ -425,7 +451,7 @@ export function AutoAssignSetupModal({
                 {lateOptions.map((c) => (
                   <PersonPickRow
                     key={c.id}
-                    label={formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                    label={c.name}
                     selected={lateIds.includes(c.id)}
                     onToggle={() => toggleId(lateIds, c.id, setLateIds)}
                     tone="amber"
@@ -464,10 +490,14 @@ export function AutoAssignSetupModal({
                 {restantOptions.map((a) => (
                   <PersonPickRow
                     key={a.id}
-                    label={formatUserWithTitlePrefix(a.name, a.titlePrefix)}
+                    label={a.name}
                     selected={publicIds.includes(a.id)}
                     onToggle={() => toggleId(publicIds, a.id, setPublicIds)}
-                    badges={a.role === 'SUPERVISOR' ? ['supervisor'] : undefined}
+                    badges={
+                      a.role === 'SUPERVISOR' || a.titlePrefix === 'HOUSEKEEPING_SUPERVISOR'
+                        ? ['supervisor']
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -501,7 +531,7 @@ export function AutoAssignSetupModal({
                 {inspectorCandidates.map((c) => (
                   <PersonPickRow
                     key={c.id}
-                    label={formatUserWithTitlePrefix(c.name, c.titlePrefix)}
+                    label={c.name}
                     selected={inspectorIds.includes(c.id)}
                     onToggle={() => toggleId(inspectorIds, c.id, setInspectorIds)}
                     tone="emerald"

@@ -69,6 +69,7 @@ export class AssignmentsController {
       {
         workingTodayUserIds: dto.workingTodayUserIds,
         restantAssigneeUserId: dto.restantAssigneeUserId,
+        restantAssigneeUserIds: dto.restantAssigneeUserIds,
         lateShiftUserIds: dto.lateShiftUserIds,
         publicAssigneeUserIds: dto.publicAssigneeUserIds,
         inspectorUserIds: dto.inspectorUserIds,

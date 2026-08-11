@@ -10,17 +10,15 @@ import {
   type SupportedLocale,
 } from '@housekeeping/shared';
 import { useLocale } from '@/lib/locale-context';
+import { LocaleFlag } from '@/components/i18n/LocaleFlag';
 
-const LOCALE_META: Record<
-  SupportedLocale,
-  { flag: string; name: string }
-> = {
-  de: { flag: '🇩🇪', name: 'Deutsch' },
-  en: { flag: '🇬🇧', name: 'English' },
-  pt: { flag: '🇵🇹', name: 'Português' },
-  es: { flag: '🇪🇸', name: 'Español' },
-  tr: { flag: '🇹🇷', name: 'Türkçe' },
-  uk: { flag: '🇺🇦', name: 'Українська' },
+const LOCALE_META: Record<SupportedLocale, { name: string }> = {
+  de: { name: 'Deutsch' },
+  en: { name: 'English' },
+  pt: { name: 'Português' },
+  es: { name: 'Español' },
+  tr: { name: 'Türkçe' },
+  uk: { name: 'Українська' },
 };
 
 export function LanguageSwitcher({
@@ -40,7 +38,6 @@ export function LanguageSwitcher({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
-  const meta = LOCALE_META[locale];
 
   const updateMenuPos = () => {
     const btn = buttonRef.current;
@@ -142,9 +139,10 @@ export function LanguageSwitcher({
                       : 'hover:bg-surface-muted',
                 )}
               >
-                <span className="text-lg leading-none" aria-hidden>
-                  {opt.flag}
-                </span>
+                <LocaleFlag
+                  locale={code}
+                  className="h-3.5 w-[21px] shrink-0 rounded-[2px] shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"
+                />
                 <span className="tabular-nums tracking-wide">{localeAbbrev(code)}</span>
                 <span
                   className={clsx(
@@ -183,9 +181,13 @@ export function LanguageSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className={clsx('leading-none', touch ? 'text-xl' : 'text-base')} aria-hidden>
-          {meta.flag}
-        </span>
+        <LocaleFlag
+          locale={locale}
+          className={clsx(
+            'shrink-0 rounded-[2px] shadow-[0_0_0_1px_rgba(0,0,0,0.12)]',
+            touch ? 'h-4 w-6' : 'h-3.5 w-[21px]',
+          )}
+        />
         <span className="tabular-nums tracking-wide">{localeAbbrev(locale)}</span>
         <svg
           width="10"

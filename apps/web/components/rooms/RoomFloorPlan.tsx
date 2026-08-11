@@ -105,13 +105,14 @@ function roomPlanButton(
   const heat = complaintCount != null;
   const count = complaintCount ?? 0;
   const guest = room.occupancy?.mainGuestName?.trim();
+  const statusLabel = room.derivedStatus.replace(/_/g, ' ');
   const title = heat
     ? `Zimmer ${room.roomNumber} · ${count} Beschwerde(n)`
     : guest
-      ? `Room ${room.roomNumber} · ${guest} · ${room.derivedStatus.replace(/_/g, ' ')}`
+      ? `Room ${room.roomNumber} · ${guest} · ${statusLabel}`
       : room.occupancy
-        ? `Room ${room.roomNumber} · belegt · ${room.derivedStatus.replace(/_/g, ' ')}`
-        : `Room ${room.roomNumber} · ${room.derivedStatus.replace(/_/g, ' ')}`;
+        ? `Room ${room.roomNumber} · belegt · ${statusLabel}`
+        : `Room ${room.roomNumber} · ${statusLabel}`;
   return (
     <button
       key={room.id}
@@ -134,11 +135,16 @@ function roomPlanButton(
       {heat ? (
         <span className="text-[9px] font-semibold tabular-nums opacity-95">{count}</span>
       ) : (
-        room.occupancy && (
-          <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
-            {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
+        <>
+          <span className="max-w-full truncate rounded bg-black/25 px-1 text-[8px] font-semibold uppercase leading-tight tracking-wide text-white">
+            {statusLabel}
           </span>
-        )
+          {room.occupancy && (
+            <span className="max-w-full truncate text-[8px] font-normal leading-tight opacity-95">
+              {guest ? (guest.split(',')[0]?.trim() ?? guest) : room.occupancy.isDepartureToday ? 'Abreise' : 'Belegt'}
+            </span>
+          )}
+        </>
       )}
     </button>
   );

@@ -142,8 +142,7 @@ export default function SupervisorBoardPage() {
   const queueRooms = useMemo(() => {
     return roomsRaw.filter((r) => {
       if (statusFilter) return r.derivedStatus === statusFilter;
-      // Cleaning assignment queue only — INSPECTED/CLEAN stay for the inspection flow
-      // (still clean from yesterday; need re-inspect, not a cleaner assignment).
+      // Cleaning assignment queue only — CLEAN awaits inspectors; INSPECTED is done.
       return r.derivedStatus === 'DIRTY' || r.derivedStatus === 'IN_PROGRESS';
     });
   }, [roomsRaw, statusFilter]);

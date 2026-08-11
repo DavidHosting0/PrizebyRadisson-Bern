@@ -29,8 +29,11 @@ export type BalancedAssignment = {
 };
 
 const LATE_ROOM_WEIGHT = 0.55;
-/** Dirty-room capacity multiplier for whoever holds the restant bundle. */
-const RESTANT_DIRTY_FACTOR = 0.65;
+/**
+ * Dirty-room capacity multiplier for a full restant share.
+ * >1 → restant holders get more dirty rooms; scaled by each person's restant share.
+ */
+const RESTANT_DIRTY_FACTOR = 1.35;
 
 function roomFloor(item: BalanceWorkItem): number {
   if (item.floor != null) return item.floor;
@@ -128,20 +131,30 @@ function summarize(
 /**
  * Multi-type daily balancer:
  * - pinned / already-assigned stay fixed
- * - all RESTANT items go to one assignee (preferredRestantId or auto-picked non-late)
- * - DIRTY rooms carved as contiguous blocks (floor + room order); late & restant get fewer
+ * - RESTANT items are split across preferredRestantIds (or one auto-picked non-late)
+ * - DIRTY rooms carved as contiguous blocks (floor + room order); late get fewer;
+ *   restant holders get more dirty rooms proportional to their restant share
  * - PUBLIC areas go to publicAssigneeIds when set, else prefer late shift
  */
 export function balanceDailyCleaningAssignments(
   items: BalanceWorkItem[],
   cleaners: EligibleCleaner[],
   options?: {
+    /** @deprecated Prefer preferredRestantIds */
     preferredRestantId?: string | null;
+    preferredRestantIds?: string[];
     publicAssigneeIds?: string[];
   },
 ): { assignments: BalancedAssignment[]; summaries: DailyCleaningSummary[] } {
   const assigned = new Map<string, string>();
-  const preferredRestantId = options?.preferredRestantId ?? null;
+  const preferredRestantIds = [
+    ...new Set(
+      [
+        ...(options?.preferredRestantIds ?? []),
+        options?.preferredRestantId ?? null,
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
   const publicAssigneeIds = options?.publicAssigneeIds?.filter(Boolean) ?? [];
 
   for (const item of items) {
@@ -150,7 +163,7 @@ export function balanceDailyCleaningAssignments(
     }
   }
 
-  if (cleaners.length === 0 && !preferredRestantId && publicAssigneeIds.length === 0) {
+  if (cleaners.length === 0 && preferredRestantIds.length === 0 && publicAssigneeIds.length === 0) {
     return {
       assignments: [...assigned.entries()].map(([key, housekeeperId]) => ({ key, housekeeperId })),
       summaries: summarize(cleaners, assigned, items),
@@ -167,7 +180,7 @@ export function balanceDailyCleaningAssignments(
     dirtyAssignedCount.set(c.housekeeperId, 0);
     restantCountByHk.set(c.housekeeperId, 0);
   }
-  for (const id of [preferredRestantId, ...publicAssigneeIds]) {
+  for (const id of [...preferredRestantIds, ...publicAssigneeIds]) {
     if (id && !roomLoad.has(id)) {
       roomLoad.set(id, 0);
       publicLoad.set(id, 0);
@@ -190,44 +203,56 @@ export function balanceDailyCleaningAssignments(
     }
   }
 
-  // --- Restant bundle → one assignee ---
-  let restantAssigneeId: string | null = null;
+  // --- Restant → split across preferred assignees (or auto-pick one) ---
   const restants = items.filter((i) => i.workType === 'RESTANT' && !assigned.has(i.key));
   if (restants.length > 0) {
-    let restantHk = preferredRestantId;
-    if (!restantHk) {
+    let pool = preferredRestantIds;
+    if (pool.length === 0) {
       const nonLate = cleaners.filter((c) => !c.isLateShift);
-      const pool = nonLate.length > 0 ? nonLate : cleaners;
-      if (pool.length > 0) {
-        let best = pool[0]!;
-        for (const c of pool) {
+      const autoPool = nonLate.length > 0 ? nonLate : cleaners;
+      if (autoPool.length > 0) {
+        let best = autoPool[0]!;
+        for (const c of autoPool) {
           if ((roomLoad.get(c.housekeeperId) ?? 0) < (roomLoad.get(best.housekeeperId) ?? 0)) {
             best = c;
           }
         }
-        restantHk = best.housekeeperId;
+        pool = [best.housekeeperId];
       }
     }
-    if (restantHk) {
-      restantAssigneeId = restantHk;
-      for (const item of restants) {
-        assigned.set(item.key, restantHk);
-        roomLoad.set(restantHk, (roomLoad.get(restantHk) ?? 0) + 1);
-        restantCountByHk.set(restantHk, (restantCountByHk.get(restantHk) ?? 0) + 1);
-      }
-    }
-  } else {
-    // Prefer preferredRestantId, else anyone who already holds pinned restants
-    if (preferredRestantId) restantAssigneeId = preferredRestantId;
-    else {
-      for (const [hk, n] of restantCountByHk) {
-        if (n > 0) {
-          restantAssigneeId = hk;
-          break;
+    if (pool.length > 0) {
+      // Contiguous chunks by floor/room order so each person gets a cluster
+      const sortedRestants = [...restants].sort(compareDirtyRooms);
+      const targets = allocateTargets(
+        pool,
+        new Map(pool.map((id) => [id, 1])),
+        sortedRestants.length,
+      );
+      let cursor = 0;
+      const order = [...pool].sort((a, b) => a.localeCompare(b));
+      for (const hk of order) {
+        let need = targets.get(hk) ?? 0;
+        while (need > 0 && cursor < sortedRestants.length) {
+          const item = sortedRestants[cursor]!;
+          cursor += 1;
+          assigned.set(item.key, hk);
+          roomLoad.set(hk, (roomLoad.get(hk) ?? 0) + 1);
+          restantCountByHk.set(hk, (restantCountByHk.get(hk) ?? 0) + 1);
+          need -= 1;
         }
+      }
+      while (cursor < sortedRestants.length) {
+        const hk = order[cursor % order.length]!;
+        const item = sortedRestants[cursor]!;
+        cursor += 1;
+        assigned.set(item.key, hk);
+        roomLoad.set(hk, (roomLoad.get(hk) ?? 0) + 1);
+        restantCountByHk.set(hk, (restantCountByHk.get(hk) ?? 0) + 1);
       }
     }
   }
+
+  const totalRestantAssigned = [...restantCountByHk.values()].reduce((s, n) => s + n, 0);
 
   // --- Dirty rooms: contiguous blocks by floor/room order ---
   const dirty = items.filter((i) => i.workType === 'DIRTY' && !assigned.has(i.key));
@@ -235,9 +260,12 @@ export function balanceDailyCleaningAssignments(
     const dirtyWeights = new Map<string, number>();
     for (const c of cleaners) {
       let w = c.roomWeight;
-      const isRestantPerson =
-        c.housekeeperId === restantAssigneeId || (restantCountByHk.get(c.housekeeperId) ?? 0) > 0;
-      if (isRestantPerson) w *= RESTANT_DIRTY_FACTOR;
+      const rc = restantCountByHk.get(c.housekeeperId) ?? 0;
+      if (rc > 0 && totalRestantAssigned > 0) {
+        // Full restant share → RESTANT_DIRTY_FACTOR; half share → midway to 1.
+        const share = rc / totalRestantAssigned;
+        w *= 1 + share * (RESTANT_DIRTY_FACTOR - 1);
+      }
       dirtyWeights.set(c.housekeeperId, w);
     }
 

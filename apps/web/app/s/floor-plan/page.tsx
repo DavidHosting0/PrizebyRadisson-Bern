@@ -14,7 +14,10 @@ export default function SupervisorFloorPlanPage() {
   const { enterMobile } = useSupervisorMobileMode();
   const [panelRoomId, setPanelRoomId] = useState<string | null>(null);
 
-  const { data: rooms = [] } = useQuery(roomsListQueryOptions<FloorPlanRoom>());
+  const { data: rooms = [] } = useQuery({
+    ...roomsListQueryOptions<FloorPlanRoom>(),
+    refetchInterval: 15000,
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

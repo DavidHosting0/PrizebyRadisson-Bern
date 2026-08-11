@@ -31,6 +31,7 @@ import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigger';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { SidebarSettingsButton } from '@/components/nav/SidebarSettingsButton';
+import { useRoomsRealtime } from '@/lib/hooks/useRoomsRealtime';
 
 /** Mobile supervisor routes live under `/s/m/` — not `/s/monitor-map` etc. */
 function isSupervisorMobilePath(path: string) {
@@ -56,6 +57,7 @@ function SupervisorLayoutInner({ children }: { children: React.ReactNode }) {
   const sidebarGroups = useSidebarGroups(SUPERVISOR_NAV_GROUPS, nav, SUPERVISOR_NAV_ICONS);
   const { mobileUi, hydrated, enterMobile } = useSupervisorMobileMode();
   const [profileOpen, setProfileOpen] = useState(false);
+  useRoomsRealtime();
 
   useEffect(() => {
     if (!hydrated || !user) return;
