@@ -10,6 +10,8 @@ import { PatchDailyTaskDto } from './dto/patch-daily-task.dto';
 import { SkipRoomDto } from './dto/skip-room.dto';
 import { LateShiftOverrideDto } from './dto/late-shift-override.dto';
 import { RunAutoAssignDto } from './dto/run-auto-assign.dto';
+import { CompleteDailyTaskDto } from './dto/complete-daily-task.dto';
+import { PresignRestantEvidenceDto } from './dto/presign-restant-evidence.dto';
 
 @Controller('assignments')
 export class AssignmentsController {
@@ -138,10 +140,27 @@ export class AssignmentsController {
     return this.daily.setLateShiftOverride(dto, user);
   }
 
+  @Post('daily-plan/tasks/:id/presign-evidence')
+  @RequirePermissions(PermissionCode.ROOMS_READ)
+  presignRestantEvidence(
+    @Param('id') id: string,
+    @Body() dto: PresignRestantEvidenceDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.daily.presignRestantEvidence(id, user, dto.contentType);
+  }
+
   @Post('daily-plan/tasks/:id/complete')
   @RequirePermissions(PermissionCode.ROOMS_READ)
-  completeTask(@Param('id') id: string, @CurrentUser() user: User) {
-    return this.daily.completeDailyTask(id, user);
+  completeTask(
+    @Param('id') id: string,
+    @Body() dto: CompleteDailyTaskDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.daily.completeDailyTask(id, user, {
+      reason: dto?.reason,
+      photoS3Key: dto?.photoS3Key,
+    });
   }
 
   @Post()

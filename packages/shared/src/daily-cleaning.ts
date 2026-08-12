@@ -2,6 +2,7 @@ export type DailyCleaningPlanStatus = 'DRAFT' | 'SAVED';
 export type DailyCleaningTaskKind = 'ROOM' | 'PUBLIC_AREA';
 export type DailyCleaningWorkType = 'DIRTY' | 'RESTANT' | 'PUBLIC';
 export type DailyCleaningTaskSource = 'AUTO' | 'MANUAL';
+export type DailyCleaningCompletionReason = 'CLEANED' | 'NO_CLEANING_REQUESTED';
 export type PublicAreaKind = 'corridor' | 'glass' | 'elevator' | 'staff' | 'custom';
 
 export type DailyCleaningAssignee = {
@@ -28,6 +29,7 @@ export type DailyCleaningTaskDto = {
   source: DailyCleaningTaskSource;
   overdueDays: number | null;
   completedAt: string | null;
+  completionReason?: DailyCleaningCompletionReason | null;
 };
 
 export type DailyCleaningSummary = {
@@ -172,6 +174,7 @@ export type MyDailyTaskDto = {
   publicAreaName: string | null;
   overdueDays: number | null;
   completedAt: string | null;
+  completionReason?: DailyCleaningCompletionReason | null;
   /** Departure today from EMMA occupancy (room tasks only). */
   isDepartureToday?: boolean;
   /** Guest has checked out (or OCO done) — relevant when isDepartureToday. */

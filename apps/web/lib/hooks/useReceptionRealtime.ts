@@ -19,6 +19,7 @@ type RoomStatusPayload = {
 type TeamChatMessagePayload = {
   id?: string;
   body?: string;
+  photoUrl?: string | null;
   author?: { id?: string; name?: string };
 };
 
@@ -126,13 +127,15 @@ export function useReceptionRealtime() {
       if (isReceptionChatPath(pathnameRef.current)) return;
 
       const msg = payload as TeamChatMessagePayload;
-      if (!msg?.id || !msg.body) return;
+      if (!msg?.id) return;
+      const bodyText = msg.body?.trim() ?? '';
+      if (!bodyText && !msg.photoUrl) return;
       if (msg.author?.id && msg.author.id === userIdRef.current) return;
 
       const author = msg.author?.name?.trim() || 'Team';
       const text = tToast('newChatMessage', {
         author,
-        preview: previewBody(msg.body),
+        preview: bodyText ? previewBody(bodyText) : tToast('chatPhoto'),
       });
       toast.push(text, 'default', 8000);
     };

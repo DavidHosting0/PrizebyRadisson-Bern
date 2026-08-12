@@ -484,6 +484,134 @@ export function paymentGatewayPath(input: {
 /** EMMA token payment method id (`PG3` = Token, vs `PG1` = Pinpad). */
 export const EMMA_PAYMENT_METHOD_TOKEN = 'PG3';
 
+export const EMMA_HOTEL_TIMEZONE = 'Europe/Zurich';
+
+/** SAP OData date-only literal at UTC midnight of `at`'s UTC calendar day. */
+export function emmaSapDateLiteral(at: Date): string {
+  const ms = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate());
+  return `/Date(${ms})/`;
+}
+
+/**
+ * Yesterday in the hotel calendar (`Europe/Zurich`), as UTC midnight.
+ * Matches adddeposit.har RequestDate/DueDate (one calendar day before today).
+ */
+export function yesterdayHotelCalendarUtcMidnight(
+  now = new Date(),
+  timeZone = EMMA_HOTEL_TIMEZONE,
+): Date {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = fmt.formatToParts(now);
+  const y = Number(parts.find((p) => p.type === 'year')?.value);
+  const m = Number(parts.find((p) => p.type === 'month')?.value);
+  const d = Number(parts.find((p) => p.type === 'day')?.value);
+  const hotelNoonUtc = Date.UTC(y, m - 1, d, 12, 0, 0);
+  const yesterday = new Date(hotelNoonUtc - 24 * 60 * 60 * 1000);
+  return new Date(
+    Date.UTC(yesterday.getUTCFullYear(), yesterday.getUTCMonth(), yesterday.getUTCDate()),
+  );
+}
+
+export function createDepositPath(sapClient: string): string {
+  return `Deposits?sap-client=${sapClient}`;
+}
+
+export function depositsFilterPath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+}): string {
+  const filter = encodeODataFilter(
+    `HotelId eq '${input.hotelId}' and ReservationId eq '${input.reservationId}'`,
+  );
+  return `Deposits?sap-client=${input.sapClient}&$skip=0&$top=999&$filter=${filter}`;
+}
+
+export function createDepositBody(input: {
+  hotelId: string;
+  reservationId: string;
+  amount: string;
+  currency: string;
+  requestDate?: Date;
+  dueDate?: Date;
+}): string {
+  const day = input.requestDate ?? yesterdayHotelCalendarUtcMidnight();
+  const sapDate = emmaSapDateLiteral(input.dueDate ?? day);
+  return JSON.stringify({
+    HotelId: input.hotelId,
+    ReservationId: input.reservationId,
+    DepositRequested: input.amount,
+    RequestDate: sapDate,
+    DueDate: sapDate,
+    Currency: input.currency,
+    __metadata: { type: 'ZEYUI_RSRVS_SRV.Deposits' },
+  });
+}
+
+/** Round without invoice (deposit / CollectPaymWoInv HAR). */
+export function roundDepositPath(input: {
+  sapClient: string;
+  hotelId: string;
+  paymentMethod: string;
+  amount: string | number;
+  currency: string;
+  holder?: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  const n =
+    typeof input.amount === 'number'
+      ? input.amount
+      : Number(String(input.amount).replace(',', '.'));
+  const amount = Number.isFinite(n) ? n.toFixed(6) : '0.000000';
+  return (
+    `Round?sap-client=${input.sapClient}` +
+    `&Hotel=${q(input.hotelId)}` +
+    `&InvoiceNumber=${q('')}` +
+    `&Holder=${q(input.holder?.trim() ?? '')}` +
+    `&PaymentMethod=${q(input.paymentMethod)}` +
+    `&Amount=${amount}m` +
+    `&Currency=${q(input.currency)}`
+  );
+}
+
+/** Collect payment without invoice (paydeposit.har). Folio is unpadded (`2` not `02`). */
+export function collectPaymWoInvPath(input: {
+  sapClient: string;
+  hotelId: string;
+  reservationId: string;
+  depositId: string;
+  tillId: string;
+  employee: string;
+  folioId: string;
+  token: string;
+  expiry: string;
+  paymentMethod?: string;
+}): string {
+  const q = emmaODataStringLiteral;
+  const employee = unpadEmployee(input.employee);
+  const folioNum = String(parseInt(input.folioId, 10) || input.folioId.trim());
+  return (
+    `CollectPaymWoInv?sap-client=${input.sapClient}` +
+    `&HotelId=${q(input.hotelId)}` +
+    `&ReservationId=${q(input.reservationId)}` +
+    `&Id=${q(input.depositId)}` +
+    `&Till=${q(input.tillId)}` +
+    `&Payment=${q(input.paymentMethod ?? EMMA_PAYMENT_METHOD_TOKEN)}` +
+    `&Employee=${q(employee)}` +
+    `&Folio=${q(folioNum)}` +
+    `&Remarks=${q('')}` +
+    `&Preauto=${q('')}` +
+    `&Token=${q(input.token)}` +
+    `&Expiry=${q(input.expiry)}` +
+    `&Pinpad=${q('')}`
+  );
+}
+
 export function draftCreateBody(hotelId: string, reservationId: string): string {
   return JSON.stringify({
     HotelId: hotelId,

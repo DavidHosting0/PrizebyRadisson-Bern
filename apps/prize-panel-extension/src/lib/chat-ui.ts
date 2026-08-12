@@ -18,6 +18,12 @@ export type ChatUiStrings = {
   deletedMessage: string;
   replyingTo: (name: string) => string;
   placeholder: string;
+  attachPhoto: string;
+  removePhoto: string;
+  photoMessage: string;
+  photoAlt: string;
+  photoReady: string;
+  photoUploadFailed: string;
   noPostPermission: string;
 };
 
@@ -40,6 +46,12 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     deletedMessage: 'Gelöschte Nachricht',
     replyingTo: 'Antwort an {name}',
     placeholder: 'Nachricht… @ für Erwähnung',
+    attachPhoto: 'Foto anhängen',
+    removePhoto: 'Foto entfernen',
+    photoMessage: 'Foto',
+    photoAlt: 'Chat-Foto',
+    photoReady: 'Foto bereit zum Senden',
+    photoUploadFailed: 'Foto konnte nicht hochgeladen werden',
     noPostPermission: 'Keine Berechtigung zum Schreiben.',
   },
   en: {
@@ -60,6 +72,12 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     deletedMessage: 'Deleted message',
     replyingTo: 'Replying to {name}',
     placeholder: 'Message… @ to mention',
+    attachPhoto: 'Attach photo',
+    removePhoto: 'Remove photo',
+    photoMessage: 'Photo',
+    photoAlt: 'Chat photo',
+    photoReady: 'Photo ready to send',
+    photoUploadFailed: 'Could not upload photo',
     noPostPermission: 'No permission to post.',
   },
   pt: {
@@ -80,6 +98,12 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     deletedMessage: 'Mensagem eliminada',
     replyingTo: 'A responder a {name}',
     placeholder: 'Mensagem… @ para mencionar',
+    attachPhoto: 'Anexar foto',
+    removePhoto: 'Remover foto',
+    photoMessage: 'Foto',
+    photoAlt: 'Foto do chat',
+    photoReady: 'Foto pronta para enviar',
+    photoUploadFailed: 'Não foi possível carregar a foto',
     noPostPermission: 'Sem permissão para publicar.',
   },
   es: {
@@ -100,6 +124,12 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     deletedMessage: 'Mensaje eliminado',
     replyingTo: 'Respondiendo a {name}',
     placeholder: 'Mensaje… @ para mencionar',
+    attachPhoto: 'Adjuntar foto',
+    removePhoto: 'Quitar foto',
+    photoMessage: 'Foto',
+    photoAlt: 'Foto del chat',
+    photoReady: 'Foto lista para enviar',
+    photoUploadFailed: 'No se pudo subir la foto',
     noPostPermission: 'Sin permiso para publicar.',
   },
   tr: {
@@ -120,6 +150,12 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     deletedMessage: 'Silinen mesaj',
     replyingTo: '{name} yanıtlanıyor',
     placeholder: 'Mesaj… @ ile bahset',
+    attachPhoto: 'Fotoğraf ekle',
+    removePhoto: 'Fotoğrafı kaldır',
+    photoMessage: 'Fotoğraf',
+    photoAlt: 'Sohbet fotoğrafı',
+    photoReady: 'Fotoğraf gönderilmeye hazır',
+    photoUploadFailed: 'Fotoğraf yüklenemedi',
     noPostPermission: 'Yazma izniniz yok.',
   },
   uk: {
@@ -140,6 +176,12 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     deletedMessage: 'Видалене повідомлення',
     replyingTo: 'Відповідь {name}',
     placeholder: 'Повідомлення… @ щоб згадати',
+    attachPhoto: 'Додати фото',
+    removePhoto: 'Прибрати фото',
+    photoMessage: 'Фото',
+    photoAlt: 'Фото в чаті',
+    photoReady: 'Фото готове до надсилання',
+    photoUploadFailed: 'Не вдалося завантажити фото',
     noPostPermission: 'Немає дозволу на публікацію.',
   },
 };

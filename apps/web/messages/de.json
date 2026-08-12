@@ -301,6 +301,12 @@
     "newServiceRequest": "Neue Serviceanfrage",
     "editProfilePhoto": "Profilfoto bearbeiten",
     "sendFailed": "Nachricht konnte nicht gesendet werden",
+    "attachPhoto": "Foto anhängen",
+    "removePhoto": "Foto entfernen",
+    "photoAlt": "Chat-Foto",
+    "photoMessage": "Foto",
+    "photoReady": "Foto bereit zum Senden",
+    "photoUploadFailed": "Foto konnte nicht hochgeladen werden",
     "room": "Zimmer {roomNumber}",
     "markDone": "Erledigt markieren",
     "requestStatus": {
@@ -338,7 +344,13 @@
       "deletedMessage": "Gelöschte Nachricht",
       "replyingTo": "Antwort an {name}",
       "placeholder": "Nachricht… @ zum Erwähnen",
-      "noPostPermission": "Keine Berechtigung zum Posten."
+      "noPostPermission": "Keine Berechtigung zum Posten.",
+      "attachPhoto": "Foto anhängen",
+      "removePhoto": "Foto entfernen",
+      "photoMessage": "Foto",
+      "photoAlt": "Chat-Foto",
+      "photoReady": "Foto bereit zum Senden",
+      "photoUploadFailed": "Foto konnte nicht hochgeladen werden"
     }
   },
   "notifications": {
@@ -837,6 +849,11 @@
     "guestCheckedOut": "Ausgecheckt",
     "guestStillInRoom": "Gast noch im Zimmer",
     "fertig": "Fertig",
+    "noCleaningRequested": "Keine Reinigung gewünscht",
+    "noCleaningHint": "Foto vom Schild an der Tür machen, dann Restant abschließen. Zimmerstatus bleibt unverändert.",
+    "noCleaningPhotoRequired": "Foto vom Schild *",
+    "noCleaningPhotoHint": "Bitte das «Keine Reinigung»-Schild fotografieren.",
+    "noCleaningConfirm": "Mit Foto abschließen",
     "publicAreas": "Öffentliche Bereiche",
     "markDone": "Erledigt",
     "inspections": "Inspektionen",
@@ -862,7 +879,7 @@
     "reportLostFound": "Fundsache melden",
     "reportDamage": "Schaden melden",
     "restant": "Restant",
-    "restantHint": "Restanten auf der Startliste mit Fertig abschließen — kein Zimmerstatus-Wechsel.",
+    "restantHint": "Restanten auf der Startliste mit Fertig oder «Keine Reinigung gewünscht» abschließen — kein Zimmerstatus-Wechsel.",
     "markCleanHint": "Wenn du fertig bist, Zimmer als sauber markieren. Ein Supervisor inspiziert und macht Fotos.",
     "saving": "Speichern…",
     "alreadyMarkedClean": "Zimmer bereits als sauber markiert",
@@ -1016,7 +1033,20 @@
   },
   "technician": {
     "maintenanceTitle": "Wartung",
-    "roomsTitle": "Zimmer"
+    "roomsTitle": "Zimmer",
+    "maintenancePage": {
+      "description": "Offene Schadensmeldungen von Housekeeping und Supervisors — neueste zuerst.",
+      "statusLabel": "Status",
+      "filterOpen": "Offen",
+      "filterAll": "Alle",
+      "filterReported": "Gemeldet",
+      "filterAcknowledged": "Bestätigt",
+      "filterResolved": "Erledigt",
+      "loading": "Laden…",
+      "empty": "Keine Schadensmeldungen.",
+      "emptyOpen": "Keine offenen Schadensmeldungen.",
+      "roomLine": "Zimmer {roomNumber} · {reporter} · {when}"
+    }
   },
   "admin": {
     "dashboard": "Administration",
@@ -1084,6 +1114,7 @@
     "error": "Etwas ist schiefgelaufen",
     "roomStatus": "Zimmer {roomNumber} ist jetzt {status}",
     "newChatMessage": "Neue Nachricht von {author}: {preview}",
+    "chatPhoto": "Foto",
     "dismiss": "Schliessen"
   },
   "guides": {

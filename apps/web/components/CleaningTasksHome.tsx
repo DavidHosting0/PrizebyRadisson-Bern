@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import clsx from 'clsx';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import type { InspectionQueueResponse, MyDailyTaskDto } from '@housekeeping/shared';
@@ -12,6 +13,7 @@ import { PriorityBadge } from '@/components/PriorityBadge';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/toast/ToastProvider';
+import { NoCleaningRequestedModal } from '@/components/housekeeper/NoCleaningRequestedModal';
 
 type Req = {
   id: string;
@@ -45,6 +47,10 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
   const { user } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
+  const [noCleaningTask, setNoCleaningTask] = useState<{
+    id: string;
+    roomNumber: string;
+  } | null>(null);
 
   const claim = useMutation({
     mutationFn: (id: string) => api(`/service-requests/${id}/claim`, { method: 'POST' }),
@@ -67,7 +73,10 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
 
   const completeTask = useMutation({
     mutationFn: (taskId: string) =>
-      api(`/assignments/daily-plan/tasks/${taskId}/complete`, { method: 'POST' }),
+      api(`/assignments/daily-plan/tasks/${taskId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['assignments', 'my-daily-tasks'] });
     },
@@ -209,24 +218,40 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           <ul className="mt-3 space-y-3">
             {restantTasks.map((task) => (
               <li key={task.id}>
-                <Card tone="dark" className={clsx(cardClass, 'flex flex-wrap items-center justify-between gap-3')}>
-                  <div>
-                    <p className="text-lg font-semibold text-white">
-                      {t('room', { number: task.roomNumber ?? '—' })}
-                    </p>
-                    {task.floor != null && (
-                      <p className="text-xs text-sidebar-muted">{t('floor', { floor: task.floor })}</p>
-                    )}
-                    <p className="mt-1 text-xs text-sidebar-muted">{t('stayoverRestant')}</p>
-                    <DepartureStatus task={task} />
+                <Card tone="dark" className={clsx(cardClass, 'flex flex-col gap-3')}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-semibold text-white">
+                        {t('room', { number: task.roomNumber ?? '—' })}
+                      </p>
+                      {task.floor != null && (
+                        <p className="text-xs text-sidebar-muted">{t('floor', { floor: task.floor })}</p>
+                      )}
+                      <p className="mt-1 text-xs text-sidebar-muted">{t('stayoverRestant')}</p>
+                      <DepartureStatus task={task} />
+                    </div>
+                    <Button
+                      variant="action"
+                      className="min-h-[44px] px-4 py-2 text-sm"
+                      disabled={completeTask.isPending}
+                      onClick={() => completeTask.mutate(task.id)}
+                    >
+                      {t('fertig')}
+                    </Button>
                   </div>
                   <Button
-                    variant="action"
-                    className="min-h-[44px] px-4 py-2 text-sm"
+                    type="button"
+                    variant="ghostOnDark"
+                    className="min-h-[44px] w-full border border-sidebar-border/70 px-3 py-2 text-sm"
                     disabled={completeTask.isPending}
-                    onClick={() => completeTask.mutate(task.id)}
+                    onClick={() =>
+                      setNoCleaningTask({
+                        id: task.id,
+                        roomNumber: task.roomNumber ?? '—',
+                      })
+                    }
                   >
-                    {t('fertig')}
+                    {t('noCleaningRequested')}
                   </Button>
                 </Card>
               </li>
@@ -234,6 +259,13 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           </ul>
         </section>
       )}
+
+      <NoCleaningRequestedModal
+        open={!!noCleaningTask}
+        onClose={() => setNoCleaningTask(null)}
+        taskId={noCleaningTask?.id ?? ''}
+        roomNumber={noCleaningTask?.roomNumber ?? ''}
+      />
 
       {publicTasks.length > 0 && (
         <section>

@@ -338,8 +338,20 @@
       "deletedMessage": "Mensagem eliminada",
       "replyingTo": "A responder a {name}",
       "placeholder": "Mensagem… @ para mencionar",
-      "noPostPermission": "Sem permissão para publicar."
-    }
+      "noPostPermission": "Sem permissão para publicar.",
+      "attachPhoto": "Anexar foto",
+      "removePhoto": "Remover foto",
+      "photoMessage": "Foto",
+      "photoAlt": "Foto do chat",
+      "photoReady": "Foto pronta para enviar",
+      "photoUploadFailed": "Não foi possível carregar a foto"
+    },
+    "attachPhoto": "Anexar foto",
+    "removePhoto": "Remover foto",
+    "photoAlt": "Foto do chat",
+    "photoMessage": "Foto",
+    "photoReady": "Foto pronta para enviar",
+    "photoUploadFailed": "Não foi possível carregar a foto"
   },
   "notifications": {
     "title": "Notificações",
@@ -837,6 +849,11 @@
     "guestCheckedOut": "Checked out",
     "guestStillInRoom": "Hóspede ainda no quarto",
     "fertig": "Concluído",
+    "noCleaningRequested": "Limpeza não desejada",
+    "noCleaningHint": "Fotografe o aviso na porta e conclua o restante. O estado do quarto não muda.",
+    "noCleaningPhotoRequired": "Foto do aviso *",
+    "noCleaningPhotoHint": "Fotografe o aviso de «sem limpeza» na porta.",
+    "noCleaningConfirm": "Concluir com foto",
     "publicAreas": "Áreas públicas",
     "markDone": "Marcar como feito",
     "inspections": "Inspeções",
@@ -862,7 +879,7 @@
     "reportLostFound": "Reportar objeto perdido",
     "reportDamage": "Reportar dano",
     "restant": "Restante",
-    "restantHint": "Conclua restantes na lista inicial com Concluído — sem alteração de estado do quarto.",
+    "restantHint": "Conclua restantes na lista inicial com Concluído ou «Limpeza não desejada» — sem alteração de estado do quarto.",
     "markCleanHint": "Quando terminar a limpeza, marque o quarto como limpo. Um supervisor inspeciona e tira fotos.",
     "saving": "A guardar…",
     "alreadyMarkedClean": "Quarto já marcado como limpo",
@@ -1016,7 +1033,20 @@
   },
   "technician": {
     "maintenanceTitle": "Manutenção",
-    "roomsTitle": "Quartos"
+    "roomsTitle": "Quartos",
+    "maintenancePage": {
+      "description": "Relatórios de danos abertos da housekeeping e supervisores — mais recentes primeiro.",
+      "statusLabel": "Estado",
+      "filterOpen": "Abertos",
+      "filterAll": "Todos",
+      "filterReported": "Reportado",
+      "filterAcknowledged": "Confirmado",
+      "filterResolved": "Resolvido",
+      "loading": "A carregar…",
+      "empty": "Sem relatórios de danos.",
+      "emptyOpen": "Sem relatórios de danos abertos.",
+      "roomLine": "Quarto {roomNumber} · {reporter} · {when}"
+    }
   },
   "admin": {
     "dashboard": "Administração",
@@ -1084,7 +1114,8 @@
     "error": "Algo correu mal",
     "roomStatus": "O quarto {roomNumber} está agora {status}",
     "newChatMessage": "Nova mensagem de {author}: {preview}",
-    "dismiss": "Dispensar"
+    "dismiss": "Dispensar",
+    "chatPhoto": "Foto"
   },
   "guides": {
     "title": "Guias",

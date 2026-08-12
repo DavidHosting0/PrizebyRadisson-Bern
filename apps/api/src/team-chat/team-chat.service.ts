@@ -16,6 +16,7 @@ const messageInclude = {
     select: {
       id: true,
       body: true,
+      photoS3Key: true,
       createdAt: true,
       deletedAt: true,
       author: { select: userPublicSelect },
@@ -43,12 +44,14 @@ type MentionRow = {
 type MessageRow = {
   id: string;
   body: string;
+  photoS3Key: string | null;
   sourceLocale: string | null;
   createdAt: Date;
   author: AuthorRow;
   replyTo: {
     id: string;
     body: string;
+    photoS3Key: string | null;
     createdAt: Date;
     deletedAt: Date | null;
     author: AuthorRow;
@@ -132,26 +135,36 @@ export class TeamChatService {
     return emoji;
   }
 
-  private async buildAvatarUrlMap(rows: MessageRow[]): Promise<Map<string, string>> {
-    const keys = new Set<string>();
+  private async buildMediaUrlMap(rows: MessageRow[]): Promise<{
+    avatars: Map<string, string>;
+    photos: Map<string, string>;
+  }> {
+    const avatarKeys = new Set<string>();
+    const photoKeys = new Set<string>();
     for (const r of rows) {
-      if (r.author.avatarS3Key) keys.add(r.author.avatarS3Key);
-      if (r.replyTo?.author.avatarS3Key) keys.add(r.replyTo.author.avatarS3Key);
+      if (r.author.avatarS3Key) avatarKeys.add(r.author.avatarS3Key);
+      if (r.replyTo?.author.avatarS3Key) avatarKeys.add(r.replyTo.author.avatarS3Key);
       for (const m of r.mentions) {
-        if (m.user.avatarS3Key) keys.add(m.user.avatarS3Key);
+        if (m.user.avatarS3Key) avatarKeys.add(m.user.avatarS3Key);
       }
+      if (r.photoS3Key) photoKeys.add(r.photoS3Key);
+      if (r.replyTo?.photoS3Key) photoKeys.add(r.replyTo.photoS3Key);
     }
-    const entries = await Promise.all(
-      Array.from(keys).map(async (key) => {
-        try {
-          const { url } = await this.s3.presignGet(key);
-          return [key, url ?? ''] as const;
-        } catch {
-          return [key, ''] as const;
-        }
-      }),
-    );
-    return new Map(entries.filter((entry): entry is readonly [string, string] => !!entry[1]));
+    const resolve = async (keys: Set<string>) => {
+      const entries = await Promise.all(
+        Array.from(keys).map(async (key) => {
+          try {
+            const { url } = await this.s3.presignGet(key);
+            return [key, url ?? ''] as const;
+          } catch {
+            return [key, ''] as const;
+          }
+        }),
+      );
+      return new Map(entries.filter((entry): entry is readonly [string, string] => !!entry[1]));
+    };
+    const [avatars, photos] = await Promise.all([resolve(avatarKeys), resolve(photoKeys)]);
+    return { avatars, photos };
   }
 
   private authorDto(a: AuthorRow, urls: Map<string, string>) {
@@ -177,6 +190,10 @@ export class TeamChatService {
     mentions: MentionRow[],
     targetLocale: SupportedLocale,
   ): Promise<{ displayBody: string; bodyTranslated: string | null; isTranslated: boolean }> {
+    if (!body.trim()) {
+      return { displayBody: '', bodyTranslated: null, isTranslated: false };
+    }
+
     const mentionList = this.mentionDtos(mentions);
     const detected = this.translation.detectLocale(body);
 
@@ -239,7 +256,7 @@ export class TeamChatService {
   private async mapMessage(
     row: MessageRow,
     viewerId: string,
-    urls: Map<string, string>,
+    urls: { avatars: Map<string, string>; photos: Map<string, string> },
     targetLocale: SupportedLocale,
   ) {
     const { displayBody, bodyTranslated, isTranslated } = await this.resolveTranslatedBody(
@@ -257,8 +274,9 @@ export class TeamChatService {
           id: row.replyTo.id,
           body: '',
           bodyTranslated: null,
+          photoUrl: null,
           createdAt: row.replyTo.createdAt,
-          author: this.authorDto(row.replyTo.author, urls),
+          author: this.authorDto(row.replyTo.author, urls.avatars),
           deleted: true,
         };
       } else {
@@ -274,16 +292,20 @@ export class TeamChatService {
           id: row.replyTo.id,
           body: replyTranslation.displayBody,
           bodyTranslated: replyTranslation.isTranslated ? row.replyTo.body : null,
+          photoUrl: row.replyTo.photoS3Key
+            ? urls.photos.get(row.replyTo.photoS3Key) ?? null
+            : null,
           createdAt: row.replyTo.createdAt,
-          author: this.authorDto(row.replyTo.author, urls),
+          author: this.authorDto(row.replyTo.author, urls.avatars),
           deleted: false,
         };
       }
     }
 
-    const sourceLocale =
-      this.translation.detectLocale(row.body) ??
-      (isSupportedLocale(row.sourceLocale) ? row.sourceLocale : null);
+    const sourceLocale = row.body.trim()
+      ? this.translation.detectLocale(row.body) ??
+        (isSupportedLocale(row.sourceLocale) ? row.sourceLocale : null)
+      : null;
 
     return {
       id: row.id,
@@ -291,11 +313,12 @@ export class TeamChatService {
       bodyTranslated,
       sourceLocale,
       isTranslated,
+      photoUrl: row.photoS3Key ? urls.photos.get(row.photoS3Key) ?? null : null,
       createdAt: row.createdAt,
-      author: this.authorDto(row.author, urls),
+      author: this.authorDto(row.author, urls.avatars),
       replyTo,
       reactions: this.summarizeReactions(row.reactions, viewerId),
-      mentions: row.mentions.map((m) => this.authorDto(m.user, urls)),
+      mentions: row.mentions.map((m) => this.authorDto(m.user, urls.avatars)),
     };
   }
 
@@ -313,11 +336,12 @@ export class TeamChatService {
       orderBy: { createdAt: order },
       include: messageInclude,
     })) as unknown as MessageRow[];
-    const urls = await this.buildAvatarUrlMap(rows);
+    const urls = await this.buildMediaUrlMap(rows);
     return Promise.all(rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale)));
   }
 
   private setSourceLocaleAsync(messageId: string, body: string) {
+    if (!body.trim()) return;
     const detected = this.translation.detectLocale(body);
     if (!detected) return;
     void this.prisma.teamChatMessage
@@ -395,7 +419,36 @@ export class TeamChatService {
     return validIds;
   }
 
-  async create(body: string, user: User, replyToId?: string, mentionUserIds: string[] = []) {
+  async presign(contentType: string) {
+    const mime = (contentType || '').toLowerCase() || 'image/jpeg';
+    if (!mime.startsWith('image/')) {
+      throw new BadRequestException('Only image uploads are allowed');
+    }
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+    const key = this.s3.buildTeamChatKey(ext);
+    const { url } = await this.s3.presignPut(key, mime);
+    return { uploadUrl: url, key };
+  }
+
+  async create(
+    body: string,
+    user: User,
+    replyToId?: string,
+    mentionUserIds: string[] = [],
+    photoS3Key?: string,
+  ) {
+    const text = (body ?? '').trim();
+    const photoKey = photoS3Key?.trim() || null;
+    if (!text && !photoKey) {
+      throw new BadRequestException('Message body or photo required');
+    }
+    if (photoKey && !photoKey.startsWith('team-chat/')) {
+      throw new BadRequestException('Invalid photo key');
+    }
+    if (text.length > 2000) {
+      throw new BadRequestException('Message too long');
+    }
+
     if (replyToId) {
       const parent = await this.prisma.teamChatMessage.findUnique({
         where: { id: replyToId },
@@ -408,7 +461,8 @@ export class TeamChatService {
     const msg = await this.prisma.$transaction(async (tx) => {
       const created = await tx.teamChatMessage.create({
         data: {
-          body: body.trim(),
+          body: text,
+          photoS3Key: photoKey,
           authorId: user.id,
           replyToId: replyToId ?? null,
           ...(validMentionIds.length > 0
@@ -425,7 +479,7 @@ export class TeamChatService {
     });
 
     const row = msg as unknown as MessageRow;
-    const urls = await this.buildAvatarUrlMap([row]);
+    const urls = await this.buildMediaUrlMap([row]);
     const targetLocale = resolveLocale(user.preferredLocale);
     const mapped = await this.mapMessage(row, user.id, urls, targetLocale);
 

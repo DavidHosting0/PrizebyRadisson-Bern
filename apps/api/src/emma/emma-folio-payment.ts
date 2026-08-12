@@ -67,6 +67,8 @@ export type EmmaVccChargeResult = {
 export type EmmaVccPaymentOutcome = {
   status: 'PAID' | 'DECLINED' | 'NO_VCC' | 'AMBIGUOUS' | 'UNSAFE';
   invoiceNumber: string | null;
+  /** EMMA Deposits.Id when charged without invoice. */
+  depositId?: string | null;
   amount: string | null;
   currency: string | null;
   cardMask: string | null;

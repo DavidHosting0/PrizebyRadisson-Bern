@@ -36,10 +36,8 @@ import { fetchEmmaReservationDetailFromJar } from './emma-reservation-detail-fet
 import { fetchEmmaReservationFolioFromJar } from './emma-reservation-folio-fetch';
 import { moveEmmaFolioChargeFromJar, moveEmmaFolioChargesFromJar } from './emma-folio-move-charge';
 import { clearStaleEmmaFolioPostBlock } from './emma-folio-edit-session';
-import {
-  settleEmmaFolioWithVcc,
-  type EmmaVccPaymentOutcome,
-} from './emma-folio-payment';
+import { settleEmmaFolioDepositWithVcc } from './emma-folio-deposit';
+import type { EmmaVccPaymentOutcome } from './emma-folio-payment';
 import { EmmaMutationLock } from './emma-mutation-lock';
 import {
   emmaCodeToDerivedStatus,
@@ -854,6 +852,7 @@ export class EmmaService {
     folioId: string;
     amount: string;
     currency: string;
+    holder?: string;
   }): Promise<EmmaVccPaymentOutcome> {
     await this.assertIntegrationActive();
     const creds = await this.settings.getEmmaLoginSecrets();
@@ -885,19 +884,20 @@ export class EmmaService {
     // received from the orchestrator — so a future investigation can compare
     // "what was requested" against "what was charged" in EMMA.
     this.log.log(
-      `[EMMA-VCC-AUDIT] payFolioWithVcc requested reservation=${params.reservationId} ` +
+      `[EMMA-VCC-AUDIT] payFolioWithVcc (deposit, no invoice) requested reservation=${params.reservationId} ` +
         `folio=${params.folioId} amount=${params.amount} ${params.currency} hotel=${hid}`,
     );
 
     const emmaDebug = createEmmaSyncDebug(this.log);
     return this.mutationLock.run(() =>
-      settleEmmaFolioWithVcc(jar, baseUrl, {
+      settleEmmaFolioDepositWithVcc(jar, baseUrl, {
         hotelId: hid,
         reservationId: params.reservationId,
         folioId: params.folioId,
         amount: params.amount,
         currency: params.currency,
         employee: operatorCode,
+        holder: params.holder,
         sapClient,
         debug: emmaDebug.verbose ? emmaDebug : undefined,
       }),

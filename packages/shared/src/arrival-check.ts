@@ -114,8 +114,13 @@ export type ArrivalCheckRunItem = {
   paymentExpectedAmount: string | null;
   /** Mask of the VCC that was selected for charging (audit). */
   paymentCardMask: string | null;
-  /** EMMA invoice number created for the VCC charge. */
+  /** EMMA invoice number — unused for deposit (without-invoice) VCC charges. */
   paymentInvoice: string | null;
+  /** EMMA Deposits.Id charged without invoice. */
+  paymentDepositId: string | null;
+  /** Folio 2 outstanding amount stored before the VCC deposit charge. */
+  folio2Amount: string | null;
+  folio2Currency: string | null;
   /** Gateway decline / error message when the VCC charge did not succeed. */
   paymentError: string | null;
   /**

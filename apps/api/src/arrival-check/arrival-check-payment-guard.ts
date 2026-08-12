@@ -285,3 +285,145 @@ export function canReuseInvoice(
 }
 
 export { GUEST_FOLIO_ID };
+
+export type EmmaDepositRow = {
+  HotelId?: unknown;
+  ReservationId?: unknown;
+  Id?: unknown;
+  DepositRequested?: unknown;
+  AmountReceived?: unknown;
+  PrepaymentReceived?: unknown;
+  Invoice?: unknown;
+  Currency?: unknown;
+};
+
+function isTruthyFlag(value: unknown): boolean {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    const s = value.trim().toLowerCase();
+    return s === 'true' || s === 'x' || s === '1' || s === 'yes';
+  }
+  return value === 1;
+}
+
+export function folioBundleReservationId(folio: ReservationEmmaFolioBundle): string {
+  return String(
+    (folio.reservation as { ReservationId?: unknown } | undefined)?.ReservationId ?? '',
+  ).trim();
+}
+
+/** Folio 2 (or target) has nothing left to charge. */
+export function isFolioBalanceZero(
+  folio: ReservationEmmaFolioBundle,
+  folioId: string,
+  tolerance = PAYMENT_AMOUNT_TOLERANCE,
+): boolean {
+  const displayed = getFolioDisplayedAmounts(folio, folioId);
+  if (displayed.amountDue != null && displayed.amountDue <= tolerance) return true;
+  return false;
+}
+
+export function isOpenUnpaidDeposit(
+  row: EmmaDepositRow,
+  tolerance = PAYMENT_AMOUNT_TOLERANCE,
+): boolean {
+  const id = String(row.Id ?? '').trim();
+  if (!id) return false;
+  if (isTruthyFlag(row.PrepaymentReceived)) return false;
+  const received = parseAmount(row.AmountReceived) ?? 0;
+  return received <= tolerance;
+}
+
+export function isPaidMatchingDeposit(
+  row: EmmaDepositRow,
+  expectedAmount: string,
+  tolerance = PAYMENT_AMOUNT_TOLERANCE,
+): boolean {
+  const id = String(row.Id ?? '').trim();
+  if (!id) return false;
+  const requested = row.DepositRequested;
+  const received = row.AmountReceived;
+  if (requested == null || !amountsMatch(String(requested), expectedAmount, tolerance)) return false;
+  if (received != null && amountsMatch(String(received), expectedAmount, tolerance)) return true;
+  return isTruthyFlag(row.PrepaymentReceived);
+}
+
+export type DepositPick =
+  | { kind: 'reuse'; id: string }
+  | { kind: 'already_paid'; id: string }
+  | { kind: 'create' };
+
+/**
+ * Choose which deposit to collect: reuse an open one only when its requested
+ * amount matches Folio 2. Wrong-amount auto-deposits are ignored (create ours).
+ */
+export function pickDepositForFolio2Amount(
+  rows: EmmaDepositRow[],
+  reservationId: string,
+  expectedAmount: string,
+): DepositPick {
+  const target = normalizeReservationId(reservationId);
+  const mine = rows.filter(
+    (row) => normalizeReservationId(row.ReservationId) === target && String(row.Id ?? '').trim(),
+  );
+
+  const paid = mine.find((row) => isPaidMatchingDeposit(row, expectedAmount));
+  if (paid) {
+    return { kind: 'already_paid', id: String(paid.Id).trim() };
+  }
+
+  const openMatch = mine.find(
+    (row) =>
+      isOpenUnpaidDeposit(row) &&
+      row.DepositRequested != null &&
+      amountsMatch(String(row.DepositRequested), expectedAmount),
+  );
+  if (openMatch) {
+    return { kind: 'reuse', id: String(openMatch.Id).trim() };
+  }
+
+  return { kind: 'create' };
+}
+
+export function assertDepositMatchesCharge(input: {
+  reservationId: string;
+  expectedAmount: string;
+  deposit: EmmaDepositRow;
+  expectedId?: string;
+}): PaymentGuardResult {
+  const reservationId = normalizeReservationId(input.reservationId);
+  const depositRes = normalizeReservationId(input.deposit.ReservationId);
+  if (!depositRes || depositRes !== reservationId) {
+    return {
+      ok: false,
+      reason: `Deposit gehört zu Reservierung ${depositRes || '—'}, erwartet ${reservationId}.`,
+    };
+  }
+  const id = String(input.deposit.Id ?? '').trim();
+  if (!id) {
+    return { ok: false, reason: 'Deposit ohne Id – Zahlung abgebrochen.' };
+  }
+  if (input.expectedId && id !== input.expectedId.trim()) {
+    return {
+      ok: false,
+      reason: `Deposit-Id ${id} weicht von der geplanten Id ${input.expectedId} ab.`,
+    };
+  }
+  if (
+    input.deposit.DepositRequested == null ||
+    !amountsMatch(String(input.deposit.DepositRequested), input.expectedAmount)
+  ) {
+    return {
+      ok: false,
+      reason: `Deposit-Betrag ${String(input.deposit.DepositRequested ?? '—')} weicht von Folio 2 (${input.expectedAmount}) ab.`,
+    };
+  }
+  const invoice = String(input.deposit.Invoice ?? '').trim();
+  if (invoice) {
+    return {
+      ok: false,
+      reason: `Deposit hat Invoice ${invoice} – Zahlung muss ohne Rechnung erfolgen.`,
+    };
+  }
+  return { ok: true };
+}

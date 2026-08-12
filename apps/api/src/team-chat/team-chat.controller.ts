@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/commo
 import { PermissionCode, User } from '@prisma/client';
 import { TeamChatService } from './team-chat.service';
 import { PostTeamChatDto } from './dto/post-team-chat.dto';
+import { PresignTeamChatDto } from './dto/presign-team-chat.dto';
 import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
@@ -28,12 +29,19 @@ export class TeamChatController {
     return this.svc.listMentionables(q ?? '');
   }
 
+  @Post('presign')
+  @RequirePermissions(PermissionCode.TEAM_CHAT_POST)
+  presign(@Body() dto: PresignTeamChatDto) {
+    return this.svc.presign(dto.contentType);
+  }
+
   @Post('messages')
   @RequirePermissions(PermissionCode.TEAM_CHAT_POST)
   post(@Body() dto: PostTeamChatDto, @CurrentUser() user: User) {
     const replyToId = dto.replyToId?.trim() || undefined;
     const mentionUserIds = dto.mentionUserIds?.filter(Boolean) ?? [];
-    return this.svc.create(dto.body, user, replyToId, mentionUserIds);
+    const photoS3Key = dto.photoS3Key?.trim() || undefined;
+    return this.svc.create(dto.body ?? '', user, replyToId, mentionUserIds, photoS3Key);
   }
 
   @Post('messages/:messageId/reactions')

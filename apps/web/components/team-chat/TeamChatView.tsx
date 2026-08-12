@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
+import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { useAuth, usePermission } from '@/lib/auth-context';
@@ -42,12 +43,14 @@ type ChatMsg = {
   bodyTranslated?: string | null;
   sourceLocale?: string | null;
   isTranslated?: boolean;
+  photoUrl?: string | null;
   createdAt: string;
   author: ChatAuthor;
   replyTo: {
     id: string;
     body: string;
     bodyTranslated?: string | null;
+    photoUrl?: string | null;
     createdAt: string;
     author: ChatAuthor;
     deleted?: boolean;
@@ -70,11 +73,30 @@ function ChatMessageBody({
   const hasTranslation = !!msg.isTranslated && !!msg.bodyTranslated;
   const displayBody =
     hasTranslation && showOriginal ? msg.bodyTranslated! : msg.body;
+  const hasText = !!displayBody.trim();
 
   return (
     <>
-      <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
-      {hasTranslation && (
+      {msg.photoUrl && (
+        <a
+          href={msg.photoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={clsx('block overflow-hidden rounded-lg', hasText ? 'mb-2' : '')}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={msg.photoUrl}
+            alt={t('photoAlt')}
+            className="max-h-64 w-full object-cover"
+          />
+        </a>
+      )}
+      {hasText && (
+        <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
+      )}
+      {hasTranslation && hasText && (
         <button
           type="button"
           onClick={() => setShowOriginal((v) => !v)}
@@ -126,6 +148,7 @@ type DmgRow = {
 type ReplyTarget = {
   id: string;
   body: string;
+  photoUrl?: string | null;
   author: ChatAuthor;
 };
 
@@ -273,6 +296,9 @@ export function TeamChatView({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
@@ -481,20 +507,76 @@ export function TeamChatView({
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
+
+  const clearPhoto = useCallback(() => {
+    setPhotoFile(null);
+    setPhotoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  }, []);
+
+  const onPhotoPicked = useCallback(
+    (file: File | undefined) => {
+      if (!file || !file.type.startsWith('image/')) return;
+      setPhotoFile(file);
+      setPhotoPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+    },
+    [],
+  );
+
   const send = useMutation({
-    mutationFn: (payload: { text: string; replyToId?: string; mentionUserIds: string[] }) =>
-      api('/team-chat/messages', {
+    mutationFn: async (payload: {
+      text: string;
+      replyToId?: string;
+      mentionUserIds: string[];
+      photo?: File | null;
+    }) => {
+      let photoS3Key: string | undefined;
+      if (payload.photo) {
+        const compressed = await imageCompression(payload.photo, {
+          maxSizeMB: 0.6,
+          maxWidthOrHeight: 1600,
+        });
+        const contentType = compressed.type || payload.photo.type || 'image/jpeg';
+        const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
+          method: 'POST',
+          body: JSON.stringify({ contentType }),
+        });
+        const putRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': contentType },
+          body: compressed,
+        });
+        if (!putRes.ok) {
+          throw new Error(tChat('photoUploadFailed'));
+        }
+        photoS3Key = presign.key;
+      }
+      return api('/team-chat/messages', {
         method: 'POST',
         body: JSON.stringify({
           body: payload.text,
           replyToId: payload.replyToId,
           mentionUserIds: payload.mentionUserIds,
+          photoS3Key,
         }),
-      }),
+      });
+    },
     onSuccess: () => {
       setBody('');
       setMentionUserIds([]);
       setReplyTo(null);
+      clearPhoto();
       qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
     },
     onError: (e: unknown) => {
@@ -550,8 +632,8 @@ export function TeamChatView({
   function onSend(e: FormEvent) {
     e.preventDefault();
     const t = body.trim();
-    if (!t || send.isPending || !canPost) return;
-    send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds });
+    if ((!t && !photoFile) || send.isPending || !canPost) return;
+    send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
   }
 
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -561,7 +643,12 @@ export function TeamChatView({
   }, []);
 
   const startReply = useCallback((m: ChatMsg) => {
-    setReplyTo({ id: m.id, body: m.body, author: m.author });
+    setReplyTo({
+      id: m.id,
+      body: m.body,
+      photoUrl: m.photoUrl,
+      author: m.author,
+    });
     setMenu(null);
   }, []);
 
@@ -881,7 +968,11 @@ export function TeamChatView({
                           <p className="mt-0.5 truncate text-sidebar-muted">
                             {m.replyTo.deleted
                               ? tChat('deletedMessage')
-                              : truncateBody(m.replyTo.body, 120)}
+                              : m.replyTo.body.trim()
+                                ? truncateBody(m.replyTo.body, 120)
+                                : m.replyTo.photoUrl
+                                  ? tChat('photoMessage')
+                                  : '—'}
                           </p>
                         </div>
                       )}
@@ -958,7 +1049,13 @@ export function TeamChatView({
                 <p className="font-semibold text-white">
                   {tChat('replyingToName', { name: replyTo.author.name })}
                 </p>
-                <p className="mt-0.5 truncate text-sidebar-muted">{truncateBody(replyTo.body, 160)}</p>
+                <p className="mt-0.5 truncate text-sidebar-muted">
+                  {replyTo.body.trim()
+                    ? truncateBody(replyTo.body, 160)
+                    : replyTo.photoUrl
+                      ? tChat('photoMessage')
+                      : '—'}
+                </p>
               </div>
               <button
                 type="button"
@@ -967,6 +1064,23 @@ export function TeamChatView({
               >
                 {tCommon('cancel')}
               </button>
+            </div>
+          )}
+          {photoPreviewUrl && (
+            <div className="mx-auto flex w-full max-w-3xl items-start gap-2 border-b border-sidebar-border/60 px-3 py-2">
+              <div className="relative h-16 w-16 overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photoPreviewUrl} alt="" className="h-full w-full object-cover" />
+                <button
+                  type="button"
+                  onClick={clearPhoto}
+                  className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
+                  aria-label={tChat('removePhoto')}
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="pt-1 text-xs text-sidebar-muted">{tChat('photoReady')}</p>
             </div>
           )}
           <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 py-2.5 sm:px-4">
@@ -994,6 +1108,34 @@ export function TeamChatView({
               </button>
             )}
 
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                onPhotoPicked(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={send.isPending}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white disabled:opacity-50"
+              aria-label={tChat('attachPhoto')}
+              title={tChat('attachPhoto')}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                />
+                <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
+              </svg>
+            </button>
+
             <MentionComposer
               value={body}
               onChange={setBody}
@@ -1003,17 +1145,17 @@ export function TeamChatView({
               maxLength={2000}
               onSubmitShortcut={() => {
                 const t = body.trim();
-                if (!t || send.isPending || !canPost) return;
-                send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds });
+                if ((!t && !photoFile) || send.isPending || !canPost) return;
+                send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
               }}
             />
 
             <button
               type="submit"
-              disabled={send.isPending || !body.trim()}
+              disabled={send.isPending || (!body.trim() && !photoFile)}
               className={clsx(
                 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
-                body.trim() && !send.isPending
+                (body.trim() || photoFile) && !send.isPending
                   ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
                   : 'bg-white/10 text-sidebar-muted',
               )}

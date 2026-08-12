@@ -366,8 +366,17 @@ export function AutoAssignSetupModal({
   });
 
   const run = useMutation({
-    mutationFn: () =>
-      api<DailyCleaningPlanResponse>('/assignments/daily-plan/run', {
+    mutationFn: () => {
+      const previewPins =
+        roomAssignments ??
+        (previewQ.data ? assignmentsFromPeople(previewQ.data.people) : null);
+      const countLocks =
+        Object.keys(lockedTargets).length > 0
+          ? lockedTargets
+          : previewPins
+            ? countsFromAssignments(previewPins, workingIds)
+            : null;
+      return api<DailyCleaningPlanResponse>('/assignments/daily-plan/run', {
         method: 'POST',
         body: JSON.stringify({
           date: date?.trim() || undefined,
@@ -376,15 +385,15 @@ export function AutoAssignSetupModal({
           lateShiftUserIds: lateIds.filter((id) => workingSet.has(id)),
           publicAssigneeUserIds: publicIds,
           inspectorUserIds: inspectorIds,
-          dirtyRoomTargets:
-            Object.keys(lockedTargets).length > 0
-              ? Object.entries(lockedTargets).map(([userId, count]) => ({ userId, count }))
-              : undefined,
-          dirtyRoomAssignments: roomAssignments
-            ? Object.entries(roomAssignments).map(([roomId, userId]) => ({ roomId, userId }))
+          dirtyRoomTargets: countLocks
+            ? Object.entries(countLocks).map(([userId, count]) => ({ userId, count }))
+            : undefined,
+          dirtyRoomAssignments: previewPins
+            ? Object.entries(previewPins).map(([roomId, userId]) => ({ roomId, userId }))
             : undefined,
         }),
-      }),
+      });
+    },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['assignments'] });
       await qc.invalidateQueries({ queryKey: ['rooms'] });

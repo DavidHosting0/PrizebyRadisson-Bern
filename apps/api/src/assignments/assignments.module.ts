@@ -7,6 +7,7 @@ import { PublicAreasController } from './public-areas.controller';
 import { RoomsModule } from '../rooms/rooms.module';
 import { EmmaModule } from '../emma/emma.module';
 import { DeparturesModule } from '../departures/departures.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { DeparturesModule } from '../departures/departures.module';
     DeparturesModule,
     forwardRef(() => EmmaModule),
     InspectionQueueModule,
+    StorageModule,
   ],
   controllers: [AssignmentsController, PublicAreasController],
   providers: [AssignmentsService, DailyCleaningService, PublicAreasService],

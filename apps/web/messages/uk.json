@@ -338,8 +338,20 @@
       "deletedMessage": "Видалене повідомлення",
       "replyingTo": "Відповідь {name}",
       "placeholder": "Повідомлення… @ щоб згадати",
-      "noPostPermission": "Немає дозволу на публікацію."
-    }
+      "noPostPermission": "Немає дозволу на публікацію.",
+      "attachPhoto": "Додати фото",
+      "removePhoto": "Прибрати фото",
+      "photoMessage": "Фото",
+      "photoAlt": "Фото в чаті",
+      "photoReady": "Фото готове до надсилання",
+      "photoUploadFailed": "Не вдалося завантажити фото"
+    },
+    "attachPhoto": "Додати фото",
+    "removePhoto": "Прибрати фото",
+    "photoAlt": "Фото в чаті",
+    "photoMessage": "Фото",
+    "photoReady": "Фото готове до надсилання",
+    "photoUploadFailed": "Не вдалося завантажити фото"
   },
   "notifications": {
     "title": "Сповіщення",
@@ -837,6 +849,11 @@
     "guestCheckedOut": "Виїхав",
     "guestStillInRoom": "Гість ще в номері",
     "fertig": "Готово",
+    "noCleaningRequested": "Прибирання не потрібне",
+    "noCleaningHint": "Сфотографуйте табличку на дверях і закрийте залишок. Статус номера не змінюється.",
+    "noCleaningPhotoRequired": "Фото таблички *",
+    "noCleaningPhotoHint": "Сфотографуйте табличку «без прибирання» на дверях.",
+    "noCleaningConfirm": "Завершити з фото",
     "publicAreas": "Громадські зони",
     "markDone": "Позначити виконаним",
     "inspections": "Перевірки",
@@ -862,7 +879,7 @@
     "reportLostFound": "Повідомити про загублену річ",
     "reportDamage": "Повідомити про пошкодження",
     "restant": "Залишок",
-    "restantHint": "Завершуйте залишки зі списку на головній кнопкою Готово — без зміни статусу номера.",
+    "restantHint": "Завершуйте залишки зі списку на головній кнопкою Готово або «Прибирання не потрібне» — без зміни статусу номера.",
     "markCleanHint": "Коли закінчите прибирання, позначте номер чистим. Супервізор перевірить і зробить фото.",
     "saving": "Збереження…",
     "alreadyMarkedClean": "Номер уже позначено чистим",
@@ -1016,7 +1033,20 @@
   },
   "technician": {
     "maintenanceTitle": "Технічне обслуговування",
-    "roomsTitle": "Номери"
+    "roomsTitle": "Номери",
+    "maintenancePage": {
+      "description": "Відкриті звіти про пошкодження від housekeeping та супервайзерів — спочатку найновіші.",
+      "statusLabel": "Статус",
+      "filterOpen": "Відкриті",
+      "filterAll": "Усі",
+      "filterReported": "Повідомлено",
+      "filterAcknowledged": "Підтверджено",
+      "filterResolved": "Вирішено",
+      "loading": "Завантаження…",
+      "empty": "Немає звітів про пошкодження.",
+      "emptyOpen": "Немає відкритих звітів про пошкодження.",
+      "roomLine": "Номер {roomNumber} · {reporter} · {when}"
+    }
   },
   "admin": {
     "dashboard": "Адміністрування",
@@ -1084,7 +1114,8 @@
     "error": "Щось пішло не так",
     "roomStatus": "Номер {roomNumber} тепер {status}",
     "newChatMessage": "Нове повідомлення від {author}: {preview}",
-    "dismiss": "Закрити"
+    "dismiss": "Закрити",
+    "chatPhoto": "Фото"
   },
   "guides": {
     "title": "Інструкції",

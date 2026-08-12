@@ -84,6 +84,9 @@ function mockItem(
     paymentExpectedAmount: null,
     paymentCardMask: null,
     paymentInvoice: null,
+    paymentDepositId: null,
+    folio2Amount: null,
+    folio2Currency: null,
     paymentError: null,
     alreadyCompletedAt: null,
     alreadyCompletedRunId: null,
@@ -194,7 +197,7 @@ export function buildArrivalCheckMockRun(
             statusMessage: `${arrivalCheckCategoryLabel(guest.source, guest.scenario)}: abgeschlossen.`,
             paymentStatus: guest.scenario === 'VCC' ? 'PAID' : 'NOT_REQUIRED',
             paymentAmount: guest.scenario === 'VCC' ? '189.00' : null,
-            paymentInvoice: guest.scenario === 'VCC' ? 'INV-2026-0042' : null,
+            paymentDepositId: guest.scenario === 'VCC' ? '0001' : null,
           }),
         );
       }

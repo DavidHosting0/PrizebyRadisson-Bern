@@ -79,6 +79,8 @@ const RULES: RouteRule[] = [
   { method: 'POST', pattern: /^\/assignments\/daily-plan\/run$/, action: 'assignments.daily_plan.run', label: 'Auto-Zuweisung (Tagesplan) gestartet', category: ActivityLogCategory.ASSIGNMENT },
   { method: 'POST', pattern: /^\/assignments\/daily-plan\/save$/, action: 'assignments.daily_plan.save', label: 'Tagesplan gespeichert', category: ActivityLogCategory.ASSIGNMENT },
   { method: 'POST', pattern: /^\/assignments\/daily-plan\/reset$/, action: 'assignments.daily_plan.reset', label: 'Tagesplan zurückgesetzt', category: ActivityLogCategory.ASSIGNMENT },
+  { method: 'POST', pattern: /^\/assignments\/daily-plan\/tasks\/([^/]+)\/complete$/, action: 'assignments.daily_task.complete', label: 'Tagesaufgabe abgeschlossen', category: ActivityLogCategory.ASSIGNMENT, resourceType: 'daily_cleaning_task', resourceIndex: 1 },
+  { method: 'POST', pattern: /^\/assignments\/daily-plan\/tasks\/([^/]+)\/presign-evidence$/, action: 'assignments.daily_task.presign_evidence', label: 'Restant-Nachweisfoto vorbereitet', category: ActivityLogCategory.ASSIGNMENT, resourceType: 'daily_cleaning_task', resourceIndex: 1 },
 
   // Inspections
   { method: 'POST', pattern: /^\/inspections$/, action: 'inspections.create', label: 'Inspektion erfasst', category: ActivityLogCategory.INSPECTION },
@@ -96,6 +98,7 @@ const RULES: RouteRule[] = [
   { method: 'PUT', pattern: /^\/room-types\/([^/]+)\/checklist-template$/, action: 'room_types.checklist.update', label: 'Checklisten-Vorlage bearbeitet', category: ActivityLogCategory.ROOM, resourceType: 'room_type', resourceIndex: 1 },
 
   // Team chat
+  { method: 'POST', pattern: /^\/team-chat\/presign$/, action: 'team_chat.presign', label: 'Chat-Foto vorbereitet', category: ActivityLogCategory.TEAM_CHAT },
   { method: 'POST', pattern: /^\/team-chat\/messages$/, action: 'team_chat.message.create', label: 'Chat-Nachricht gesendet', category: ActivityLogCategory.TEAM_CHAT },
   { method: 'POST', pattern: /^\/team-chat\/messages\/([^/]+)\/reactions$/, action: 'team_chat.reaction', label: 'Chat-Reaktion gesetzt', category: ActivityLogCategory.TEAM_CHAT, resourceType: 'team_chat_message', resourceIndex: 1 },
   { method: 'DELETE', pattern: /^\/team-chat\/messages\/([^/]+)$/, action: 'team_chat.message.delete', label: 'Chat-Nachricht gelöscht', category: ActivityLogCategory.TEAM_CHAT, resourceType: 'team_chat_message', resourceIndex: 1 },

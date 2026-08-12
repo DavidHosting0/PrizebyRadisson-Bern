@@ -338,8 +338,20 @@
       "deletedMessage": "Silinmiş mesaj",
       "replyingTo": "{name} kişisine yanıt",
       "placeholder": "Mesaj… bahsetmek için @",
-      "noPostPermission": "Gönderi izni yok."
-    }
+      "noPostPermission": "Gönderi izni yok.",
+      "attachPhoto": "Fotoğraf ekle",
+      "removePhoto": "Fotoğrafı kaldır",
+      "photoMessage": "Fotoğraf",
+      "photoAlt": "Sohbet fotoğrafı",
+      "photoReady": "Fotoğraf gönderilmeye hazır",
+      "photoUploadFailed": "Fotoğraf yüklenemedi"
+    },
+    "attachPhoto": "Fotoğraf ekle",
+    "removePhoto": "Fotoğrafı kaldır",
+    "photoAlt": "Sohbet fotoğrafı",
+    "photoMessage": "Fotoğraf",
+    "photoReady": "Fotoğraf gönderilmeye hazır",
+    "photoUploadFailed": "Fotoğraf yüklenemedi"
   },
   "notifications": {
     "title": "Bildirimler",
@@ -837,6 +849,11 @@
     "guestCheckedOut": "Check-out yapıldı",
     "guestStillInRoom": "Misafir hâlâ odada",
     "fertig": "Tamam",
+    "noCleaningRequested": "Temizlik istenmiyor",
+    "noCleaningHint": "Kapıdaki tabelayı fotoğraflayın, ardından kalanı kapatın. Oda durumu değişmez.",
+    "noCleaningPhotoRequired": "Tabela fotoğrafı *",
+    "noCleaningPhotoHint": "Lütfen kapıdaki «temizlik yok» tabelasını fotoğraflayın.",
+    "noCleaningConfirm": "Fotoğrafla tamamla",
     "publicAreas": "Ortak alanlar",
     "markDone": "Tamamlandı işaretle",
     "inspections": "Denetimler",
@@ -862,7 +879,7 @@
     "reportLostFound": "Kayıp eşya bildir",
     "reportDamage": "Hasar bildir",
     "restant": "Kalan",
-    "restantHint": "Kalanları ana listenizden Tamam ile bitirin — oda durumu değişmez.",
+    "restantHint": "Kalanları ana listenizden Tamam veya «Temizlik istenmiyor» ile bitirin — oda durumu değişmez.",
     "markCleanHint": "Temizliği bitirdiğinizde odayı temiz olarak işaretleyin. Bir süpervizör denetler ve fotoğraf çeker.",
     "saving": "Kaydediliyor…",
     "alreadyMarkedClean": "Oda zaten temiz işaretlendi",
@@ -1016,7 +1033,20 @@
   },
   "technician": {
     "maintenanceTitle": "Bakım",
-    "roomsTitle": "Odalar"
+    "roomsTitle": "Odalar",
+    "maintenancePage": {
+      "description": "Housekeeping ve supervisorlardan açık hasar raporları — en yeniler önce.",
+      "statusLabel": "Durum",
+      "filterOpen": "Açık",
+      "filterAll": "Tümü",
+      "filterReported": "Bildirildi",
+      "filterAcknowledged": "Onaylandı",
+      "filterResolved": "Çözüldü",
+      "loading": "Yükleniyor…",
+      "empty": "Hasar raporu yok.",
+      "emptyOpen": "Açık hasar raporu yok.",
+      "roomLine": "Oda {roomNumber} · {reporter} · {when}"
+    }
   },
   "admin": {
     "dashboard": "Yönetim",
@@ -1084,7 +1114,8 @@
     "error": "Bir şeyler ters gitti",
     "roomStatus": "Oda {roomNumber} artık {status}",
     "newChatMessage": "{author} yeni mesaj: {preview}",
-    "dismiss": "Kapat"
+    "dismiss": "Kapat",
+    "chatPhoto": "Fotoğraf"
   },
   "guides": {
     "title": "Kılavuzlar",

@@ -210,6 +210,12 @@ enum DailyCleaningTaskSource {
   MANUAL
 }
 
+/// Why a daily cleaning task was closed (RESTANT may be guest decline with photo).
+enum DailyCleaningCompletionReason {
+  CLEANED
+  NO_CLEANING_REQUESTED
+}
+
 enum PublicAreaKind {
   corridor
   glass
@@ -885,11 +891,14 @@ model DailyCleaningTask {
   assigneeUserId  String?
   assignee        User?                    @relation("DailyCleaningTaskAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
   pinned          Boolean                  @default(false)
-  source          DailyCleaningTaskSource  @default(AUTO)
-  overdueDays     Int?
-  completedAt     DateTime?
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  source           DailyCleaningTaskSource          @default(AUTO)
+  overdueDays      Int?
+  completedAt      DateTime?
+  completionReason DailyCleaningCompletionReason?
+  /// Door-hanger / guest decline photo for NO_CLEANING_REQUESTED.
+  evidenceS3Key    String?
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
 
   @@unique([planId, roomId])
   @@unique([planId, publicAreaId])
@@ -1015,6 +1024,8 @@ model FloorPlan {
 model TeamChatMessage {
   id        String   @id @default(cuid())
   body      String   @db.VarChar(2000)
+  /// Optional image attached to the message (S3 object key).
+  photoS3Key String?
   /// Detected language when posted (`de` | `en` | …).
   sourceLocale String?
   authorId  String
@@ -1225,6 +1236,9 @@ model ArrivalCheckRunItem {
   paymentExpectedAmount String?
   paymentCardMask String?
   paymentInvoice String?
+  paymentDepositId String?
+  folio2Amount String?
+  folio2Currency String?
   paymentError  String?                @db.Text
   /** Set when this item was auto-skipped because an earlier run completed the same reservation. */
   alreadyCompletedAt    DateTime?

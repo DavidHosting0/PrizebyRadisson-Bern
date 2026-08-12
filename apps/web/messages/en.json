@@ -301,6 +301,12 @@
     "newServiceRequest": "New service request",
     "editProfilePhoto": "Edit your profile photo",
     "sendFailed": "Could not send message",
+    "attachPhoto": "Attach photo",
+    "removePhoto": "Remove photo",
+    "photoAlt": "Chat photo",
+    "photoMessage": "Photo",
+    "photoReady": "Photo ready to send",
+    "photoUploadFailed": "Could not upload photo",
     "room": "Room {roomNumber}",
     "markDone": "Mark done",
     "requestStatus": {
@@ -338,7 +344,13 @@
       "deletedMessage": "Deleted message",
       "replyingTo": "Replying to {name}",
       "placeholder": "Message… @ to mention",
-      "noPostPermission": "No permission to post."
+      "noPostPermission": "No permission to post.",
+      "attachPhoto": "Attach photo",
+      "removePhoto": "Remove photo",
+      "photoMessage": "Photo",
+      "photoAlt": "Chat photo",
+      "photoReady": "Photo ready to send",
+      "photoUploadFailed": "Could not upload photo"
     }
   },
   "notifications": {
@@ -837,6 +849,11 @@
     "guestCheckedOut": "Checked out",
     "guestStillInRoom": "Guest still in room",
     "fertig": "Done",
+    "noCleaningRequested": "No cleaning requested",
+    "noCleaningHint": "Photograph the door hanger, then close the restant. Room status stays unchanged.",
+    "noCleaningPhotoRequired": "Photo of door hanger *",
+    "noCleaningPhotoHint": "Please photograph the “no cleaning” sign on the door.",
+    "noCleaningConfirm": "Complete with photo",
     "publicAreas": "Public areas",
     "markDone": "Mark done",
     "inspections": "Inspections",
@@ -862,7 +879,7 @@
     "reportLostFound": "Report lost & found",
     "reportDamage": "Report damage",
     "restant": "Restant",
-    "restantHint": "Finish restants from your home list with Done — no room status change.",
+    "restantHint": "Finish restants from your home list with Done or “No cleaning requested” — no room status change.",
     "markCleanHint": "When you are done cleaning, mark the room clean. A supervisor will inspect and take photos.",
     "saving": "Saving…",
     "alreadyMarkedClean": "Room already marked clean",
@@ -1016,7 +1033,20 @@
   },
   "technician": {
     "maintenanceTitle": "Maintenance",
-    "roomsTitle": "Rooms"
+    "roomsTitle": "Rooms",
+    "maintenancePage": {
+      "description": "Open damage reports from housekeeping and supervisors — newest first.",
+      "statusLabel": "Status",
+      "filterOpen": "Open",
+      "filterAll": "All",
+      "filterReported": "Reported",
+      "filterAcknowledged": "Acknowledged",
+      "filterResolved": "Resolved",
+      "loading": "Loading…",
+      "empty": "No damage reports.",
+      "emptyOpen": "No open damage reports.",
+      "roomLine": "Room {roomNumber} · {reporter} · {when}"
+    }
   },
   "admin": {
     "dashboard": "Administration",
@@ -1084,6 +1114,7 @@
     "error": "Something went wrong",
     "roomStatus": "Room {roomNumber} is now {status}",
     "newChatMessage": "New message from {author}: {preview}",
+    "chatPhoto": "Photo",
     "dismiss": "Dismiss"
   },
   "guides": {

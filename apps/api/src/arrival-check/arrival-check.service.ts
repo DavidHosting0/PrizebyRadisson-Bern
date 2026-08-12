@@ -34,7 +34,11 @@ import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
 import { buildArrivalCheckDecision, type ArrivalCheckDecision } from './arrival-check-rules';
 import { planVccPayment } from './arrival-check-vcc';
-import { crossCheckFolioAmount } from './arrival-check-payment-guard';
+import {
+  crossCheckFolioAmount,
+  folioBundleReservationId,
+  isFolioBalanceZero,
+} from './arrival-check-payment-guard';
 import { decryptFolioBundle } from '../reservations/reservation-folio-bundle';
 
 type PaymentPhaseResult = {
@@ -43,6 +47,7 @@ type PaymentPhaseResult = {
   paymentExpectedAmount: string | null;
   paymentCardMask: string | null;
   paymentInvoice: string | null;
+  paymentDepositId: string | null;
   paymentError: string | null;
   /** True when the reservation should stop and be listed for manual intervention. */
   manual: boolean;
@@ -496,6 +501,9 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: null,
         paymentCardMask: null,
         paymentInvoice: null,
+        paymentDepositId: null,
+        folio2Amount: null,
+        folio2Currency: null,
         paymentError: null,
       },
     });
@@ -741,6 +749,9 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: null,
         paymentCardMask: null,
         paymentInvoice: null,
+        paymentDepositId: null,
+        folio2Amount: null,
+        folio2Currency: null,
         paymentError: null,
         statusMessage: 'Reservierungsdaten werden aus EMMA geladen …',
         startedAt: item.startedAt ?? new Date(),
@@ -870,6 +881,7 @@ export class ArrivalCheckService implements OnModuleInit {
             paymentExpectedAmount: payment.paymentExpectedAmount,
             paymentCardMask: payment.paymentCardMask,
             paymentInvoice: payment.paymentInvoice,
+            paymentDepositId: payment.paymentDepositId,
             paymentError: payment.paymentError,
             manualReason: payment.manualReason,
             statusMessage: payment.manualReason,
@@ -883,7 +895,7 @@ export class ArrivalCheckService implements OnModuleInit {
       this.log.log(
         `[ArrivalCheck] ${item.reservationId}: ${categoryLabel}, ${movesDone}/${decision.moves.length} Posten verschoben` +
           (payment.paymentStatus === 'PAID'
-            ? `, VCC belastet ${payment.paymentAmount}`
+            ? `, VCC als Anzahlung (ohne Rechnung) ${payment.paymentAmount}`
             : ''),
       );
 
@@ -898,6 +910,7 @@ export class ArrivalCheckService implements OnModuleInit {
           paymentExpectedAmount: payment.paymentExpectedAmount,
           paymentCardMask: payment.paymentCardMask,
           paymentInvoice: payment.paymentInvoice,
+          paymentDepositId: payment.paymentDepositId,
           paymentError: null,
           statusMessage: this.completionMessage(decision, categoryLabel, movesDone, payment),
           finishedAt: completedAt,
@@ -975,9 +988,7 @@ export class ArrivalCheckService implements OnModuleInit {
     // CROSS-CHECK: the refreshed folio must belong to the reservation we're paying.
     // Without this, an EMMA cache/session bleed could give us another reservation's
     // folio data — and we would compute the wrong amount on the wrong card.
-    const folioResId = String(
-      (paymentFolio.reservation as { ReservationId?: unknown } | undefined)?.ReservationId ?? '',
-    ).trim();
+    const folioResId = folioBundleReservationId(paymentFolio);
     if (folioResId && folioResId !== reservationId.trim()) {
       const reason = `Folio gehört zu Reservierung ${folioResId}, erwartet ${reservationId} – Zahlung blockiert.`;
       this.log.error(`[ArrivalCheck-SAFETY] ${reason}`);
@@ -987,6 +998,7 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: null,
         paymentCardMask: null,
         paymentInvoice: null,
+        paymentDepositId: null,
         paymentError: reason,
         manual: true,
         manualReason: reason,
@@ -1001,6 +1013,7 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: null,
         paymentCardMask: null,
         paymentInvoice: null,
+        paymentDepositId: null,
         paymentError: null,
         manual: false,
         manualReason: null,
@@ -1020,6 +1033,7 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: plan.amount,
         paymentCardMask: null,
         paymentInvoice: null,
+        paymentDepositId: null,
         paymentError: folioCheck.reason,
         manual: true,
         manualReason: folioCheck.reason,
@@ -1035,26 +1049,31 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentStatus: 'PLANNED',
         paymentAmount: plan.amount,
         paymentExpectedAmount: plan.amount,
-        statusMessage: `VCC wird belastet: ${plan.currency} ${plan.amount} auf Folio ${plan.folioId} …`,
+        folio2Amount: plan.amount,
+        folio2Currency: plan.currency,
+        statusMessage: `VCC wird als Anzahlung (ohne Rechnung) belastet: ${plan.currency} ${plan.amount} auf Folio ${plan.folioId} …`,
       },
     });
 
-    // Defence-in-depth read-back: re-read the persisted plan and compare with what
-    // we computed in memory. A divergence here would mean someone changed the row
-    // in parallel — we abort instead of paying.
     const persisted = await this.prisma.arrivalCheckRunItem.findUnique({
       where: { id: itemId },
-      select: { paymentExpectedAmount: true, paymentStatus: true, reservationId: true },
+      select: {
+        paymentExpectedAmount: true,
+        paymentStatus: true,
+        reservationId: true,
+        folio2Amount: true,
+      },
     });
     if (
       !persisted ||
       persisted.paymentExpectedAmount !== plan.amount ||
+      persisted.folio2Amount !== plan.amount ||
       persisted.paymentStatus !== 'PLANNED' ||
       persisted.reservationId !== reservationId
     ) {
       const reason = 'Plan-Persistierung weicht ab – Zahlung aus Sicherheitsgründen abgebrochen.';
       this.log.error(
-        `[ArrivalCheck-SAFETY] ${reason} expected=${plan.amount} stored=${persisted?.paymentExpectedAmount ?? '?'} resId=${persisted?.reservationId ?? '?'}`,
+        `[ArrivalCheck-SAFETY] ${reason} expected=${plan.amount} stored=${persisted?.paymentExpectedAmount ?? '?'} folio2=${persisted?.folio2Amount ?? '?'} resId=${persisted?.reservationId ?? '?'}`,
       );
       return {
         paymentStatus: 'SKIPPED',
@@ -1062,6 +1081,7 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: plan.amount,
         paymentCardMask: null,
         paymentInvoice: null,
+        paymentDepositId: null,
         paymentError: reason,
         manual: true,
         manualReason: reason,
@@ -1078,12 +1098,67 @@ export class ArrivalCheckService implements OnModuleInit {
       await this.emma.clearStaleFolioPostBlock({ hotelId, reservationId });
     }
 
+    await this.reservations.fetchFolioFromEmma(reservationId, hotelId);
+    const lastSnap = await this.prisma.reservationSnapshot.findUnique({
+      where: { hotelId_reservationId: { hotelId, reservationId } },
+    });
+    const lastFolio =
+      (lastSnap ? decryptFolioBundle(this.cipher, lastSnap.folioEnc) : null) ?? paymentFolio;
+    const lastResId = folioBundleReservationId(lastFolio);
+    if (lastResId && lastResId !== reservationId.trim()) {
+      const reason = `Folio gehört zu Reservierung ${lastResId}, erwartet ${reservationId} – Zahlung blockiert.`;
+      this.log.error(`[ArrivalCheck-SAFETY] ${reason}`);
+      return {
+        paymentStatus: 'SKIPPED',
+        paymentAmount: null,
+        paymentExpectedAmount: plan.amount,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentDepositId: null,
+        paymentError: reason,
+        manual: true,
+        manualReason: reason,
+      };
+    }
+    if (isFolioBalanceZero(lastFolio, plan.folioId)) {
+      this.log.log(
+        `[ArrivalCheck] ${reservationId}: Folio ${plan.folioId} AmountDue ist 0 – keine VCC-Abbuchung.`,
+      );
+      return {
+        paymentStatus: 'NOT_REQUIRED',
+        paymentAmount: null,
+        paymentExpectedAmount: plan.amount,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentDepositId: null,
+        paymentError: null,
+        manual: false,
+        manualReason: null,
+      };
+    }
+    const lastCheck = crossCheckFolioAmount(lastFolio, plan.folioId, persisted.folio2Amount ?? plan.amount);
+    if (!lastCheck.ok) {
+      this.log.error(`[ArrivalCheck-SAFETY] ${reservationId}: ${lastCheck.reason}`);
+      return {
+        paymentStatus: 'SKIPPED',
+        paymentAmount: null,
+        paymentExpectedAmount: plan.amount,
+        paymentCardMask: null,
+        paymentInvoice: null,
+        paymentDepositId: null,
+        paymentError: lastCheck.reason,
+        manual: true,
+        manualReason: lastCheck.reason,
+      };
+    }
+
     const outcome = await this.emma.payFolioWithVcc({
       hotelId,
       reservationId,
       folioId: plan.folioId,
       amount: plan.amount,
       currency: plan.currency,
+      holder: paySensitive?.mainGuestId ?? undefined,
     });
 
     if (outcome.status === 'PAID') {
@@ -1092,7 +1167,8 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentAmount: outcome.amount ?? plan.amount,
         paymentExpectedAmount: outcome.expectedAmount ?? plan.amount,
         paymentCardMask: outcome.cardMask,
-        paymentInvoice: outcome.invoiceNumber,
+        paymentInvoice: null,
+        paymentDepositId: outcome.depositId ?? null,
         paymentError: null,
         manual: false,
         manualReason: null,
@@ -1106,20 +1182,21 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentAmount: outcome.amount ?? plan.amount,
         paymentExpectedAmount: outcome.expectedAmount ?? plan.amount,
         paymentCardMask: outcome.cardMask,
-        paymentInvoice: outcome.invoiceNumber,
+        paymentInvoice: null,
+        paymentDepositId: outcome.depositId ?? null,
         paymentError: outcome.message ?? 'Zahlung abgelehnt',
         manual: true,
         manualReason: reason,
       };
     }
 
-    // NO_VCC, AMBIGUOUS, UNSAFE — cannot charge safely.
     return {
       paymentStatus: 'SKIPPED',
       paymentAmount: null,
       paymentExpectedAmount: plan.amount,
       paymentCardMask: outcome.cardMask,
       paymentInvoice: null,
+      paymentDepositId: outcome.depositId ?? null,
       paymentError: outcome.message,
       manual: true,
       manualReason: outcome.message ?? 'VCC-Zahlung nicht möglich – manuelle Prüfung nötig.',
@@ -1130,9 +1207,9 @@ export class ArrivalCheckService implements OnModuleInit {
     switch (decision.scenario) {
       case 'VCC':
         if (decision.source === 'CTRIP') {
-          return `${categoryLabel} erkannt – alle Posten werden auf Folio 2 verschoben und die VCC dort belastet …`;
+          return `${categoryLabel} erkannt – alle Posten werden auf Folio 2 verschoben und die VCC dort als Anzahlung (ohne Rechnung) belastet …`;
         }
-        return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, City Tax und Hotel Tax verbleiben bzw. werden auf Folio 1 zusammengeführt …`;
+        return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, City Tax und Hotel Tax verbleiben bzw. werden auf Folio 1 zusammengeführt, VCC als Anzahlung (ohne Rechnung) …`;
       case 'PREPAID':
         return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
       case 'DIRECT':
@@ -1155,7 +1232,7 @@ export class ArrivalCheckService implements OnModuleInit {
   ): string {
     const paid =
       payment?.paymentStatus === 'PAID'
-        ? ` VCC belastet: ${payment.paymentAmount}.`
+        ? ` VCC als Anzahlung (ohne Rechnung) belastet: ${payment.paymentAmount}${payment.paymentDepositId ? ` (Deposit ${payment.paymentDepositId})` : ''}.`
         : '';
     if (decision.scenario === 'FLEXIBLE') {
       return `${categoryLabel}: keine Verschiebung nötig.${paid}`;
@@ -1301,6 +1378,9 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: string | null;
         paymentCardMask: string | null;
         paymentInvoice: string | null;
+        paymentDepositId: string | null;
+        folio2Amount: string | null;
+        folio2Currency: string | null;
         paymentError: string | null;
         alreadyCompletedAt: Date | null;
         alreadyCompletedRunId: string | null;
@@ -1351,6 +1431,9 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentExpectedAmount: item.paymentExpectedAmount ?? null,
         paymentCardMask: item.paymentCardMask ?? null,
         paymentInvoice: item.paymentInvoice ?? null,
+        paymentDepositId: item.paymentDepositId ?? null,
+        folio2Amount: item.folio2Amount ?? null,
+        folio2Currency: item.folio2Currency ?? null,
         paymentError: item.paymentError ?? null,
         alreadyCompletedAt: item.alreadyCompletedAt?.toISOString() ?? null,
         alreadyCompletedRunId: item.alreadyCompletedRunId ?? null,

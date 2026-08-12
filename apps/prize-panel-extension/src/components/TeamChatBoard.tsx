@@ -13,6 +13,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
+import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Avatar } from '@/components/Avatar';
@@ -41,12 +42,14 @@ type ChatMsg = {
   bodyTranslated?: string | null;
   sourceLocale?: string | null;
   isTranslated?: boolean;
+  photoUrl?: string | null;
   createdAt: string;
   author: ChatAuthor;
   replyTo: {
     id: string;
     body: string;
     bodyTranslated?: string | null;
+    photoUrl?: string | null;
     createdAt: string;
     author: ChatAuthor;
     deleted?: boolean;
@@ -62,7 +65,7 @@ type Mentionable = {
   avatarUrl?: string | null;
 };
 
-type ReplyTarget = { id: string; body: string; author: ChatAuthor };
+type ReplyTarget = { id: string; body: string; photoUrl?: string | null; author: ChatAuthor };
 
 const TITLE_LABELS: Record<string, string> = {
   CLEANER: 'Cleaner',
@@ -442,11 +445,26 @@ function MessageBody({
   const [showOriginal, setShowOriginal] = useState(false);
   const hasTranslation = !!msg.isTranslated && !!msg.bodyTranslated;
   const displayBody = hasTranslation && showOriginal ? msg.bodyTranslated! : msg.body;
+  const hasText = !!displayBody.trim();
 
   return (
     <>
-      <MentionText body={displayBody} mentions={mentions} className="text-[11px] leading-snug" />
-      {hasTranslation && (
+      {msg.photoUrl && (
+        <a
+          href={msg.photoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={clsx('block overflow-hidden rounded-md', hasText ? 'mb-1' : '')}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={msg.photoUrl} alt={ui.photoAlt} className="max-h-40 w-full object-cover" />
+        </a>
+      )}
+      {hasText && (
+        <MentionText body={displayBody} mentions={mentions} className="text-[11px] leading-snug" />
+      )}
+      {hasTranslation && hasText && (
         <button
           type="button"
           onClick={() => setShowOriginal((v) => !v)}
@@ -481,6 +499,9 @@ export function TeamChatBoard() {
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [err, setErr] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: ChatMsg; x: number; y: number } | null>(null);
 
@@ -490,20 +511,62 @@ export function TeamChatBoard() {
     refetchInterval: 5_000,
   });
 
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
+
+  const clearPhoto = useCallback(() => {
+    setPhotoFile(null);
+    setPhotoPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  }, []);
+
   const send = useMutation({
-    mutationFn: (payload: { text: string; replyToId?: string; mentionUserIds: string[] }) =>
-      api('/team-chat/messages', {
+    mutationFn: async (payload: {
+      text: string;
+      replyToId?: string;
+      mentionUserIds: string[];
+      photo?: File | null;
+    }) => {
+      let photoS3Key: string | undefined;
+      if (payload.photo) {
+        const compressed = await imageCompression(payload.photo, {
+          maxSizeMB: 0.6,
+          maxWidthOrHeight: 1600,
+        });
+        const contentType = compressed.type || payload.photo.type || 'image/jpeg';
+        const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
+          method: 'POST',
+          body: JSON.stringify({ contentType }),
+        });
+        const putRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': contentType },
+          body: compressed,
+        });
+        if (!putRes.ok) throw new Error(ui.photoUploadFailed);
+        photoS3Key = presign.key;
+      }
+      return api('/team-chat/messages', {
         method: 'POST',
         body: JSON.stringify({
           body: payload.text,
           replyToId: payload.replyToId,
           mentionUserIds: payload.mentionUserIds,
+          photoS3Key,
         }),
-      }),
+      });
+    },
     onSuccess: () => {
       setBody('');
       setMentionUserIds([]);
       setReplyTo(null);
+      clearPhoto();
       setErr(null);
       qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
     },
@@ -591,8 +654,8 @@ export function TeamChatBoard() {
 
   function doSend() {
     const text = body.trim();
-    if (!text || !canPost || send.isPending) return;
-    send.mutate({ text, replyToId: replyTo?.id, mentionUserIds });
+    if ((!text && !photoFile) || !canPost || send.isPending) return;
+    send.mutate({ text, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
   }
 
   function onSubmit(e: FormEvent) {
@@ -693,7 +756,13 @@ export function TeamChatBoard() {
                             : formatAuthor(m.replyTo.author.name, m.replyTo.author.titlePrefix)}
                         </p>
                         <p className="truncate">
-                          {m.replyTo.deleted ? '—' : truncateBody(m.replyTo.body)}
+                          {m.replyTo.deleted
+                            ? '—'
+                            : m.replyTo.body.trim()
+                              ? truncateBody(m.replyTo.body)
+                              : m.replyTo.photoUrl
+                                ? ui.photoMessage
+                                : '—'}
                         </p>
                       </div>
                     )}
@@ -751,7 +820,13 @@ export function TeamChatBoard() {
             <p className="truncate text-[9px] font-semibold text-sky-300">
               {ui.replyingTo(formatAuthor(replyTo.author.name, replyTo.author.titlePrefix))}
             </p>
-            <p className="truncate text-[9px] text-sidebar-muted">{truncateBody(replyTo.body)}</p>
+            <p className="truncate text-[9px] text-sidebar-muted">
+              {replyTo.body.trim()
+                ? truncateBody(replyTo.body)
+                : replyTo.photoUrl
+                  ? ui.photoMessage
+                  : '—'}
+            </p>
           </div>
           <button
             type="button"
@@ -763,9 +838,59 @@ export function TeamChatBoard() {
         </div>
       )}
 
+      {photoPreviewUrl && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-sidebar-border px-2 py-1.5">
+          <div className="relative h-12 w-12 overflow-hidden rounded-md border border-white/10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoPreviewUrl} alt="" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              onClick={clearPhoto}
+              className="absolute right-0 top-0 inline-flex h-4 w-4 items-center justify-center rounded-bl bg-black/70 text-[9px] text-white"
+              aria-label={ui.removePhoto}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {canPost ? (
         <form onSubmit={onSubmit} className="shrink-0 border-t border-sidebar-border px-2 py-1.5">
           <div className="flex items-end gap-1.5">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file || !file.type.startsWith('image/')) return;
+                setPhotoFile(file);
+                setPhotoPreviewUrl((prev) => {
+                  if (prev) URL.revokeObjectURL(prev);
+                  return URL.createObjectURL(file);
+                });
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={send.isPending}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 text-sidebar-muted hover:text-white disabled:opacity-50"
+              aria-label={ui.attachPhoto}
+              title={ui.attachPhoto}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                />
+                <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
+              </svg>
+            </button>
             <MentionComposer
               value={body}
               onChange={setBody}
@@ -778,7 +903,7 @@ export function TeamChatBoard() {
             <Button
               type="submit"
               variant="action"
-              disabled={send.isPending || !body.trim()}
+              disabled={send.isPending || (!body.trim() && !photoFile)}
               className="h-8 shrink-0 rounded-full px-3 text-[11px]"
             >
               →
@@ -808,6 +933,7 @@ export function TeamChatBoard() {
           setReplyTo({
             id: menu.message.id,
             body: menu.message.body,
+            photoUrl: menu.message.photoUrl,
             author: menu.message.author,
           });
           setMenu(null);

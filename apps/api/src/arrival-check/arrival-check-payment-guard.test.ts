@@ -3,11 +3,14 @@ import { describe, it } from 'node:test';
 import type { ReservationEmmaFolioBundle } from '@housekeeping/shared';
 import {
   amountsMatch,
+  assertDepositMatchesCharge,
   assertPaymentContextSafe,
   canReuseInvoice,
   computeExpectedVccChargeAmount,
   crossCheckFolioAmount,
   filterCreditCardsForReservation,
+  isFolioBalanceZero,
+  pickDepositForFolio2Amount,
 } from './arrival-check-payment-guard';
 import type { ArrivalCheckDecision } from './arrival-check-rules';
 import type { EmmaCreditCardRow } from './arrival-check-vcc';
@@ -278,5 +281,131 @@ describe('canReuseInvoice', () => {
       ),
       false,
     );
+  });
+});
+
+describe('isFolioBalanceZero', () => {
+  it('is true when AmountDue is 0', () => {
+    const folio = folioWithCharges(
+      [charge({ id: '1', folioId: '02', concept: 'RO', amount: '120.00' })],
+      [{ Id: '02', AmountTotal: 120.0, AmountPaid: 120.0, AmountDue: 0 }],
+    );
+    assert.equal(isFolioBalanceZero(folio, '02'), true);
+  });
+
+  it('is false when AmountDue is still open', () => {
+    const folio = folioWithCharges(
+      [charge({ id: '1', folioId: '02', concept: 'RO', amount: '120.00' })],
+      [{ Id: '02', AmountTotal: 120.0, AmountPaid: 0, AmountDue: 120.0 }],
+    );
+    assert.equal(isFolioBalanceZero(folio, '02'), false);
+  });
+});
+
+describe('pickDepositForFolio2Amount', () => {
+  const resId = '0175792544';
+
+  it('reuses an open deposit only when the requested amount matches Folio 2', () => {
+    const pick = pickDepositForFolio2Amount(
+      [
+        {
+          ReservationId: resId,
+          Id: '0001',
+          DepositRequested: '452.00',
+          AmountReceived: '0',
+          PrepaymentReceived: false,
+          Invoice: '',
+        },
+      ],
+      resId,
+      '452.00',
+    );
+    assert.deepEqual(pick, { kind: 'reuse', id: '0001' });
+  });
+
+  it('ignores a wrong-amount auto-deposit and creates a new one', () => {
+    const pick = pickDepositForFolio2Amount(
+      [
+        {
+          ReservationId: resId,
+          Id: '0001',
+          DepositRequested: '50.00',
+          AmountReceived: '0',
+          PrepaymentReceived: false,
+          Invoice: '',
+        },
+      ],
+      resId,
+      '452.00',
+    );
+    assert.deepEqual(pick, { kind: 'create' });
+  });
+
+  it('does not pick a deposit from another reservation', () => {
+    const pick = pickDepositForFolio2Amount(
+      [
+        {
+          ReservationId: '0160000000',
+          Id: '0001',
+          DepositRequested: '452.00',
+          AmountReceived: '0',
+          PrepaymentReceived: false,
+        },
+      ],
+      resId,
+      '452.00',
+    );
+    assert.deepEqual(pick, { kind: 'create' });
+  });
+
+  it('treats a matching already-paid deposit as already_paid', () => {
+    const pick = pickDepositForFolio2Amount(
+      [
+        {
+          ReservationId: resId,
+          Id: '0002',
+          DepositRequested: '452.00',
+          AmountReceived: '452.00',
+          PrepaymentReceived: true,
+          Invoice: '',
+        },
+      ],
+      resId,
+      '452.00',
+    );
+    assert.deepEqual(pick, { kind: 'already_paid', id: '0002' });
+  });
+});
+
+describe('assertDepositMatchesCharge', () => {
+  it('rejects a deposit that already has an invoice number', () => {
+    const result = assertDepositMatchesCharge({
+      reservationId: '0175792544',
+      expectedAmount: '452.00',
+      deposit: {
+        ReservationId: '0175792544',
+        Id: '0001',
+        DepositRequested: '452.00',
+        Invoice: 'AIS6A23935',
+      },
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.reason, /Invoice/);
+  });
+
+  it('rejects when the deposit id is not the one this run selected', () => {
+    const result = assertDepositMatchesCharge({
+      reservationId: '0175792544',
+      expectedAmount: '452.00',
+      expectedId: '0003',
+      deposit: {
+        ReservationId: '0175792544',
+        Id: '0001',
+        DepositRequested: '452.00',
+        Invoice: '',
+      },
+    });
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.reason, /Deposit-Id/);
   });
 });

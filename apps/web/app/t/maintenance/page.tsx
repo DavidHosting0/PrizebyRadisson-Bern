@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
 import { useDamageTypeLabel } from '@/lib/damageReportTypes';
 import { formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
@@ -22,13 +23,10 @@ type Row = {
 const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
 const FILTERS = ['OPEN', ...STATUSES, 'ALL'] as const;
 
-function filterLabel(value: (typeof FILTERS)[number]) {
-  if (value === 'OPEN') return 'Open';
-  if (value === 'ALL') return 'All';
-  return value.charAt(0) + value.slice(1).toLowerCase();
-}
-
 export default function TechnicianMaintenancePage() {
+  const t = useTranslations('technician');
+  const tPage = useTranslations('technician.maintenancePage');
+  const tChat = useTranslations('chat');
   const damageLabel = useDamageTypeLabel();
   const qc = useQueryClient();
   const [status, setStatus] = useState<(typeof FILTERS)[number]>('OPEN');
@@ -51,16 +49,32 @@ export default function TechnicianMaintenancePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['damage-reports'] }),
   });
 
+  function filterLabel(value: (typeof FILTERS)[number]) {
+    if (value === 'OPEN') return tPage('filterOpen');
+    if (value === 'ALL') return tPage('filterAll');
+    if (value === 'REPORTED') return tPage('filterReported');
+    if (value === 'ACKNOWLEDGED') return tPage('filterAcknowledged');
+    if (value === 'RESOLVED') return tPage('filterResolved');
+    return value;
+  }
+
+  function statusOptionLabel(value: string) {
+    if (value === 'REPORTED') return tChat('damageStatus.reportedOption');
+    if (value === 'ACKNOWLEDGED') return tChat('damageStatus.acknowledgedOption');
+    if (value === 'RESOLVED') return tChat('damageStatus.resolvedOption');
+    return value.charAt(0) + value.slice(1).toLowerCase();
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col space-y-4 p-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-white">Maintenance</h1>
-        <p className="mt-1 text-sm text-sidebar-muted">
-          Open damage reports from housekeeping and supervisors — newest first.
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight text-white">{t('maintenanceTitle')}</h1>
+        <p className="mt-1 text-sm text-sidebar-muted">{tPage('description')}</p>
       </div>
       <div>
-        <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">Status</label>
+        <label className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
+          {tPage('statusLabel')}
+        </label>
         <select
           className="mt-1 min-h-[44px] w-full rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
           value={status}
@@ -74,7 +88,7 @@ export default function TechnicianMaintenancePage() {
         </select>
       </div>
 
-      {isLoading && <p className="text-sm text-sidebar-muted">Loading…</p>}
+      {isLoading && <p className="text-sm text-sidebar-muted">{tPage('loading')}</p>}
 
       <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
         {data.map((item) => (
@@ -90,8 +104,14 @@ export default function TechnicianMaintenancePage() {
                 </p>
                 <p className="mt-1 text-sm font-medium leading-snug text-slate-100">{item.description}</p>
                 <p className="mt-2 text-xs text-slate-400">
-                  Room {item.room.roomNumber} · {formatUserWithTitlePrefix(item.reportedBy.name, item.reportedBy.titlePrefix)} ·{' '}
-                  {new Date(item.reportedAt).toLocaleString()}
+                  {tPage('roomLine', {
+                    roomNumber: item.room.roomNumber,
+                    reporter: formatUserWithTitlePrefix(
+                      item.reportedBy.name,
+                      item.reportedBy.titlePrefix,
+                    ),
+                    when: new Date(item.reportedAt).toLocaleString(),
+                  })}
                 </p>
                 {canUpdate ? (
                   <select
@@ -102,13 +122,13 @@ export default function TechnicianMaintenancePage() {
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>
-                        {s.charAt(0) + s.slice(1).toLowerCase()}
+                        {statusOptionLabel(s)}
                       </option>
                     ))}
                   </select>
                 ) : (
-                  <span className="mt-3 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium capitalize text-slate-300">
-                    {item.status.toLowerCase()}
+                  <span className="mt-3 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-300">
+                    {statusOptionLabel(item.status)}
                   </span>
                 )}
               </div>
@@ -118,7 +138,7 @@ export default function TechnicianMaintenancePage() {
       </ul>
       {data.length === 0 && !isLoading && (
         <p className="text-sm text-sidebar-muted">
-          {status === 'OPEN' ? 'No open damage reports.' : 'No damage reports.'}
+          {status === 'OPEN' ? tPage('emptyOpen') : tPage('empty')}
         </p>
       )}
     </div>

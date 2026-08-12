@@ -21,6 +21,7 @@ import {
 } from '@housekeeping/shared';
 import {
   AssignmentStatus,
+  DailyCleaningCompletionReason,
   DailyCleaningPlanStatus,
   DailyCleaningTaskKind,
   DailyCleaningTaskSource,
@@ -38,6 +39,7 @@ import { RoomOccupancyService } from '../rooms/room-occupancy.service';
 import { RoomStatusService } from '../rooms/room-status.service';
 import { RoomsService } from '../rooms/rooms.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { S3Service } from '../storage/s3.service';
 import { InspectionQueueService } from './inspection-queue.service';
 import {
   LATE_ROOM_WEIGHT,
@@ -57,6 +59,8 @@ type PlanWithTasks = Awaited<ReturnType<DailyCleaningService['loadPlan']>>;
 @Injectable()
 export class DailyCleaningService implements OnModuleInit {
   private readonly logger = new Logger(DailyCleaningService.name);
+  /** Coalesce concurrent syncs for the same hotel day (preview + board poll race). */
+  private readonly syncWorkInFlight = new Map<string, Promise<PlanWithTasks>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -65,6 +69,7 @@ export class DailyCleaningService implements OnModuleInit {
     private readonly rooms: RoomsService,
     private readonly realtime: RealtimeGateway,
     private readonly inspectionQueue: InspectionQueueService,
+    private readonly s3: S3Service,
   ) {}
 
   onModuleInit() {
@@ -382,9 +387,27 @@ export class DailyCleaningService implements OnModuleInit {
 
   /** Sync DB tasks to current dirty/due work; preserve pins & assignees where possible. */
   async syncWorkItems(dateIso: string) {
+    const existing = this.syncWorkInFlight.get(dateIso);
+    if (existing) return existing;
+
+    const run = this.syncWorkItemsUnlocked(dateIso).finally(() => {
+      if (this.syncWorkInFlight.get(dateIso) === run) {
+        this.syncWorkInFlight.delete(dateIso);
+      }
+    });
+    this.syncWorkInFlight.set(dateIso, run);
+    return run;
+  }
+
+  private async syncWorkItemsUnlocked(dateIso: string) {
     const plan = await this.ensurePlan(dateIso);
-    const rooms = await this.buildDirtyRoomWork(dateIso);
-    const publics = await this.buildPublicWork(dateIso);
+    // Dedupe by id — unique(planId, roomId) otherwise races to P2002 under concurrent sync.
+    const rooms = [
+      ...new Map((await this.buildDirtyRoomWork(dateIso)).map((r) => [r.roomId, r])).values(),
+    ];
+    const publics = [
+      ...new Map((await this.buildPublicWork(dateIso)).map((p) => [p.publicAreaId, p])).values(),
+    ];
 
     const desiredRoomIds = new Set(rooms.map((r) => r.roomId));
     const desiredPublicIds = new Set(publics.map((p) => p.publicAreaId));
@@ -392,7 +415,7 @@ export class DailyCleaningService implements OnModuleInit {
     for (const task of plan.tasks) {
       if (task.kind === DailyCleaningTaskKind.ROOM && task.roomId && !desiredRoomIds.has(task.roomId)) {
         if (!task.pinned) {
-          await this.prisma.dailyCleaningTask.delete({ where: { id: task.id } });
+          await this.prisma.dailyCleaningTask.delete({ where: { id: task.id } }).catch(() => undefined);
         }
       }
       if (
@@ -401,60 +424,41 @@ export class DailyCleaningService implements OnModuleInit {
         !desiredPublicIds.has(task.publicAreaId)
       ) {
         if (!task.pinned && !task.completedAt) {
-          await this.prisma.dailyCleaningTask.delete({ where: { id: task.id } });
+          await this.prisma.dailyCleaningTask.delete({ where: { id: task.id } }).catch(() => undefined);
         }
       }
     }
 
-    const fresh = await this.loadPlan(dateIso);
-    const byRoom = new Map(
-      (fresh?.tasks ?? []).filter((t) => t.roomId).map((t) => [t.roomId!, t]),
-    );
-    const byPublic = new Map(
-      (fresh?.tasks ?? []).filter((t) => t.publicAreaId).map((t) => [t.publicAreaId!, t]),
-    );
-
     for (const r of rooms) {
-      const existing = byRoom.get(r.roomId);
-      if (existing) {
-        await this.prisma.dailyCleaningTask.update({
-          where: { id: existing.id },
-          data: {
-            workType:
-              r.workType === 'RESTANT'
-                ? DailyCleaningWorkType.RESTANT
-                : DailyCleaningWorkType.DIRTY,
-            overdueDays: r.overdueDays,
-          },
-        });
-      } else {
-        await this.prisma.dailyCleaningTask.create({
-          data: {
-            planId: plan.id,
-            kind: DailyCleaningTaskKind.ROOM,
-            workType:
-              r.workType === 'RESTANT'
-                ? DailyCleaningWorkType.RESTANT
-                : DailyCleaningWorkType.DIRTY,
-            roomId: r.roomId,
-            overdueDays: r.overdueDays,
-          },
-        });
-      }
+      const workType =
+        r.workType === 'RESTANT' ? DailyCleaningWorkType.RESTANT : DailyCleaningWorkType.DIRTY;
+      await this.prisma.dailyCleaningTask.upsert({
+        where: { planId_roomId: { planId: plan.id, roomId: r.roomId } },
+        create: {
+          planId: plan.id,
+          kind: DailyCleaningTaskKind.ROOM,
+          workType,
+          roomId: r.roomId,
+          overdueDays: r.overdueDays,
+        },
+        update: {
+          workType,
+          overdueDays: r.overdueDays,
+        },
+      });
     }
 
     for (const p of publics) {
-      const existing = byPublic.get(p.publicAreaId);
-      if (!existing) {
-        await this.prisma.dailyCleaningTask.create({
-          data: {
-            planId: plan.id,
-            kind: DailyCleaningTaskKind.PUBLIC_AREA,
-            workType: DailyCleaningWorkType.PUBLIC,
-            publicAreaId: p.publicAreaId,
-          },
-        });
-      }
+      await this.prisma.dailyCleaningTask.upsert({
+        where: { planId_publicAreaId: { planId: plan.id, publicAreaId: p.publicAreaId } },
+        create: {
+          planId: plan.id,
+          kind: DailyCleaningTaskKind.PUBLIC_AREA,
+          workType: DailyCleaningWorkType.PUBLIC,
+          publicAreaId: p.publicAreaId,
+        },
+        update: {},
+      });
     }
 
     return this.loadPlan(dateIso);
@@ -478,6 +482,7 @@ export class DailyCleaningService implements OnModuleInit {
       source: task.source,
       overdueDays: task.overdueDays,
       completedAt: task.completedAt?.toISOString() ?? null,
+      completionReason: task.completionReason ?? null,
     };
   }
 
@@ -830,7 +835,7 @@ export class DailyCleaningService implements OnModuleInit {
     },
   ): Promise<AutoAssignPreviewResponse> {
     const dateIso = this.resolveDate(date);
-    await this.syncWorkItems(dateIso);
+    // Preview is read-only: do not syncWorkItems (avoids P2002 races with board poll).
 
     const workingIds = [...new Set((options.workingTodayUserIds ?? []).filter(Boolean))];
     if (workingIds.length === 0) {
@@ -1301,31 +1306,94 @@ export class DailyCleaningService implements OnModuleInit {
     return this.completeDailyTask(taskId, user);
   }
 
+  private assertCanCompleteTask(
+    task: { assigneeUserId: string | null },
+    user: User,
+  ) {
+    const isAssignee = task.assigneeUserId === user.id;
+    const isSupervisor = user.role === UserRole.SUPERVISOR || user.role === UserRole.ADMIN;
+    if (!isAssignee && !isSupervisor) throw new ForbiddenException();
+  }
+
+  /** Presign upload for guest “no cleaning” door-hanger evidence (RESTANT only). */
+  async presignRestantEvidence(taskId: string, user: User, contentType: string) {
+    const task = await this.prisma.dailyCleaningTask.findUnique({
+      where: { id: taskId },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    this.assertCanCompleteTask(task, user);
+    if (
+      task.kind !== DailyCleaningTaskKind.ROOM ||
+      task.workType !== DailyCleaningWorkType.RESTANT
+    ) {
+      throw new BadRequestException('Evidence upload is only for restant tasks');
+    }
+    if (task.completedAt) throw new BadRequestException('Task already completed');
+
+    const mime = contentType || 'image/jpeg';
+    if (!mime.startsWith('image/')) {
+      throw new BadRequestException('Only image uploads are allowed');
+    }
+    const ext = mime.includes('png') ? 'png' : 'jpg';
+    const key = this.s3.buildRestantEvidenceKey(taskId, ext);
+    const { url } = await this.s3.presignPut(key, mime);
+    return { uploadUrl: url, key };
+  }
+
   /**
    * Mark a public-area or RESTANT room task done.
    * RESTANT does not change PrizeBern room status or push Emma.
    * DIRTY rooms must use mark-clean instead.
+   * Optional reason NO_CLEANING_REQUESTED (RESTANT) requires photo evidence.
    */
-  async completeDailyTask(taskId: string, user: User) {
+  async completeDailyTask(
+    taskId: string,
+    user: User,
+    opts?: { reason?: 'CLEANED' | 'NO_CLEANING_REQUESTED'; photoS3Key?: string },
+  ) {
     const task = await this.prisma.dailyCleaningTask.findUnique({
       where: { id: taskId },
       include: { plan: true, publicArea: true },
     });
     if (!task) throw new NotFoundException('Task not found');
 
-    const isAssignee = task.assigneeUserId === user.id;
-    const isSupervisor = user.role === UserRole.SUPERVISOR || user.role === UserRole.ADMIN;
-    if (!isAssignee && !isSupervisor) throw new ForbiddenException();
+    this.assertCanCompleteTask(task, user);
     if (task.completedAt) {
       const dateIso = formatHotelDateOnly(task.plan.date);
       return this.getDailyPlan(dateIso);
     }
 
+    const reason = opts?.reason ?? 'CLEANED';
+    const photoKey = opts?.photoS3Key?.trim() || undefined;
+
+    if (reason === 'NO_CLEANING_REQUESTED') {
+      if (
+        task.kind !== DailyCleaningTaskKind.ROOM ||
+        task.workType !== DailyCleaningWorkType.RESTANT
+      ) {
+        throw new BadRequestException('No-cleaning reason is only for restant tasks');
+      }
+      if (!photoKey) {
+        throw new BadRequestException('Photo evidence is required for no cleaning requested');
+      }
+      if (!photoKey.startsWith(`restant-evidence/${taskId}/`)) {
+        throw new BadRequestException('Invalid evidence photo key');
+      }
+    } else if (photoKey) {
+      throw new BadRequestException('Photo evidence is only used with no cleaning requested');
+    }
+
     if (task.kind === DailyCleaningTaskKind.PUBLIC_AREA && task.publicAreaId) {
+      if (reason !== 'CLEANED') {
+        throw new BadRequestException('Invalid completion reason for public area');
+      }
       const dateIso = formatHotelDateOnly(task.plan.date);
       await this.prisma.dailyCleaningTask.update({
         where: { id: taskId },
-        data: { completedAt: new Date() },
+        data: {
+          completedAt: new Date(),
+          completionReason: DailyCleaningCompletionReason.CLEANED,
+        },
       });
       await this.prisma.publicArea.update({
         where: { id: task.publicAreaId },
@@ -1342,7 +1410,14 @@ export class DailyCleaningService implements OnModuleInit {
       const dateIso = formatHotelDateOnly(task.plan.date);
       await this.prisma.dailyCleaningTask.update({
         where: { id: taskId },
-        data: { completedAt: new Date() },
+        data: {
+          completedAt: new Date(),
+          completionReason:
+            reason === 'NO_CLEANING_REQUESTED'
+              ? DailyCleaningCompletionReason.NO_CLEANING_REQUESTED
+              : DailyCleaningCompletionReason.CLEANED,
+          evidenceS3Key: photoKey ?? null,
+        },
       });
       return this.getDailyPlan(dateIso);
     }
@@ -1393,6 +1468,7 @@ export class DailyCleaningService implements OnModuleInit {
         publicAreaName: t.publicArea?.name ?? null,
         overdueDays: t.overdueDays,
         completedAt: t.completedAt?.toISOString() ?? null,
+        completionReason: t.completionReason ?? null,
         isDepartureToday: occ?.isDepartureToday ?? false,
         guestCheckedOut: occ ? Boolean(occ.checkOut || occ.ocoDone) : false,
         guestName: occ?.mainGuestName ?? null,

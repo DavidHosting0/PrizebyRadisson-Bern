@@ -85,7 +85,15 @@ export class S3Service {
     return `damage-reports/${randomUUID()}.${ext}`;
   }
 
+  buildRestantEvidenceKey(taskId: string, ext = 'jpg') {
+    return `restant-evidence/${taskId}/${randomUUID()}.${ext}`;
+  }
+
   buildAvatarKey(userId: string, ext = 'jpg') {
     return `avatars/${userId}/${randomUUID()}.${ext}`;
+  }
+
+  buildTeamChatKey(ext = 'jpg') {
+    return `team-chat/${randomUUID()}.${ext}`;
   }
 }
