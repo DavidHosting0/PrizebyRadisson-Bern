@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   balanceDailyCleaningAssignments,
+  dayBoundsFromIso,
   daysBetweenIso,
   isLateShiftWindow,
   isPublicAreaDue,
@@ -240,6 +241,27 @@ describe('isLateShiftWindow', () => {
     const start = new Date('2026-08-04T04:00:00.000Z'); // 06:00 Zurich
     const end = new Date('2026-08-04T13:00:00.000Z'); // 15:00 Zurich
     assert.equal(isLateShiftWindow(start, end, 'Europe/Zurich'), false);
+  });
+});
+
+describe('dayBoundsFromIso', () => {
+  it('uses Europe/Zurich midnight (CEST = UTC+2 in summer)', () => {
+    const { from, to } = dayBoundsFromIso('2026-08-13');
+    assert.equal(from.toISOString(), '2026-08-12T22:00:00.000Z');
+    assert.equal(to.toISOString(), '2026-08-13T22:00:00.000Z');
+  });
+
+  it('uses Europe/Zurich midnight (CET = UTC+1 in winter)', () => {
+    const { from, to } = dayBoundsFromIso('2026-01-15');
+    assert.equal(from.toISOString(), '2026-01-14T23:00:00.000Z');
+    assert.equal(to.toISOString(), '2026-01-15T23:00:00.000Z');
+  });
+
+  it('keeps a same-hotel-day assignment after Zurich midnight on a UTC server clock', () => {
+    const { from } = dayBoundsFromIso('2026-08-13');
+    // 00:21 Zurich on Aug 13 = 22:21 UTC Aug 12 — must NOT be treated as stale
+    const assignedAt = new Date('2026-08-12T22:21:00.000Z');
+    assert.ok(assignedAt >= from);
   });
 });
 

@@ -506,8 +506,16 @@ export class DailyCleaningService implements OnModuleInit {
     }
     await this.syncWorkItems(dateIso);
     await this.syncInspectReadyRooms(dateIso);
-    const plan = await this.loadPlan(dateIso);
+    let plan = await this.loadPlan(dateIso);
     if (!plan) throw new NotFoundException('Plan not found');
+
+    // Board reads RoomAssignment rows. Keep them aligned with plan assignees so a
+    // mistaken "stale" wipe (e.g. UTC vs Zurich midnight) cannot empty the board
+    // while the plan still has people on rooms.
+    if (plan.tasks.some((t) => t.roomId && t.assigneeUserId)) {
+      await this.syncRoomAssignmentsFromPlan(dateIso, null);
+      plan = (await this.loadPlan(dateIso)) ?? plan;
+    }
 
     const { eligible, manual, warnings, onShift, allCleaners } =
       await this.listEligibleCleaners(dateIso);

@@ -489,13 +489,45 @@ export function isPublicAreaDue(opts: {
   return daysBetweenIso(opts.lastCompletedOn, opts.dateIso) >= opts.frequencyDays;
 }
 
-export function dayBoundsFromIso(iso: string): { from: Date; to: Date } {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (!m) throw new Error(`Invalid date ${iso}`);
-  const from = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 1);
+export function dayBoundsFromIso(iso: string, timeZone = HOTEL_TIME_ZONE): { from: Date; to: Date } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) throw new Error(`Invalid date ${iso}`);
+  const from = hotelLocalMidnightToUtc(iso, timeZone);
+  const to = hotelLocalMidnightToUtc(addDaysIso(iso, 1), timeZone);
   return { from, to };
+}
+
+/**
+ * UTC instant for `YYYY-MM-DD` 00:00:00 wall time in `timeZone`.
+ * Critical for servers running in UTC: hotel midnight in summer is 22:00Z previous day.
+ */
+export function hotelLocalMidnightToUtc(dateIso: string, timeZone = HOTEL_TIME_ZONE): Date {
+  const y = Number(dateIso.slice(0, 4));
+  const mo = Number(dateIso.slice(5, 7));
+  const d = Number(dateIso.slice(8, 10));
+  const desiredAsUtc = Date.UTC(y, mo - 1, d, 0, 0, 0, 0);
+  let guess = desiredAsUtc;
+  for (let i = 0; i < 4; i++) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      hourCycle: 'h23',
+    }).formatToParts(new Date(guess));
+    const num = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((p) => p.type === type)?.value);
+    let hour = num('hour');
+    if (hour === 24) hour = 0;
+    const localAsUtc = Date.UTC(num('year'), num('month') - 1, num('day'), hour, num('minute'), num('second'));
+    const diff = localAsUtc - desiredAsUtc;
+    if (diff === 0) break;
+    guess -= diff;
+  }
+  return new Date(guess);
 }
 
 export function dateOnlyFromIso(iso: string): Date {
