@@ -1,6 +1,6 @@
 # Chrome Web Store — PrizeBern Panel
 
-After you have a [Chrome Web Store developer account](https://chrome.google.com/webstore/devconsole), publish once. Afterwards Chrome **auto-updates** all installs when you upload a new version.
+After you have a [Chrome Web Store developer account](https://chrome.google.com/webstore/devconsole) ($5 one-time), publish once. Afterwards Chrome **auto-updates** all installs when you upload a new version.
 
 ## 1. Build the store package
 
@@ -12,26 +12,27 @@ npm run build:extension:store
 
 Creates:
 
-- `apps/prize-panel-extension/dist/` (unpacked)
+- `apps/prize-panel-extension/dist/` (unpacked, for local testing)
 - `apps/prize-panel-extension/chrome-web-store.zip` ← **upload this**
+- `apps/prize-panel-extension/store-assets/` ← promo tiles for the listing
 
 ## 2. Create the item in the developer console
 
 1. Open https://chrome.google.com/webstore/devconsole  
 2. **New item** → upload `chrome-web-store.zip`  
-3. Fill the listing (see drafts below)  
-4. **Privacy**: set Privacy policy URL to  
-   `https://prizebern.com/extension-privacy`  
-5. Submit for review  
+3. Fill the listing (section 3) and upload images (section 5)  
+4. **Privacy** (section 4)  
+5. Set distribution (e.g. public, or unlisted if only for hotel staff)  
+6. Submit for review  
 
-Review often takes a few days for a first publish (especially with `<all_urls>`).
+First review often takes a few days (broad http/https content script).
 
 ## 3. Listing text (copy/paste)
 
 **Name:** PrizeBern Panel  
 
 **Short description (≤132 chars):**  
-PrizeBern Housekeeping side panel — shift handover checklist while you work in any browser tab.
+PrizeBern Housekeeping side panel — chat, to-dos, shift notes, complaints and loans on any website.
 
 **Detailed description:**
 
@@ -39,39 +40,73 @@ PrizeBern Housekeeping side panel — shift handover checklist while you work in
 PrizeBern Panel is the companion Chrome extension for Prize by Radisson Bern Housekeeping.
 
 What it does:
-• Shows a compact, collapsible panel on the right side of any website
+• Shows a compact, collapsible panel on the right side of http(s) websites
 • Sign in with the same PrizeBern account as the web app
-• View and complete the reception shift handover checklist
-• Confirm shift handover when essential tasks are done
+• Team chat with notifications while working in other tabs
+• To-do / shift handover checklist
+• Shift notes, guest complaints, and room loans
 
 Who it is for:
-Hotel reception and operations staff who use PrizeBern and need the handover checklist while working in other systems (PMS, email, etc.).
+Hotel reception and operations staff who use PrizeBern and need these tools while working in other systems (PMS, email, etc.).
 
 Privacy:
-Login credentials and tokens are only sent to prizebern.com. The extension does not read content from other websites. See the privacy policy linked in this listing.
+Login credentials and tokens are only sent to prizebern.com (or a local API for development). The extension does not read content from other websites. See the privacy policy linked in this listing.
 ```
 
 **Category:** Productivity  
 
-**Language:** German (and English if you add a second locale later)
+**Language:** German (primary). Add English locale later if needed.
 
-## 4. Permission justifications (for the review form)
+**Official URL:** `https://prizebern.com/extension-install`  
+**Privacy policy URL:** `https://prizebern.com/extension-privacy`
+
+## 4. Privacy practices (dashboard)
+
+Disclose accurately (check what applies):
+
+| Category | Disclose? |
+|----------|-----------|
+| Personally identifiable information | Yes (name, email via account) |
+| Authentication information | Yes (login + tokens) |
+| Personal communications | Yes (team chat messages / attachments when used) |
+| Website content | **No** (overlay only; does not scrape pages) |
+| Web history | **No** |
+| Location | **No** |
+| Health / financial | **No** (unless your hotel data model requires it — default no) |
+
+**Single purpose:** Companion side panel for PrizeBern Housekeeping so staff can use chat, checklists, notes, complaints and loans while working in other browser tabs.
+
+**Remote code:** None (no eval, no remote scripts).  
+**Limited Use:** Certify compliance (no selling data, no ads).
+
+### Permission justifications
 
 | Permission / host | Justification |
 |-------------------|---------------|
 | `storage` | Store auth tokens and panel preferences locally |
-| `https://prizebern.com/*` | Call PrizeBern login + shift-handover API |
-| Content script `<all_urls>` | Inject only the PrizeBern overlay UI so staff can use the checklist while working on other sites; does not scrape page content |
+| `https://prizebern.com/*` | Call PrizeBern login + Housekeeping APIs |
+| Content script `http://*/*`, `https://*/*` | Inject only the PrizeBern overlay UI so staff can use tools while working on other sites; does not scrape page content |
+| Optional `localhost:3001` | Local API for developers only |
 
-## 5. Store assets you still need to prepare
+## 5. Store images
 
-Chrome requires screenshots (at least 1; recommended 1280×800 or 640×400):
+Generated by the store build (or `node scripts/generate-extension-store-assets.mjs`):
 
-1. Panel open on a blank page showing login or checklist  
-2. Collapsed blue tab on the right edge  
-3. (Optional) Handover checklist with tasks  
+| File | Use |
+|------|-----|
+| `store-assets/promo-small-440x280.png` | **Required** small promo tile |
+| `store-assets/promo-marquee-1400x560.png` | Optional marquee |
+| `store-assets/icon-128.png` / package icons | Store + toolbar icon |
 
-Icons 16 / 48 / 128 are generated by:
+**Screenshots (you must capture — at least 1, preferred 1280×800):**
+
+1. Load the unpacked `dist/` in Chrome → open any https page → expand the panel → sign in  
+2. Capture: home categories, to-do checklist, and/or team chat  
+3. Optional: collapsed blue tab on the right edge  
+
+Do **not** upload marketing mockups that don’t match the real UI.
+
+Icons 16 / 48 / 128:
 
 ```bash
 node scripts/generate-extension-icons.mjs
@@ -81,17 +116,18 @@ node scripts/generate-extension-icons.mjs
 
 1. Bump `"version"` in `apps/prize-panel-extension/manifest.json` (e.g. `1.0.0` → `1.0.1`)  
 2. `npm run build:extension:store`  
-3. In the developer console → your item → **Package** → upload new zip → **Submit for review**  
+3. Developer console → item → **Package** → upload new zip → **Submit for review**  
 
 Once approved, Chrome updates installed extensions automatically (usually within hours).
 
 ## 7. After the store listing is live
 
 1. Copy the public Chrome Web Store URL  
-2. Replace ZIP install links on the website with that URL (profile download + `/extension-install`)  
-3. Keep the ZIP build as a fallback for IT/dev if needed  
+2. Put that URL on `/extension-install` and profile download (replace ZIP-first UX if desired)  
+3. Keep ZIP build as fallback for IT/dev  
 
 ## Notes
 
-- `http://localhost:3001/*` is **optional** (not required for store users). Production uses `https://prizebern.com/api/v1`.  
-- Do not upload the unpacked `dist` folder as nested zip incorrectly — use `chrome-web-store.zip` from the script (manifest at zip root).
+- Production API: `https://prizebern.com/api/v1` (settings allowlist: prizebern.com or localhost only).  
+- Do not upload the unpacked `dist` folder nested incorrectly — use `chrome-web-store.zip` (manifest at zip root).  
+- Test privacy URL in an incognito window before submit.

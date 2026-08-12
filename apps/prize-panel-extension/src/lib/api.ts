@@ -1,6 +1,8 @@
 import {
   DEFAULT_API_BASE,
   STORAGE_KEYS,
+  normalizeApiBase,
+  resolveApiBase,
   storageGet,
   storageRemove,
   storageSet,
@@ -28,15 +30,17 @@ export type Me = {
 
 let cachedApiBase: string | null = null;
 
+export { normalizeApiBase };
+
 export async function getApiBase(): Promise<string> {
   if (cachedApiBase) return cachedApiBase;
   const stored = await storageGet([STORAGE_KEYS.apiBase]);
-  cachedApiBase = stored.apiBase ?? DEFAULT_API_BASE;
+  cachedApiBase = resolveApiBase(stored.apiBase);
   return cachedApiBase;
 }
 
 export async function setApiBase(url: string): Promise<void> {
-  cachedApiBase = url.replace(/\/$/, '');
+  cachedApiBase = normalizeApiBase(url);
   await storageSet({ [STORAGE_KEYS.apiBase]: cachedApiBase });
 }
 

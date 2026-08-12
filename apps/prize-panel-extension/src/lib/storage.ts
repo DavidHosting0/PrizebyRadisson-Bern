@@ -9,6 +9,41 @@ export const STORAGE_KEYS = {
 export const DEFAULT_API_BASE =
   import.meta.env.VITE_API_URL ?? 'https://prizebern.com/api/v1';
 
+/** Only PrizeBern production + local API — store-safe credential destination allowlist. */
+export const ALLOWED_API_ORIGINS = new Set([
+  'https://prizebern.com',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+]);
+
+/** Normalize and validate an API base (`…/api/v1`). Throws if origin is not allowlisted. */
+export function normalizeApiBase(url: string): string {
+  const trimmed = url.trim().replace(/\/$/, '');
+  if (!trimmed) throw new Error('API-URL fehlt');
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error('Ungültige API-URL');
+  }
+  if (!ALLOWED_API_ORIGINS.has(parsed.origin)) {
+    throw new Error('Nur prizebern.com oder localhost:3001 erlaubt');
+  }
+  const path = parsed.pathname.replace(/\/$/, '') || '';
+  if (path !== '/api/v1') {
+    throw new Error('API-URL muss auf /api/v1 enden');
+  }
+  return `${parsed.origin}/api/v1`;
+}
+
+export function resolveApiBase(raw: string | undefined): string {
+  try {
+    return normalizeApiBase(raw ?? DEFAULT_API_BASE);
+  } catch {
+    return DEFAULT_API_BASE;
+  }
+}
+
 export const PANEL_WIDTH_PX = 300;
 export const PANEL_MAX_HEIGHT_PX = 500;
 export const PANEL_BORDER_RADIUS_PX = 20;

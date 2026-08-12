@@ -2,11 +2,11 @@
 
 Einklappbares Sidepanel für PrizeBern Housekeeping, aktiv auf allen Websites.
 
-## Features (v1)
+## Features
 
-- Rechts andockendes Panel mit PrizeBern-Design (`#3B6FA0`)
+- Rechts andockendes Panel mit PrizeBern-Design
 - Login mit denselben Zugangsdaten wie die Webapp
-- Schichtübergabe: Checkliste anzeigen, Aufgaben abhaken, Schichtübergabe bestätigen
+- Team-Chat, To-Do-/Schichtübergabe, Schichtnotizen, Beschwerden, Leihartikel
 
 ## Entwicklung
 
@@ -54,15 +54,16 @@ npm run build:extension:store
 ```
 
 Upload: `apps/prize-panel-extension/chrome-web-store.zip`  
+Promo tiles: `apps/prize-panel-extension/store-assets/`  
 Guide: [CHROME-WEB-STORE.md](./CHROME-WEB-STORE.md)  
 Privacy policy (for the listing): `https://prizebern.com/extension-privacy`
 
 ## Berechtigungen
 
-Benutzer brauchen `SHIFT_HANDOVER_READ` (Standard für Rezeption), um die Checkliste zu sehen.
+Benutzer brauchen die jeweiligen Permissions (z. B. `SHIFT_HANDOVER_READ`, Chat, …), um Kategorien zu sehen.
 
 ## Architektur
 
-- **Content Script** (`src/content/inject.ts`): injiziert Panel-Host + iframe auf `<all_urls>`
+- **Content Script** (`src/content/inject.ts`): injiziert Panel-Host + iframe auf http(s)
 - **Panel** (`src/panel/`): React-App im iframe
 - **Auth**: JWT in `chrome.storage.local` (getrennt von Website-`localStorage`)

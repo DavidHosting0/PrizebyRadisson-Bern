@@ -10,7 +10,7 @@
     "dev:web": "npm run dev -w @housekeeping/web",
     "build": "npm run build -w @housekeeping/shared && npm run build -w @housekeeping/api && npm run build -w @housekeeping/prize-panel-extension && node scripts/package-prize-panel-extension.mjs && npm run build -w @housekeeping/web",
     "build:extension": "npm run build -w @housekeeping/shared && npm run build -w @housekeeping/prize-panel-extension && node scripts/package-prize-panel-extension.mjs",
-    "build:extension:store": "npm run build -w @housekeeping/shared && node scripts/generate-extension-icons.mjs && npm run build -w @housekeeping/prize-panel-extension && node scripts/package-prize-panel-extension.mjs && node scripts/package-chrome-web-store.mjs",
+    "build:extension:store": "npm run build -w @housekeeping/shared && node scripts/generate-extension-icons.mjs && node scripts/generate-extension-store-assets.mjs && npm run build -w @housekeeping/prize-panel-extension && node scripts/package-prize-panel-extension.mjs && node scripts/package-chrome-web-store.mjs",
     "dev:extension": "npm run dev -w @housekeeping/prize-panel-extension",
     "extension:icons": "node scripts/generate-extension-icons.mjs",
     "db:migrate": "npm run prisma:migrate -w @housekeeping/api",

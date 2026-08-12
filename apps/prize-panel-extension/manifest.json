@@ -2,18 +2,18 @@
   "manifest_version": 3,
   "name": "PrizeBern Panel",
   "version": "1.0.0",
-  "description": "PrizeBern Housekeeping side panel: shift handover checklist on any website.",
+  "description": "PrizeBern Housekeeping side panel: chat, to-dos, shift notes, complaints and loans while you work.",
   "homepage_url": "https://prizebern.com/extension-install",
   "permissions": ["storage"],
   "host_permissions": ["https://prizebern.com/*"],
-  "optional_host_permissions": ["http://localhost:3001/*"],
+  "optional_host_permissions": ["http://localhost:3001/*", "http://127.0.0.1:3001/*"],
   "background": {
     "service_worker": "src/background/index.ts",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["src/content/inject.ts"],
       "run_at": "document_idle"
     }
@@ -21,7 +21,7 @@
   "web_accessible_resources": [
     {
       "resources": ["src/panel/index.html", "assets/*", "PrizeByRadisson.png"],
-      "matches": ["<all_urls>"]
+      "matches": ["http://*/*", "https://*/*"]
     }
   ],
   "icons": {

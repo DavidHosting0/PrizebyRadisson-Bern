@@ -31,17 +31,20 @@ export default function ExtensionPrivacyPage() {
         <h2 className="text-base font-semibold text-ink">Welche Daten werden verarbeitet?</h2>
         <ul className="list-inside list-disc space-y-1">
           <li>
-            <strong className="text-ink">Login:</strong> E-Mail und Passwort werden nur zur Anmeldung an
-            die PrizeBern-API gesendet (gleiche Zugangsdaten wie die Website).
+            <strong className="text-ink">Login / Authentifizierung:</strong> E-Mail und Passwort werden
+            nur zur Anmeldung an die PrizeBern-API gesendet (gleiche Zugangsdaten wie die Website).
+            Access- und Refresh-Token werden lokal in <code className="text-ink">chrome.storage.local</code>{' '}
+            gespeichert.
           </li>
           <li>
-            <strong className="text-ink">Tokens:</strong> Access- und Refresh-Token werden lokal in{' '}
-            <code className="text-ink">chrome.storage.local</code> gespeichert, damit die Session
-            bestehen bleibt.
+            <strong className="text-ink">Housekeeping-Inhalte:</strong> To-Do-/Schichtübergabe-Checkliste,
+            Schichtnotizen, Gästebeschwerden, Leihartikel und Team-Chat (inkl. optionaler Anhänge) werden
+            über die PrizeBern-API gelesen und aktualisiert — entsprechend den Berechtigungen des
+            angemeldeten Kontos.
           </li>
           <li>
-            <strong className="text-ink">Schichtübergabe:</strong> Checklisten-Status wird über die
-            PrizeBern-API gelesen und aktualisiert.
+            <strong className="text-ink">Panel-Einstellungen:</strong> z.&nbsp;B. eingeklappter Zustand und
+            API-Basis-URL (nur prizebern.com oder lokale Entwicklung) lokal auf dem Gerät.
           </li>
         </ul>
       </section>
@@ -50,11 +53,12 @@ export default function ExtensionPrivacyPage() {
         <h2 className="text-base font-semibold text-ink">Was wird nicht getan?</h2>
         <ul className="list-inside list-disc space-y-1">
           <li>Kein Tracking des Browserverlaufs und kein Auslesen fremder Website-Inhalte.</li>
-          <li>Kein Verkauf von Daten an Dritte.</li>
+          <li>Kein Verkauf von Daten an Dritte und keine Werbung.</li>
           <li>
-            Das Content Script zeigt nur das PrizeBern-Panel an; es liest keine Passwörter oder Formulare
-            anderer Seiten.
+            Das Content Script zeigt nur das PrizeBern-Panel (und ggf. Chat-Hinweise aus der PrizeBern-API);
+            es liest keine Passwörter oder Formulare anderer Seiten.
           </li>
+          <li>Keine Analyse- oder Crash-SDKs von Drittanbietern in der Extension.</li>
         </ul>
       </section>
 
@@ -66,11 +70,12 @@ export default function ExtensionPrivacyPage() {
           </li>
           <li>
             <strong className="text-ink">Host prizebern.com:</strong> API-Aufrufe für Login und
-            Schichtübergabe.
+            Housekeeping-Funktionen.
           </li>
           <li>
-            <strong className="text-ink">Alle Websites (Panel-Overlay):</strong> damit das Panel auf jeder
-            Seite sichtbar ist, die Mitarbeitende bei der Arbeit nutzen (PMS, Intranet, etc.).
+            <strong className="text-ink">http(s) Websites (Panel-Overlay):</strong> damit das Panel auf
+            Seiten sichtbar ist, die Mitarbeitende bei der Arbeit nutzen (PMS, Intranet, E-Mail, …). Die
+            Extension liest den Seiteninhalt nicht aus.
           </li>
         </ul>
       </section>
@@ -80,6 +85,8 @@ export default function ExtensionPrivacyPage() {
         <p>
           Tokens bleiben auf dem Gerät, bis du dich in der Extension abmeldest oder die Extension
           deinstallierst. Server-seitig gelten die gleichen Regeln wie für die PrizeBern-Webapp.
+          Lösch- oder Auskunftsersuchen: über die PrizeBern-Administration bzw. den
+          Hotel-IT-Ansprechpartner.
         </p>
       </section>
 

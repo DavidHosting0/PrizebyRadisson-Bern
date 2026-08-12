@@ -10,6 +10,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Compile shared from TypeScript source so Rollup sees real ESM named exports
+      // (CJS dist `__exportStar` is opaque to Vite's static analysis).
+      '@housekeeping/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
   build: {

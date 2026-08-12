@@ -1,6 +1,6 @@
 import {
-  DEFAULT_API_BASE,
   STORAGE_KEYS,
+  resolveApiBase,
   storageGet,
 } from '../lib/storage';
 
@@ -129,7 +129,7 @@ export function startChatAlertWatcher(getPanelChatOpen: () => boolean) {
       const token = stored.accessToken;
       if (!token) return;
 
-      const apiBase = (stored.apiBase ?? DEFAULT_API_BASE).replace(/\/$/, '');
+      const apiBase = resolveApiBase(stored.apiBase);
       const headers = { Authorization: `Bearer ${token}` };
 
       await ensureMe(apiBase, headers);
