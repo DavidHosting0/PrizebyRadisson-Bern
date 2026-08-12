@@ -994,7 +994,7 @@
       "selectCleanerHint": "Selecione pelo menos um colaborador para executar.",
       "runError": "Não foi possível executar a atribuição automática.",
       "distribution": "Distribuição de quartos",
-      "distributionHint": "Pré-visualização dos quartos dirty por pessoa. Ajuste as quantidades — as outras são reequilibradas automaticamente.",
+      "distributionHint": "Quartos dirty por pessoa. Toque num quarto e depois noutra pessoa — ou arraste. +/− move um quarto pelas regras habituais.",
       "distributionTotal": "{count} quartos dirty",
       "resetDistribution": "Repor",
       "loadingPreview": "A calcular distribuição…",
@@ -1009,7 +1009,9 @@
       "moreRooms": "Mais quartos",
       "roomCheckedOut": "Quarto {number} · checkout feito",
       "roomDepartureInRoom": "Quarto {number} · partida, hóspede ainda no quarto",
-      "roomNumber": "Quarto {number}"
+      "roomNumber": "Quarto {number}",
+      "moveRoomsHint": "Toque num quarto, depois numa pessoa — ou arraste",
+      "dropRoomHere": "Largar quarto aqui"
     }
   },
   "technician": {

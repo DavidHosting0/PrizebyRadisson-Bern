@@ -74,6 +74,7 @@ export class AssignmentsController {
         publicAssigneeUserIds: dto.publicAssigneeUserIds,
         inspectorUserIds: dto.inspectorUserIds,
         dirtyRoomTargets: dto.dirtyRoomTargets,
+        dirtyRoomAssignments: dto.dirtyRoomAssignments,
       },
       user,
     );
@@ -89,6 +90,7 @@ export class AssignmentsController {
       lateShiftUserIds: dto.lateShiftUserIds,
       publicAssigneeUserIds: dto.publicAssigneeUserIds,
       dirtyRoomTargets: dto.dirtyRoomTargets,
+      dirtyRoomAssignments: dto.dirtyRoomAssignments,
     });
   }
 

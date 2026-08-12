@@ -99,6 +99,8 @@ export type AutoAssignRunOptions = {
   inspectorUserIds?: string[];
   /** Optional exact dirty-room counts per user (supervisor override in preview). */
   dirtyRoomTargets?: Array<{ userId: string; count: number }>;
+  /** Optional exact dirty-room placements (drag/move in the setup dialog). */
+  dirtyRoomAssignments?: Array<{ roomId: string; userId: string }>;
 };
 
 export type AutoAssignPreviewRoom = {

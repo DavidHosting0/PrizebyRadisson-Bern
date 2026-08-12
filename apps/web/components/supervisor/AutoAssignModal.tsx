@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tansta
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
+  AutoAssignPreviewPerson,
   AutoAssignPreviewResponse,
   DailyCleaningPlanResponse,
 } from '@housekeeping/shared';
@@ -15,39 +16,86 @@ import { useTranslations } from 'next-intl';
 
 type Assignee = DailyCleaningPlanResponse['manualAssignees'][number];
 
-function redistributeDirtyTargets(
-  current: Record<string, number>,
-  userId: string,
-  newCount: number,
-  total: number,
-  orderedIds: string[],
-): Record<string, number> {
-  const others = orderedIds.filter((id) => id !== userId);
-  const clamped = Math.max(0, Math.min(total, Math.round(newCount)));
-  const next: Record<string, number> = { ...current, [userId]: clamped };
-  const remaining = total - clamped;
-  if (others.length === 0) {
-    next[userId] = total;
-    return next;
+const LATE_ROOM_WEIGHT = 0.55;
+const RESTANT_DIRTY_FACTOR = 1.35;
+
+function personRoomWeight(p: AutoAssignPreviewPerson, totalRestant: number): number {
+  let w = p.isLateShift ? LATE_ROOM_WEIGHT : 1;
+  if (p.restantCount > 0 && totalRestant > 0) {
+    w *= 1 + (p.restantCount / totalRestant) * (RESTANT_DIRTY_FACTOR - 1);
   }
-  const weights = others.map((id) => Math.max(0, current[id] ?? 0));
-  const weightSum = weights.reduce((a, b) => a + b, 0);
-  let allocated = 0;
-  for (let i = 0; i < others.length; i++) {
-    const id = others[i]!;
-    if (i === others.length - 1) {
-      next[id] = Math.max(0, remaining - allocated);
-    } else if (weightSum <= 0) {
-      const share = Math.floor(remaining / others.length);
-      next[id] = share;
-      allocated += share;
-    } else {
-      const share = Math.floor((remaining * (weights[i] ?? 0)) / weightSum);
-      next[id] = share;
-      allocated += share;
-    }
+  return w;
+}
+
+/** Move exactly one dirty room to/from `userId` using auto-assign weights. */
+function shiftOneDirtyRoom(
+  people: AutoAssignPreviewPerson[],
+  userId: string,
+  delta: number,
+): Record<string, number> | null {
+  const counts: Record<string, number> = {};
+  for (const p of people) counts[p.userId] = p.dirtyRoomCount;
+  const current = counts[userId];
+  if (current == null) return null;
+  if (delta > 0 && current + delta > people.reduce((s, p) => s + p.dirtyRoomCount, 0)) return null;
+  if (delta < 0 && current <= 0) return null;
+
+  const totalRestant = people.reduce((s, p) => s + p.restantCount, 0);
+  const total = people.reduce((s, p) => s + p.dirtyRoomCount, 0);
+  const weights = new Map(people.map((p) => [p.userId, personRoomWeight(p, totalRestant)]));
+  const weightSum = [...weights.values()].reduce((a, b) => a + b, 0) || people.length;
+  const fair: Record<string, number> = {};
+  for (const p of people) {
+    fair[p.userId] = ((weights.get(p.userId) ?? 0) * total) / weightSum;
+  }
+
+  const others = people.filter((p) => p.userId !== userId);
+  if (others.length === 0) return null;
+
+  if (delta > 0) {
+    const donors = others.filter((p) => (counts[p.userId] ?? 0) > 0);
+    if (donors.length === 0) return null;
+    donors.sort((a, b) => {
+      const da = (counts[a.userId] ?? 0) - (fair[a.userId] ?? 0);
+      const db = (counts[b.userId] ?? 0) - (fair[b.userId] ?? 0);
+      if (db !== da) return db - da;
+      return a.userId.localeCompare(b.userId);
+    });
+    const donor = donors[0]!;
+    counts[userId] = current + 1;
+    counts[donor.userId] = (counts[donor.userId] ?? 0) - 1;
+  } else {
+    others.sort((a, b) => {
+      const da = (counts[a.userId] ?? 0) - (fair[a.userId] ?? 0);
+      const db = (counts[b.userId] ?? 0) - (fair[b.userId] ?? 0);
+      if (da !== db) return da - db;
+      return a.userId.localeCompare(b.userId);
+    });
+    const receiver = others[0]!;
+    counts[userId] = current - 1;
+    counts[receiver.userId] = (counts[receiver.userId] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function assignmentsFromPeople(people: AutoAssignPreviewPerson[]): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const p of people) {
+    for (const room of p.rooms) next[room.roomId] = p.userId;
   }
   return next;
+}
+
+function countsFromAssignments(
+  assignments: Record<string, string>,
+  userIds: string[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const id of userIds) counts[id] = 0;
+  for (const userId of Object.values(assignments)) {
+    counts[userId] = (counts[userId] ?? 0) + 1;
+  }
+  return counts;
 }
 
 type Tone = 'action' | 'amber' | 'emerald';
@@ -210,11 +258,19 @@ export function AutoAssignSetupModal({
   const [lateIds, setLateIds] = useState<string[]>([]);
   const [publicIds, setPublicIds] = useState<string[]>([]);
   const [inspectorIds, setInspectorIds] = useState<string[]>([]);
-  const [dirtyTargets, setDirtyTargets] = useState<Record<string, number> | null>(null);
-  const [targetsTouched, setTargetsTouched] = useState(false);
+  const [lockedTargets, setLockedTargets] = useState<Record<string, number>>({});
+  const [roomAssignments, setRoomAssignments] = useState<Record<string, string> | null>(null);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [dragOverUserId, setDragOverUserId] = useState<string | null>(null);
+  const crewHydrated = useRef(false);
 
   useEffect(() => {
-    if (!open || !planQ.data) return;
+    if (!open) {
+      crewHydrated.current = false;
+      return;
+    }
+    if (!planQ.data || crewHydrated.current) return;
+    crewHydrated.current = true;
     const working = planQ.data.workingToday.map((c) => c.id);
     setWorkingIds(working);
     const autoLate = planQ.data.workingToday.filter((c) => c.isLateShift).map((c) => c.id);
@@ -238,8 +294,9 @@ export function AutoAssignSetupModal({
     else if (autoLate.length) setPublicIds(autoLate);
     else setPublicIds([]);
     setInspectorIds(planQ.data.inspectorsToday?.map((i) => i.id) ?? []);
-    setDirtyTargets(null);
-    setTargetsTouched(false);
+    setLockedTargets({});
+    setRoomAssignments(null);
+    setSelectedRoomId(null);
   }, [open, planQ.data]);
 
   const workingSet = useMemo(() => new Set(workingIds), [workingIds]);
@@ -274,8 +331,9 @@ export function AutoAssignSetupModal({
   );
 
   useEffect(() => {
-    setDirtyTargets(null);
-    setTargetsTouched(false);
+    setLockedTargets({});
+    setRoomAssignments(null);
+    setSelectedRoomId(null);
   }, [crewKey]);
 
   const previewPayload = useMemo(
@@ -286,11 +344,14 @@ export function AutoAssignSetupModal({
       lateShiftUserIds: lateIds.filter((id) => workingSet.has(id)),
       publicAssigneeUserIds: publicIds,
       dirtyRoomTargets:
-        targetsTouched && dirtyTargets
-          ? Object.entries(dirtyTargets).map(([userId, count]) => ({ userId, count }))
+        Object.keys(lockedTargets).length > 0
+          ? Object.entries(lockedTargets).map(([userId, count]) => ({ userId, count }))
           : undefined,
+      dirtyRoomAssignments: roomAssignments
+        ? Object.entries(roomAssignments).map(([roomId, userId]) => ({ roomId, userId }))
+        : undefined,
     }),
-    [date, workingIds, restantIds, lateIds, publicIds, workingSet, targetsTouched, dirtyTargets],
+    [date, workingIds, restantIds, lateIds, publicIds, workingSet, lockedTargets, roomAssignments],
   );
 
   const previewQ = useQuery({
@@ -304,13 +365,6 @@ export function AutoAssignSetupModal({
     placeholderData: keepPreviousData,
   });
 
-  useEffect(() => {
-    if (!previewQ.data || targetsTouched) return;
-    const next: Record<string, number> = {};
-    for (const p of previewQ.data.people) next[p.userId] = p.dirtyRoomCount;
-    setDirtyTargets(next);
-  }, [previewQ.data, targetsTouched]);
-
   const run = useMutation({
     mutationFn: () =>
       api<DailyCleaningPlanResponse>('/assignments/daily-plan/run', {
@@ -323,9 +377,12 @@ export function AutoAssignSetupModal({
           publicAssigneeUserIds: publicIds,
           inspectorUserIds: inspectorIds,
           dirtyRoomTargets:
-            targetsTouched && dirtyTargets
-              ? Object.entries(dirtyTargets).map(([userId, count]) => ({ userId, count }))
+            Object.keys(lockedTargets).length > 0
+              ? Object.entries(lockedTargets).map(([userId, count]) => ({ userId, count }))
               : undefined,
+          dirtyRoomAssignments: roomAssignments
+            ? Object.entries(roomAssignments).map(([roomId, userId]) => ({ roomId, userId }))
+            : undefined,
         }),
       }),
     onSuccess: async () => {
@@ -353,16 +410,40 @@ export function AutoAssignSetupModal({
     setWorking(workingIds.includes(id) ? workingIds.filter((x) => x !== id) : [...workingIds, id]);
   }
 
+  function applyRoomAssignments(next: Record<string, string>) {
+    setRoomAssignments(next);
+    setLockedTargets(countsFromAssignments(next, workingIds));
+    setSelectedRoomId(null);
+    setDragOverUserId(null);
+  }
+
+  function moveRoomTo(roomId: string, toUserId: string) {
+    if (!previewQ.data) return;
+    const base = roomAssignments ?? assignmentsFromPeople(previewQ.data.people);
+    if (base[roomId] === toUserId) {
+      setSelectedRoomId(null);
+      return;
+    }
+    applyRoomAssignments({ ...base, [roomId]: toUserId });
+  }
+
   function adjustDirtyCount(userId: string, delta: number) {
-    if (!previewQ.data || !dirtyTargets) return;
-    const total = previewQ.data.dirtyRoomTotal;
-    const current = dirtyTargets[userId] ?? 0;
-    const nextCount = Math.max(0, Math.min(total, current + delta));
-    if (nextCount === current) return;
-    setDirtyTargets(
-      redistributeDirtyTargets(dirtyTargets, userId, nextCount, total, workingIds),
-    );
-    setTargetsTouched(true);
+    if (!previewQ.data || previewQ.isFetching) return;
+    const people = previewQ.data.people;
+    const next = shiftOneDirtyRoom(people, userId, delta);
+    if (!next) return;
+    if (roomAssignments) {
+      const current = assignmentsFromPeople(people);
+      const gainer = people.find((p) => (next[p.userId] ?? 0) > p.dirtyRoomCount);
+      const loser = people.find((p) => (next[p.userId] ?? 0) < p.dirtyRoomCount);
+      const moved = loser?.rooms[loser.rooms.length - 1];
+      if (gainer && moved) {
+        applyRoomAssignments({ ...current, [moved.roomId]: gainer.userId });
+        return;
+      }
+    }
+    setLockedTargets(next);
+    setRoomAssignments(null);
   }
 
   if (!open) return null;
@@ -661,12 +742,13 @@ export function AutoAssignSetupModal({
                 : undefined
             }
             actions={
-              targetsTouched ? (
+              Object.keys(lockedTargets).length > 0 || roomAssignments ? (
                 <QuickLink
                   label={t('resetDistribution')}
                   onClick={() => {
-                    setTargetsTouched(false);
-                    setDirtyTargets(null);
+                    setLockedTargets({});
+                    setRoomAssignments(null);
+                    setSelectedRoomId(null);
                   }}
                 />
               ) : null
@@ -693,13 +775,40 @@ export function AutoAssignSetupModal({
                     <span className="inline-block h-2.5 w-2.5 rounded-sm bg-white/25" />
                     {t('legendOther')}
                   </span>
+                  <span className="text-sidebar-muted/80">{t('moveRoomsHint')}</span>
                 </div>
                 {previewPeople.map((person) => {
-                  const count = dirtyTargets?.[person.userId] ?? person.dirtyRoomCount;
+                  const count = person.dirtyRoomCount;
+                  const othersHaveRooms = previewPeople.some(
+                    (p) => p.userId !== person.userId && p.dirtyRoomCount > 0,
+                  );
+                  const fetching = previewQ.isFetching;
+                  const isDropTarget = selectedRoomId != null || dragOverUserId === person.userId;
                   return (
                     <div
                       key={person.userId}
-                      className="rounded-btn border border-white/10 bg-white/[0.03] px-3 py-2.5"
+                      className={clsx(
+                        'rounded-btn border px-3 py-2.5 transition',
+                        selectedRoomId ? 'cursor-pointer' : null,
+                        dragOverUserId === person.userId
+                          ? 'border-action bg-action/15'
+                          : selectedRoomId
+                            ? 'border-action/40 bg-white/[0.04]'
+                            : 'border-white/10 bg-white/[0.03]',
+                      )}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        setDragOverUserId(person.userId);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const roomId = e.dataTransfer.getData('text/plain');
+                        if (roomId) moveRoomTo(roomId, person.userId);
+                      }}
+                      onClick={() => {
+                        if (selectedRoomId) moveRoomTo(selectedRoomId, person.userId);
+                      }}
                     >
                       <div className="flex items-center gap-2">
                         <div className="min-w-0 flex-1">
@@ -730,9 +839,12 @@ export function AutoAssignSetupModal({
                           <button
                             type="button"
                             className="flex h-8 w-8 items-center justify-center rounded-btn border border-sidebar-border text-white hover:bg-white/10 disabled:opacity-40"
-                            disabled={count <= 0}
+                            disabled={fetching || count <= 0}
                             aria-label={t('fewerRooms')}
-                            onClick={() => adjustDirtyCount(person.userId, -1)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              adjustDirtyCount(person.userId, -1);
+                            }}
                           >
                             −
                           </button>
@@ -742,42 +854,62 @@ export function AutoAssignSetupModal({
                           <button
                             type="button"
                             className="flex h-8 w-8 items-center justify-center rounded-btn border border-sidebar-border text-white hover:bg-white/10 disabled:opacity-40"
-                            disabled={
-                              !previewQ.data || count >= previewQ.data.dirtyRoomTotal
-                            }
+                            disabled={fetching || !othersHaveRooms}
                             aria-label={t('moreRooms')}
-                            onClick={() => adjustDirtyCount(person.userId, 1)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              adjustDirtyCount(person.userId, 1);
+                            }}
                           >
                             +
                           </button>
                         </div>
                       </div>
-                      {person.rooms.length > 0 && (
+                      {person.rooms.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1">
-                          {person.rooms.map((room) => (
-                            <span
-                              key={room.roomId}
-                              title={
-                                room.guestCheckedOut
-                                  ? t('roomCheckedOut', { number: room.roomNumber })
-                                  : room.isDepartureToday
-                                    ? t('roomDepartureInRoom', { number: room.roomNumber })
-                                    : t('roomNumber', { number: room.roomNumber })
-                              }
-                              className={clsx(
-                                'rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none',
-                                room.guestCheckedOut
-                                  ? 'bg-emerald-400/25 text-emerald-100 ring-1 ring-emerald-400/40'
-                                  : room.isDepartureToday
-                                    ? 'bg-amber-400/25 text-amber-100 ring-1 ring-amber-400/40'
-                                    : 'bg-white/10 text-slate-200',
-                              )}
-                            >
-                              {room.roomNumber}
-                            </span>
-                          ))}
+                          {person.rooms.map((room) => {
+                            const selected = selectedRoomId === room.roomId;
+                            return (
+                              <button
+                                key={room.roomId}
+                                type="button"
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData('text/plain', room.roomId);
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  setSelectedRoomId(room.roomId);
+                                }}
+                                onDragEnd={() => setDragOverUserId(null)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedRoomId((id) => (id === room.roomId ? null : room.roomId));
+                                }}
+                                title={
+                                  room.guestCheckedOut
+                                    ? t('roomCheckedOut', { number: room.roomNumber })
+                                    : room.isDepartureToday
+                                      ? t('roomDepartureInRoom', { number: room.roomNumber })
+                                      : t('roomNumber', { number: room.roomNumber })
+                                }
+                                className={clsx(
+                                  'cursor-grab rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none active:cursor-grabbing',
+                                  selected
+                                    ? 'ring-2 ring-action bg-action text-white'
+                                    : room.guestCheckedOut
+                                      ? 'bg-emerald-400/25 text-emerald-100 ring-1 ring-emerald-400/40'
+                                      : room.isDepartureToday
+                                        ? 'bg-amber-400/25 text-amber-100 ring-1 ring-amber-400/40'
+                                        : 'bg-white/10 text-slate-200 hover:bg-white/20',
+                                )}
+                              >
+                                {room.roomNumber}
+                              </button>
+                            );
+                          })}
                         </div>
-                      )}
+                      ) : isDropTarget ? (
+                        <p className="mt-2 text-[10px] text-sidebar-muted">{t('dropRoomHere')}</p>
+                      ) : null}
                     </div>
                   );
                 })}

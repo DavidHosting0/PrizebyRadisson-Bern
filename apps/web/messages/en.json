@@ -994,7 +994,7 @@
       "selectCleanerHint": "Select at least one cleaner to run.",
       "runError": "Could not run auto assignment.",
       "distribution": "Room distribution",
-      "distributionHint": "Preview dirty rooms per person. Adjust counts — others are rebalanced automatically.",
+      "distributionHint": "Preview dirty rooms per person. Tap a room then another cleaner, or drag it, to move. +/− shifts one room by the usual rules.",
       "distributionTotal": "{count} dirty rooms",
       "resetDistribution": "Reset",
       "loadingPreview": "Calculating distribution…",
@@ -1009,7 +1009,9 @@
       "moreRooms": "More rooms",
       "roomCheckedOut": "Room {number} · checked out",
       "roomDepartureInRoom": "Room {number} · departure, guest still in room",
-      "roomNumber": "Room {number}"
+      "roomNumber": "Room {number}",
+      "moveRoomsHint": "Tap a room, then a cleaner — or drag",
+      "dropRoomHere": "Drop room here"
     }
   },
   "technician": {

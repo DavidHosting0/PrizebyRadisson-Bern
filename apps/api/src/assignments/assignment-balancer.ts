@@ -48,6 +48,56 @@ function compareDirtyRooms(a: BalanceWorkItem, b: BalanceWorkItem): number {
   return compareRoomNumbers(a.roomNumber ?? '', b.roomNumber ?? '');
 }
 
+/**
+ * Pin supervisor-set counts; split leftover dirty rooms among everyone else
+ * using the same late/restant weights as auto-assign.
+ */
+export function resolveDirtyRoomTargets(
+  cleanerIds: string[],
+  dirtyWeights: Map<string, number>,
+  total: number,
+  locked?: Map<string, number>,
+): Map<string, number> {
+  if (!locked || locked.size === 0) {
+    return allocateTargets(cleanerIds, dirtyWeights, total);
+  }
+
+  const lockedIds = cleanerIds.filter((id) => locked.has(id));
+  const freeIds = cleanerIds.filter((id) => !locked.has(id));
+  const pinned = new Map<string, number>();
+  let lockedSum = 0;
+  for (const id of lockedIds) {
+    const n = Math.max(0, Math.floor(locked.get(id) ?? 0));
+    pinned.set(id, n);
+    lockedSum += n;
+  }
+
+  if (lockedSum > total) {
+    return allocateTargets(
+      lockedIds.length > 0 ? lockedIds : cleanerIds,
+      new Map(lockedIds.map((id) => [id, Math.max(1, pinned.get(id) ?? 0)])),
+      total,
+    );
+  }
+
+  const remaining = total - lockedSum;
+  const out = new Map<string, number>();
+  for (const id of cleanerIds) out.set(id, 0);
+
+  if (freeIds.length > 0) {
+    const extra = allocateTargets(freeIds, dirtyWeights, remaining);
+    for (const id of lockedIds) out.set(id, pinned.get(id) ?? 0);
+    for (const id of freeIds) out.set(id, extra.get(id) ?? 0);
+    return out;
+  }
+
+  const extra = allocateTargets(cleanerIds, dirtyWeights, remaining);
+  for (const id of cleanerIds) {
+    out.set(id, (pinned.get(id) ?? 0) + (extra.get(id) ?? 0));
+  }
+  return out;
+}
+
 /** Allocate integer targets that sum to `total` proportional to weights. */
 function allocateTargets(
   ids: string[],
@@ -275,39 +325,12 @@ export function balanceDailyCleaningAssignments(
     const totalDirtyIncludingPinned =
       dirty.length + cleanerIds.reduce((s, id) => s + (dirtyAssignedCount.get(id) ?? 0), 0);
 
-    let targets: Map<string, number>;
-    if (options?.dirtyRoomTargets && options.dirtyRoomTargets.size > 0) {
-      targets = new Map<string, number>();
-      for (const id of cleanerIds) {
-        targets.set(id, Math.max(0, Math.floor(options.dirtyRoomTargets.get(id) ?? 0)));
-      }
-      // Ensure every cleaner id from targets is considered even if not in cleaners (skip)
-      let sum = cleanerIds.reduce((s, id) => s + (targets.get(id) ?? 0), 0);
-      if (sum !== totalDirtyIncludingPinned && cleanerIds.length > 0) {
-        // Normalize so targets sum to total dirty rooms
-        if (sum <= 0) {
-          targets = allocateTargets(cleanerIds, dirtyWeights, totalDirtyIncludingPinned);
-        } else {
-          const scaled = new Map<string, number>();
-          let allocated = 0;
-          for (const id of cleanerIds) {
-            const t = Math.floor(((targets.get(id) ?? 0) * totalDirtyIncludingPinned) / sum);
-            scaled.set(id, t);
-            allocated += t;
-          }
-          let rem = totalDirtyIncludingPinned - allocated;
-          const ordered = [...cleanerIds].sort((a, b) => a.localeCompare(b));
-          for (const id of ordered) {
-            if (rem <= 0) break;
-            scaled.set(id, (scaled.get(id) ?? 0) + 1);
-            rem -= 1;
-          }
-          targets = scaled;
-        }
-      }
-    } else {
-      targets = allocateTargets(cleanerIds, dirtyWeights, totalDirtyIncludingPinned);
-    }
+    const targets = resolveDirtyRoomTargets(
+      cleanerIds,
+      dirtyWeights,
+      totalDirtyIncludingPinned,
+      options?.dirtyRoomTargets,
+    );
 
     // Carve only unassigned rooms; reduce each cleaner's remaining by pinned dirty already held
     const remaining = new Map<string, number>();
@@ -344,13 +367,17 @@ export function balanceDailyCleaningAssignments(
     }
 
     const sortedDirty = [...dirty].sort(compareDirtyRooms);
-    const carveOrder = [...cleanerIds].sort((a, b) => {
-      const dt = (remaining.get(b) ?? 0) - (remaining.get(a) ?? 0);
-      if (dt !== 0) return dt;
-      const dw = (dirtyWeights.get(b) ?? 0) - (dirtyWeights.get(a) ?? 0);
-      if (dw !== 0) return dw;
-      return a.localeCompare(b);
-    });
+    // Supervisor-set counts: keep a stable person order so ±1 only moves a boundary room
+    // instead of reshuffling who gets the first floors.
+    const carveOrder = options?.dirtyRoomTargets?.size
+      ? [...cleanerIds]
+      : [...cleanerIds].sort((a, b) => {
+          const dt = (remaining.get(b) ?? 0) - (remaining.get(a) ?? 0);
+          if (dt !== 0) return dt;
+          const dw = (dirtyWeights.get(b) ?? 0) - (dirtyWeights.get(a) ?? 0);
+          if (dw !== 0) return dw;
+          return a.localeCompare(b);
+        });
 
     let cursor = 0;
     for (const hkId of carveOrder) {
@@ -365,8 +392,15 @@ export function balanceDailyCleaningAssignments(
       }
       remaining.set(hkId, need);
     }
+    const leftoverOrder = [...cleanerIds].sort((a, b) => {
+      const dw = (dirtyWeights.get(b) ?? 0) - (dirtyWeights.get(a) ?? 0);
+      if (dw !== 0) return dw;
+      return a.localeCompare(b);
+    });
+    let leftoverIdx = 0;
     while (cursor < sortedDirty.length) {
-      const fallback = carveOrder[carveOrder.length - 1] ?? cleanerIds[0]!;
+      const fallback = leftoverOrder[leftoverIdx % leftoverOrder.length] ?? cleanerIds[0]!;
+      leftoverIdx += 1;
       const item = sortedDirty[cursor]!;
       cursor += 1;
       assigned.set(item.key, fallback);

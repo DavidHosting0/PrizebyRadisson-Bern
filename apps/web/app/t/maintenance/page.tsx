@@ -19,18 +19,25 @@ type Row = {
   reportedBy: { name: string; titlePrefix: string };
 };
 
-const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'];
+const STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+const FILTERS = ['OPEN', ...STATUSES, 'ALL'] as const;
+
+function filterLabel(value: (typeof FILTERS)[number]) {
+  if (value === 'OPEN') return 'Open';
+  if (value === 'ALL') return 'All';
+  return value.charAt(0) + value.slice(1).toLowerCase();
+}
 
 export default function TechnicianMaintenancePage() {
   const damageLabel = useDamageTypeLabel();
   const qc = useQueryClient();
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<(typeof FILTERS)[number]>('OPEN');
   const canUpdate = usePermission('DAMAGE_REPORT_UPDATE');
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['damage-reports', status],
     queryFn: () => {
-      const q = status ? `?status=${encodeURIComponent(status)}` : '';
+      const q = status === 'ALL' ? '' : `?status=${encodeURIComponent(status)}`;
       return api<Row[]>(`/damage-reports${q}`);
     },
   });
@@ -49,7 +56,7 @@ export default function TechnicianMaintenancePage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-white">Maintenance</h1>
         <p className="mt-1 text-sm text-sidebar-muted">
-          All damage reports from housekeeping and supervisors — newest first.
+          Open damage reports from housekeeping and supervisors — newest first.
         </p>
       </div>
       <div>
@@ -57,12 +64,11 @@ export default function TechnicianMaintenancePage() {
         <select
           className="mt-1 min-h-[44px] w-full rounded-btn border border-sidebar-border bg-sidebar px-3 text-sm text-white"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => setStatus(e.target.value as (typeof FILTERS)[number])}
         >
-          <option value="">All</option>
-          {STATUSES.map((s) => (
+          {FILTERS.map((s) => (
             <option key={s} value={s}>
-              {s.charAt(0) + s.slice(1).toLowerCase()}
+              {filterLabel(s)}
             </option>
           ))}
         </select>
@@ -110,7 +116,11 @@ export default function TechnicianMaintenancePage() {
           </li>
         ))}
       </ul>
-      {data.length === 0 && !isLoading && <p className="text-sm text-sidebar-muted">No damage reports.</p>}
+      {data.length === 0 && !isLoading && (
+        <p className="text-sm text-sidebar-muted">
+          {status === 'OPEN' ? 'No open damage reports.' : 'No damage reports.'}
+        </p>
+      )}
     </div>
   );
 }

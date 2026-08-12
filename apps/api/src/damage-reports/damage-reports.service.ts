@@ -57,9 +57,18 @@ export class DamageReportsService {
     return { uploadUrl: url, key };
   }
 
-  async list(query: { status?: RoomDamageReportStatus; q?: string; roomId?: string }) {
+  async list(query: { status?: string; q?: string; roomId?: string }) {
     const where: Prisma.RoomDamageReportWhereInput = {};
-    if (query.status) where.status = query.status;
+    if (query.status === 'OPEN') {
+      where.status = {
+        in: [RoomDamageReportStatus.REPORTED, RoomDamageReportStatus.ACKNOWLEDGED],
+      };
+    } else if (query.status) {
+      if (!Object.values(RoomDamageReportStatus).includes(query.status as RoomDamageReportStatus)) {
+        throw new BadRequestException('Invalid status');
+      }
+      where.status = query.status as RoomDamageReportStatus;
+    }
     if (query.roomId) where.roomId = query.roomId;
     if (query.q) {
       where.description = { contains: query.q, mode: 'insensitive' };

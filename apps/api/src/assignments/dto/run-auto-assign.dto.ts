@@ -17,6 +17,14 @@ export class DirtyRoomTargetDto {
   count!: number;
 }
 
+export class DirtyRoomAssignmentDto {
+  @IsString()
+  roomId!: string;
+
+  @IsString()
+  userId!: string;
+}
+
 export class RunAutoAssignDto {
   @IsOptional()
   @IsString()
@@ -57,4 +65,10 @@ export class RunAutoAssignDto {
   @ValidateNested({ each: true })
   @Type(() => DirtyRoomTargetDto)
   dirtyRoomTargets?: DirtyRoomTargetDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DirtyRoomAssignmentDto)
+  dirtyRoomAssignments?: DirtyRoomAssignmentDto[];
 }

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { PermissionCode, RoomDamageReportStatus, User } from '@prisma/client';
+import { PermissionCode, User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/require-permissions.decorator';
 import { CreateDamageReportDto } from './dto/create-damage-report.dto';
@@ -13,7 +13,7 @@ export class DamageReportsController {
 
   @Get()
   @RequirePermissions(PermissionCode.DAMAGE_REPORT_READ)
-  list(@Query('status') status?: RoomDamageReportStatus, @Query('q') q?: string, @Query('roomId') roomId?: string) {
+  list(@Query('status') status?: string, @Query('q') q?: string, @Query('roomId') roomId?: string) {
     return this.damageReports.list({ status, q, roomId });
   }
 

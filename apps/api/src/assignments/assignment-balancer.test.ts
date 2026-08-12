@@ -152,6 +152,28 @@ describe('balanceDailyCleaningAssignments', () => {
     assert.ok(rest.roomCount > full.roomCount);
   });
 
+  it('keeps pinned dirty rooms on their assignee when targets recarve the rest', () => {
+    const rooms = [
+      dirtyRoom('101', true, 'b'),
+      dirtyRoom('102'),
+      dirtyRoom('103'),
+      dirtyRoom('104'),
+    ];
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'b', isLateShift: false, roomWeight: 1 },
+    ];
+    const { assignments } = balanceDailyCleaningAssignments(rooms, cleaners, {
+      dirtyRoomTargets: new Map([
+        ['a', 1],
+        ['b', 3],
+      ]),
+    });
+    assert.equal(assignments.find((a) => a.key === 'r-101')?.housekeeperId, 'b');
+    assert.equal(assignments.filter((a) => a.housekeeperId === 'b').length, 3);
+    assert.equal(assignments.filter((a) => a.housekeeperId === 'a').length, 1);
+  });
+
   it('respects explicit dirty room targets', () => {
     const rooms = ['101', '102', '103', '104', '105', '106'].map((n) => dirtyRoom(n));
     const cleaners: EligibleCleaner[] = [
@@ -166,6 +188,23 @@ describe('balanceDailyCleaningAssignments', () => {
     });
     assert.equal(summaries.find((s) => s.housekeeperId === 'a')!.roomCount, 4);
     assert.equal(summaries.find((s) => s.housekeeperId === 'b')!.roomCount, 2);
+  });
+
+  it('redistributes unlocked people by rules when one count is locked', () => {
+    const rooms = Array.from({ length: 9 }, (_, i) => dirtyRoom(String(101 + i)));
+    const cleaners: EligibleCleaner[] = [
+      { housekeeperId: 'a', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'b', isLateShift: false, roomWeight: 1 },
+      { housekeeperId: 'late', isLateShift: true, roomWeight: 0.55 },
+    ];
+    const { summaries } = balanceDailyCleaningAssignments(rooms, cleaners, {
+      dirtyRoomTargets: new Map([['a', 2]]),
+    });
+    assert.equal(summaries.find((s) => s.housekeeperId === 'a')!.roomCount, 2);
+    const b = summaries.find((s) => s.housekeeperId === 'b')!.roomCount;
+    const late = summaries.find((s) => s.housekeeperId === 'late')!.roomCount;
+    assert.equal(b + late, 7);
+    assert.ok(b > late);
   });
 
   it('split restant holders each get more dirty than a solo restant holder would leave others', () => {

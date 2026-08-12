@@ -601,6 +601,7 @@ export class DailyCleaningService implements OnModuleInit {
       publicAssigneeUserIds?: string[];
       inspectorUserIds?: string[];
       dirtyRoomTargets?: Array<{ userId: string; count: number }>;
+      dirtyRoomAssignments?: Array<{ roomId: string; userId: string }>;
     },
     assigner?: User,
   ): Promise<DailyCleaningPlanResponse> {
@@ -766,6 +767,7 @@ export class DailyCleaningService implements OnModuleInit {
         pinned: t.pinned,
         assigneeUserId: t.assigneeUserId,
       }));
+    this.applyDirtyRoomPins(items, options.dirtyRoomAssignments);
 
     const cleaners: EligibleCleaner[] = refreshed.eligible.map((e) => ({
       housekeeperId: e.id,
@@ -824,6 +826,7 @@ export class DailyCleaningService implements OnModuleInit {
       lateShiftUserIds?: string[];
       publicAssigneeUserIds?: string[];
       dirtyRoomTargets?: Array<{ userId: string; count: number }>;
+      dirtyRoomAssignments?: Array<{ roomId: string; userId: string }>;
     },
   ): Promise<AutoAssignPreviewResponse> {
     const dateIso = this.resolveDate(date);
@@ -875,6 +878,7 @@ export class DailyCleaningService implements OnModuleInit {
         assigneeUserId: null,
       })),
     ];
+    this.applyDirtyRoomPins(items, options.dirtyRoomAssignments);
 
     const cleaners: EligibleCleaner[] = workingIds.map((id) => ({
       housekeeperId: id,
@@ -933,6 +937,22 @@ export class DailyCleaningService implements OnModuleInit {
     const dirtyRoomTotal = dirtyRooms.filter((r) => r.workType === 'DIRTY').length;
 
     return { date: dateIso, dirtyRoomTotal, people };
+  }
+
+  private applyDirtyRoomPins(
+    items: BalanceWorkItem[],
+    pins?: Array<{ roomId: string; userId: string }>,
+  ) {
+    if (!pins?.length) return;
+    const byRoom = new Map(pins.filter((p) => p.roomId && p.userId).map((p) => [p.roomId, p.userId]));
+    if (byRoom.size === 0) return;
+    for (const item of items) {
+      if (item.workType !== 'DIRTY' || !item.roomId) continue;
+      const hk = byRoom.get(item.roomId);
+      if (!hk) continue;
+      item.pinned = true;
+      item.assigneeUserId = hk;
+    }
   }
 
   private toDirtyTargetMap(

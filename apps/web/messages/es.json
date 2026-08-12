@@ -994,7 +994,7 @@
       "selectCleanerHint": "Seleccione al menos un limpiador para ejecutar.",
       "runError": "No se pudo ejecutar la asignación automática.",
       "distribution": "Distribución de habitaciones",
-      "distributionHint": "Vista previa de habitaciones sucias por persona. Ajuste las cantidades: las demás se reequilibran automáticamente.",
+      "distributionHint": "Habitaciones dirty por persona. Toque una habitación y luego otra persona, o arrástrela. +/− mueve una según las reglas habituales.",
       "distributionTotal": "{count} habitaciones sucias",
       "resetDistribution": "Restablecer",
       "loadingPreview": "Calculando distribución…",
@@ -1009,7 +1009,9 @@
       "moreRooms": "Más habitaciones",
       "roomCheckedOut": "Habitación {number} · checkout hecho",
       "roomDepartureInRoom": "Habitación {number} · salida, huésped aún en la habitación",
-      "roomNumber": "Habitación {number}"
+      "roomNumber": "Habitación {number}",
+      "moveRoomsHint": "Toque una habitación, luego una persona — o arrastre",
+      "dropRoomHere": "Soltar habitación aquí"
     }
   },
   "technician": {

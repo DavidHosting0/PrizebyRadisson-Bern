@@ -994,7 +994,7 @@
       "selectCleanerHint": "Çalıştırmak için en az bir temizlik personeli seçin.",
       "runError": "Otomatik atama çalıştırılamadı.",
       "distribution": "Oda dağılımı",
-      "distributionHint": "Kişi başına kirli oda önizlemesi. Sayıları ayarlayın — diğerleri otomatik yeniden dengelenir.",
+      "distributionHint": "Kişi başına kirli odalar. Bir odaya dokunup başka kişiye taşıyın veya sürükleyin. +/− alışılmış kurallarla bir oda kaydırır.",
       "distributionTotal": "{count} kirli oda",
       "resetDistribution": "Sıfırla",
       "loadingPreview": "Dağılım hesaplanıyor…",
@@ -1009,7 +1009,9 @@
       "moreRooms": "Daha fazla oda",
       "roomCheckedOut": "Oda {number} · çıkış yapılmış",
       "roomDepartureInRoom": "Oda {number} · ayrılış, misafir hâlâ odada",
-      "roomNumber": "Oda {number}"
+      "roomNumber": "Oda {number}",
+      "moveRoomsHint": "Odaya dokunun, sonra bir kişiye — veya sürükleyin",
+      "dropRoomHere": "Odayı buraya bırakın"
     }
   },
   "technician": {

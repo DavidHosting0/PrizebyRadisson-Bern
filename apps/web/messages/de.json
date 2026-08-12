@@ -994,7 +994,7 @@
       "selectCleanerHint": "Mindestens eine Reinigungskraft auswählen.",
       "runError": "Auto-Zuweisung konnte nicht gestartet werden.",
       "distribution": "Zimmerverteilung",
-      "distributionHint": "Vorschau der Dirty-Zimmer pro Person. Anzahl anpassen — die anderen werden automatisch neu verteilt.",
+      "distributionHint": "Dirty-Zimmer pro Person. Zimmer antippen und dann eine andere Person — oder ziehen. +/− verschiebt ein Zimmer nach den üblichen Regeln.",
       "distributionTotal": "{count} Dirty-Zimmer",
       "resetDistribution": "Zurücksetzen",
       "loadingPreview": "Verteilung wird berechnet…",
@@ -1009,7 +1009,9 @@
       "moreRooms": "Mehr Zimmer",
       "roomCheckedOut": "Zimmer {number} · ausgecheckt",
       "roomDepartureInRoom": "Zimmer {number} · Abreise, Gast noch im Zimmer",
-      "roomNumber": "Zimmer {number}"
+      "roomNumber": "Zimmer {number}",
+      "moveRoomsHint": "Zimmer antippen, dann eine Person — oder ziehen",
+      "dropRoomHere": "Zimmer hierher legen"
     }
   },
   "technician": {
