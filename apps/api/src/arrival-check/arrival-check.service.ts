@@ -940,14 +940,21 @@ export class ArrivalCheckService implements OnModuleInit {
         select: { paymentStatus: true },
       });
       const wasMidPayment = current?.paymentStatus === 'PLANNED';
+      const vccNotYetCharged =
+        /Deposits\.create|not in editable status|GetEmployeeTillID|Round\.deposit/i.test(
+          message,
+        );
       const manual = isManual || isLock || wasMidPayment;
 
       const lockMsg = isLock
         ? `EMMA-Sperre: ${message}. Bitte Reservierung manuell prüfen und ggf. die andere Sitzung schliessen.`
         : null;
-      const midPaymentMsg = wasMidPayment
-        ? `Fehler nach Zahlungsstart (${message}). Bitte in EMMA prüfen, ob die VCC bereits belastet wurde.`
-        : null;
+      const midPaymentMsg =
+        wasMidPayment && vccNotYetCharged
+          ? `Deposit konnte nicht angelegt werden (${message}). Die VCC wurde nicht belastet.`
+          : wasMidPayment
+            ? `Fehler nach Zahlungsstart (${message}). Bitte in EMMA prüfen, ob die VCC bereits belastet wurde.`
+            : null;
 
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },

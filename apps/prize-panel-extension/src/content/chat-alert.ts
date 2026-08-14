@@ -1,16 +1,12 @@
-import {
-  STORAGE_KEYS,
-  resolveApiBase,
-  storageGet,
-} from '../lib/storage';
+import { PANEL_MESSAGE } from '../lib/storage';
 
 const TOAST_HOST_ID = 'prize-panel-chat-toast';
 const POLL_MS = 8_000;
 
-type ChatMsg = {
-  id: string;
-  body: string;
-  author?: { id?: string; name?: string };
+type LatestChatResult = {
+  ok: boolean;
+  meId?: string | null;
+  msg?: { id: string; body: string; author?: { id?: string; name?: string } } | null;
 };
 
 function isWebsiteChatPath(pathname: string): boolean {
@@ -97,49 +93,33 @@ function showChatToast(author: string, body: string) {
   }, 10_000);
 }
 
+function askLatestChat(): Promise<LatestChatResult> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: PANEL_MESSAGE.latestChat }, (res) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false });
+          return;
+        }
+        resolve((res as LatestChatResult) ?? { ok: false });
+      });
+    } catch {
+      resolve({ ok: false });
+    }
+  });
+}
+
 export function startChatAlertWatcher(getPanelChatOpen: () => boolean) {
   let stopped = false;
-  let meIdCache: string | null = null;
-  let meLoaded = false;
   /** In-memory per tab so every window can toast independently. */
   let lastSeenId: string | null = null;
-
-  const ensureMe = async (apiBase: string, headers: HeadersInit) => {
-    if (meLoaded) return;
-    try {
-      const meRes = await fetch(`${apiBase}/auth/me`, { headers });
-      if (meRes.ok) {
-        const me = (await meRes.json()) as { id?: string };
-        meIdCache = me.id ?? null;
-      }
-    } catch {
-      // retry next poll
-      return;
-    }
-    meLoaded = true;
-  };
 
   const tick = async () => {
     if (stopped) return;
     try {
-      const stored = await storageGet([
-        STORAGE_KEYS.accessToken,
-        STORAGE_KEYS.apiBase,
-      ]);
-      const token = stored.accessToken;
-      if (!token) return;
-
-      const apiBase = resolveApiBase(stored.apiBase);
-      const headers = { Authorization: `Bearer ${token}` };
-
-      await ensureMe(apiBase, headers);
-
-      const chatRes = await fetch(`${apiBase}/team-chat/messages?limit=1&order=desc`, {
-        headers,
-      });
-      if (!chatRes.ok) return;
-      const list = (await chatRes.json()) as ChatMsg[];
-      const msg = Array.isArray(list) && list.length > 0 ? list[0] : null;
+      const result = await askLatestChat();
+      if (!result.ok) return;
+      const msg = result.msg;
       if (!msg?.id) return;
 
       if (lastSeenId === null) {
@@ -149,7 +129,7 @@ export function startChatAlertWatcher(getPanelChatOpen: () => boolean) {
       if (msg.id === lastSeenId) return;
       lastSeenId = msg.id;
 
-      if (msg.author?.id && meIdCache && msg.author.id === meIdCache) return;
+      if (msg.author?.id && result.meId && msg.author.id === result.meId) return;
       if (getPanelChatOpen()) return;
       if (isWebsiteChatPath(window.location.pathname)) return;
       if (isReceptionWebAppPath(window.location.pathname)) return;

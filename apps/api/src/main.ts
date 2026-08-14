@@ -19,7 +19,9 @@ async function bootstrap() {
       if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://') || origin.startsWith('safari-web-extension://')) {
         return cb(null, true);
       }
-      return cb(new Error(`Origin not allowed by CORS: ${origin}`), false);
+      // Deny without throwing — `cb(Error)` becomes a logged HTTP 500 for every
+      // stray browser / extension probe (Google, ImmoScout, …).
+      return cb(null, false);
     },
     credentials: true,
   });

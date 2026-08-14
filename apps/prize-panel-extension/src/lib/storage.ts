@@ -61,6 +61,8 @@ export const PANEL_MESSAGE = {
   /** Panel iframe → content script: user is viewing team chat in this tab's panel. */
   chatOpen: 'prize-panel:chat-open',
   chatClosed: 'prize-panel:chat-closed',
+  /** Content script → background: fetch latest chat without the page Origin. */
+  latestChat: 'prize-panel:latest-chat',
 } as const;
 
 export async function storageGet<T extends string>(

@@ -10,7 +10,11 @@ import {
   type EmmaDepositRow,
 } from '../arrival-check/arrival-check-payment-guard';
 import {
-  buildEmmaRequestObjectKey,
+  acquireEmmaFolioEditSession,
+  releaseEmmaFolioEditSession,
+  saveEmmaFolioDraft,
+} from './emma-folio-edit-session';
+import {
   buildODataBatchBody,
   buildODataChangesetBatchBody,
   collectPaymWoInvPath,
@@ -160,6 +164,8 @@ async function createDeposit(
 
 /**
  * Charge Folio 2 via EMMA deposit (CollectPaymWoInv) — never CreateInvoice.
+ * POST Deposits / CollectPaymWoInv require an open folio edit session
+ * (ManageLocks + Draft), same as adddeposit.har / paydeposit.har.
  */
 export async function settleEmmaFolioDepositWithVcc(
   jar: EmmaCookieJar,
@@ -182,7 +188,6 @@ export async function settleEmmaFolioDepositWithVcc(
   const folioId = opts.folioId.trim();
   const sapClient = opts.sapClient?.trim() || EMMA_DEFAULT_SAP_CLIENT;
   const currency = opts.currency.trim() || 'CHF';
-  const requestObjectKey = buildEmmaRequestObjectKey(hotelId, reservationId);
 
   const allCards = await fetchEmmaReservationCreditCardsFromJar(jar, baseUrl, {
     hotelId,
@@ -278,21 +283,7 @@ export async function settleEmmaFolioDepositWithVcc(
   }
 
   let depositId = pick.kind === 'reuse' ? pick.id : '';
-  if (pick.kind === 'create') {
-    const created = await createDeposit(
-      jar,
-      baseUrl,
-      sapClient,
-      csrf,
-      hotelId,
-      reservationId,
-      expectedAmount,
-      currency,
-      requestObjectKey,
-      opts.debug,
-    );
-    depositId = String(created.Id).trim();
-  } else {
+  if (pick.kind === 'reuse') {
     const reused = findDepositById(existing, depositId);
     const guard = reused
       ? assertDepositMatchesCharge({
@@ -319,12 +310,46 @@ export async function settleEmmaFolioDepositWithVcc(
     );
   }
 
+  const session = await acquireEmmaFolioEditSession(
+    jar,
+    baseUrl,
+    hotelId,
+    reservationId,
+    opts.employee,
+    sapClient,
+    opts.debug,
+  );
+  const requestObjectKey = session.requestObjectKey;
+
   try {
+    const editCsrf = await emmaHttpFetchCsrfToken(
+      jar,
+      baseUrl,
+      sapClient,
+      EMMA_ODATA_RSRVS_SRV,
+    );
+
+    if (pick.kind === 'create') {
+      const created = await createDeposit(
+        jar,
+        baseUrl,
+        sapClient,
+        editCsrf,
+        hotelId,
+        reservationId,
+        expectedAmount,
+        currency,
+        requestObjectKey,
+        opts.debug,
+      );
+      depositId = String(created.Id).trim();
+    }
+
     const tillRes = await postChangesetAction(
       jar,
       baseUrl,
       sapClient,
-      csrf,
+      editCsrf,
       getEmployeeTillIdPath({ sapClient, hotelId, employee: opts.employee }),
       'GetEmployeeTillID',
       requestObjectKey,
@@ -339,7 +364,7 @@ export async function settleEmmaFolioDepositWithVcc(
       jar,
       baseUrl,
       sapClient,
-      csrf,
+      editCsrf,
       roundDepositPath({
         sapClient,
         hotelId,
@@ -363,7 +388,7 @@ export async function settleEmmaFolioDepositWithVcc(
       jar,
       baseUrl,
       sapClient,
-      csrf,
+      editCsrf,
       collectPaymWoInvPath({
         sapClient,
         hotelId,
@@ -400,7 +425,7 @@ export async function settleEmmaFolioDepositWithVcc(
       jar,
       baseUrl,
       sapClient,
-      csrf,
+      editCsrf,
       hotelId,
       reservationId,
       opts.debug,
@@ -425,6 +450,14 @@ export async function settleEmmaFolioDepositWithVcc(
       );
     }
 
+    try {
+      await saveEmmaFolioDraft(jar, baseUrl, session, opts.debug);
+    } catch (saveErr) {
+      log.warn(
+        `[EMMA] draft save after deposit ${depositId} on ${reservationId}: ${(saveErr as Error).message}`,
+      );
+    }
+
     log.log(
       `[EMMA] VCC deposit OK ${reservationId} folio ${folioId} ${expectedAmount} ${currency} (deposit ${depositId})`,
     );
@@ -444,7 +477,7 @@ export async function settleEmmaFolioDepositWithVcc(
       return {
         status: 'UNSAFE',
         invoiceNumber: null,
-        depositId,
+        depositId: depositId || null,
         amount: expectedAmount,
         currency,
         cardMask: card.mask,
@@ -453,5 +486,7 @@ export async function settleEmmaFolioDepositWithVcc(
       };
     }
     throw err;
+  } finally {
+    await releaseEmmaFolioEditSession(jar, baseUrl, session, opts.debug);
   }
 }
