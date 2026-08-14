@@ -23,7 +23,13 @@ import type {
   ReservationListItem,
 } from '@housekeeping/shared';
 import { ReservationsService } from '../reservations/reservations.service';
-import { arrivalCheckCategoryLabel, formatHotelDateOnly, involvesArrivalCheckForbiddenFolio, isArrivalCheckForbiddenFolio } from '@housekeeping/shared';
+import {
+  arrivalCheckCategoryLabel,
+  formatHotelDateOnly,
+  hasArrivalCheckForbiddenFolioActivity,
+  involvesArrivalCheckForbiddenFolio,
+  isArrivalCheckForbiddenFolio,
+} from '@housekeeping/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretCipherService } from '../common/crypto/secret-cipher.service';
@@ -32,7 +38,7 @@ import {
 } from '../reservations/reservation-sensitive';
 import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
-import { buildArrivalCheckDecision, type ArrivalCheckDecision } from './arrival-check-rules';
+import { buildArrivalCheckDecision, FOLIO_3_MANUAL_REASON, type ArrivalCheckDecision } from './arrival-check-rules';
 import { planVccPayment } from './arrival-check-vcc';
 import {
   crossCheckFolioAmount,
@@ -804,6 +810,20 @@ export class ArrivalCheckService implements OnModuleInit {
         return;
       }
 
+      if (hasArrivalCheckForbiddenFolioActivity(folio)) {
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: itemId },
+          data: {
+            status: 'NEEDS_MANUAL',
+            currentStep: null,
+            manualReason: FOLIO_3_MANUAL_REASON,
+            statusMessage: FOLIO_3_MANUAL_REASON,
+            finishedAt: new Date(),
+          },
+        });
+        return;
+      }
+
       let movesDone = 0;
       let workingFolioForMoves = folio;
       if (decision.moves.length > 0) {
@@ -814,6 +834,10 @@ export class ArrivalCheckService implements OnModuleInit {
           ? decryptFolioBundle(this.cipher, beforeSnap.folioEnc)
           : null;
         if (beforeFolio) workingFolioForMoves = beforeFolio;
+
+        if (hasArrivalCheckForbiddenFolioActivity(workingFolioForMoves)) {
+          throw new Error(`MANUAL: ${FOLIO_3_MANUAL_REASON}`);
+        }
 
         for (const move of decision.moves) {
           this.assertChargeBelongsToReservation(

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { ReservationEmmaFolioBundle } from '@housekeeping/shared';
 import type { ReservationSensitivePayload } from '../reservations/reservation-sensitive';
 import { findCompanyFolioId } from './arrival-check-charge-assign';
-import { buildArrivalCheckDecision } from './arrival-check-rules';
+import { buildArrivalCheckDecision, detectSource } from './arrival-check-rules';
 
 function charge(
   partial: Partial<ReservationEmmaFolioBundle['charges'][number]> & {
@@ -27,7 +27,7 @@ function charge(
 }
 
 function folioBundle(opts: {
-  folios: { Id: string; NameHolder?: string }[];
+  folios: { Id: string; NameHolder?: string; AmountDue?: number | string }[];
   charges: ReservationEmmaFolioBundle['charges'];
 }): ReservationEmmaFolioBundle {
   return {
@@ -104,7 +104,7 @@ describe('Folio 3 is never moved in arrival check', () => {
     assert.equal(id, '02');
   });
 
-  it('Radisson consolidate never pulls charges off Folio 3', () => {
+  it('Radisson goes manual and plans no moves when Folio 3 has charges', () => {
     const folio = folioBundle({
       folios: [
         { Id: '01', NameHolder: 'Guest' },
@@ -121,12 +121,13 @@ describe('Folio 3 is never moved in arrival check', () => {
       detail: null,
       folio,
     });
-    assert.equal(decision.scenario, 'DIRECT');
-    assert.ok(decision.moves.every((m) => m.sourceFolioId !== '03' && m.destinationFolioId !== '03'));
-    assert.ok(!decision.moves.some((m) => m.chargeRowId === '2' || m.chargeRowId === '3'));
+    assert.equal(decision.requiresManual, true);
+    assert.equal(decision.scenario, 'MANUAL');
+    assert.equal(decision.moves.length, 0);
+    assert.match(decision.manualReason ?? '', /Folio 3/);
   });
 
-  it('VCC tax consolidation never moves tax from Folio 3 to Folio 1', () => {
+  it('VCC goes manual and plans no moves when tax sits on Folio 3', () => {
     const folio = folioBundle({
       folios: [
         { Id: '01', NameHolder: 'Guest' },
@@ -152,10 +153,10 @@ describe('Folio 3 is never moved in arrival check', () => {
       },
       folio,
     });
-    assert.equal(decision.scenario, 'VCC');
-    assert.ok(decision.moves.every((m) => m.sourceFolioId !== '03' && m.destinationFolioId !== '03'));
-    assert.ok(!decision.moves.some((m) => m.chargeRowId === '2'));
-    assert.ok(decision.moves.some((m) => m.chargeRowId === '3' && m.destinationFolioId === '01'));
+    assert.equal(decision.requiresManual, true);
+    assert.equal(decision.scenario, 'MANUAL');
+    assert.equal(decision.moves.length, 0);
+    assert.match(decision.manualReason ?? '', /Folio 3/);
   });
 
   it('CTrip consolidate never targets Folio 3', () => {
@@ -169,6 +170,134 @@ describe('Folio 3 is never moved in arrival check', () => {
     const decision = buildArrivalCheckDecision({
       sensitive: sensitive({ mainClientName: 'CTrip' }),
       detail: null,
+      folio,
+    });
+    assert.equal(decision.requiresManual, true);
+    assert.equal(decision.moves.length, 0);
+  });
+});
+
+describe('detectSource', () => {
+  it('treats APPSMEDIA - ANDROID ADS like REZIDOR BIGMOUTHMEDIA (Radisson / Folio 1)', () => {
+    assert.equal(detectSource(sensitive({ mainClientName: 'APPSMEDIA - ANDROID ADS' })), 'RADISSON');
+    assert.equal(detectSource(sensitive({ mainClientName: 'REZIDOR BIGMOUTHMEDIA' })), 'RADISSON');
+  });
+
+  it('keeps APPSMEDIA - IOS as its own source', () => {
+    assert.equal(detectSource(sensitive({ mainClientName: 'APPSMEDIA - IOS' })), 'APPSMEDIA_IOS');
+  });
+});
+
+describe('APPSMEDIA Android follows Radisson direct routing', () => {
+  it('consolidates charges onto Folio 1 and does not charge VCC', () => {
+    const folio = folioBundle({
+      folios: [
+        { Id: '01', NameHolder: 'Guest' },
+        { Id: '02', NameHolder: 'Appsmedia' },
+      ],
+      charges: [charge({ id: '1', folioId: '02', concept: 'RO', amount: '180' })],
+    });
+    const decision = buildArrivalCheckDecision({
+      sensitive: sensitive({ mainClientName: 'APPSMEDIA - ANDROID ADS' }),
+      detail: {
+        fetchedAt: '2026-07-14T00:00:00.000Z',
+        reservation: {},
+        creditCards: [{ IsVCC: true, Token: 'tok', Holder: 'VCC' }],
+        guests: [],
+        notices: [],
+        documents: [],
+        profiles: [],
+      },
+      folio,
+    });
+    assert.equal(decision.source, 'RADISSON');
+    assert.equal(decision.scenario, 'DIRECT');
+    assert.equal(decision.requiresManual, false);
+    assert.equal(decision.moves.length, 1);
+    assert.equal(decision.moves[0]?.destinationFolioId, '01');
+  });
+});
+
+describe('Folio 3 activity blocks every client immediately', () => {
+  it('does not treat an empty Folio 3 header as activity', () => {
+    const folio = folioBundle({
+      folios: [
+        { Id: '01', NameHolder: 'Guest' },
+        { Id: '02', NameHolder: 'Company' },
+        { Id: '03', NameHolder: '' },
+      ],
+      charges: [charge({ id: '1', folioId: '02', concept: 'RO', amount: '80' })],
+    });
+    const decision = buildArrivalCheckDecision({
+      sensitive: sensitive({ mainClientName: 'REZIDOR BIGMOUTHMEDIA' }),
+      detail: null,
+      folio,
+    });
+    assert.equal(decision.requiresManual, false);
+    assert.equal(decision.source, 'RADISSON');
+    assert.ok(decision.moves.some((m) => m.chargeRowId === '1' && m.destinationFolioId === '01'));
+  });
+
+  it('goes manual for CTrip when Folio 3 has a charge', () => {
+    const folio = folioBundle({
+      folios: [
+        { Id: '01', NameHolder: 'Guest' },
+        { Id: '02', NameHolder: 'CTrip' },
+        { Id: '03', NameHolder: 'Other' },
+      ],
+      charges: [
+        charge({ id: '1', folioId: '01', concept: 'RO', amount: '100' }),
+        charge({ id: '2', folioId: '03', concept: 'RO', amount: '10' }),
+      ],
+    });
+    const decision = buildArrivalCheckDecision({
+      sensitive: sensitive({ mainClientName: 'CTrip' }),
+      detail: null,
+      folio,
+    });
+    assert.equal(decision.source, 'CTRIP');
+    assert.equal(decision.requiresManual, true);
+    assert.equal(decision.moves.length, 0);
+  });
+
+  it('goes manual for APPSMEDIA Android when Folio 3 has a charge', () => {
+    const folio = folioBundle({
+      folios: [
+        { Id: '01', NameHolder: 'Guest' },
+        { Id: '03', NameHolder: 'Third' },
+      ],
+      charges: [charge({ id: '1', folioId: '03', concept: 'RO', amount: '40' })],
+    });
+    const decision = buildArrivalCheckDecision({
+      sensitive: sensitive({ mainClientName: 'APPSMEDIA - ANDROID ADS' }),
+      detail: null,
+      folio,
+    });
+    assert.equal(decision.source, 'RADISSON');
+    assert.equal(decision.requiresManual, true);
+    assert.equal(decision.moves.length, 0);
+  });
+
+  it('goes manual when Folio 3 has a non-zero AmountDue even without line items', () => {
+    const folio = folioBundle({
+      folios: [
+        { Id: '01', NameHolder: 'Guest' },
+        { Id: '02', NameHolder: 'Booking.com' },
+        { Id: '03', NameHolder: 'Extra', AmountDue: 12.5 },
+      ],
+      charges: [charge({ id: '1', folioId: '01', concept: 'RO', amount: '100' })],
+    });
+    const decision = buildArrivalCheckDecision({
+      sensitive: sensitive({ mainClientName: 'Booking.com' }),
+      detail: {
+        fetchedAt: '2026-07-14T00:00:00.000Z',
+        reservation: {},
+        creditCards: [{ IsVCC: true, Token: 'tok', Holder: 'BOOKINGCOM VCC' }],
+        guests: [],
+        notices: [],
+        documents: [],
+        profiles: [],
+      },
       folio,
     });
     assert.equal(decision.requiresManual, true);

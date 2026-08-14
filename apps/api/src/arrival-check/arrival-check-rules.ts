@@ -5,6 +5,7 @@ import type {
   ReservationEmmaFolioBundle,
 } from '@housekeeping/shared';
 import {
+  hasArrivalCheckForbiddenFolioActivity,
   involvesArrivalCheckForbiddenFolio,
   isArrivalCheckForbiddenFolio,
   isArrivalCheckPrepaymentCharge,
@@ -29,10 +30,13 @@ export type ArrivalCheckDecision = {
 const GUEST_FOLIO_ID = '01';
 
 const RADISSON_DIRECT_RX =
-  /desktopmedia|loyalty\s*guest|search\s*engine\s*optimisation|\bseo\b|bigmouthmedia|rezidor|direct\s*guest|radisson/i;
+  /desktopmedia|loyalty\s*guest|search\s*engine\s*optimisation|\bseo\b|bigmouthmedia|rezidor|direct\s*guest|radisson|appsmedia[\s-]*android/i;
 
 /** Client name e.g. "APPSMEDIA - IOS" (Radisson app bookings). */
 const APPSMEDIA_IOS_RX = /appsmedia\s*-\s*ios/i;
+
+export const FOLIO_3_MANUAL_REASON =
+  'Folio 3 enthält Posten oder einen offenen Betrag – keine automatische Verschiebung, manuelle Prüfung nötig.';
 
 function sourceText(sensitive: ReservationSensitivePayload | null): string {
   if (!sensitive) return '';
@@ -223,6 +227,17 @@ export function buildArrivalCheckDecision(input: {
   const { sensitive, detail, folio } = input;
   const source = detectSource(sensitive);
   const vcc = hasVcc(detail);
+
+  if (hasArrivalCheckForbiddenFolioActivity(folio)) {
+    return {
+      source,
+      scenario: 'MANUAL',
+      moves: [],
+      requiresManual: true,
+      manualReason: FOLIO_3_MANUAL_REASON,
+      vcc,
+    };
+  }
 
   if (source === 'CTRIP') {
     return buildConsolidateToCompanyFolioDecision(source, folio, vcc, {

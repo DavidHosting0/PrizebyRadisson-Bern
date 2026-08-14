@@ -21,6 +21,32 @@ export function involvesArrivalCheckForbiddenFolio(
   );
 }
 
+function folioHeaderHasBalance(folio: Record<string, unknown>): boolean {
+  for (const key of ['AmountDue', 'AmountPaid', 'AmountTotal', 'Amount', 'Balance']) {
+    const raw = folio[key];
+    if (raw == null || raw === '') continue;
+    const n = Number(String(raw).replace(',', '.').replace(/[^\d.-]/g, ''));
+    if (Number.isFinite(n) && Math.abs(n) > 0.009) return true;
+  }
+  return false;
+}
+
+/**
+ * True when Folio 3 already has activity (any charge, or a non-zero header amount).
+ * Arrival check must then stop: no moves, NEEDS_MANUAL — every client.
+ */
+export function hasArrivalCheckForbiddenFolioActivity(bundle: {
+  folios?: Record<string, unknown>[] | null;
+  charges?: { folioId?: string | null }[] | null;
+}): boolean {
+  if ((bundle.charges ?? []).some((charge) => isArrivalCheckForbiddenFolio(charge.folioId))) {
+    return true;
+  }
+  return (bundle.folios ?? []).some(
+    (folio) => isArrivalCheckForbiddenFolio(folio.Id) && folioHeaderHasBalance(folio),
+  );
+}
+
 /** Parameters for EMMA Folio Management MoveCharge (from browser HAR). */
 export type EmmaMoveFolioChargeParams = {
   hotelId: string;
