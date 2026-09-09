@@ -104,7 +104,7 @@ describe('Folio 3 is never moved in arrival check', () => {
     assert.equal(id, '02');
   });
 
-  it('Radisson goes manual and plans no moves when Folio 3 has charges', () => {
+  it('Radisson channel goes manual and plans no moves when Folio 3 has charges', () => {
     const folio = folioBundle({
       folios: [
         { Id: '01', NameHolder: 'Guest' },
@@ -117,7 +117,7 @@ describe('Folio 3 is never moved in arrival check', () => {
       ],
     });
     const decision = buildArrivalCheckDecision({
-      sensitive: sensitive({ mainClientName: 'Radisson Direct Guest' }),
+      sensitive: sensitive({ mainClientName: 'REZIDOR BIGMOUTHMEDIA' }),
       detail: null,
       folio,
     });

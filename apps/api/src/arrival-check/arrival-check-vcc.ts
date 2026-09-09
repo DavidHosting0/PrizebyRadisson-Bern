@@ -21,7 +21,7 @@ const GUEST_FOLIO_ID = '01';
  * (Booking, Expedia, Agoda and CTrip all stamp recognizable holder names).
  */
 export const VCC_HOLDER_RX =
-  /bookingcom|booking\.com|virtual\s*card|\bvcc\b|expedia\s*virtual|\bagoda\b|\bctrip\b|trip\.com/i;
+  /bookingcom|booking\.com|virtual\s*card|\bvcc\b|expedia\s*virtual|\bagoda\b|\bctrip\b|trip\.com|\btrivago\b/i;
 
 /** Raw EMMA CreditCard row (ZEYUI_RSRVS_SRV CreditCard entity). */
 export type EmmaCreditCardRow = {
@@ -177,7 +177,8 @@ function pickCompanyFolioId(folio: ReservationEmmaFolioBundle): string | null {
  * Decide whether (and what) to charge on the VCC after charges are routed:
  * - OTA (Booking/Expedia/Agoda) + VCC: settle the company folio (Folio 2) room/board.
  * - CTrip + VCC: settle the company folio (Folio 2) for all costs.
- * - Everything else (Radisson direct, prepaid, flexible, personal card): no charge.
+ * - Trivago + prepaid: settle the company folio (Folio 2) for all costs (VCC prepayment).
+ * - Everything else (Radisson direct, OTA prepaid, flexible, personal card): no charge.
  * Returns null when no charge applies or the folio balance is not positive.
  */
 export function planVccPayment(input: {
@@ -196,6 +197,12 @@ export function planVccPayment(input: {
   ) {
     folioId = pickCompanyFolioId(folio);
   } else if (decision.source === 'CTRIP' && decision.vcc) {
+    folioId = findCompanyFolioId(folio.folios ?? []);
+  } else if (
+    decision.source === 'TRIVAGO' &&
+    decision.scenario === 'PREPAID' &&
+    decision.vcc
+  ) {
     folioId = findCompanyFolioId(folio.folios ?? []);
   }
 

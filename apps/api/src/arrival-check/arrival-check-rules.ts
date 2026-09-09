@@ -30,10 +30,19 @@ export type ArrivalCheckDecision = {
 const GUEST_FOLIO_ID = '01';
 
 const RADISSON_DIRECT_RX =
-  /desktopmedia|loyalty\s*guest|search\s*engine\s*optimisation|\bseo\b|bigmouthmedia|rezidor|direct\s*guest|radisson|appsmedia[\s-]*android/i;
+  /desktopmedia|loyalty\s*guest|search\s*engine\s*optimisation|\bseo\b|bigmouthmedia|rezidor|radisson|appsmedia[\s-]*android/i;
 
 /** Client name e.g. "APPSMEDIA - IOS" (Radisson app bookings). */
 const APPSMEDIA_IOS_RX = /appsmedia\s*-\s*ios/i;
+
+/** Clients that stay untouched (no folio moves). */
+const BCD_TRAVEL_RX = /\bbcd\s*travel\b/i;
+const ATG_TRAVEL_RX = /\batg\s*travel(?:\s+deutschland)?(?:\s+gmbh)?\b/i;
+const DAYUSE_RX = /\bdayuse(?:\s+sas)?\b/i;
+const DIRECT_GUEST_RX = /\bdirect\s*guest\b/i;
+
+/** Trivago meta-search ads client. */
+const TRIVAGO_RX = /\btrivago(?:\s*-\s*meta\s*search\s*ads)?\b/i;
 
 export const FOLIO_3_MANUAL_REASON =
   'Folio 3 enthält Posten oder einen offenen Betrag – keine automatische Verschiebung, manuelle Prüfung nötig.';
@@ -56,6 +65,12 @@ function sourceText(sensitive: ReservationSensitivePayload | null): string {
 export function detectSource(sensitive: ReservationSensitivePayload | null): ArrivalCheckSource {
   const text = sourceText(sensitive);
   if (!text) return 'OTHER';
+  // Named leave-as-is / meta clients first so they are not swallowed by OTA keywords.
+  if (BCD_TRAVEL_RX.test(text)) return 'BCD_TRAVEL';
+  if (ATG_TRAVEL_RX.test(text)) return 'ATG_TRAVEL';
+  if (DAYUSE_RX.test(text)) return 'DAYUSE';
+  if (DIRECT_GUEST_RX.test(text)) return 'DIRECT_GUEST';
+  if (TRIVAGO_RX.test(text)) return 'TRIVAGO';
   if (/booking/.test(text)) return 'BOOKING';
   if (/expedia/.test(text)) return 'EXPEDIA';
   if (/agoda|priceline/.test(text)) return 'AGODA';
@@ -186,15 +201,24 @@ function sortMoves(moves: FolioChargeMovePlan[]): FolioChargeMovePlan[] {
   );
 }
 
-/** All non-prepayment charges → company folio (Folio 2). Used by CTrip and App Media iOS. */
+/** All non-prepayment charges → company folio (Folio 2). Used by CTrip, App Media iOS, Trivago prepaid. */
 function buildConsolidateToCompanyFolioDecision(
   source: ArrivalCheckSource,
   folio: ReservationEmmaFolioBundle,
   vcc: boolean,
-  opts: { chargeVccOnCompanyFolio: boolean; manualLabel: string },
+  opts: {
+    chargeVccOnCompanyFolio: boolean;
+    manualLabel: string;
+    /** Force PREPAID scenario (Trivago prepaid → Folio 2 + VCC settlement). */
+    forcePrepaidScenario?: boolean;
+  },
 ): ArrivalCheckDecision {
   const companyFolioId = findCompanyFolioId(folio.folios ?? []);
-  const scenario = opts.chargeVccOnCompanyFolio && vcc ? 'VCC' : 'DIRECT';
+  const scenario: ArrivalCheckScenario = opts.forcePrepaidScenario
+    ? 'PREPAID'
+    : opts.chargeVccOnCompanyFolio && vcc
+      ? 'VCC'
+      : 'DIRECT';
   if (!companyFolioId) {
     return {
       source,
@@ -228,6 +252,23 @@ export function buildArrivalCheckDecision(input: {
   const source = detectSource(sensitive);
   const vcc = hasVcc(detail);
 
+  // Leave-as-is clients: never touch folios, just mark done.
+  if (
+    source === 'BCD_TRAVEL' ||
+    source === 'ATG_TRAVEL' ||
+    source === 'DAYUSE' ||
+    source === 'DIRECT_GUEST'
+  ) {
+    return {
+      source,
+      scenario: 'FLEXIBLE',
+      moves: [],
+      requiresManual: false,
+      manualReason: null,
+      vcc,
+    };
+  }
+
   if (hasArrivalCheckForbiddenFolioActivity(folio)) {
     return {
       source,
@@ -237,6 +278,23 @@ export function buildArrivalCheckDecision(input: {
       manualReason: FOLIO_3_MANUAL_REASON,
       vcc,
     };
+  }
+
+  if (source === 'TRIVAGO') {
+    if (isPrepaid(sensitive, detail)) {
+      return buildConsolidateToCompanyFolioDecision(source, folio, vcc, {
+        // Trivago prepaid always consolidates to Folio 2.
+        // With VCC we additionally settle as prepayment; without VCC we just mark done.
+        chargeVccOnCompanyFolio: vcc,
+        manualLabel: 'Trivago Prepaid',
+        forcePrepaidScenario: true,
+      });
+    }
+    // Trivago non-prepaid: consolidate to Folio 2 and mark done (no VCC payment).
+    return buildConsolidateToCompanyFolioDecision(source, folio, vcc, {
+      chargeVccOnCompanyFolio: false,
+      manualLabel: 'Trivago',
+    });
   }
 
   if (source === 'CTRIP') {

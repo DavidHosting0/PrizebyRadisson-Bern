@@ -1242,6 +1242,11 @@ export class ArrivalCheckService implements OnModuleInit {
         }
         return `${categoryLabel} erkannt – Zimmer-/Verpflegungsposten werden auf das Firmen-Folio verschoben, City Tax und Hotel Tax verbleiben bzw. werden auf Folio 1 zusammengeführt, VCC als Anzahlung (ohne Rechnung) …`;
       case 'PREPAID':
+        if (decision.source === 'TRIVAGO') {
+          return decision.vcc
+            ? `${categoryLabel}: alle Posten werden auf Folio 2 verschoben und die VCC dort als Anzahlung für den Gesamtbetrag belastet …`
+            : `${categoryLabel}: alle Posten werden auf Folio 2 verschoben (ohne VCC-Anzahlung) …`;
+        }
         return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
       case 'DIRECT':
         if (decision.source === 'CTRIP' || decision.source === 'APPSMEDIA_IOS') {
@@ -1249,6 +1254,14 @@ export class ArrivalCheckService implements OnModuleInit {
         }
         return `${categoryLabel}: alle Posten werden auf Folio 1 zusammengeführt …`;
       case 'FLEXIBLE':
+        if (
+          decision.source === 'BCD_TRAVEL' ||
+          decision.source === 'ATG_TRAVEL' ||
+          decision.source === 'DAYUSE' ||
+          decision.source === 'DIRECT_GUEST'
+        ) {
+          return `${categoryLabel}: keine Änderung, wird als erledigt markiert.`;
+        }
         return `${categoryLabel}: keine Verschiebung nötig, Posten bereits korrekt auf Folio 1.`;
       default:
         return categoryLabel;
@@ -1266,6 +1279,14 @@ export class ArrivalCheckService implements OnModuleInit {
         ? ` VCC als Anzahlung (ohne Rechnung) belastet: ${payment.paymentAmount}${payment.paymentDepositId ? ` (Deposit ${payment.paymentDepositId})` : ''}.`
         : '';
     if (decision.scenario === 'FLEXIBLE') {
+      if (
+        decision.source === 'BCD_TRAVEL' ||
+        decision.source === 'ATG_TRAVEL' ||
+        decision.source === 'DAYUSE' ||
+        decision.source === 'DIRECT_GUEST'
+      ) {
+        return `${categoryLabel}: unverändert belassen, als erledigt markiert.`;
+      }
       return `${categoryLabel}: keine Verschiebung nötig.${paid}`;
     }
     if (movesDone === 0) {

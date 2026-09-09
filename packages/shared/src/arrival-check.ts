@@ -33,13 +33,18 @@ export type ArrivalCheckSource =
   | 'RADISSON'
   | 'CTRIP'
   | 'APPSMEDIA_IOS'
+  | 'BCD_TRAVEL'
+  | 'ATG_TRAVEL'
+  | 'DAYUSE'
+  | 'DIRECT_GUEST'
+  | 'TRIVAGO'
   | 'OTHER';
 
 /**
  * Resolved handling scenario per reservation:
  * - VCC: virtual card present → room/board to Folio 2, taxes stay on Folio 1.
- * - PREPAID: no VCC but prepaid rate → consolidate all charges on Folio 1.
- * - FLEXIBLE: no VCC, flexible rate → no charge moves.
+ * - PREPAID: prepaid rate → OTA consolidate on Folio 1; Trivago → Folio 2 + VCC prepayment.
+ * - FLEXIBLE: leave as-is (no charge moves), e.g. BCD / ATG / Dayuse / Direct Guest.
  * - DIRECT: Radisson direct → Folio 1; CTrip / App Media iOS → Folio 2.
  * - MANUAL: no rule matched or a runtime error → manual intervention.
  */
@@ -57,16 +62,26 @@ export function arrivalCheckCategoryLabel(
     RADISSON: 'Radisson',
     CTRIP: 'CTrip',
     APPSMEDIA_IOS: 'App Media iOS',
+    BCD_TRAVEL: 'BCD Travel',
+    ATG_TRAVEL: 'ATG Travel',
+    DAYUSE: 'Dayuse',
+    DIRECT_GUEST: 'Direct Guest',
+    TRIVAGO: 'Trivago',
     OTHER: 'Unbekannt',
   };
   const s = sourceLabel[source];
+  const leaveAsIs =
+    source === 'BCD_TRAVEL' ||
+    source === 'ATG_TRAVEL' ||
+    source === 'DAYUSE' ||
+    source === 'DIRECT_GUEST';
   switch (scenario) {
     case 'VCC':
       return `${s} mit VCC`;
     case 'PREPAID':
-      return `${s} Prepaid (Folio 1)`;
+      return source === 'TRIVAGO' ? `${s} Prepaid (Folio 2)` : `${s} Prepaid (Folio 1)`;
     case 'FLEXIBLE':
-      return `${s} ohne VCC – flexibel`;
+      return leaveAsIs ? `${s} – unverändert` : `${s} ohne VCC – flexibel`;
     case 'DIRECT':
       return source === 'CTRIP' || source === 'APPSMEDIA_IOS'
         ? `${s} – Folio 2`

@@ -143,7 +143,7 @@ export function crossCheckFolioAmount(
 /**
  * Compute the chargeable VCC amount from visible folio lines (never AmountDue alone).
  * - OTA + VCC: RO/BB on the target folio only.
- * - CTrip + VCC: all non-prepayment charges on Folio 02.
+ * - CTrip + VCC / Trivago prepaid: all non-prepayment charges on Folio 02.
  */
 export function computeExpectedVccChargeAmount(
   decision: ArrivalCheckDecision,
@@ -156,13 +156,14 @@ export function computeExpectedVccChargeAmount(
   let currency: string | null = null;
 
   const isCtrip = decision.source === 'CTRIP' && decision.vcc;
+  const isTrivagoPrepaid = decision.source === 'TRIVAGO' && decision.scenario === 'PREPAID';
   const isOtaVcc =
     (decision.source === 'BOOKING' ||
       decision.source === 'EXPEDIA' ||
       decision.source === 'AGODA') &&
     decision.scenario === 'VCC';
 
-  if (!isCtrip && !isOtaVcc) return null;
+  if (!isCtrip && !isTrivagoPrepaid && !isOtaVcc) return null;
 
   for (const charge of charges) {
     if (isArrivalCheckPrepaymentCharge(charge)) continue;
