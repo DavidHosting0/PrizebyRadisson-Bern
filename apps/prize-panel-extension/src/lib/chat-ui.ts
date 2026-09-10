@@ -25,14 +25,112 @@ export type ChatUiStrings = {
   photoReady: string;
   photoUploadFailed: string;
   noPostPermission: string;
+  serviceRequest: string;
+  damageReport: string;
+  room: (roomNumber: string) => string;
+  claim: string;
+  markDone: string;
+  requestOpen: string;
+  requestClaimed: string;
+  requestClaimedBy: (who: string) => string;
+  requestInProgress: string;
+  requestInProgressBy: (who: string) => string;
+  requestDone: string;
+  requestCancelled: string;
+  damageReported: string;
+  damageAcknowledged: string;
+  damageResolved: string;
+  damageReportedOption: string;
+  damageAcknowledgedOption: string;
+  damageResolvedOption: string;
+  damageType: (code: string) => string;
 };
 
-const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { replyingTo: string }> = {
+const DAMAGE_TYPES: Record<SupportedLocale, Record<string, string>> = {
+  de: {
+    FURNITURE: 'Möbel',
+    CURTAINS: 'Vorhänge',
+    FIXTURES: 'Einrichtung & Zubehör',
+    WALL_OR_CEILING: 'Wand / Decke',
+    FLOOR: 'Boden',
+    WINDOW_OR_DOOR: 'Fenster / Tür',
+    BATHROOM: 'Bad',
+    ELECTRICAL_OR_APPLIANCE: 'Elektrik / Gerät',
+    OTHER: 'Sonstiges',
+  },
+  en: {
+    FURNITURE: 'Furniture',
+    CURTAINS: 'Curtains',
+    FIXTURES: 'Fixtures & fittings',
+    WALL_OR_CEILING: 'Wall / ceiling',
+    FLOOR: 'Floor',
+    WINDOW_OR_DOOR: 'Window / door',
+    BATHROOM: 'Bathroom',
+    ELECTRICAL_OR_APPLIANCE: 'Electrical / appliance',
+    OTHER: 'Other',
+  },
+  pt: {
+    FURNITURE: 'Mobília',
+    CURTAINS: 'Cortinas',
+    FIXTURES: 'Instalações',
+    WALL_OR_CEILING: 'Parede / teto',
+    FLOOR: 'Chão',
+    WINDOW_OR_DOOR: 'Janela / porta',
+    BATHROOM: 'Casa de banho',
+    ELECTRICAL_OR_APPLIANCE: 'Elétrico / aparelho',
+    OTHER: 'Outro',
+  },
+  es: {
+    FURNITURE: 'Mobiliario',
+    CURTAINS: 'Cortinas',
+    FIXTURES: 'Instalaciones',
+    WALL_OR_CEILING: 'Pared / techo',
+    FLOOR: 'Suelo',
+    WINDOW_OR_DOOR: 'Ventana / puerta',
+    BATHROOM: 'Baño',
+    ELECTRICAL_OR_APPLIANCE: 'Eléctrico / aparato',
+    OTHER: 'Otro',
+  },
+  tr: {
+    FURNITURE: 'Mobilya',
+    CURTAINS: 'Perdeler',
+    FIXTURES: 'Demirbaş',
+    WALL_OR_CEILING: 'Duvar / tavan',
+    FLOOR: 'Zemin',
+    WINDOW_OR_DOOR: 'Pencere / kapı',
+    BATHROOM: 'Banyo',
+    ELECTRICAL_OR_APPLIANCE: 'Elektrik / cihaz',
+    OTHER: 'Diğer',
+  },
+  uk: {
+    FURNITURE: 'Меблі',
+    CURTAINS: 'Штори',
+    FIXTURES: 'Оснащення',
+    WALL_OR_CEILING: 'Стіна / стеля',
+    FLOOR: 'Підлога',
+    WINDOW_OR_DOOR: 'Вікно / двері',
+    BATHROOM: 'Ванна',
+    ELECTRICAL_OR_APPLIANCE: 'Електрика / прилад',
+    OTHER: 'Інше',
+  },
+};
+
+type RawStrings = Omit<
+  ChatUiStrings,
+  'replyingTo' | 'room' | 'requestClaimedBy' | 'requestInProgressBy' | 'damageType'
+> & {
+  replyingTo: string;
+  room: string;
+  requestClaimedBy: string;
+  requestInProgressBy: string;
+};
+
+const STRINGS: Record<SupportedLocale, RawStrings> = {
   de: {
     title: 'Chat',
     subtitle: 'Team-Kanal · PrizeBern',
     loading: 'Laden…',
-    empty: 'Noch keine Nachrichten. Schreib die erste.',
+    empty: 'Noch keine Nachrichten oder Meldungen.',
     today: 'Heute',
     yesterday: 'Gestern',
     showOriginal: 'Original anzeigen',
@@ -53,12 +151,30 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     photoReady: 'Foto bereit zum Senden',
     photoUploadFailed: 'Foto konnte nicht hochgeladen werden',
     noPostPermission: 'Keine Berechtigung zum Schreiben.',
+    serviceRequest: 'Serviceanfrage',
+    damageReport: 'Schadensmeldung',
+    room: 'Zimmer {roomNumber}',
+    claim: 'Übernehmen',
+    markDone: 'Erledigt',
+    requestOpen: 'Offen — noch nicht übernommen',
+    requestClaimed: 'Übernommen',
+    requestClaimedBy: 'Übernommen von {who}',
+    requestInProgress: 'In Bearbeitung',
+    requestInProgressBy: 'In Bearbeitung · {who}',
+    requestDone: 'Erledigt',
+    requestCancelled: 'Abgebrochen',
+    damageReported: 'Gemeldet — wartet auf Prüfung',
+    damageAcknowledged: 'Bestätigt',
+    damageResolved: 'Erledigt',
+    damageReportedOption: 'Gemeldet',
+    damageAcknowledgedOption: 'Bestätigt',
+    damageResolvedOption: 'Erledigt',
   },
   en: {
     title: 'Chat',
     subtitle: 'Team channel · PrizeBern',
     loading: 'Loading…',
-    empty: 'No messages yet. Write the first one.',
+    empty: 'No messages or reports yet.',
     today: 'Today',
     yesterday: 'Yesterday',
     showOriginal: 'Show original',
@@ -79,12 +195,30 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     photoReady: 'Photo ready to send',
     photoUploadFailed: 'Could not upload photo',
     noPostPermission: 'No permission to post.',
+    serviceRequest: 'Service request',
+    damageReport: 'Damage report',
+    room: 'Room {roomNumber}',
+    claim: 'Claim',
+    markDone: 'Done',
+    requestOpen: 'Open — not claimed yet',
+    requestClaimed: 'Claimed',
+    requestClaimedBy: 'Claimed by {who}',
+    requestInProgress: 'In progress',
+    requestInProgressBy: 'In progress · {who}',
+    requestDone: 'Done',
+    requestCancelled: 'Cancelled',
+    damageReported: 'Reported — awaiting review',
+    damageAcknowledged: 'Acknowledged',
+    damageResolved: 'Resolved',
+    damageReportedOption: 'Reported',
+    damageAcknowledgedOption: 'Acknowledged',
+    damageResolvedOption: 'Resolved',
   },
   pt: {
     title: 'Chat',
     subtitle: 'Canal da equipa · PrizeBern',
     loading: 'A carregar…',
-    empty: 'Ainda sem mensagens. Escreva a primeira.',
+    empty: 'Ainda sem mensagens ou relatórios.',
     today: 'Hoje',
     yesterday: 'Ontem',
     showOriginal: 'Mostrar original',
@@ -105,12 +239,30 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     photoReady: 'Foto pronta para enviar',
     photoUploadFailed: 'Não foi possível carregar a foto',
     noPostPermission: 'Sem permissão para publicar.',
+    serviceRequest: 'Pedido de serviço',
+    damageReport: 'Relatório de dano',
+    room: 'Quarto {roomNumber}',
+    claim: 'Assumir',
+    markDone: 'Concluído',
+    requestOpen: 'Aberto — ainda não assumido',
+    requestClaimed: 'Assumido',
+    requestClaimedBy: 'Assumido por {who}',
+    requestInProgress: 'Em progresso',
+    requestInProgressBy: 'Em progresso · {who}',
+    requestDone: 'Concluído',
+    requestCancelled: 'Cancelado',
+    damageReported: 'Reportado — aguarda revisão',
+    damageAcknowledged: 'Confirmado',
+    damageResolved: 'Resolvido',
+    damageReportedOption: 'Reportado',
+    damageAcknowledgedOption: 'Confirmado',
+    damageResolvedOption: 'Resolvido',
   },
   es: {
     title: 'Chat',
     subtitle: 'Canal del equipo · PrizeBern',
     loading: 'Cargando…',
-    empty: 'Aún no hay mensajes. Escribe el primero.',
+    empty: 'Aún no hay mensajes o reportes.',
     today: 'Hoy',
     yesterday: 'Ayer',
     showOriginal: 'Mostrar original',
@@ -131,12 +283,30 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     photoReady: 'Foto lista para enviar',
     photoUploadFailed: 'No se pudo subir la foto',
     noPostPermission: 'Sin permiso para publicar.',
+    serviceRequest: 'Solicitud de servicio',
+    damageReport: 'Parte de daño',
+    room: 'Habitación {roomNumber}',
+    claim: 'Tomar',
+    markDone: 'Hecho',
+    requestOpen: 'Abierta — aún sin asignar',
+    requestClaimed: 'Asignada',
+    requestClaimedBy: 'Asignada a {who}',
+    requestInProgress: 'En curso',
+    requestInProgressBy: 'En curso · {who}',
+    requestDone: 'Hecha',
+    requestCancelled: 'Cancelada',
+    damageReported: 'Reportado — pendiente',
+    damageAcknowledged: 'Confirmado',
+    damageResolved: 'Resuelto',
+    damageReportedOption: 'Reportado',
+    damageAcknowledgedOption: 'Confirmado',
+    damageResolvedOption: 'Resuelto',
   },
   tr: {
     title: 'Sohbet',
     subtitle: 'Ekip kanalı · PrizeBern',
     loading: 'Yükleniyor…',
-    empty: 'Henüz mesaj yok. İlkini yazın.',
+    empty: 'Henüz mesaj veya bildirim yok.',
     today: 'Bugün',
     yesterday: 'Dün',
     showOriginal: 'Orijinali göster',
@@ -157,12 +327,30 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     photoReady: 'Fotoğraf gönderilmeye hazır',
     photoUploadFailed: 'Fotoğraf yüklenemedi',
     noPostPermission: 'Yazma izniniz yok.',
+    serviceRequest: 'Servis talebi',
+    damageReport: 'Hasar bildirimi',
+    room: 'Oda {roomNumber}',
+    claim: 'Üstlen',
+    markDone: 'Bitti',
+    requestOpen: 'Açık — henüz alınmadı',
+    requestClaimed: 'Alındı',
+    requestClaimedBy: '{who} aldı',
+    requestInProgress: 'Devam ediyor',
+    requestInProgressBy: 'Devam ediyor · {who}',
+    requestDone: 'Tamamlandı',
+    requestCancelled: 'İptal',
+    damageReported: 'Bildirildi — inceleme bekliyor',
+    damageAcknowledged: 'Onaylandı',
+    damageResolved: 'Çözüldü',
+    damageReportedOption: 'Bildirildi',
+    damageAcknowledgedOption: 'Onaylandı',
+    damageResolvedOption: 'Çözüldü',
   },
   uk: {
     title: 'Чат',
     subtitle: 'Командний канал · PrizeBern',
     loading: 'Завантаження…',
-    empty: 'Ще немає повідомлень. Напишіть перше.',
+    empty: 'Ще немає повідомлень або звітів.',
     today: 'Сьогодні',
     yesterday: 'Вчора',
     showOriginal: 'Показати оригінал',
@@ -183,15 +371,38 @@ const STRINGS: Record<SupportedLocale, Omit<ChatUiStrings, 'replyingTo'> & { rep
     photoReady: 'Фото готове до надсилання',
     photoUploadFailed: 'Не вдалося завантажити фото',
     noPostPermission: 'Немає дозволу на публікацію.',
+    serviceRequest: 'Сервісний запит',
+    damageReport: 'Повідомлення про пошкодження',
+    room: 'Кімната {roomNumber}',
+    claim: 'Взяти',
+    markDone: 'Готово',
+    requestOpen: 'Відкрито — ще не взято',
+    requestClaimed: 'Взято',
+    requestClaimedBy: 'Взято {who}',
+    requestInProgress: 'В роботі',
+    requestInProgressBy: 'В роботі · {who}',
+    requestDone: 'Виконано',
+    requestCancelled: 'Скасовано',
+    damageReported: 'Повідомлено — очікує перевірки',
+    damageAcknowledged: 'Підтверджено',
+    damageResolved: 'Вирішено',
+    damageReportedOption: 'Повідомлено',
+    damageAcknowledgedOption: 'Підтверджено',
+    damageResolvedOption: 'Вирішено',
   },
 };
 
 export function chatUi(preferredLocale?: string | null): ChatUiStrings {
   const locale = resolveLocale(preferredLocale);
   const s = STRINGS[locale];
+  const types = DAMAGE_TYPES[locale];
   return {
     ...s,
     replyingTo: (name: string) => s.replyingTo.replace('{name}', name),
+    room: (roomNumber: string) => s.room.replace('{roomNumber}', roomNumber),
+    requestClaimedBy: (who: string) => s.requestClaimedBy.replace('{who}', who),
+    requestInProgressBy: (who: string) => s.requestInProgressBy.replace('{who}', who),
+    damageType: (code: string) => types[code] ?? code.replace(/_/g, ' '),
   };
 }
 

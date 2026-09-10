@@ -4,6 +4,10 @@ export const STORAGE_KEYS = {
   apiBase: 'apiBase',
   panelCollapsed: 'panelCollapsed',
   rememberEmail: 'rememberEmail',
+  /** Separate BernTicket gateway session (bernticket.com). */
+  btAccessToken: 'btAccessToken',
+  btRefreshToken: 'btRefreshToken',
+  btEmail: 'btEmail',
 } as const;
 
 export const DEFAULT_API_BASE =

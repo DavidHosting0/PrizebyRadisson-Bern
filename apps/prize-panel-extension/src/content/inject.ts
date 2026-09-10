@@ -12,6 +12,7 @@ import {
   storageSet,
 } from '../lib/storage';
 import { startChatAlertWatcher } from './chat-alert';
+import { startEmmaBernTicketWatcher } from './emma-bernticket';
 
 const HOST_ID = 'prize-panel-host';
 
@@ -181,6 +182,7 @@ function injectPanel() {
   });
 
   startChatAlertWatcher(chatFocused);
+  startEmmaBernTicketWatcher();
 }
 
 if (document.readyState === 'loading') {

@@ -67,6 +67,35 @@ type Mentionable = {
 
 type ReplyTarget = { id: string; body: string; photoUrl?: string | null; author: ChatAuthor };
 
+type ReqRow = {
+  id: string;
+  createdAt: string;
+  status: string;
+  priority: string;
+  room: { roomNumber: string };
+  type: { label: string };
+  claimedBy: { id: string; name: string; titlePrefix: string } | null;
+};
+
+type DmgRow = {
+  id: string;
+  reportedAt: string;
+  status: string;
+  damageType: string;
+  description: string;
+  photoUrl: string;
+  room: { roomNumber: string };
+  reportedBy: { name: string; titlePrefix: string };
+};
+
+type TimelineItem =
+  | { kind: 'day'; key: string; at: string; label: string }
+  | { kind: 'msg'; key: string; at: string; msg: ChatMsg }
+  | { kind: 'req'; key: string; at: string; req: ReqRow }
+  | { kind: 'dmg'; key: string; at: string; dmg: DmgRow };
+
+const DAMAGE_STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+
 const TITLE_LABELS: Record<string, string> = {
   CLEANER: 'Cleaner',
   HOUSEKEEPING_SUPERVISOR: 'Housekeeping Supervisor',
@@ -105,6 +134,36 @@ function formatClock(iso: string, locale: string) {
 function truncateBody(s: string, max = 80) {
   const t = s.trim();
   return t.length <= max ? t : `${t.slice(0, max)}…`;
+}
+
+function requestStatusLine(r: ReqRow, ui: ChatUiStrings) {
+  if (r.status === 'OPEN' || r.status === 'CREATED') return ui.requestOpen;
+  if (r.status === 'CLAIMED') {
+    return r.claimedBy
+      ? ui.requestClaimedBy(formatAuthor(r.claimedBy.name, r.claimedBy.titlePrefix))
+      : ui.requestClaimed;
+  }
+  if (r.status === 'IN_PROGRESS') {
+    return r.claimedBy
+      ? ui.requestInProgressBy(formatAuthor(r.claimedBy.name, r.claimedBy.titlePrefix))
+      : ui.requestInProgress;
+  }
+  if (r.status === 'RESOLVED') return ui.requestDone;
+  if (r.status === 'CANCELLED') return ui.requestCancelled;
+  return r.status.replace(/_/g, ' ');
+}
+
+function damageStatusLine(d: DmgRow, ui: ChatUiStrings) {
+  if (d.status === 'REPORTED') return ui.damageReported;
+  if (d.status === 'ACKNOWLEDGED') return ui.damageAcknowledged;
+  if (d.status === 'RESOLVED') return ui.damageResolved;
+  return d.status.replace(/_/g, ' ');
+}
+
+function damageStatusOptionLabel(status: (typeof DAMAGE_STATUSES)[number], ui: ChatUiStrings) {
+  if (status === 'REPORTED') return ui.damageReportedOption;
+  if (status === 'ACKNOWLEDGED') return ui.damageAcknowledgedOption;
+  return ui.damageResolvedOption;
 }
 
 function MentionText({
@@ -491,9 +550,12 @@ export function TeamChatBoard() {
   const { user } = useAuth();
   const canPost = usePermission('TEAM_CHAT_POST');
   const canDelete = usePermission('TEAM_CHAT_DELETE');
+  const canReadDamage = usePermission('DAMAGE_REPORT_READ');
+  const canUpdateDamage = usePermission('DAMAGE_REPORT_UPDATE');
   const qc = useQueryClient();
   const locale = user?.preferredLocale || 'de';
   const ui = useMemo(() => chatUi(locale), [locale]);
+  const isHk = user?.role === 'HOUSEKEEPER' || user?.role === 'SUPERVISOR';
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const [body, setBody] = useState('');
@@ -505,11 +567,26 @@ export function TeamChatBoard() {
   const [err, setErr] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: ChatMsg; x: number; y: number } | null>(null);
 
-  const { data: messages = [], isLoading } = useQuery({
+  const { data: messages = [], isLoading: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
     queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=200&lang=${locale}`),
     refetchInterval: 5_000,
   });
+
+  const { data: requests = [], isLoading: loadingReq } = useQuery({
+    queryKey: ['service-requests'],
+    queryFn: () => api<ReqRow[]>('/service-requests'),
+    refetchInterval: 8_000,
+  });
+
+  const { data: damages = [], isLoading: loadingDmg } = useQuery({
+    queryKey: ['damage-reports'],
+    queryFn: () => api<DmgRow[]>('/damage-reports'),
+    enabled: canReadDamage,
+    refetchInterval: 8_000,
+  });
+
+  const isLoading = loadingMsg || loadingReq || (canReadDamage && loadingDmg);
 
   useEffect(() => {
     return () => {
@@ -595,26 +672,76 @@ export function TeamChatBoard() {
     onError: (e: Error) => setErr(e.message),
   });
 
+  const claim = useMutation({
+    mutationFn: (id: string) => api<ReqRow>(`/service-requests/${id}/claim`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const resolve = useMutation({
+    mutationFn: (id: string) =>
+      api<ReqRow>(`/service-requests/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'RESOLVED' }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['service-requests'] }),
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const patchDamageStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api(`/damage-reports/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['damage-reports'] }),
+    onError: (e: Error) => setErr(e.message),
+  });
+
   const timeline = useMemo(() => {
-    const items: Array<
-      | { kind: 'day'; key: string; label: string }
-      | { kind: 'msg'; key: string; msg: ChatMsg }
-    > = [];
+    const combined: TimelineItem[] = [
+      ...messages.map((msg) => ({
+        kind: 'msg' as const,
+        at: msg.createdAt,
+        key: `m-${msg.id}`,
+        msg,
+      })),
+      ...requests.map((req) => ({
+        kind: 'req' as const,
+        at: req.createdAt,
+        key: `r-${req.id}`,
+        req,
+      })),
+      ...damages.map((dmg) => ({
+        kind: 'dmg' as const,
+        at: dmg.reportedAt,
+        key: `d-${dmg.id}`,
+        dmg,
+      })),
+    ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+
+    const items: TimelineItem[] = [];
     let lastDay: Date | null = null;
-    for (const msg of messages) {
-      const d = new Date(msg.createdAt);
+    for (const item of combined) {
+      const d = new Date(item.at);
       if (!lastDay || !sameDay(lastDay, d)) {
         items.push({
           kind: 'day',
-          key: `d-${d.toDateString()}`,
-          label: dayLabel(msg.createdAt, locale),
+          at: item.at,
+          key: `day-${d.toDateString()}`,
+          label: dayLabel(item.at, locale),
         });
         lastDay = d;
       }
-      items.push({ kind: 'msg', key: `m-${msg.id}`, msg });
+      items.push(item);
     }
     return items;
-  }, [messages, locale]);
+  }, [messages, requests, damages, locale]);
+
+  const feedCount = useMemo(
+    () => timeline.filter((i) => i.kind !== 'day').length,
+    [timeline],
+  );
 
   const groupHeads = useMemo(() => {
     const heads: Record<string, boolean> = {};
@@ -644,7 +771,7 @@ export function TeamChatBoard() {
     if (nearBottomRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages.length, isLoading]);
+  }, [feedCount, isLoading]);
 
   function onScroll() {
     const el = scrollerRef.current;
@@ -680,7 +807,7 @@ export function TeamChatBoard() {
         {isLoading && (
           <p className="py-4 text-center text-[11px] text-sidebar-muted">{ui.loading}</p>
         )}
-        {!isLoading && messages.length === 0 && (
+        {!isLoading && feedCount === 0 && (
           <p className="py-6 text-center text-[11px] text-sidebar-muted">{ui.empty}</p>
         )}
 
@@ -692,6 +819,138 @@ export function TeamChatBoard() {
                   <span className="rounded-full bg-white/10 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-sidebar-muted">
                     {item.label}
                   </span>
+                </li>
+              );
+            }
+
+            if (item.kind === 'req') {
+              const r = item.req;
+              const active = r.status !== 'RESOLVED' && r.status !== 'CANCELLED';
+              return (
+                <li key={item.key} className="my-1.5">
+                  <div
+                    className={clsx(
+                      'overflow-hidden rounded-xl border px-2.5 py-2',
+                      active
+                        ? 'border-amber-400/30 bg-amber-500/10'
+                        : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
+                    )}
+                  >
+                    <p className="text-[8px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                      {ui.serviceRequest}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-semibold text-white">
+                      {ui.room(r.room.roomNumber)}
+                      <span className="font-normal text-sidebar-muted"> · {r.type.label}</span>
+                    </p>
+                    <p className="mt-0.5 text-[9px] text-sidebar-muted">{requestStatusLine(r, ui)}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded bg-white/10 px-1.5 py-px text-[8px] font-medium text-slate-200">
+                        {r.priority}
+                      </span>
+                      <span className="text-[8px] text-sidebar-muted/80">
+                        {formatClock(r.createdAt, locale)}
+                      </span>
+                    </div>
+                    {isHk && active && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {(r.status === 'OPEN' || r.status === 'CREATED') && (
+                          <Button
+                            type="button"
+                            variant="action"
+                            className="min-h-[26px] px-2 text-[10px]"
+                            disabled={claim.isPending}
+                            onClick={() => claim.mutate(r.id)}
+                          >
+                            {ui.claim}
+                          </Button>
+                        )}
+                        {r.claimedBy?.id === user?.id &&
+                          (r.status === 'CLAIMED' || r.status === 'IN_PROGRESS') && (
+                            <Button
+                              type="button"
+                              variant="action"
+                              className="min-h-[26px] px-2 text-[10px]"
+                              disabled={resolve.isPending}
+                              onClick={() => resolve.mutate(r.id)}
+                            >
+                              {ui.markDone}
+                            </Button>
+                          )}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            }
+
+            if (item.kind === 'dmg') {
+              const d = item.dmg;
+              const active = d.status !== 'RESOLVED';
+              return (
+                <li key={item.key} className="my-1.5">
+                  <div
+                    className={clsx(
+                      'overflow-hidden rounded-xl border',
+                      active
+                        ? 'border-rose-400/30 bg-rose-500/10'
+                        : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted',
+                    )}
+                  >
+                    {d.photoUrl ? (
+                      <a
+                        href={d.photoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block aspect-[16/9] max-h-28 bg-white/5"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={d.photoUrl} alt="" className="h-full w-full object-cover" />
+                      </a>
+                    ) : null}
+                    <div className="px-2.5 py-2">
+                      <p className="text-[8px] font-semibold uppercase tracking-wide text-sidebar-muted">
+                        {ui.damageReport}
+                      </p>
+                      <p className="mt-0.5 text-[11px] font-semibold text-white">
+                        {ui.room(d.room.roomNumber)}
+                        <span className="font-normal text-sidebar-muted">
+                          {' '}
+                          · {ui.damageType(d.damageType)}
+                        </span>
+                      </p>
+                      {d.description.trim() ? (
+                        <p className="mt-0.5 text-[10px] leading-snug text-slate-200">
+                          {truncateBody(d.description, 120)}
+                        </p>
+                      ) : null}
+                      <p className="mt-0.5 text-[9px] text-sidebar-muted">
+                        {formatAuthor(d.reportedBy.name, d.reportedBy.titlePrefix)} ·{' '}
+                        {damageStatusLine(d, ui)}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-1.5">
+                        <span className="text-[8px] text-sidebar-muted/80">
+                          {formatClock(d.reportedAt, locale)}
+                        </span>
+                        {canUpdateDamage && (
+                          <select
+                            className="min-h-[26px] max-w-[46%] rounded-md border border-sidebar-border bg-sidebar px-1 text-[9px] text-white"
+                            value={d.status}
+                            disabled={patchDamageStatus.isPending}
+                            onChange={(e) =>
+                              patchDamageStatus.mutate({ id: d.id, status: e.target.value })
+                            }
+                          >
+                            {DAMAGE_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {damageStatusOptionLabel(s, ui)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </li>
               );
             }

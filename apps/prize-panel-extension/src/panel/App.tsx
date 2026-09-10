@@ -19,6 +19,7 @@ import { ShiftNotesBoard } from '@/components/ShiftNotesBoard';
 import { ComplaintsBoard } from '@/components/ComplaintsBoard';
 import { LoansBoard } from '@/components/LoansBoard';
 import { TeamChatBoard } from '@/components/TeamChatBoard';
+import { BernTicketBoard } from '@/components/BernTicketBoard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +27,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type PanelView = 'home' | 'todo' | 'notes' | 'complaints' | 'loans' | 'chat';
+type PanelView = 'home' | 'todo' | 'notes' | 'complaints' | 'loans' | 'chat' | 'bernticket';
 
 function IconButton({
   label,
@@ -198,8 +199,6 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
   const canChat = usePermission('TEAM_CHAT_READ');
   const calendarToday = calendarTodayIso();
 
-  const any = canTodo || canNotes || canComplaints || canLoans || canChat;
-
   const handoverQ = useQuery({
     queryKey: ['shift-handover'],
     queryFn: () => api<ShiftHandoverStateDto>('/shift-handover'),
@@ -287,14 +286,6 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
     return n === 1 ? '1 Nachricht heute' : `${n} Nachrichten heute`;
   }, [canChat, chatQ.data, chatQ.isLoading, calendarToday]);
 
-  if (!any) {
-    return (
-      <div className="flex h-full items-center justify-center bg-sidebar p-4">
-        <p className="text-center text-xs text-sidebar-muted">Keine Berechtigung für Panel-Kategorien.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full flex-col bg-sidebar">
       <div className="border-b border-sidebar-border/80 px-3 py-2.5">
@@ -304,6 +295,21 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
         </p>
       </div>
       <div className="flex flex-col gap-2 p-2.5">
+        <CategoryTile
+          title="BernTicket"
+          info="Aktivierungscode suchen & erstellen"
+          onClick={() => onOpen('bernticket')}
+          icon={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+              <path
+                d="M3 9a2 2 0 012-2h14a2 2 0 012 2v3a2 2 0 000 4v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 000-4V9z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path d="M9 9v12" strokeLinecap="round" />
+            </svg>
+          }
+        />
         <CategoryTile
           title="Chat"
           info={chatInfo}
@@ -386,6 +392,7 @@ function PanelBody({
   }
 
   if (view === 'home') return <CategoryHome onOpen={onOpen} />;
+  if (view === 'bernticket') return <BernTicketBoard />;
   if (view === 'chat') return <TeamChatBoard />;
   if (view === 'todo') return <ShiftHandoverBoard />;
   if (view === 'notes') return <ShiftNotesBoard />;
@@ -398,7 +405,8 @@ function AppInner() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [view, setView] = useState<PanelView>('home');
   const isLogin = !loading && !user;
-  const fillHeight = view === 'home' || view === 'todo' || view === 'notes' || view === 'chat';
+  const fillHeight =
+    view === 'home' || view === 'todo' || view === 'notes' || view === 'chat' || view === 'bernticket';
 
   useEffect(() => {
     const type = view === 'chat' ? PANEL_MESSAGE.chatOpen : PANEL_MESSAGE.chatClosed;

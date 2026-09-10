@@ -49,7 +49,7 @@ export default function ExtensionPrivacyPage() {
           >
             prizebern.com
           </a>
-          . Stand: 13. August 2026.
+          . Stand: 10. September 2026.
         </p>
       </header>
 
@@ -87,8 +87,8 @@ export default function ExtensionPrivacyPage() {
         <p>
           PrizeBern Panel ist die Begleit-Extension für Mitarbeitende von Prize by Radisson Bern. Sie
           zeigt ein einklappbares Seitenpanel auf http(s)-Websites, damit Team-Chat, To-dos /
-          Schichtübergabe, Schichtnotizen, Gästebeschwerden und Leihartikel während der Arbeit in
-          anderen Systemen (z.&nbsp;B. PMS, E-Mail) erreichbar bleiben.
+          Schichtübergabe, Schichtnotizen, Gästebeschwerden, Leihartikel und BernTicket-Aktivierungscodes
+          während der Arbeit in anderen Systemen (z.&nbsp;B. PMS/EMMA, E-Mail) erreichbar bleiben.
         </p>
       </Section>
 
@@ -119,13 +119,24 @@ export default function ExtensionPrivacyPage() {
             angemeldeten PrizeBern-Kontos (Anzeige im Panel, API-Antworten).
           </li>
           <li>
-            <Strong>Authentifizierungsdaten:</Strong> E-Mail und Passwort werden ausschliesslich zur
-            Anmeldung an die PrizeBern-API gesendet (gleiche Zugangsdaten wie auf der Website).
-            Access- und Refresh-Token werden lokal in{' '}
+            <Strong>Authentifizierungsdaten (PrizeBern):</Strong> E-Mail und Passwort werden
+            ausschliesslich zur Anmeldung an die PrizeBern-API gesendet (gleiche Zugangsdaten wie auf
+            der Website). Access- und Refresh-Token werden lokal in{' '}
             <code className="rounded bg-white/5 px-1.5 py-0.5 text-[12px] text-slate-300">
               chrome.storage.local
             </code>{' '}
-            gespeichert, damit die Sitzung bestehen bleibt.
+            gespeichert.
+          </li>
+          <li>
+            <Strong>Authentifizierungsdaten (BernTicket):</Strong> Separater Login bei{' '}
+            <a
+              className="font-medium text-sky-300/90 underline underline-offset-2 hover:text-sky-200"
+              href="https://bernticket.com"
+            >
+              bernticket.com
+            </a>{' '}
+            (eigenes Konto). Tokens werden getrennt von PrizeBern lokal gespeichert und nur an die
+            BernTicket-API gesendet.
           </li>
           <li>
             <Strong>Persönliche Kommunikation:</Strong> Inhalte des Team-Chats (Nachrichten und
@@ -137,6 +148,13 @@ export default function ExtensionPrivacyPage() {
             im Rahmen der Rollen-/Rechte des Kontos.
           </li>
           <li>
+            <Strong>BernTicket / Aktivierungscodes:</Strong> Buchungsnummer, Gastname, Gültigkeit und
+            Aktivierungscode werden über die BernTicket-API gelesen bzw. erstellt (Panel und EMMA
+            Check-in-Toolbar). Auf EMMA-Seiten wird nur die Buchungsnummer (und hilfsweise sichtbare
+            Gast-/Datumsfelder für die Ticket-Erstellung) verwendet — kein Auslesen von Passwörtern
+            oder anderen Formularen.
+          </li>
+          <li>
             <Strong>Lokale Einstellungen:</Strong> z.&nbsp;B. eingeklappter Panel-Zustand und die
             API-Basis-URL (nur{' '}
             <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-slate-300">
@@ -146,9 +164,9 @@ export default function ExtensionPrivacyPage() {
           </li>
         </ul>
         <p className="mt-3">
-          Es werden <Strong>keine</Strong> Gesundheitsdaten, Zahlungsdaten, Standortdaten,
-          Browserverlaufsdaten oder Inhalte fremder Websites durch die Extension ausgelesen oder an
-          PrizeBern übermittelt.
+          Es werden <Strong>keine</Strong> Gesundheitsdaten, Zahlungsdaten, Standortdaten oder
+          Browserverlaufsdaten durch die Extension erhoben. Fremde Website-Inhalte werden nicht
+          systematisch ausgelesen oder an PrizeBern übermittelt.
         </p>
       </Section>
 
@@ -156,9 +174,9 @@ export default function ExtensionPrivacyPage() {
         <ul className="list-outside list-disc space-y-2 pl-5 marker:text-sidebar-muted">
           <li>Kein Tracking des Browserverlaufs und keine Analyse besuchter Seiten.</li>
           <li>
-            Kein Auslesen von Passwörtern, Formularen, Texten oder Medien anderer Websites — das
-            Content Script zeigt nur das PrizeBern-Overlay (und ggf. Chat-Hinweise aus der
-            PrizeBern-API).
+            Kein Auslesen von Passwörtern oder Formularinhalten anderer Websites — das Content Script
+            zeigt das PrizeBern-Panel, optional Chat-Hinweise, und auf EMMA-Check-in die BernTicket-
+            Toolbar-Hilfe (Buchungsnr. / Ticket-Erstellung).
           </li>
           <li>Kein Verkauf von Daten, keine Werbung, kein Profiling für Marketing.</li>
           <li>
@@ -173,6 +191,7 @@ export default function ExtensionPrivacyPage() {
           <li>Anmeldung und Aufrechterhaltung der Sitzung bei PrizeBern</li>
           <li>Bereitstellung der Housekeeping-Funktionen im Sidepanel</li>
           <li>Teamkommunikation (Chat) für den Hotelbetrieb</li>
+          <li>BernTicket-Aktivierungscodes suchen, anzeigen und erstellen (bernticket.com)</li>
           <li>Technische Funktionsfähigkeit (lokale Panel-Einstellungen)</li>
         </ul>
         <p>
@@ -184,13 +203,13 @@ export default function ExtensionPrivacyPage() {
       <Section id="speicher" title="6. Speicherung, Übermittlung und Löschung">
         <ul className="list-outside list-disc space-y-2 pl-5 marker:text-sidebar-muted">
           <li>
-            <Strong>Gerät:</Strong> Tokens und Panel-Einstellungen liegen lokal in Chrome Storage, bis
-            Sie sich in der Extension abmelden oder die Extension deinstallieren.
+            <Strong>Gerät:</Strong> PrizeBern- und BernTicket-Tokens sowie Panel-Einstellungen liegen
+            lokal in Chrome Storage, bis Sie sich abmelden oder die Extension deinstallieren.
           </li>
           <li>
-            <Strong>Server:</Strong> Anmeldedaten und Nutzungsinhalte werden an{' '}
-            <Strong>https://prizebern.com</Strong> (API) übermittelt. Speicherdauer und Löschung dort
-            entsprechen der PrizeBern-Webanwendung und den betrieblichen Vorgaben des Hotels.
+            <Strong>Server:</Strong> PrizeBern-Daten gehen an <Strong>https://prizebern.com</Strong>.
+            BernTicket-Login und Tickets gehen an <Strong>https://bernticket.com</Strong>. Speicherdauer
+            folgt den jeweiligen Plattformen und den betrieblichen Vorgaben des Hotels.
           </li>
           <li>
             <Strong>Entwicklung:</Strong> Optional kann eine lokale API (
@@ -218,19 +237,24 @@ export default function ExtensionPrivacyPage() {
       <Section id="berechtigungen" title="8. Chrome-Berechtigungen">
         <ul className="list-outside list-disc space-y-2 pl-5 marker:text-sidebar-muted">
           <li>
-            <Strong>storage:</Strong> lokale Speicherung von Login-Tokens und Panel-Einstellungen.
+            <Strong>storage:</Strong> lokale Speicherung von PrizeBern- und BernTicket-Tokens sowie
+            Panel-Einstellungen.
           </li>
           <li>
             <Strong>https://prizebern.com/*:</Strong> API-Aufrufe für Login und
             Housekeeping-Funktionen.
           </li>
           <li>
-            <Strong>http://*/* und https://*/* (Content Script):</Strong> Einbinden des
-            PrizeBern-Panels auf Arbeitswebsites. Es werden keine Inhalte dieser Seiten gelesen oder an
-            Server gesendet.
+            <Strong>https://bernticket.com/*:</Strong> API-Aufrufe für BernTicket-Login und
+            Aktivierungscodes (suchen, erstellen, bearbeiten).
           </li>
           <li>
-            <Strong>Optional localhost:</Strong> nur für lokale Entwicklung.
+            <Strong>http://*/* und https://*/* (Content Script):</Strong> PrizeBern-Panel-Overlay und
+            auf EMMA-Check-in die BernTicket-Toolbar (Buchungsnr. / Ticket). Kein Scraping von
+            Passwörtern oder fremden Formularen.
+          </li>
+          <li>
+            <Strong>Optional localhost:</Strong> nur für lokale PrizeBern-Entwicklung.
           </li>
         </ul>
       </Section>
@@ -238,9 +262,9 @@ export default function ExtensionPrivacyPage() {
       <Section id="weitergabe" title="9. Weitergabe an Dritte">
         <p>
           Die Extension verkauft keine Daten und gibt keine Nutzerdaten an Werbenetzwerke oder
-          Datenbroker weiter. Übermittlungen erfolgen an die PrizeBern-Infrastruktur unter
-          prizebern.com zur Erfüllung der oben genannten Zwecke. Allfällige Auftragsverarbeiter der
-          Plattform (Hosting usw.) richten sich nach der Konfiguration der Webanwendung — nicht nach
+          Datenbroker weiter. Übermittlungen erfolgen an prizebern.com und — bei Nutzung von
+          BernTicket — an bernticket.com zur Erfüllung der oben genannten Zwecke. Allfällige
+          Auftragsverarbeiter richten sich nach der Konfiguration dieser Plattformen — nicht nach
           zusätzlichen Extension-SDKs.
         </p>
       </Section>
