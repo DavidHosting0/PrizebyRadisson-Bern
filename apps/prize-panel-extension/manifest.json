@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrizeBern Panel",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "PrizeBern Housekeeping side panel: chat, to-dos, BernTicket, shift notes, complaints and loans while you work.",
   "homepage_url": "https://prizebern.com/extension-install",
   "permissions": ["storage"],

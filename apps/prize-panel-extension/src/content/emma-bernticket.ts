@@ -111,94 +111,105 @@ function scrapeStayDates(): { from: string; to: string } {
 }
 
 function ensureStyles() {
-  if (document.getElementById(STYLE_ID)) return;
+  const existing = document.getElementById(STYLE_ID);
+  if (existing) existing.remove();
   const style = document.createElement('style');
   style.id = STYLE_ID;
-  // EMMA floating footers are typically light — use dark text for contrast.
   style.textContent = `
-    #${HOST_ID}, #${FALLBACK_ID}{
-      display:inline-flex;align-items:center;gap:8px;margin:0 6px;
-      font-family:var(--sapFontFamily,"72",system-ui,sans-serif);font-size:12px;
-      vertical-align:middle;max-width:min(560px,55vw);z-index:2147483000;
-      color:#1a2332 !important;
-    }
     #${FALLBACK_ID}{
-      position:fixed;left:50%;bottom:12px;transform:translateX(-50%);
-      max-width:min(720px,calc(100vw - 24px));width:auto;
-      background:#fff;border:1px solid #c7d0dc;border-radius:10px;
-      box-shadow:0 8px 28px rgba(15,23,42,.18);padding:8px 12px;
-      margin:0;
+      position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+      z-index:2147483000;box-sizing:border-box;
+      width:max-content;max-width:min(560px,calc(100vw - 28px));
+      font-family:var(--sapFontFamily,"72",system-ui,-apple-system,sans-serif);
+      color:#0f172a;
+      background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
+      border:1px solid rgba(45,58,79,.14);
+      border-radius:16px;
+      box-shadow:0 10px 36px rgba(15,23,42,.16),0 1px 0 rgba(255,255,255,.8) inset;
+      padding:10px 14px;
+      display:flex;flex-direction:column;align-items:center;gap:8px;
+      pointer-events:auto;
     }
-    #${HOST_ID} .pb-bt-label, #${FALLBACK_ID} .pb-bt-label{
-      font-weight:700;color:#1a2332 !important;white-space:nowrap;font-size:11px;
-      letter-spacing:.03em;text-transform:uppercase;
+    #${FALLBACK_ID} *{box-sizing:border-box;}
+    #${FALLBACK_ID} .pb-bt-row{
+      display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+      width:100%;
     }
-    #${HOST_ID} .pb-bt-code, #${FALLBACK_ID} .pb-bt-code{
-      font-family:ui-monospace,monospace;font-weight:800;letter-spacing:.05em;
-      background:#fef2f2;border:1px solid #fecaca;color:#991b1b !important;
-      border-radius:8px;padding:5px 10px;cursor:pointer;white-space:nowrap;
+    #${FALLBACK_ID} .pb-bt-brand{
+      display:inline-flex;align-items:center;gap:7px;
+      font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+      color:#1a2332;
     }
-    #${HOST_ID} .pb-bt-code:hover, #${FALLBACK_ID} .pb-bt-code:hover{background:#fee2e2}
-    #${HOST_ID} .pb-bt-btn, #${FALLBACK_ID} .pb-bt-btn{
-      border:1px solid #3b6fa0;background:#3b6fa0;color:#fff !important;
-      border-radius:8px;padding:5px 10px;cursor:pointer;font-weight:600;white-space:nowrap;
+    #${FALLBACK_ID} .pb-bt-dot{
+      width:8px;height:8px;border-radius:999px;background:#3b6fa0;
+      box-shadow:0 0 0 3px rgba(59,111,160,.18);
+      flex-shrink:0;
     }
-    #${HOST_ID} .pb-bt-btn:hover, #${FALLBACK_ID} .pb-bt-btn:hover{background:#345f89}
-    #${HOST_ID} .pb-bt-btn:disabled, #${FALLBACK_ID} .pb-bt-btn:disabled{opacity:.55;cursor:not-allowed}
-    #${HOST_ID} .pb-bt-muted, #${FALLBACK_ID} .pb-bt-muted{
-      color:#475569 !important;font-size:11px;white-space:nowrap;
+    #${FALLBACK_ID} .pb-bt-code{
+      appearance:none;border:0;cursor:pointer;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:18px;font-weight:800;letter-spacing:.12em;
+      line-height:1.1;color:#991b1b;
+      background:linear-gradient(180deg,#fff5f5,#fee2e2);
+      border:1px solid #fecaca;
+      border-radius:12px;
+      padding:10px 18px;
+      min-width:9.5rem;text-align:center;
+      box-shadow:0 1px 2px rgba(153,27,27,.08);
+      transition:transform .12s ease,background .12s ease,box-shadow .12s ease;
     }
-    #${HOST_ID} .pb-bt-form, #${FALLBACK_ID} .pb-bt-form{
-      display:flex;flex-wrap:wrap;gap:4px;align-items:center;
-      background:#f8fafc;border:1px solid #dbe3ee;border-radius:8px;padding:4px 6px;
+    #${FALLBACK_ID} .pb-bt-code:hover{
+      background:linear-gradient(180deg,#fff1f1,#fecaca);
+      box-shadow:0 4px 14px rgba(153,27,27,.14);
+      transform:translateY(-1px);
     }
-    #${HOST_ID} .pb-bt-form input, #${FALLBACK_ID} .pb-bt-form input{
-      height:26px;border-radius:4px;border:1px solid #cbd5e1;
-      background:#fff;color:#1a2332;padding:0 6px;font-size:11px;min-width:72px;
+    #${FALLBACK_ID} .pb-bt-code:active{transform:translateY(0)}
+    #${FALLBACK_ID} .pb-bt-hint{
+      font-size:10px;color:#64748b;text-align:center;line-height:1.3;
     }
-    #${HOST_ID} .pb-bt-form input.pb-bt-name, #${FALLBACK_ID} .pb-bt-form input.pb-bt-name{min-width:120px}
+    #${FALLBACK_ID} .pb-bt-meta{
+      font-size:10px;color:#64748b;font-variant-numeric:tabular-nums;
+    }
+    #${FALLBACK_ID} .pb-bt-muted{
+      font-size:12px;color:#475569;text-align:center;
+    }
+    #${FALLBACK_ID} .pb-bt-btn{
+      appearance:none;cursor:pointer;
+      border:1px solid #3b6fa0;background:#3b6fa0;color:#fff;
+      border-radius:10px;padding:7px 12px;font-size:12px;font-weight:600;
+      transition:background .12s ease;
+    }
+    #${FALLBACK_ID} .pb-bt-btn:hover{background:#345f89}
+    #${FALLBACK_ID} .pb-bt-btn:disabled{opacity:.55;cursor:not-allowed}
+    #${FALLBACK_ID} .pb-bt-btn.pb-bt-ghost{
+      background:#fff;color:#1a2332;border-color:#cbd5e1;
+    }
+    #${FALLBACK_ID} .pb-bt-btn.pb-bt-ghost:hover{background:#f1f5f9}
+    #${FALLBACK_ID} .pb-bt-form{
+      display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;
+      width:100%;
+    }
+    #${FALLBACK_ID} .pb-bt-form input{
+      height:30px;border-radius:8px;border:1px solid #cbd5e1;
+      background:#fff;color:#1a2332;padding:0 8px;font-size:12px;min-width:88px;
+    }
+    #${FALLBACK_ID} .pb-bt-form input.pb-bt-name{min-width:140px;flex:1}
+    #${FALLBACK_ID} .pb-bt-copied{
+      font-size:11px;font-weight:600;color:#15803d;
+    }
   `;
   document.documentElement.appendChild(style);
 }
 
-function mountInToolbar(toolbar: HTMLElement): HTMLElement {
-  document.getElementById(FALLBACK_ID)?.remove();
-  let host = document.getElementById(HOST_ID) as HTMLElement | null;
-  if (host && toolbar.contains(host)) return host;
-  host?.remove();
-  host = document.createElement('div');
-  host.id = HOST_ID;
-  host.className = 'sapMBarChild';
-  host.setAttribute('data-prize-bernticket', '1');
-
-  // Prefer right side (after flex spacer), next to Check In actions.
-  const spacer = toolbar.querySelector('.sapMTBSpacer');
-  if (spacer?.parentElement === toolbar) {
-    const after = spacer.nextElementSibling;
-    if (after) toolbar.insertBefore(host, after);
-    else toolbar.appendChild(host);
-  } else {
-    const checkIn =
-      toolbar.querySelector('.sapMBtnAccept') ||
-      [...toolbar.querySelectorAll('button, .sapMBtn')].find((b) =>
-        /check\s*in/i.test(b.textContent || ''),
-      );
-    if (checkIn?.parentElement === toolbar) {
-      toolbar.insertBefore(host, checkIn);
-    } else {
-      toolbar.appendChild(host);
-    }
-  }
-  return host;
-}
-
-function mountFallbackBar(): HTMLElement {
+function mountBar(): HTMLElement {
   document.getElementById(HOST_ID)?.remove();
   let host = document.getElementById(FALLBACK_ID) as HTMLElement | null;
   if (host) return host;
   host = document.createElement('div');
   host.id = FALLBACK_ID;
   host.setAttribute('data-prize-bernticket', '1');
+  host.setAttribute('role', 'region');
+  host.setAttribute('aria-label', 'BernTicket Aktivierungscode');
   document.documentElement.appendChild(host);
   return host;
 }
@@ -207,12 +218,34 @@ function setHostHtml(host: HTMLElement, html: string) {
   host.innerHTML = html;
 }
 
+function shell(inner: string): string {
+  return (
+    `<div class="pb-bt-row"><span class="pb-bt-brand"><span class="pb-bt-dot" aria-hidden="true"></span>BernTicket</span></div>` +
+    inner
+  );
+}
+
 async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
     // ignore
   }
+}
+
+function bindCodeCopy(host: HTMLElement, code: string) {
+  const btn = host.querySelector('.pb-bt-code') as HTMLButtonElement | null;
+  const hint = host.querySelector('.pb-bt-hint');
+  btn?.addEventListener('click', () => {
+    void copyText(code).then(() => {
+      if (hint) {
+        hint.innerHTML = `<span class="pb-bt-copied">Kopiert</span>`;
+        window.setTimeout(() => {
+          if (hint.isConnected) hint.textContent = 'Klicken zum Kopieren';
+        }, 1200);
+      }
+    });
+  });
 }
 
 let lastBooking: string | null = null;
@@ -227,15 +260,17 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
   if (!tokens.access) {
     setHostHtml(
       host,
-      `<span class="pb-bt-label">BernTicket</span>` +
-        `<span class="pb-bt-muted">Im Panel → BernTicket anmelden</span>`,
+      shell(
+        `<div class="pb-bt-row"><span class="pb-bt-muted">Im Panel → BernTicket anmelden</span></div>` +
+          `<div class="pb-bt-hint">Buchung ${escapeHtml(bookingNumber)}</div>`,
+      ),
     );
     return;
   }
 
   setHostHtml(
     host,
-    `<span class="pb-bt-label">BernTicket</span><span class="pb-bt-muted">Laden…</span>`,
+    shell(`<div class="pb-bt-row"><span class="pb-bt-muted">Laden…</span></div>`),
   );
 
   try {
@@ -247,21 +282,22 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
     if (ticket && code) {
       setHostHtml(
         host,
-        `<span class="pb-bt-label">BernTicket</span>` +
-          `<button type="button" class="pb-bt-code" title="Code kopieren">${escapeHtml(code)}</button>` +
-          `<span class="pb-bt-muted">${escapeHtml(bookingNumber)}</span>`,
+        shell(
+          `<div class="pb-bt-row"><button type="button" class="pb-bt-code" title="Code kopieren">${escapeHtml(code)}</button></div>` +
+            `<div class="pb-bt-hint">Klicken zum Kopieren · Buchung <span class="pb-bt-meta">${escapeHtml(bookingNumber)}</span></div>`,
+        ),
       );
-      host.querySelector('.pb-bt-code')?.addEventListener('click', () => {
-        void copyText(code);
-      });
+      bindCodeCopy(host, code);
       return;
     }
 
     if (ticket && !code) {
       setHostHtml(
         host,
-        `<span class="pb-bt-label">BernTicket</span>` +
-          `<span class="pb-bt-muted">Ticket ohne Code (${escapeHtml(ticket.status)})</span>`,
+        shell(
+          `<div class="pb-bt-row"><span class="pb-bt-muted">Ticket ohne Code (${escapeHtml(ticket.status)})</span></div>` +
+            `<div class="pb-bt-hint">Buchung ${escapeHtml(bookingNumber)}</div>`,
+        ),
       );
       return;
     }
@@ -270,14 +306,17 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
     const dates = scrapeStayDates();
     setHostHtml(
       host,
-      `<span class="pb-bt-label">BernTicket</span>` +
-        `<div class="pb-bt-form">` +
-        `<input class="pb-bt-name" placeholder="Gastname" value="${escapeAttr(guest)}" />` +
-        `<input class="pb-bt-from" type="date" value="${escapeAttr(dates.from)}" />` +
-        `<input class="pb-bt-to" type="date" value="${escapeAttr(dates.to)}" />` +
-        `<input class="pb-bt-amt" type="number" min="1" value="1" style="width:52px" title="Anzahl" />` +
-        `<button type="button" class="pb-bt-btn pb-bt-create">Ticket erstellen</button>` +
-        `</div>`,
+      shell(
+        `<div class="pb-bt-row"><span class="pb-bt-muted">Kein Ticket — erstellen</span></div>` +
+          `<div class="pb-bt-form">` +
+          `<input class="pb-bt-name" placeholder="Gastname" value="${escapeAttr(guest)}" />` +
+          `<input class="pb-bt-from" type="date" value="${escapeAttr(dates.from)}" />` +
+          `<input class="pb-bt-to" type="date" value="${escapeAttr(dates.to)}" />` +
+          `<input class="pb-bt-amt" type="number" min="1" value="1" style="width:56px" title="Anzahl" />` +
+          `<button type="button" class="pb-bt-btn pb-bt-create">Erstellen</button>` +
+          `</div>` +
+          `<div class="pb-bt-hint">Buchung ${escapeHtml(bookingNumber)}</div>`,
+      ),
     );
 
     const createBtn = host.querySelector('.pb-bt-create') as HTMLButtonElement | null;
@@ -291,8 +330,10 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
         if (!guestName) {
           setHostHtml(
             host,
-            `<span class="pb-bt-label">BernTicket</span><span class="pb-bt-muted">Gastname fehlt</span>` +
-              `<button type="button" class="pb-bt-btn pb-bt-retry">Nochmal</button>`,
+            shell(
+              `<div class="pb-bt-row"><span class="pb-bt-muted">Gastname fehlt</span>` +
+                `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">Nochmal</button></div>`,
+            ),
           );
           host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
             void renderForBooking(host, bookingNumber);
@@ -313,32 +354,33 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
           if (newCode) {
             setHostHtml(
               host,
-              `<span class="pb-bt-label">BernTicket</span>` +
-                `<button type="button" class="pb-bt-code" title="Code kopieren">${escapeHtml(newCode)}</button>`,
+              shell(
+                `<div class="pb-bt-row"><button type="button" class="pb-bt-code" title="Code kopieren">${escapeHtml(newCode)}</button></div>` +
+                  `<div class="pb-bt-hint">Klicken zum Kopieren · Buchung <span class="pb-bt-meta">${escapeHtml(bookingNumber)}</span></div>`,
+              ),
             );
-            host.querySelector('.pb-bt-code')?.addEventListener('click', () => {
-              void copyText(newCode);
-            });
+            bindCodeCopy(host, newCode);
           } else {
             lastBooking = null;
             await renderForBooking(host, bookingNumber);
           }
         } catch (e) {
           if (e instanceof BtApiError && e.code === BERN_TICKET_2FA_REQUIRED) {
-            const code = window.prompt('BernTicket 2FA-Code (Puma):');
-            if (code) {
+            const fa = window.prompt('BernTicket 2FA-Code (Puma):');
+            if (fa) {
               try {
-                await btComplete2fa(code);
+                await btComplete2fa(fa);
                 createBtn.disabled = false;
-                createBtn.textContent = 'Ticket erstellen';
+                createBtn.textContent = 'Erstellen';
                 createBtn.click();
                 return;
               } catch (e2) {
                 setHostHtml(
                   host,
-                  `<span class="pb-bt-label">BernTicket</span>` +
-                    `<span class="pb-bt-muted">${escapeHtml(e2 instanceof Error ? e2.message : '2FA fehlgeschlagen')}</span>` +
-                    `<button type="button" class="pb-bt-btn pb-bt-retry">Nochmal</button>`,
+                  shell(
+                    `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(e2 instanceof Error ? e2.message : '2FA fehlgeschlagen')}</span>` +
+                      `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">Nochmal</button></div>`,
+                  ),
                 );
                 host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
                   void renderForBooking(host, bookingNumber);
@@ -349,9 +391,10 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
           }
           setHostHtml(
             host,
-            `<span class="pb-bt-label">BernTicket</span>` +
-              `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : 'Fehler')}</span>` +
-              `<button type="button" class="pb-bt-btn pb-bt-retry">Nochmal</button>`,
+            shell(
+              `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : 'Fehler')}</span>` +
+                `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">Nochmal</button></div>`,
+            ),
           );
           host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
             void renderForBooking(host, bookingNumber);
@@ -363,9 +406,10 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
     if (gen !== renderGen) return;
     setHostHtml(
       host,
-      `<span class="pb-bt-label">BernTicket</span>` +
-        `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : 'Fehler')}</span>` +
-        `<button type="button" class="pb-bt-btn pb-bt-retry">Nochmal</button>`,
+      shell(
+        `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : 'Fehler')}</span>` +
+          `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">Nochmal</button></div>`,
+      ),
     );
     host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
       lastBooking = null;
@@ -417,12 +461,14 @@ async function tick() {
     return;
   }
 
-  const host = toolbar ? mountInToolbar(toolbar) : mountFallbackBar();
+  const host = mountBar();
 
   if (!booking) {
     setHostHtml(
       host,
-      `<span class="pb-bt-label">BernTicket</span><span class="pb-bt-muted">Keine Buchungsnr. erkannt</span>`,
+      shell(
+        `<div class="pb-bt-row"><span class="pb-bt-muted">Keine Buchungsnr. erkannt</span></div>`,
+      ),
     );
     lastBooking = null;
     host.dataset.bound = '';
@@ -456,12 +502,8 @@ export function startEmmaBernTicketWatcher() {
         return;
       }
     }
-    // If SAP rebuilt the footer, force rebind
-    const host = document.getElementById(HOST_ID) || document.getElementById(FALLBACK_ID);
+    const host = document.getElementById(FALLBACK_ID);
     if (host && !hostStillMounted(host)) lastBooking = null;
-    if (host && findCheckinToolbar() && host.id === HOST_ID && !findCheckinToolbar()!.contains(host)) {
-      lastBooking = null;
-    }
     scheduleRefresh();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
