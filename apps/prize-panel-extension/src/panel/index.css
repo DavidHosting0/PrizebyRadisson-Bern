@@ -51,6 +51,18 @@ body {
   background: transparent;
 }
 
+/* Categories (and similar lists): scroll without visible scrollbar */
+.panel-scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.panel-scroll-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Dark-blue date fields (DarkDateInput) */
 .date-input-shell .date-input {
   color-scheme: dark;

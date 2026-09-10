@@ -287,14 +287,15 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
   }, [canChat, chatQ.data, chatQ.isLoading, calendarToday]);
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
-      <div className="border-b border-sidebar-border/80 px-3 py-2.5">
+    <div className="flex h-full min-h-0 flex-col bg-sidebar">
+      <div className="shrink-0 border-b border-sidebar-border/80 px-3 py-2.5">
         <BrandLogo compact onDark className="opacity-90" />
         <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-muted">
           Kategorien
         </p>
       </div>
-      <div className="flex flex-col gap-2 p-2.5">
+      <div className="panel-scroll-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain p-2.5">
+        <div className="flex flex-col gap-2">
         <CategoryTile
           title="BernTicket"
           info="Aktivierungscode suchen & erstellen"
@@ -369,6 +370,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
             </svg>
           }
         />
+        </div>
       </div>
     </div>
   );

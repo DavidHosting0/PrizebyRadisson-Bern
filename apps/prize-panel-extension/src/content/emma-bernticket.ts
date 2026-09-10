@@ -1,6 +1,6 @@
 /**
- * Injects a SAP-toolbar-styled BernTicket control into EMMA check-in footer.
- * Lookup / create activation codes via bernticket.com using stored BT tokens.
+ * Injects BernTicket into EMMA check-in / reservation footers.
+ * Falls back to a fixed bottom strip when the SAP toolbar is missing.
  */
 import {
   BERN_TICKET_2FA_REQUIRED,
@@ -16,31 +16,72 @@ import {
 
 const HOST_ID = 'prize-bt-checkin-host';
 const STYLE_ID = 'prize-bt-checkin-style';
+const FALLBACK_ID = 'prize-bt-fallback-bar';
+
+function isLikelyEmmaPage(): boolean {
+  if (/ReservationId=/i.test(window.location.hash)) return true;
+  if (document.querySelector('.sapUiBody, .sapMShell, [data-sap-ui-area]')) return true;
+  return /emma|radisson|sapui5|fiori/i.test(window.location.hostname + window.location.href);
+}
 
 function getBookingNumber(): string | null {
-  const m = window.location.hash.match(/ReservationId='(\d+)'/i);
-  if (m) return m[1].replace(/^0+/, '');
-  for (const a of document.querySelectorAll('a.sapMLnk')) {
+  const hash = window.location.hash || '';
+  const patterns = [
+    /ReservationId='(\d+)'/i,
+    /ReservationId=(\d+)/i,
+    /reservationId[=:]['"]?(\d+)/i,
+  ];
+  for (const re of patterns) {
+    const m = hash.match(re);
+    if (m) return m[1].replace(/^0+/, '');
+  }
+
+  for (const a of document.querySelectorAll('a.sapMLnk, span.sapMText, span.sapMObjStatusText, .sapMTitle')) {
     const t = (a.textContent || '').trim();
     if (/^\d{6,}$/.test(t)) return t.replace(/^0+/, '');
   }
+
+  // Object header / title often contains the id
+  const title = document.querySelector('.sapUxAPObjectPageHeaderContent .sapMTitle, .sapFDynamicPageTitleMain .sapMTitle');
+  const tm = (title?.textContent || '').match(/\b(\d{6,})\b/);
+  if (tm) return tm[1].replace(/^0+/, '');
+
   return null;
 }
 
 function findCheckinToolbar(): HTMLElement | null {
-  const byId = document.querySelector<HTMLElement>('[id$="tms.checkinToolbar"]');
-  if (byId) return byId;
-  return document.querySelector<HTMLElement>('[id*="CheckInDetail"][id*="checkinToolbar"]');
+  const selectors = [
+    '[id$="tms.checkinToolbar"]',
+    '[id*="tms.checkinToolbar"]',
+    '[id*="CheckInDetail"][id*="Toolbar"]',
+    '[id*="checkinToolbar"]',
+    '.sapUxAPObjectPageFloatingFooter.sapMTB',
+    '.sapUxAPObjectPageFloatingFooter',
+    '.sapFDynamicPageFooter .sapMTB',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (el) return el;
+  }
+  return null;
 }
 
 function scrapeGuestName(): string {
-  const candidates = [
-    ...document.querySelectorAll('.sapMObjStatusText, .sapMTitle, .sapMText, .sapMLnk'),
+  const prefer = [
+    ...document.querySelectorAll(
+      '.sapUxAPObjectPageHeaderContent .sapMTitle, .sapFDynamicPageTitleMainHeading .sapMTitle, .sapMObjStatusTitle, .sapMLnk',
+    ),
   ];
-  for (const el of candidates) {
-    const t = (el.textContent || '').trim();
-    if (t.length >= 3 && t.length < 80 && /[A-Za-zÄÖÜäöü]/.test(t) && !/check.?in|please|complete/i.test(t)) {
-      if (/,/.test(t) || /\s/.test(t)) return t.replace(/\s+/g, ' ');
+  for (const el of prefer) {
+    const t = (el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (
+      t.length >= 3 &&
+      t.length < 90 &&
+      /[A-Za-zÄÖÜäöü]/.test(t) &&
+      !/check.?in|please|complete|reservation|zimmer|room|folio/i.test(t) &&
+      !/^\d+$/.test(t)
+    ) {
+      if (/,/.test(t) || /\s/.test(t)) return t;
     }
   }
   return '';
@@ -55,8 +96,8 @@ function scrapeStayDates(): { from: string; to: string } {
     to: tomorrow.toISOString().slice(0, 10),
   };
   const text = document.body?.innerText || '';
-  const dates = [...text.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((m) => m[1]);
-  if (dates.length >= 2) return { from: dates[0], to: dates[1] };
+  const iso = [...text.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g)].map((m) => m[1]);
+  if (iso.length >= 2) return { from: iso[0], to: iso[1] };
   const eu = [...text.matchAll(/\b(\d{2})\.(\d{2})\.(20\d{2})\b/g)];
   if (eu.length >= 2) {
     const a = eu[0];
@@ -73,46 +114,55 @@ function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
+  // EMMA floating footers are typically light — use dark text for contrast.
   style.textContent = `
-    #${HOST_ID}{
-      display:inline-flex;align-items:center;gap:6px;margin:0 8px;
-      font-family:var(--sapFontFamily,system-ui,sans-serif);font-size:12px;
-      vertical-align:middle;max-width:min(420px,46vw);
+    #${HOST_ID}, #${FALLBACK_ID}{
+      display:inline-flex;align-items:center;gap:8px;margin:0 6px;
+      font-family:var(--sapFontFamily,"72",system-ui,sans-serif);font-size:12px;
+      vertical-align:middle;max-width:min(560px,55vw);z-index:2147483000;
+      color:#1a2332 !important;
     }
-    #${HOST_ID} .pb-bt-label{
-      font-weight:700;color:#fff;opacity:.9;white-space:nowrap;font-size:11px;
-      letter-spacing:.02em;text-transform:uppercase;
+    #${FALLBACK_ID}{
+      position:fixed;left:50%;bottom:12px;transform:translateX(-50%);
+      max-width:min(720px,calc(100vw - 24px));width:auto;
+      background:#fff;border:1px solid #c7d0dc;border-radius:10px;
+      box-shadow:0 8px 28px rgba(15,23,42,.18);padding:8px 12px;
+      margin:0;
     }
-    #${HOST_ID} .pb-bt-code{
-      font-family:ui-monospace,monospace;font-weight:800;letter-spacing:.04em;
-      background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
-      color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;white-space:nowrap;
+    #${HOST_ID} .pb-bt-label, #${FALLBACK_ID} .pb-bt-label{
+      font-weight:700;color:#1a2332 !important;white-space:nowrap;font-size:11px;
+      letter-spacing:.03em;text-transform:uppercase;
     }
-    #${HOST_ID} .pb-bt-code:hover{background:rgba(255,255,255,.22)}
-    #${HOST_ID} .pb-bt-btn{
-      border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);
-      color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:600;
-      white-space:nowrap;
+    #${HOST_ID} .pb-bt-code, #${FALLBACK_ID} .pb-bt-code{
+      font-family:ui-monospace,monospace;font-weight:800;letter-spacing:.05em;
+      background:#fef2f2;border:1px solid #fecaca;color:#991b1b !important;
+      border-radius:8px;padding:5px 10px;cursor:pointer;white-space:nowrap;
     }
-    #${HOST_ID} .pb-bt-btn:hover{background:rgba(255,255,255,.2)}
-    #${HOST_ID} .pb-bt-btn:disabled{opacity:.5;cursor:not-allowed}
-    #${HOST_ID} .pb-bt-muted{color:rgba(255,255,255,.75);font-size:11px;white-space:nowrap}
-    #${HOST_ID} .pb-bt-form{
+    #${HOST_ID} .pb-bt-code:hover, #${FALLBACK_ID} .pb-bt-code:hover{background:#fee2e2}
+    #${HOST_ID} .pb-bt-btn, #${FALLBACK_ID} .pb-bt-btn{
+      border:1px solid #3b6fa0;background:#3b6fa0;color:#fff !important;
+      border-radius:8px;padding:5px 10px;cursor:pointer;font-weight:600;white-space:nowrap;
+    }
+    #${HOST_ID} .pb-bt-btn:hover, #${FALLBACK_ID} .pb-bt-btn:hover{background:#345f89}
+    #${HOST_ID} .pb-bt-btn:disabled, #${FALLBACK_ID} .pb-bt-btn:disabled{opacity:.55;cursor:not-allowed}
+    #${HOST_ID} .pb-bt-muted, #${FALLBACK_ID} .pb-bt-muted{
+      color:#475569 !important;font-size:11px;white-space:nowrap;
+    }
+    #${HOST_ID} .pb-bt-form, #${FALLBACK_ID} .pb-bt-form{
       display:flex;flex-wrap:wrap;gap:4px;align-items:center;
-      background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.2);
-      border-radius:8px;padding:4px 6px;
+      background:#f8fafc;border:1px solid #dbe3ee;border-radius:8px;padding:4px 6px;
     }
-    #${HOST_ID} .pb-bt-form input{
-      height:26px;border-radius:4px;border:1px solid rgba(255,255,255,.3);
-      background:rgba(255,255,255,.95);color:#1a2332;padding:0 6px;font-size:11px;
-      min-width:72px;
+    #${HOST_ID} .pb-bt-form input, #${FALLBACK_ID} .pb-bt-form input{
+      height:26px;border-radius:4px;border:1px solid #cbd5e1;
+      background:#fff;color:#1a2332;padding:0 6px;font-size:11px;min-width:72px;
     }
-    #${HOST_ID} .pb-bt-form input.pb-bt-name{min-width:110px}
+    #${HOST_ID} .pb-bt-form input.pb-bt-name, #${FALLBACK_ID} .pb-bt-form input.pb-bt-name{min-width:120px}
   `;
   document.documentElement.appendChild(style);
 }
 
-function mountHost(toolbar: HTMLElement): HTMLElement {
+function mountInToolbar(toolbar: HTMLElement): HTMLElement {
+  document.getElementById(FALLBACK_ID)?.remove();
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
   if (host && toolbar.contains(host)) return host;
   host?.remove();
@@ -121,14 +171,35 @@ function mountHost(toolbar: HTMLElement): HTMLElement {
   host.className = 'sapMBarChild';
   host.setAttribute('data-prize-bernticket', '1');
 
-  const spacer =
-    toolbar.querySelector('.sapMTBSpacer') ||
-    toolbar.querySelector('[id*="footerbuttons"]')?.nextElementSibling;
+  // Prefer right side (after flex spacer), next to Check In actions.
+  const spacer = toolbar.querySelector('.sapMTBSpacer');
   if (spacer?.parentElement === toolbar) {
-    toolbar.insertBefore(host, spacer);
+    const after = spacer.nextElementSibling;
+    if (after) toolbar.insertBefore(host, after);
+    else toolbar.appendChild(host);
   } else {
-    toolbar.appendChild(host);
+    const checkIn =
+      toolbar.querySelector('.sapMBtnAccept') ||
+      [...toolbar.querySelectorAll('button, .sapMBtn')].find((b) =>
+        /check\s*in/i.test(b.textContent || ''),
+      );
+    if (checkIn?.parentElement === toolbar) {
+      toolbar.insertBefore(host, checkIn);
+    } else {
+      toolbar.appendChild(host);
+    }
   }
+  return host;
+}
+
+function mountFallbackBar(): HTMLElement {
+  document.getElementById(HOST_ID)?.remove();
+  let host = document.getElementById(FALLBACK_ID) as HTMLElement | null;
+  if (host) return host;
+  host = document.createElement('div');
+  host.id = FALLBACK_ID;
+  host.setAttribute('data-prize-bernticket', '1');
+  document.documentElement.appendChild(host);
   return host;
 }
 
@@ -146,14 +217,18 @@ async function copyText(text: string) {
 
 let lastBooking: string | null = null;
 let refreshTimer: number | null = null;
+let renderGen = 0;
 
 async function renderForBooking(host: HTMLElement, bookingNumber: string) {
+  const gen = ++renderGen;
   const tokens = await getBtTokens();
+  if (gen !== renderGen) return;
+
   if (!tokens.access) {
     setHostHtml(
       host,
       `<span class="pb-bt-label">BernTicket</span>` +
-        `<span class="pb-bt-muted">Im Panel bei BernTicket anmelden</span>`,
+        `<span class="pb-bt-muted">Im Panel → BernTicket anmelden</span>`,
     );
     return;
   }
@@ -165,6 +240,7 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
 
   try {
     const tickets = await btSearchTickets(bookingNumber);
+    if (gen !== renderGen) return;
     const ticket = pickTicketForBooking(tickets, bookingNumber);
     const code = getActivationCode(ticket);
 
@@ -172,7 +248,8 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
       setHostHtml(
         host,
         `<span class="pb-bt-label">BernTicket</span>` +
-          `<button type="button" class="pb-bt-code" title="Code kopieren">${escapeHtml(code)}</button>`,
+          `<button type="button" class="pb-bt-code" title="Code kopieren">${escapeHtml(code)}</button>` +
+          `<span class="pb-bt-muted">${escapeHtml(bookingNumber)}</span>`,
       );
       host.querySelector('.pb-bt-code')?.addEventListener('click', () => {
         void copyText(code);
@@ -189,7 +266,6 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
       return;
     }
 
-    // No ticket → create UI
     const guest = scrapeGuestName();
     const dates = scrapeStayDates();
     setHostHtml(
@@ -244,6 +320,7 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
               void copyText(newCode);
             });
           } else {
+            lastBooking = null;
             await renderForBooking(host, bookingNumber);
           }
         } catch (e) {
@@ -283,11 +360,17 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string) {
       })();
     });
   } catch (e) {
+    if (gen !== renderGen) return;
     setHostHtml(
       host,
       `<span class="pb-bt-label">BernTicket</span>` +
-        `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : 'Fehler')}</span>`,
+        `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : 'Fehler')}</span>` +
+        `<button type="button" class="pb-bt-btn pb-bt-retry">Nochmal</button>`,
     );
+    host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
+      lastBooking = null;
+      void renderForBooking(host, bookingNumber);
+    });
   }
 }
 
@@ -307,30 +390,49 @@ function scheduleRefresh() {
   if (refreshTimer) window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
     void tick();
-  }, 400);
+  }, 500);
+}
+
+function hostStillMounted(host: HTMLElement): boolean {
+  return document.documentElement.contains(host);
 }
 
 async function tick() {
-  const toolbar = findCheckinToolbar();
-  if (!toolbar) {
+  if (!isLikelyEmmaPage()) {
     document.getElementById(HOST_ID)?.remove();
+    document.getElementById(FALLBACK_ID)?.remove();
     lastBooking = null;
     return;
   }
 
   ensureStyles();
-  const host = mountHost(toolbar);
   const booking = getBookingNumber();
-  if (!booking) {
-    setHostHtml(
-      host,
-      `<span class="pb-bt-label">BernTicket</span><span class="pb-bt-muted">Keine Buchungsnr.</span>`,
-    );
+  const toolbar = findCheckinToolbar();
+
+  // No reservation context → hide UI
+  if (!booking && !toolbar) {
+    document.getElementById(HOST_ID)?.remove();
+    document.getElementById(FALLBACK_ID)?.remove();
     lastBooking = null;
     return;
   }
 
-  if (booking === lastBooking && host.dataset.bound === booking) return;
+  const host = toolbar ? mountInToolbar(toolbar) : mountFallbackBar();
+
+  if (!booking) {
+    setHostHtml(
+      host,
+      `<span class="pb-bt-label">BernTicket</span><span class="pb-bt-muted">Keine Buchungsnr. erkannt</span>`,
+    );
+    lastBooking = null;
+    host.dataset.bound = '';
+    return;
+  }
+
+  // Remount / re-render if detached or booking changed
+  if (booking === lastBooking && host.dataset.bound === booking && hostStillMounted(host)) {
+    return;
+  }
   lastBooking = booking;
   host.dataset.bound = booking;
   await renderForBooking(host, booking);
@@ -339,15 +441,49 @@ async function tick() {
 export function startEmmaBernTicketWatcher() {
   void tick();
 
-  window.addEventListener('hashchange', scheduleRefresh);
-  const obs = new MutationObserver(scheduleRefresh);
+  window.addEventListener('hashchange', () => {
+    lastBooking = null;
+    scheduleRefresh();
+  });
+
+  const obs = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      const t = m.target as Node;
+      if (
+        (t instanceof Element && t.closest(`[data-prize-bernticket]`)) ||
+        (t instanceof Element && (t.id === HOST_ID || t.id === FALLBACK_ID || t.id === STYLE_ID))
+      ) {
+        return;
+      }
+    }
+    // If SAP rebuilt the footer, force rebind
+    const host = document.getElementById(HOST_ID) || document.getElementById(FALLBACK_ID);
+    if (host && !hostStillMounted(host)) lastBooking = null;
+    if (host && findCheckinToolbar() && host.id === HOST_ID && !findCheckinToolbar()!.contains(host)) {
+      lastBooking = null;
+    }
+    scheduleRefresh();
+  });
   obs.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Storage login from panel should refresh EMMA UI
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (changes.btAccessToken || changes.btRefreshToken) {
+        lastBooking = null;
+        scheduleRefresh();
+      }
+    });
+  } catch {
+    // ignore
+  }
 
   return () => {
     obs.disconnect();
-    window.removeEventListener('hashchange', scheduleRefresh);
     if (refreshTimer) window.clearTimeout(refreshTimer);
     document.getElementById(HOST_ID)?.remove();
+    document.getElementById(FALLBACK_ID)?.remove();
     document.getElementById(STYLE_ID)?.remove();
   };
 }
