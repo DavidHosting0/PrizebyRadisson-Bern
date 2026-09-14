@@ -26,6 +26,7 @@ let msgs: ExtensionMessages = getMessages('de');
 const HOST_ID = 'prize-bt-checkin-host';
 const STYLE_ID = 'prize-bt-checkin-style';
 const FALLBACK_ID = 'prize-bt-fallback-bar';
+const DIALOG_ID = 'prize-bt-create-dialog';
 
 function isLikelyEmmaPage(): boolean {
   if (/ReservationId=/i.test(window.location.hash)) return true;
@@ -324,119 +325,165 @@ function ensureStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    /* Center BernTicket inside the flex spacer of the SAP overflow toolbar */
-    .sapMTBSpacer:has(#${HOST_ID}),
-    .sapMTBSpacerFlex:has(#${HOST_ID}){
-      display:flex !important;
-      align-items:center !important;
-      justify-content:center !important;
-      min-width:0 !important;
-    }
-
-    #${HOST_ID}, #${FALLBACK_ID}{
-      box-sizing:border-box;
-      font-family:var(--sapFontFamily,"72",system-ui,-apple-system,sans-serif);
-      color:#0f172a;
-      pointer-events:auto;
-      z-index:5;
-    }
-    #${HOST_ID} *, #${FALLBACK_ID} *{box-sizing:border-box;}
-
-    /* Compact chip in the check-in toolbar spacer */
+    /* Native-looking toolbar child — no extension “card” chrome */
+    #${HOST_ID}.sapMBarChild,
     #${HOST_ID}{
-      position:relative !important;
-      margin:0 !important;
-      max-width:min(420px,100%);
+      box-sizing:border-box;
       display:inline-flex !important;
-      flex-direction:row !important;
       align-items:center !important;
-      justify-content:center !important;
-      gap:8px !important;
-      flex-wrap:nowrap !important;
-      flex:0 1 auto !important;
-      padding:4px 10px !important;
-      background:rgba(255,255,255,.96) !important;
-      border:1px solid rgba(45,58,79,.16) !important;
-      border-radius:999px !important;
-      box-shadow:0 2px 10px rgba(15,23,42,.1) !important;
+      gap:0.5rem !important;
+      margin:0 0.25rem 0 0 !important;
+      padding:0 !important;
+      background:transparent !important;
+      border:none !important;
+      box-shadow:none !important;
+      border-radius:0 !important;
+      max-width:none !important;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:var(--sapFontSize,0.875rem);
+      color:var(--sapContent_LabelColor,#6a6d70);
+      vertical-align:middle;
       white-space:nowrap;
+      pointer-events:auto;
+      z-index:1;
     }
-
-    /* Fallback floating bar (no toolbar) */
-    #${FALLBACK_ID}{
-      position:fixed;left:50%;bottom:72px;transform:translateX(-50%);
-      width:max-content;max-width:min(560px,calc(100vw - 28px));
-      background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
-      border:1px solid rgba(45,58,79,.14);
-      border-radius:16px;
-      box-shadow:0 10px 36px rgba(15,23,42,.16);
-      padding:10px 14px;
-      display:flex;flex-direction:column;align-items:center;gap:8px;
-    }
-
-    #${HOST_ID} .pb-bt-row, #${FALLBACK_ID} .pb-bt-row{
-      display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;
-    }
-    #${HOST_ID} .pb-bt-brand, #${FALLBACK_ID} .pb-bt-brand{
-      display:inline-flex;align-items:center;gap:6px;
-      font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
-      color:#1a2332;
-    }
-    #${HOST_ID} .pb-bt-dot, #${FALLBACK_ID} .pb-bt-dot{
-      width:7px;height:7px;border-radius:999px;background:#3b6fa0;
-      box-shadow:0 0 0 3px rgba(59,111,160,.18);flex-shrink:0;
-    }
-    #${HOST_ID} .pb-bt-code, #${FALLBACK_ID} .pb-bt-code{
-      appearance:none;border:0;cursor:pointer;
-      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-weight:800;letter-spacing:.1em;line-height:1;color:#991b1b;
-      background:linear-gradient(180deg,#fff5f5,#fee2e2);
-      border:1px solid #fecaca;border-radius:999px;
-      transition:background .12s ease,box-shadow .12s ease,transform .12s ease;
+    #${HOST_ID} *{box-sizing:border-box;}
+    #${HOST_ID} .pb-bt-label{
+      font-family:inherit;font-size:inherit;font-weight:normal;
+      color:var(--sapContent_LabelColor,#6a6d70);
+      margin:0;padding:0;border:0;background:transparent;
     }
     #${HOST_ID} .pb-bt-code{
-      font-size:14px;padding:6px 12px;min-width:7.5rem;text-align:center;
+      appearance:none;cursor:pointer;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:var(--sapFontSize,0.875rem);font-weight:700;
+      letter-spacing:.04em;line-height:1.2;
+      color:var(--sapIndicationColor_3,#aa0808);
+      background:var(--sapIndicationColor_3_Background,#ffebeb);
+      border:1px solid var(--sapIndicationColor_3_BorderColor,#f5c1c1);
+      border-radius:0.25rem;
+      padding:0.35rem 0.6rem;
+      min-width:0;text-align:center;
+    }
+    #${HOST_ID} .pb-bt-code:hover{
+      filter:brightness(0.97);
+    }
+    #${HOST_ID} .pb-bt-code.pb-bt-copied-flash{
+      color:var(--sapPositiveColor,#256f3a);
+      background:var(--sapPositiveBackground,#f5fae5);
+      border-color:var(--sapPositiveBorderColor,#99cc33);
+    }
+    #${HOST_ID} .pb-bt-muted{
+      font-size:inherit;color:var(--sapContent_LabelColor,#6a6d70);
+    }
+    /* SAP-like ghost / default toolbar button */
+    #${HOST_ID} .pb-bt-btn{
+      appearance:none;cursor:pointer;
+      font-family:inherit;font-size:inherit;font-weight:600;
+      height:2.25rem;padding:0 0.75rem;
+      border-radius:0.375rem;
+      border:1px solid var(--sapButton_Lite_BorderColor,#0854a0);
+      background:var(--sapButton_Lite_Background,transparent);
+      color:var(--sapButton_Lite_TextColor,#0854a0);
+    }
+    #${HOST_ID} .pb-bt-btn:hover{
+      background:var(--sapButton_Lite_Hover_Background,#ebf5fe);
+    }
+    #${HOST_ID} .pb-bt-btn:disabled{opacity:.5;cursor:not-allowed}
+
+    /* Fallback strip when no toolbar — still flat / SAP-ish */
+    #${FALLBACK_ID}{
+      position:fixed;left:50%;bottom:4.5rem;transform:translateX(-50%);
+      z-index:2147483000;
+      display:inline-flex;align-items:center;gap:0.5rem;
+      padding:0.35rem 0.75rem;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:0.875rem;
+      color:#32363a;
+      background:#fff;
+      border:1px solid #d9d9d9;
+      border-radius:0.375rem;
+      box-shadow:0 0.125rem 0.5rem rgba(0,0,0,.12);
     }
     #${FALLBACK_ID} .pb-bt-code{
-      font-size:18px;padding:10px 18px;min-width:9.5rem;text-align:center;border-radius:12px;
+      appearance:none;cursor:pointer;font-weight:700;letter-spacing:.04em;
+      color:#aa0808;background:#ffebeb;border:1px solid #f5c1c1;
+      border-radius:0.25rem;padding:0.35rem 0.6rem;
     }
-    #${HOST_ID} .pb-bt-code:hover, #${FALLBACK_ID} .pb-bt-code:hover{
-      background:linear-gradient(180deg,#fff1f1,#fecaca);
-      box-shadow:0 3px 10px rgba(153,27,27,.12);
+    #${FALLBACK_ID} .pb-bt-btn{
+      appearance:none;cursor:pointer;font-weight:600;
+      height:2rem;padding:0 0.75rem;border-radius:0.375rem;
+      border:1px solid #0854a0;background:transparent;color:#0854a0;
     }
-    #${HOST_ID} .pb-bt-hint{display:none}
-    #${FALLBACK_ID} .pb-bt-hint{
-      font-size:10px;color:#64748b;text-align:center;line-height:1.3;
+
+    /* Create dialog — Fiori-like modal, not toolbar cramped form */
+    #${DIALOG_ID}{
+      position:fixed;inset:0;z-index:2147483646;
+      display:flex;align-items:center;justify-content:center;
+      padding:1rem;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
     }
-    #${HOST_ID} .pb-bt-meta, #${FALLBACK_ID} .pb-bt-meta{
-      font-size:10px;color:#64748b;font-variant-numeric:tabular-nums;
+    #${DIALOG_ID} .pb-bt-dlg-backdrop{
+      position:absolute;inset:0;background:rgba(0,0,0,.45);
     }
-    #${HOST_ID} .pb-bt-muted, #${FALLBACK_ID} .pb-bt-muted{
-      font-size:11px;color:#475569;
+    #${DIALOG_ID} .pb-bt-dlg{
+      position:relative;z-index:1;
+      width:min(420px,100%);
+      background:var(--sapGroup_ContentBackground,#fff);
+      border:1px solid var(--sapGroup_ContentBorderColor,#d9d9d9);
+      border-radius:0.5rem;
+      box-shadow:0 0.625rem 1.875rem rgba(0,0,0,.25);
+      overflow:hidden;
+      color:var(--sapTextColor,#32363a);
     }
-    #${HOST_ID} .pb-bt-btn, #${FALLBACK_ID} .pb-bt-btn{
-      appearance:none;cursor:pointer;
-      border:1px solid #3b6fa0;background:#3b6fa0;color:#fff;
-      border-radius:999px;padding:5px 10px;font-size:11px;font-weight:600;
+    #${DIALOG_ID} .pb-bt-dlg-head{
+      display:flex;align-items:center;justify-content:space-between;
+      gap:0.75rem;padding:0.75rem 1rem;
+      background:var(--sapPageHeader_Background,#fff);
+      border-bottom:1px solid var(--sapPageHeader_BorderColor,#d9d9d9);
     }
-    #${HOST_ID} .pb-bt-btn:hover, #${FALLBACK_ID} .pb-bt-btn:hover{background:#345f89}
-    #${HOST_ID} .pb-bt-btn:disabled, #${FALLBACK_ID} .pb-bt-btn:disabled{opacity:.55;cursor:not-allowed}
-    #${HOST_ID} .pb-bt-btn.pb-bt-ghost, #${FALLBACK_ID} .pb-bt-btn.pb-bt-ghost{
-      background:#fff;color:#1a2332;border-color:#cbd5e1;
+    #${DIALOG_ID} .pb-bt-dlg-head h2{
+      margin:0;font-size:1rem;font-weight:700;color:var(--sapPageHeader_TextColor,#32363a);
     }
-    #${HOST_ID} .pb-bt-form, #${FALLBACK_ID} .pb-bt-form{
-      display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:center;
+    #${DIALOG_ID} .pb-bt-dlg-x{
+      appearance:none;border:0;background:transparent;cursor:pointer;
+      font-size:1.25rem;line-height:1;color:#6a6d70;padding:0.15rem 0.35rem;
     }
-    #${HOST_ID} .pb-bt-form input, #${FALLBACK_ID} .pb-bt-form input{
-      height:26px;border-radius:6px;border:1px solid #cbd5e1;
-      background:#fff;color:#1a2332;padding:0 6px;font-size:11px;min-width:72px;
+    #${DIALOG_ID} .pb-bt-dlg-body{padding:1rem;display:flex;flex-direction:column;gap:0.75rem;}
+    #${DIALOG_ID} .pb-bt-dlg-field{display:flex;flex-direction:column;gap:0.25rem;}
+    #${DIALOG_ID} .pb-bt-dlg-field label{
+      font-size:0.75rem;font-weight:600;color:var(--sapContent_LabelColor,#6a6d70);
     }
-    #${HOST_ID} .pb-bt-form input.pb-bt-name, #${FALLBACK_ID} .pb-bt-form input.pb-bt-name{min-width:110px}
-    #${HOST_ID} .pb-bt-copied, #${FALLBACK_ID} .pb-bt-copied{
-      font-size:10px;font-weight:600;color:#15803d;
+    #${DIALOG_ID} .pb-bt-dlg-field input{
+      height:2.25rem;padding:0 0.5rem;font-size:0.875rem;
+      border:1px solid var(--sapField_BorderColor,#89919a);
+      border-radius:0.25rem;background:var(--sapField_Background,#fff);
+      color:var(--sapField_TextColor,#32363a);
     }
+    #${DIALOG_ID} .pb-bt-dlg-row{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;}
+    #${DIALOG_ID} .pb-bt-dlg-err{font-size:0.8125rem;color:#aa0808;}
+    #${DIALOG_ID} .pb-bt-dlg-foot{
+      display:flex;justify-content:flex-end;gap:0.5rem;
+      padding:0.75rem 1rem;border-top:1px solid #d9d9d9;
+      background:#f7f7f7;
+    }
+    #${DIALOG_ID} .pb-bt-dlg-foot .pb-bt-btn-ghost{
+      appearance:none;cursor:pointer;height:2.25rem;padding:0 0.9rem;
+      border-radius:0.375rem;font-weight:600;font-size:0.875rem;
+      border:1px solid #0854a0;background:#fff;color:#0854a0;
+    }
+    #${DIALOG_ID} .pb-bt-dlg-foot .pb-bt-btn-accept{
+      appearance:none;cursor:pointer;height:2.25rem;padding:0 0.9rem;
+      border-radius:0.375rem;font-weight:600;font-size:0.875rem;
+      border:1px solid #256f3a;background:#256f3a;color:#fff;
+    }
+    #${DIALOG_ID} .pb-bt-dlg-foot .pb-bt-btn-accept:disabled{opacity:.55;cursor:not-allowed;}
   `;
   document.documentElement.appendChild(style);
+}
+
+function closeCreateDialog() {
+  document.getElementById(DIALOG_ID)?.remove();
 }
 
 function mountInToolbar(toolbar: HTMLElement): HTMLElement {
@@ -446,28 +493,23 @@ function mountInToolbar(toolbar: HTMLElement): HTMLElement {
   host?.remove();
   host = document.createElement('div');
   host.id = HOST_ID;
+  host.className = 'sapMBarChild';
   host.setAttribute('data-prize-bernticket', '1');
   host.setAttribute('role', 'region');
-  host.setAttribute('aria-label', 'BernTicket Aktivierungscode');
+  host.setAttribute('aria-label', msgs.emmaBt.brand);
 
-  // Prefer the flex spacer so the chip sits visually centered between left icons and Check In.
-  const spacer =
-    toolbar.querySelector<HTMLElement>('.sapMTBSpacer.sapMTBSpacerFlex') ||
-    toolbar.querySelector<HTMLElement>('.sapMTBSpacer');
-  if (spacer) {
-    spacer.appendChild(host);
+  // Sit with right-side actions (before Check In), like native toolbar controls.
+  const checkIn =
+    toolbar.querySelector('.sapMBtnAccept')?.closest('.sapMBtn, button') ||
+    [...toolbar.querySelectorAll('button.sapMBtn, .sapMBtn')].find((b) =>
+      /check\s*in/i.test(b.textContent || ''),
+    );
+  if (checkIn && checkIn.parentElement === toolbar) {
+    toolbar.insertBefore(host, checkIn);
   } else {
-    host.className = 'sapMBarChild';
-    const checkIn =
-      toolbar.querySelector('.sapMBtnAccept')?.closest('.sapMBtn, button') ||
-      [...toolbar.querySelectorAll('button, .sapMBtn')].find((b) =>
-        /check\s*in/i.test(b.textContent || ''),
-      );
-    if (checkIn?.parentElement === toolbar) {
-      toolbar.insertBefore(host, checkIn);
-    } else {
-      toolbar.appendChild(host);
-    }
+    const spacer = toolbar.querySelector('.sapMTBSpacer');
+    if (spacer?.nextSibling) toolbar.insertBefore(host, spacer.nextSibling);
+    else toolbar.appendChild(host);
   }
   return host;
 }
@@ -480,7 +522,7 @@ function mountFallbackBar(): HTMLElement {
   host.id = FALLBACK_ID;
   host.setAttribute('data-prize-bernticket', '1');
   host.setAttribute('role', 'region');
-  host.setAttribute('aria-label', 'BernTicket Aktivierungscode');
+  host.setAttribute('aria-label', msgs.emmaBt.brand);
   document.documentElement.appendChild(host);
   return host;
 }
@@ -489,13 +531,8 @@ function setHostHtml(host: HTMLElement, html: string) {
   host.innerHTML = html;
 }
 
-function shell(inner: string, compact = false): string {
-  const brand =
-    `<span class="pb-bt-brand"><span class="pb-bt-dot" aria-hidden="true"></span>${escapeHtml(msgs.emmaBt.brand)}</span>`;
-  if (compact) {
-    return brand + inner;
-  }
-  return `<div class="pb-bt-row">${brand}</div>` + inner;
+function shellToolbar(inner: string): string {
+  return `<span class="pb-bt-label">${escapeHtml(msgs.emmaBt.brand)}</span>${inner}`;
 }
 
 async function copyText(text: string) {
@@ -508,31 +545,137 @@ async function copyText(text: string) {
 
 function bindCodeCopy(host: HTMLElement, code: string) {
   const btn = host.querySelector('.pb-bt-code') as HTMLButtonElement | null;
-  const hint = host.querySelector('.pb-bt-hint');
-  const brand = host.querySelector('.pb-bt-brand');
   btn?.addEventListener('click', () => {
     void copyText(code).then(() => {
-      if (hint) {
-        hint.innerHTML = `<span class="pb-bt-copied">${escapeHtml(msgs.emmaBt.copied)}</span>`;
-        window.setTimeout(() => {
-          if (hint.isConnected) hint.textContent = msgs.emmaBt.clickToCopy;
-        }, 1200);
-      } else if (brand) {
-        const prev = brand.innerHTML;
-        brand.innerHTML = `<span class="pb-bt-copied">${escapeHtml(msgs.emmaBt.copied)}</span>`;
-        window.setTimeout(() => {
-          if (brand.isConnected) brand.innerHTML = prev;
-        }, 1000);
-      }
+      if (!btn.isConnected) return;
+      const prev = btn.textContent;
+      btn.textContent = msgs.emmaBt.copied;
+      btn.classList.add('pb-bt-copied-flash');
+      window.setTimeout(() => {
+        if (!btn.isConnected) return;
+        btn.textContent = prev;
+        btn.classList.remove('pb-bt-copied-flash');
+      }, 1000);
     });
   });
+}
+
+function openCreateDialog(
+  host: HTMLElement,
+  bookingNumber: string,
+  defaults: CreateDefaults,
+  onCreated: (code: string | null) => void,
+) {
+  closeCreateDialog();
+  const root = document.createElement('div');
+  root.id = DIALOG_ID;
+  root.setAttribute('data-prize-bernticket', '1');
+  root.innerHTML =
+    `<div class="pb-bt-dlg-backdrop" data-close="1"></div>` +
+    `<div class="pb-bt-dlg" role="dialog" aria-modal="true" aria-label="${escapeAttr(msgs.emmaBt.createDialogTitle)}">` +
+    `<div class="pb-bt-dlg-head"><h2>${escapeHtml(msgs.emmaBt.createDialogTitle)}</h2>` +
+    `<button type="button" class="pb-bt-dlg-x" data-close="1" aria-label="${escapeAttr(msgs.emmaBt.cancel)}">×</button></div>` +
+    `<div class="pb-bt-dlg-body">` +
+    `<div class="pb-bt-dlg-field"><label>${escapeHtml(msgs.emmaBt.bookingLabel)}</label>` +
+    `<input class="pb-bt-dlg-booking" value="${escapeAttr(defaults.bookingNumber)}" readonly /></div>` +
+    `<div class="pb-bt-dlg-field"><label>${escapeHtml(msgs.emmaBt.guestNamePlaceholder)}</label>` +
+    `<input class="pb-bt-dlg-name" value="${escapeAttr(defaults.guestName)}" /></div>` +
+    `<div class="pb-bt-dlg-row">` +
+    `<div class="pb-bt-dlg-field"><label>${escapeHtml(msgs.emmaBt.arrival)}</label>` +
+    `<input class="pb-bt-dlg-from" type="date" value="${escapeAttr(defaults.from)}" /></div>` +
+    `<div class="pb-bt-dlg-field"><label>${escapeHtml(msgs.emmaBt.departure)}</label>` +
+    `<input class="pb-bt-dlg-to" type="date" value="${escapeAttr(defaults.to)}" /></div>` +
+    `</div>` +
+    `<div class="pb-bt-dlg-field"><label>${escapeHtml(msgs.emmaBt.persons)}</label>` +
+    `<input class="pb-bt-dlg-amt" type="number" min="1" value="${defaults.ticketsAmount}" /></div>` +
+    `<div class="pb-bt-dlg-err" hidden></div>` +
+    `</div>` +
+    `<div class="pb-bt-dlg-foot">` +
+    `<button type="button" class="pb-bt-btn-ghost" data-close="1">${escapeHtml(msgs.emmaBt.cancel)}</button>` +
+    `<button type="button" class="pb-bt-btn-accept pb-bt-dlg-submit">${escapeHtml(msgs.emmaBt.create)}</button>` +
+    `</div></div>`;
+
+  document.documentElement.appendChild(root);
+
+  const errEl = root.querySelector('.pb-bt-dlg-err') as HTMLElement;
+  const submit = root.querySelector('.pb-bt-dlg-submit') as HTMLButtonElement;
+
+  root.querySelectorAll('[data-close="1"]').forEach((el) => {
+    el.addEventListener('click', () => closeCreateDialog());
+  });
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      closeCreateDialog();
+      window.removeEventListener('keydown', onKey);
+    }
+  };
+  window.addEventListener('keydown', onKey);
+
+  submit.addEventListener('click', () => {
+    void (async () => {
+      const nameEl = root.querySelector('.pb-bt-dlg-name') as HTMLInputElement;
+      const fromEl = root.querySelector('.pb-bt-dlg-from') as HTMLInputElement;
+      const toEl = root.querySelector('.pb-bt-dlg-to') as HTMLInputElement;
+      const amtEl = root.querySelector('.pb-bt-dlg-amt') as HTMLInputElement;
+      const guestName = nameEl?.value.trim() || '';
+      if (!guestName) {
+        errEl.hidden = false;
+        errEl.textContent = msgs.emmaBt.guestNameMissing;
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = msgs.common.ellipsis;
+      errEl.hidden = true;
+      try {
+        const created = await btCreateTicket({
+          guestName,
+          bookingNumber,
+          validFrom: toDateInputValue(fromEl?.value || defaults.from),
+          validTo: toDateInputValue(toEl?.value || defaults.to),
+          ticketsAmount: Math.max(
+            1,
+            parseInt(amtEl?.value || String(defaults.ticketsAmount), 10) || defaults.ticketsAmount,
+          ),
+        });
+        closeCreateDialog();
+        onCreated(getActivationCode(created));
+      } catch (e) {
+        if (e instanceof BtApiError && e.code === BERN_TICKET_2FA_REQUIRED) {
+          const fa = window.prompt(msgs.emmaBt.twoFaPrompt);
+          if (fa) {
+            try {
+              await btComplete2fa(fa);
+              submit.disabled = false;
+              submit.textContent = msgs.emmaBt.create;
+              submit.click();
+              return;
+            } catch (e2) {
+              errEl.hidden = false;
+              errEl.textContent = e2 instanceof Error ? e2.message : msgs.emmaBt.twoFaFailed;
+              submit.disabled = false;
+              submit.textContent = msgs.emmaBt.create;
+              return;
+            }
+          }
+        }
+        errEl.hidden = false;
+        errEl.textContent = e instanceof Error ? e.message : msgs.emmaBt.error;
+        submit.disabled = false;
+        submit.textContent = msgs.emmaBt.create;
+      }
+    })();
+  });
+
+  // Keep host button available; dialog is independent of cramped toolbar.
+  void host;
 }
 
 let lastBooking: string | null = null;
 let refreshTimer: number | null = null;
 let renderGen = 0;
 
-async function renderForBooking(host: HTMLElement, bookingNumber: string, compact: boolean) {
+async function renderForBooking(host: HTMLElement, bookingNumber: string, _compact: boolean) {
   const gen = ++renderGen;
   const tokens = await getBtTokens();
   if (gen !== renderGen) return;
@@ -540,25 +683,14 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, compac
   if (!tokens.access) {
     setHostHtml(
       host,
-      shell(
-        compact
-          ? `<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loginHint)}</span>`
-          : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loginHint)}</span></div>` +
-              `<div class="pb-bt-hint">${escapeHtml(interpolate(msgs.emmaBt.booking, { number: bookingNumber }))}</div>`,
-        compact,
-      ),
+      shellToolbar(`<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loginHint)}</span>`),
     );
     return;
   }
 
   setHostHtml(
     host,
-    shell(
-      compact
-        ? `<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loading)}</span>`
-        : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loading)}</span></div>`,
-      compact,
-    ),
+    shellToolbar(`<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loading)}</span>`),
   );
 
   try {
@@ -567,17 +699,12 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, compac
     const ticket = pickTicketForBooking(tickets, bookingNumber);
     const code = getActivationCode(ticket);
     const copyTitle = msgs.bernticket.copyCode;
-    const clickToCopy = msgs.emmaBt.clickToCopy;
 
     if (ticket && code) {
       setHostHtml(
         host,
-        shell(
-          compact
-            ? `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(code)}</button>`
-            : `<div class="pb-bt-row"><button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(code)}</button></div>` +
-                `<div class="pb-bt-hint">${escapeHtml(clickToCopy)} · <span class="pb-bt-meta">${escapeHtml(interpolate(msgs.emmaBt.booking, { number: bookingNumber }))}</span></div>`,
-          compact,
+        shellToolbar(
+          `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(code)}</button>`,
         ),
       );
       bindCodeCopy(host, code);
@@ -586,153 +713,45 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, compac
 
     if (ticket && !code) {
       const noCode = interpolate(msgs.emmaBt.noCode, { status: ticket.status });
-      setHostHtml(
-        host,
-        shell(
-          compact
-            ? `<span class="pb-bt-muted">${escapeHtml(noCode)}</span>`
-            : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(noCode)}</span></div>`,
-          compact,
-        ),
-      );
+      setHostHtml(host, shellToolbar(`<span class="pb-bt-muted">${escapeHtml(noCode)}</span>`));
       return;
     }
 
     const defaults = scrapeCreateDefaults(bookingNumber);
     setHostHtml(
       host,
-      shell(
-        (compact
-          ? ''
-          : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.noTicketCreate)}</span></div>`) +
-          `<div class="pb-bt-form">` +
-          `<span class="pb-bt-meta" title="Reservierungsnummer">#${escapeHtml(defaults.bookingNumber)}</span>` +
-          `<input class="pb-bt-name" placeholder="${escapeAttr(msgs.emmaBt.guestNamePlaceholder)}" value="${escapeAttr(defaults.guestName)}" />` +
-          `<input class="pb-bt-from" type="date" value="${escapeAttr(defaults.from)}" title="Anreise" />` +
-          `<input class="pb-bt-to" type="date" value="${escapeAttr(defaults.to)}" title="Abreise" />` +
-          `<input class="pb-bt-amt" type="number" min="1" value="${defaults.ticketsAmount}" style="width:52px" title="Personen (Pax)" />` +
-          `<button type="button" class="pb-bt-btn pb-bt-create">${escapeHtml(msgs.emmaBt.create)}</button>` +
-          `</div>`,
-        compact,
+      shellToolbar(
+        `<button type="button" class="pb-bt-btn pb-bt-open-create">${escapeHtml(msgs.emmaBt.openCreate)}</button>`,
       ),
     );
-
-    const createBtn = host.querySelector('.pb-bt-create') as HTMLButtonElement | null;
-    createBtn?.addEventListener('click', () => {
-      void (async () => {
-        const nameEl = host.querySelector('.pb-bt-name') as HTMLInputElement;
-        const fromEl = host.querySelector('.pb-bt-from') as HTMLInputElement;
-        const toEl = host.querySelector('.pb-bt-to') as HTMLInputElement;
-        const amtEl = host.querySelector('.pb-bt-amt') as HTMLInputElement;
-        const guestName = nameEl?.value.trim() || defaults.guestName;
-        if (!guestName) {
+    host.querySelector('.pb-bt-open-create')?.addEventListener('click', () => {
+      openCreateDialog(host, bookingNumber, defaults, (newCode) => {
+        if (newCode) {
           setHostHtml(
             host,
-            shell(
-              compact
-                ? `<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.guestNameMissing)}</span><button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button>`
-                : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.guestNameMissing)}</span>` +
-                    `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button></div>`,
-              compact,
+            shellToolbar(
+              `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(newCode)}</button>`,
             ),
           );
-          host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
-            void renderForBooking(host, bookingNumber, compact);
-          });
-          return;
+          bindCodeCopy(host, newCode);
+        } else {
+          lastBooking = null;
+          void renderForBooking(host, bookingNumber, true);
         }
-        createBtn.disabled = true;
-        createBtn.textContent = '…';
-        try {
-          const created = await btCreateTicket({
-            guestName,
-            bookingNumber: defaults.bookingNumber,
-            validFrom: toDateInputValue(fromEl?.value || defaults.from),
-            validTo: toDateInputValue(toEl?.value || defaults.to),
-            ticketsAmount: Math.max(
-              1,
-              parseInt(amtEl?.value || String(defaults.ticketsAmount), 10) || defaults.ticketsAmount,
-            ),
-          });
-          const newCode = getActivationCode(created);
-          if (newCode) {
-            setHostHtml(
-              host,
-              shell(
-                compact
-                  ? `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(newCode)}</button>`
-                  : `<div class="pb-bt-row"><button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(newCode)}</button></div>` +
-                      `<div class="pb-bt-hint">${escapeHtml(clickToCopy)} · <span class="pb-bt-meta">${escapeHtml(interpolate(msgs.emmaBt.booking, { number: bookingNumber }))}</span></div>`,
-                compact,
-              ),
-            );
-            bindCodeCopy(host, newCode);
-          } else {
-            lastBooking = null;
-            await renderForBooking(host, bookingNumber, compact);
-          }
-        } catch (e) {
-          if (e instanceof BtApiError && e.code === BERN_TICKET_2FA_REQUIRED) {
-            const fa = window.prompt(msgs.emmaBt.twoFaPrompt);
-            if (fa) {
-              try {
-                await btComplete2fa(fa);
-                createBtn.disabled = false;
-                createBtn.textContent = msgs.emmaBt.create;
-                createBtn.click();
-                return;
-              } catch (e2) {
-                setHostHtml(
-                  host,
-                  shell(
-                    compact
-                      ? `<span class="pb-bt-muted">${escapeHtml(e2 instanceof Error ? e2.message : msgs.emmaBt.twoFaFailed)}</span>` +
-                          `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button>`
-                      : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(e2 instanceof Error ? e2.message : msgs.emmaBt.twoFaFailed)}</span>` +
-                          `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button></div>`,
-                    compact,
-                  ),
-                );
-                host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
-                  void renderForBooking(host, bookingNumber, compact);
-                });
-                return;
-              }
-            }
-          }
-          setHostHtml(
-            host,
-            shell(
-              compact
-                ? `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : msgs.emmaBt.error)}</span>` +
-                    `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button>`
-                : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : msgs.emmaBt.error)}</span>` +
-                    `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button></div>`,
-              compact,
-            ),
-          );
-          host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
-            void renderForBooking(host, bookingNumber, compact);
-          });
-        }
-      })();
+      });
     });
   } catch (e) {
     if (gen !== renderGen) return;
     setHostHtml(
       host,
-      shell(
-        compact
-          ? `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : msgs.emmaBt.error)}</span>` +
-              `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button>`
-          : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : msgs.emmaBt.error)}</span>` +
-              `<button type="button" class="pb-bt-btn pb-bt-ghost pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button></div>`,
-        compact,
+      shellToolbar(
+        `<span class="pb-bt-muted">${escapeHtml(e instanceof Error ? e.message : msgs.emmaBt.error)}</span>` +
+          `<button type="button" class="pb-bt-btn pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button>`,
       ),
     );
     host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
       lastBooking = null;
-      void renderForBooking(host, bookingNumber, compact);
+      void renderForBooking(host, bookingNumber, true);
     });
   }
 }
@@ -764,6 +783,7 @@ async function tick() {
   if (!isLikelyEmmaPage()) {
     document.getElementById(HOST_ID)?.remove();
     document.getElementById(FALLBACK_ID)?.remove();
+    closeCreateDialog();
     lastBooking = null;
     return;
   }
@@ -785,12 +805,7 @@ async function tick() {
   if (!booking) {
     setHostHtml(
       host,
-      shell(
-        compact
-          ? `<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.noBooking)}</span>`
-          : `<div class="pb-bt-row"><span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.noBooking)}</span></div>`,
-        compact,
-      ),
+      shellToolbar(`<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.noBooking)}</span>`),
     );
     lastBooking = null;
     host.dataset.bound = '';
@@ -838,6 +853,7 @@ export function startEmmaBernTicketWatcher() {
         (t.id === HOST_ID ||
           t.id === FALLBACK_ID ||
           t.id === STYLE_ID ||
+          t.id === DIALOG_ID ||
           t.closest(`[data-prize-bernticket]`))
       ) {
         continue;
@@ -874,5 +890,6 @@ export function startEmmaBernTicketWatcher() {
     document.getElementById(HOST_ID)?.remove();
     document.getElementById(FALLBACK_ID)?.remove();
     document.getElementById(STYLE_ID)?.remove();
+    closeCreateDialog();
   };
 }

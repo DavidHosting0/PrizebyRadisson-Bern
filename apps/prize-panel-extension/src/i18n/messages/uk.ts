@@ -195,6 +195,13 @@ const uk: ExtensionMessages = {
     twoFaFailed: '2FA не вдалося',
     error: 'Помилка',
     noBooking: 'Немає № бронювання',
+    openCreate: 'Створити квиток',
+    createDialogTitle: 'Створити BernTicket',
+    cancel: 'Скасувати',
+    arrival: 'Заїзд',
+    departure: 'Виїзд',
+    persons: 'Особи',
+    bookingLabel: '№ бронювання',
   },
   emmaRoom: {
     title: 'Номер',

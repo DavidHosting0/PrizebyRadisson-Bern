@@ -195,6 +195,13 @@ const es: ExtensionMessages = {
     twoFaFailed: '2FA fallido',
     error: 'Error',
     noBooking: 'Sin n.º de reserva',
+    openCreate: 'Crear billete',
+    createDialogTitle: 'Crear BernTicket',
+    cancel: 'Cancelar',
+    arrival: 'Llegada',
+    departure: 'Salida',
+    persons: 'Personas',
+    bookingLabel: 'N.º reserva',
   },
   emmaRoom: {
     title: 'Habitación',

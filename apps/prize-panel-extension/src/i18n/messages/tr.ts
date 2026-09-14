@@ -195,6 +195,13 @@ const tr: ExtensionMessages = {
     twoFaFailed: '2FA başarısız',
     error: 'Hata',
     noBooking: 'Rezervasyon no. yok',
+    openCreate: 'Bilet oluştur',
+    createDialogTitle: 'BernTicket oluştur',
+    cancel: 'İptal',
+    arrival: 'Giriş',
+    departure: 'Çıkış',
+    persons: 'Kişi',
+    bookingLabel: 'Rez. no.',
   },
   emmaRoom: {
     title: 'Oda',

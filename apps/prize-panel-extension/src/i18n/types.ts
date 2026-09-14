@@ -201,6 +201,13 @@ export type ExtensionMessages = {
     twoFaFailed: string;
     error: string;
     noBooking: string;
+    openCreate: string;
+    createDialogTitle: string;
+    cancel: string;
+    arrival: string;
+    departure: string;
+    persons: string;
+    bookingLabel: string;
   };
   emmaRoom: {
     title: string;
