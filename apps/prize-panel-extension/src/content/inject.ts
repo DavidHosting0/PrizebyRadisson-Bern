@@ -11,10 +11,14 @@ import {
   storageGetBoolean,
   storageSet,
 } from '../lib/storage';
+import { getMessages, loadExtensionLocale, watchExtensionLocale, type ExtensionMessages } from '../i18n';
 import { startChatAlertWatcher } from './chat-alert';
 import { startEmmaBernTicketWatcher } from './emma-bernticket';
+import { startEmmaRoomSuggestWatcher } from './emma-room-suggest';
 
 const HOST_ID = 'prize-panel-host';
+
+let injectMsgs: ExtensionMessages = getMessages('de');
 
 function logoImgHtml() {
   const url = chrome.runtime.getURL('PrizeByRadisson.png');
@@ -30,15 +34,15 @@ function applyCollapsed(shell: HTMLElement, tab: HTMLButtonElement, collapsed: b
     shell.style.pointerEvents = 'none';
     tab.style.display = 'flex';
     tab.innerHTML = logoImgHtml();
-    tab.title = 'PrizeBern Panel öffnen';
-    tab.setAttribute('aria-label', 'PrizeBern Panel öffnen');
+    tab.title = injectMsgs.inject.openPanel;
+    tab.setAttribute('aria-label', injectMsgs.inject.openPanel);
     tab.setAttribute('aria-expanded', 'false');
   } else {
     shell.style.width = `${PANEL_WIDTH_PX}px`;
     shell.style.opacity = '1';
     shell.style.pointerEvents = 'auto';
     tab.style.display = 'none';
-    tab.title = 'PrizeBern Panel';
+    tab.title = injectMsgs.inject.panelTitle;
     tab.setAttribute('aria-expanded', 'true');
   }
 
@@ -108,7 +112,7 @@ function injectPanel() {
   const iframe = document.createElement('iframe');
   iframe.id = 'prize-panel-iframe';
   iframe.src = chrome.runtime.getURL('src/panel/index.html');
-  iframe.title = 'PrizeBern Panel';
+  iframe.title = injectMsgs.inject.panelTitle;
   Object.assign(iframe.style, {
     width: `${PANEL_WIDTH_PX}px`,
     height: '100%',
@@ -183,6 +187,18 @@ function injectPanel() {
 
   startChatAlertWatcher(chatFocused);
   startEmmaBernTicketWatcher();
+  startEmmaRoomSuggestWatcher();
+
+  void loadExtensionLocale().then((locale) => {
+    injectMsgs = getMessages(locale);
+    applyCollapsed(shell, tab, panelCollapsed);
+    iframe.title = injectMsgs.inject.panelTitle;
+  });
+  watchExtensionLocale((locale) => {
+    injectMsgs = getMessages(locale);
+    applyCollapsed(shell, tab, panelCollapsed);
+    iframe.title = injectMsgs.inject.panelTitle;
+  });
 }
 
 if (document.readyState === 'loading') {

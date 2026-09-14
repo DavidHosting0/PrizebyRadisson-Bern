@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GuestComplaintCategory, GuestComplaintDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { interpolate, useI18n } from '@/i18n';
 import { usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
@@ -12,6 +13,7 @@ import { DarkSelect } from './ui/DarkSelect';
 type RoomOpt = { id: string; roomNumber: string };
 
 export function ComplaintsBoard() {
+  const { m } = useI18n();
   const canWrite = usePermission('COMPLAINTS_WRITE');
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -70,7 +72,7 @@ export function ComplaintsBoard() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!description.trim() || (category === 'ROOM' && !roomId)) {
-      setErr('Angaben unvollständig.');
+      setErr(m.complaints.incomplete);
       return;
     }
     createMut.mutate();
@@ -85,7 +87,7 @@ export function ComplaintsBoard() {
           className="min-h-[28px] w-full text-xs"
           onClick={() => setShowForm((v) => !v)}
         >
-          {showForm ? 'Abbrechen' : 'Neue Beschwerde'}
+          {showForm ? m.common.cancel : m.complaints.newComplaint}
         </Button>
       )}
 
@@ -95,8 +97,8 @@ export function ComplaintsBoard() {
             <div className="flex gap-1">
               {(
                 [
-                  ['ROOM', 'Zimmer'],
-                  ['OTHER', 'Andere'],
+                  ['ROOM', m.complaints.categoryRoom],
+                  ['OTHER', m.complaints.categoryOther],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -118,7 +120,7 @@ export function ComplaintsBoard() {
                 value={roomId}
                 onChange={setRoomId}
                 options={roomOptions}
-                placeholder="Zimmer suchen…"
+                placeholder={m.complaints.roomPlaceholder}
               />
             )}
             <textarea
@@ -129,20 +131,22 @@ export function ComplaintsBoard() {
             />
             {err && <p className="text-[10px] text-red-300">{err}</p>}
             <Button type="submit" variant="action" className="min-h-[28px] text-xs" disabled={createMut.isPending}>
-              Speichern
+              {m.complaints.save}
             </Button>
           </form>
         </Card>
       )}
 
-      {listQ.isLoading && <p className="text-[11px] text-sidebar-muted">Laden…</p>}
+      {listQ.isLoading && <p className="text-[11px] text-sidebar-muted">{m.complaints.loading}</p>}
       <ul className="space-y-1.5">
         {(listQ.data ?? []).map((c) => (
           <li key={c.id}>
             <Card padding>
               <div className="flex items-start justify-between gap-1">
                 <p className="text-[10px] font-semibold text-slate-100">
-                  {c.category === 'ROOM' ? `Zi. ${c.room?.roomNumber ?? '—'}` : 'Andere'}
+                  {c.category === 'ROOM'
+                    ? interpolate(m.complaints.roomLabel, { room: c.room?.roomNumber ?? '—' })
+                    : m.complaints.categoryOther}
                 </p>
                 {canWrite && (
                   <button
@@ -150,7 +154,7 @@ export function ComplaintsBoard() {
                     className="text-[9px] text-sky-300"
                     onClick={() => resolveMut.mutate(c.id)}
                   >
-                    Erledigen
+                    {m.complaints.resolve}
                   </button>
                 )}
               </div>
@@ -159,7 +163,7 @@ export function ComplaintsBoard() {
           </li>
         ))}
         {!listQ.isLoading && !(listQ.data ?? []).length && (
-          <p className="text-[11px] text-sidebar-muted">Keine offenen Beschwerden.</p>
+          <p className="text-[11px] text-sidebar-muted">{m.complaints.empty}</p>
         )}
       </ul>
     </div>

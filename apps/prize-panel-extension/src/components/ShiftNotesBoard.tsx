@@ -7,6 +7,7 @@ import type {
   ShiftNoteDto,
 } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { interpolate, useI18n } from '@/i18n';
 import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
 import { DarkDateInput } from './ui/DarkDateInput';
@@ -16,22 +17,22 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+function formatTime(iso: string, intl: string) {
+  return new Date(iso).toLocaleTimeString(intl, { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDayLabel(dateIso: string) {
+function formatDayLabel(dateIso: string, intl: string) {
   const [y, m, d] = dateIso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
+  return new Date(y, m - 1, d).toLocaleDateString(intl, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   });
 }
 
-function formatDayShort(dateIso: string) {
+function formatDayShort(dateIso: string, intl: string) {
   const [y, m, d] = dateIso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
+  return new Date(y, m - 1, d).toLocaleDateString(intl, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -40,6 +41,7 @@ function formatDayShort(dateIso: string) {
 
 export function ShiftNotesBoard() {
   const { user } = useAuth();
+  const { m, intl } = useI18n();
   const canWrite = usePermission('SHIFT_NOTES_WRITE');
   const qc = useQueryClient();
   const [mode, setMode] = useState<'today' | 'browse'>('today');
@@ -200,20 +202,20 @@ export function ShiftNotesBoard() {
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-2.5 py-1.5">
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold text-white">Schichtübergabe</p>
+          <p className="truncate text-[11px] font-semibold text-white">{m.notes.title}</p>
           <p className="truncate text-[9px] text-sidebar-muted">
             {mode === 'today'
-              ? `${handoverQ.data?.activeShiftLabel ?? '…'} · ${formatDayShort(operatingDay)}`
+              ? `${handoverQ.data?.activeShiftLabel ?? m.common.ellipsis} · ${formatDayShort(operatingDay, intl)}`
               : browseDate
-                ? formatDayShort(browseDate)
-                : 'Tage mit Notizen'}
+                ? formatDayShort(browseDate, intl)
+                : m.notes.daysWithNotes}
           </p>
         </div>
         <div className="flex shrink-0 rounded-md border border-white/10 bg-white/5 p-0.5">
           {(
             [
-              ['today', 'Heute'],
-              ['browse', 'Durchsuchen'],
+              ['today', m.notes.tabToday],
+              ['browse', m.notes.tabBrowse],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -237,9 +239,11 @@ export function ShiftNotesBoard() {
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {showDayList && (
           <>
-            {loading && <p className="py-4 text-center text-[11px] text-sidebar-muted">Laden…</p>}
+            {loading && (
+              <p className="py-4 text-center text-[11px] text-sidebar-muted">{m.notes.loading}</p>
+            )}
             {!loading && (daysQ.data?.length ?? 0) === 0 && (
-              <p className="py-6 text-center text-[11px] text-sidebar-muted">Noch keine Tage.</p>
+              <p className="py-6 text-center text-[11px] text-sidebar-muted">{m.notes.emptyDays}</p>
             )}
             <ul className="flex flex-col gap-1.5">
               {(daysQ.data ?? []).map((day) => (
@@ -250,7 +254,7 @@ export function ShiftNotesBoard() {
                     className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-2.5 py-2 text-left transition hover:bg-white/[0.1]"
                   >
                     <span className="text-[11px] font-medium text-slate-100">
-                      {formatDayLabel(day.date)}
+                      {formatDayLabel(day.date, intl)}
                     </span>
                     <span className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold text-sidebar-muted">
                       {day.count}
@@ -271,16 +275,16 @@ export function ShiftNotesBoard() {
                   onClick={() => setBrowseDate(null)}
                   className="text-[10px] font-semibold text-sky-300 hover:underline"
                 >
-                  ← Tage
+                  {m.notes.backToDays}
                 </button>
-                <span className="text-[9px] text-sidebar-muted">{formatDayShort(browseDate)}</span>
+                <span className="text-[9px] text-sidebar-muted">{formatDayShort(browseDate, intl)}</span>
               </div>
             )}
-            {loading && <p className="py-4 text-center text-[11px] text-sidebar-muted">Laden…</p>}
+            {loading && (
+              <p className="py-4 text-center text-[11px] text-sidebar-muted">{m.notes.loading}</p>
+            )}
             {!loading && notes.length === 0 && (
-              <p className="py-6 text-center text-[11px] text-sidebar-muted">
-                Keine Notizen für diesen Tag.
-              </p>
+              <p className="py-6 text-center text-[11px] text-sidebar-muted">{m.notes.emptyDay}</p>
             )}
             <ul className="flex flex-col gap-2">
               {notes.map((n) => {
@@ -311,7 +315,9 @@ export function ShiftNotesBoard() {
                               className="h-3.5 w-3.5 rounded border-white/20 accent-sky-400"
                               checked={n.completed}
                               disabled={toggling}
-                              aria-label={n.completed ? 'Als offen markieren' : 'Als erledigt markieren'}
+                              aria-label={
+                                n.completed ? m.notes.ariaMarkOpen : m.notes.ariaMarkDone
+                              }
                               onChange={(e) =>
                                 toggleCompleteMut.mutate({
                                   id: n.id,
@@ -332,18 +338,18 @@ export function ShiftNotesBoard() {
                                     : 'bg-action/20 text-sky-200',
                                 )}
                               >
-                                {n.completed ? 'Erledigt' : 'Info'}
+                                {n.completed ? m.notes.statusDone : m.notes.statusInfo}
                               </span>
                               <span className="text-[10px] font-semibold text-slate-100">
                                 {n.createdBy.name}
                               </span>
                             </div>
                             <span className="text-[8px] text-sidebar-muted">
-                              {formatTime(n.createdAt)}
+                              {formatTime(n.createdAt, intl)}
                               {n.completed && n.completedBy
                                 ? ` · ${n.completedBy.name.split(' ')[0]}`
                                 : n.updatedAt !== n.createdAt
-                                  ? ' · bearb.'
+                                  ? ` ${m.notes.editedSuffix}`
                                   : ''}
                             </span>
                           </div>
@@ -366,7 +372,7 @@ export function ShiftNotesBoard() {
                                     updateMut.mutate({ id: n.id, body: editBody.trim() })
                                   }
                                 >
-                                  Speichern
+                                  {m.notes.save}
                                 </Button>
                                 <button
                                   type="button"
@@ -376,7 +382,7 @@ export function ShiftNotesBoard() {
                                     setEditBody('');
                                   }}
                                 >
-                                  Abbrechen
+                                  {m.common.cancel}
                                 </button>
                               </div>
                             </div>
@@ -402,14 +408,14 @@ export function ShiftNotesBoard() {
                                   setEditBody(n.body);
                                 }}
                               >
-                                Bearbeiten
+                                {m.notes.edit}
                               </button>
                               <button
                                 type="button"
                                 className="text-[9px] font-medium text-sidebar-muted hover:text-red-300"
                                 onClick={() => deleteMut.mutate(n.id)}
                               >
-                                Löschen
+                                {m.notes.delete}
                               </button>
                             </div>
                           )}
@@ -461,10 +467,10 @@ export function ShiftNotesBoard() {
               </svg>
               {isFuture ? (
                 <span>
-                  · <span className="font-bold">{formatDayShort(forDate)}</span>
+                  · <span className="font-bold">{formatDayShort(forDate, intl)}</span>
                 </span>
               ) : (
-                'Vormerken'
+                m.notes.schedule
               )}
             </button>
             {isFuture && (
@@ -476,7 +482,7 @@ export function ShiftNotesBoard() {
                   setShowSchedule(false);
                 }}
               >
-                Heute
+                {m.notes.today}
               </button>
             )}
           </div>
@@ -484,7 +490,7 @@ export function ShiftNotesBoard() {
           {showSchedule && (
             <div className="mb-1.5 rounded-xl border border-warning/30 bg-warning/10 px-2 py-1.5">
               <p className="mb-1 text-[8px] font-semibold uppercase tracking-wide text-warning">
-                Zieltag
+                {m.notes.targetDay}
               </p>
               <DarkDateInput
                 min={operatingDay}
@@ -505,7 +511,11 @@ export function ShiftNotesBoard() {
                   send();
                 }
               }}
-              placeholder={isFuture ? `Für ${formatDayShort(forDate)}…` : 'Notiz…'}
+              placeholder={
+                isFuture
+                  ? interpolate(m.notes.placeholderFuture, { date: formatDayShort(forDate, intl) })
+                  : m.notes.placeholder
+              }
               className="h-8 flex-1 rounded-full border border-white/15 bg-white/5 px-3 text-[11px] text-white placeholder:text-sidebar-muted focus:border-action focus:outline-none"
             />
             <Button

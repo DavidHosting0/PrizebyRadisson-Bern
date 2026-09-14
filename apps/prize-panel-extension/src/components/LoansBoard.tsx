@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LoanCatalogItemDto, RoomLoanDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { interpolate, useI18n } from '@/i18n';
 import { usePermission } from '@/lib/auth-context';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
@@ -11,11 +12,12 @@ import { DarkSelect } from './ui/DarkSelect';
 
 type RoomOpt = { id: string; roomNumber: string };
 
-function formatChf(cents: number) {
-  return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(cents / 100);
+function formatChf(cents: number, intl: string) {
+  return new Intl.NumberFormat(intl, { style: 'currency', currency: 'CHF' }).format(cents / 100);
 }
 
 export function LoansBoard() {
+  const { m, intl } = useI18n();
   const canWrite = usePermission('LOANS_WRITE');
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -53,9 +55,9 @@ export function LoansBoard() {
       (catalogQ.data ?? []).map((i) => ({
         value: i.id,
         label: i.name,
-        hint: formatChf(i.depositCents),
+        hint: formatChf(i.depositCents, intl),
       })),
-    [catalogQ.data],
+    [catalogQ.data, intl],
   );
 
   const selected = (catalogQ.data ?? []).find((i) => i.id === catalogItemId);
@@ -84,7 +86,7 @@ export function LoansBoard() {
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!roomId || !catalogItemId) {
-      setErr('Zimmer und Artikel wählen.');
+      setErr(m.loans.selectRequired);
       return;
     }
     createMut.mutate();
@@ -99,7 +101,7 @@ export function LoansBoard() {
           className="min-h-[28px] w-full text-xs"
           onClick={() => setShowForm((v) => !v)}
         >
-          {showForm ? 'Abbrechen' : 'Ausleihen'}
+          {showForm ? m.common.cancel : m.loans.lend}
         </Button>
       )}
 
@@ -110,27 +112,29 @@ export function LoansBoard() {
               value={roomId}
               onChange={setRoomId}
               options={roomOptions}
-              placeholder="Zimmer suchen…"
+              placeholder={m.loans.roomPlaceholder}
             />
             <DarkSelect
               value={catalogItemId}
               onChange={setCatalogItemId}
               options={catalogOptions}
-              placeholder="Artikel suchen…"
+              placeholder={m.loans.itemPlaceholder}
               maxListHeight={140}
             />
             {selected && (
-              <p className="text-[10px] text-sidebar-muted">Pfand {formatChf(selected.depositCents)}</p>
+              <p className="text-[10px] text-sidebar-muted">
+                {interpolate(m.loans.deposit, { amount: formatChf(selected.depositCents, intl) })}
+              </p>
             )}
             {err && <p className="text-[10px] text-red-300">{err}</p>}
             <Button type="submit" variant="action" className="min-h-[28px] text-xs" disabled={createMut.isPending}>
-              Speichern
+              {m.loans.save}
             </Button>
           </form>
         </Card>
       )}
 
-      {loansQ.isLoading && <p className="text-[11px] text-sidebar-muted">Laden…</p>}
+      {loansQ.isLoading && <p className="text-[11px] text-sidebar-muted">{m.loans.loading}</p>}
       <ul className="space-y-1.5">
         {(loansQ.data ?? []).map((loan) => (
           <li key={loan.id}>
@@ -138,10 +142,14 @@ export function LoansBoard() {
               <div className="flex items-start justify-between gap-1">
                 <div>
                   <p className="text-[10px] font-semibold text-slate-100">
-                    Zi. {loan.room.roomNumber} · {loan.catalogItem.name}
+                    {interpolate(m.loans.itemLine, {
+                      room: loan.room.roomNumber,
+                      item: loan.catalogItem.name,
+                    })}
                   </p>
                   <p className="text-[9px] text-sidebar-muted">
-                    {formatChf(loan.depositCents)} · {new Date(loan.loanedAt).toLocaleDateString('de-CH')}
+                    {formatChf(loan.depositCents, intl)} ·{' '}
+                    {new Date(loan.loanedAt).toLocaleDateString(intl)}
                   </p>
                 </div>
                 {canWrite && (
@@ -150,7 +158,7 @@ export function LoansBoard() {
                     className="text-[9px] text-sky-300"
                     onClick={() => returnMut.mutate(loan.id)}
                   >
-                    Zurück
+                    {m.loans.returnItem}
                   </button>
                 )}
               </div>
@@ -158,7 +166,7 @@ export function LoansBoard() {
           </li>
         ))}
         {!loansQ.isLoading && !(loansQ.data ?? []).length && (
-          <p className="text-[11px] text-sidebar-muted">Keine aktiven Ausleihen.</p>
+          <p className="text-[11px] text-sidebar-muted">{m.loans.empty}</p>
         )}
       </ul>
     </div>

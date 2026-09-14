@@ -4,6 +4,10 @@ export const STORAGE_KEYS = {
   apiBase: 'apiBase',
   panelCollapsed: 'panelCollapsed',
   rememberEmail: 'rememberEmail',
+  /** Chat toast + sound in content script. Default on when unset. */
+  chatNotificationsEnabled: 'chatNotificationsEnabled',
+  /** Mirrors User.preferredLocale for content scripts (de/en/pt/es/tr/uk). */
+  preferredLocale: 'preferredLocale',
   /** Separate BernTicket gateway session (bernticket.com). */
   btAccessToken: 'btAccessToken',
   btRefreshToken: 'btRefreshToken',
@@ -79,9 +83,13 @@ export async function storageGet<T extends string>(
   });
 }
 
-export async function storageGetBoolean(key: string): Promise<boolean> {
+export async function storageGetBoolean(key: string, defaultValue = false): Promise<boolean> {
   return new Promise((resolve) => {
     chrome.storage.local.get([key], (result) => {
+      if (!(key in result) || result[key] === undefined) {
+        resolve(defaultValue);
+        return;
+      }
       resolve(Boolean(result[key]));
     });
   });

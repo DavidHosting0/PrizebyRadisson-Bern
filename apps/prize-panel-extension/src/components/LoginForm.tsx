@@ -2,20 +2,12 @@ import { FormEvent, useEffect, useState } from 'react';
 import { BrandLogo } from './BrandLogo';
 import { Button } from './ui/Button';
 import { useAuth } from '@/lib/auth-context';
+import { useI18n } from '@/i18n';
 import { STORAGE_KEYS, storageGet, storageRemove, storageSet } from '@/lib/storage';
-
-const strings = {
-  signIn: 'Anmelden',
-  email: 'E-Mail',
-  password: 'Passwort',
-  rememberMe: 'Merken',
-  signingIn: '…',
-  loginFailed: 'Anmeldung fehlgeschlagen.',
-  networkError: 'Server nicht erreichbar.',
-};
 
 export function LoginForm() {
   const { login } = useAuth();
+  const { m } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -45,9 +37,9 @@ export function LoginForm() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/failed to fetch|networkerror|load failed|fetch/i.test(msg)) {
-        setErr(strings.networkError);
+        setErr(m.auth.networkError);
       } else {
-        setErr(strings.loginFailed);
+        setErr(m.auth.loginFailed);
       }
     } finally {
       setPending(false);
@@ -60,12 +52,12 @@ export function LoginForm() {
   return (
     <div className="flex flex-1 flex-col bg-sidebar px-3 py-4">
       <BrandLogo className="mb-3" onDark />
-      <h1 className="text-sm font-semibold text-white">{strings.signIn}</h1>
+      <h1 className="text-sm font-semibold text-white">{m.auth.signIn}</h1>
 
       <form className="mt-3 space-y-2.5" onSubmit={onSubmit}>
         <div>
           <label htmlFor="panel-email" className="block text-[11px] font-medium text-sidebar-muted">
-            {strings.email}
+            {m.auth.email}
           </label>
           <input
             id="panel-email"
@@ -79,7 +71,7 @@ export function LoginForm() {
         </div>
         <div>
           <label htmlFor="panel-password" className="block text-[11px] font-medium text-sidebar-muted">
-            {strings.password}
+            {m.auth.password}
           </label>
           <input
             id="panel-password"
@@ -99,7 +91,7 @@ export function LoginForm() {
             checked={remember}
             onChange={(e) => setRemember(e.target.checked)}
           />
-          {strings.rememberMe}
+          {m.auth.rememberMe}
         </label>
 
         {err && (
@@ -109,7 +101,7 @@ export function LoginForm() {
         )}
 
         <Button type="submit" variant="action" fullWidth disabled={pending}>
-          {pending ? strings.signingIn : strings.signIn}
+          {pending ? m.auth.signingIn : m.auth.signIn}
         </Button>
       </form>
     </div>

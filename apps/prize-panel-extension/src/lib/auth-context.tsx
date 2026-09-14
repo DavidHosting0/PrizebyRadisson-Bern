@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, clearTokens, hasAccessToken, loginRequest, type Me } from './api';
+import { persistPreferredLocale } from '@/i18n/core';
 
 type AuthCtx = {
   user: Me | null;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const me = await api<Me>('/auth/me');
       setUser(me);
+      void persistPreferredLocale(me.preferredLocale);
     } catch {
       setUser(null);
     } finally {
@@ -47,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const data = await loginRequest(email, password);
     setUser(data.user);
+    void persistPreferredLocale(data.user.preferredLocale);
   }, []);
 
   const logout = useCallback(() => {

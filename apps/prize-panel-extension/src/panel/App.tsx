@@ -10,6 +10,7 @@ import type {
 import { AuthProvider, useAuth, usePermission } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import { PANEL_MESSAGE } from '@/lib/storage';
+import { interpolate, useI18n } from '@/i18n';
 import { BrandLogo } from '@/components/BrandLogo';
 import { Avatar } from '@/components/Avatar';
 import { LoginForm } from '@/components/LoginForm';
@@ -65,12 +66,13 @@ function PanelHeader({
   showBack?: boolean;
 }) {
   const { user } = useAuth();
+  const { m } = useI18n();
 
   return (
     <header className="flex shrink-0 items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar px-2.5 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {showBack && onBack && (
-          <IconButton label="Zurück" onClick={onBack}>
+          <IconButton label={m.nav.back} onClick={onBack}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -95,20 +97,20 @@ function PanelHeader({
       <div className="flex shrink-0 items-center gap-0.5">
         {user && (
           <>
-            <IconButton label="Einstellungen" onClick={onSettings}>
+            <IconButton label={m.nav.settings} onClick={onSettings}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
               </svg>
             </IconButton>
-            <IconButton label="Abmelden" onClick={onLogout}>
+            <IconButton label={m.nav.logout} onClick={onLogout}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </IconButton>
           </>
         )}
-        <IconButton label="Panel einklappen" onClick={onCollapse}>
+        <IconButton label={m.nav.collapse} onClick={onCollapse}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -192,6 +194,7 @@ function isoDateLocal(iso: string) {
 }
 
 function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => void }) {
+  const { m } = useI18n();
   const canTodo = usePermission('SHIFT_HANDOVER_READ');
   const canNotes = usePermission('SHIFT_NOTES_READ');
   const canComplaints = usePermission('COMPLAINTS_READ');
@@ -242,63 +245,66 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
   });
 
   const todoInfo = useMemo(() => {
-    if (!canTodo) return 'Keine Berechtigung';
+    if (!canTodo) return m.nav.noPermission;
     const data = handoverQ.data;
-    if (handoverQ.isLoading || !data) return 'Laden…';
+    if (handoverQ.isLoading || !data) return m.nav.loading;
     const open = data.totalCount - data.completedCount;
-    if (data.totalCount === 0) return 'Keine Aufgaben';
-    if (open === 0) return `Alles erledigt · ${data.activeShiftLabel}`;
-    return `${open} offen · ${data.activeShiftLabel}`;
-  }, [canTodo, handoverQ.data, handoverQ.isLoading]);
+    if (data.totalCount === 0) return m.nav.todoNoTasks;
+    if (open === 0) return interpolate(m.nav.todoAllDone, { shift: data.activeShiftLabel });
+    return interpolate(m.nav.todoOpenCount, { count: open, shift: data.activeShiftLabel });
+  }, [canTodo, handoverQ.data, handoverQ.isLoading, m]);
 
   const notesInfo = useMemo(() => {
-    if (!canNotes) return 'Keine Berechtigung';
-    if (notesQ.isLoading || handoverQ.isLoading) return 'Laden…';
+    if (!canNotes) return m.nav.noPermission;
+    if (notesQ.isLoading || handoverQ.isLoading) return m.nav.loading;
     const list = notesQ.data ?? [];
     const open = list.filter((n) => !n.completed).length;
-    if (list.length === 0) return 'Keine Notizen heute';
-    if (open === 0) return `Alles erledigt · ${list.length}`;
-    return open === 1 ? '1 offen' : `${open} offen`;
-  }, [canNotes, notesQ.data, notesQ.isLoading, handoverQ.isLoading]);
+    if (list.length === 0) return m.nav.notesNoneToday;
+    if (open === 0) return interpolate(m.nav.notesAllDone, { count: list.length });
+    return open === 1 ? m.nav.notesOpenOne : interpolate(m.nav.notesOpenCount, { count: open });
+  }, [canNotes, notesQ.data, notesQ.isLoading, handoverQ.isLoading, m]);
 
   const complaintsInfo = useMemo(() => {
-    if (!canComplaints) return 'Keine Berechtigung';
-    if (complaintsQ.isLoading) return 'Laden…';
+    if (!canComplaints) return m.nav.noPermission;
+    if (complaintsQ.isLoading) return m.nav.loading;
     const n = (complaintsQ.data ?? []).filter((c) => isoDateLocal(c.createdAt) === calendarToday)
       .length;
-    if (n === 0) return 'Keine Beschwerden heute';
-    return n === 1 ? '1 Beschwerde heute' : `${n} Beschwerden heute`;
-  }, [canComplaints, complaintsQ.data, complaintsQ.isLoading, calendarToday]);
+    if (n === 0) return m.nav.complaintsNoneToday;
+    return n === 1
+      ? m.nav.complaintsOneToday
+      : interpolate(m.nav.complaintsCountToday, { count: n });
+  }, [canComplaints, complaintsQ.data, complaintsQ.isLoading, calendarToday, m]);
 
   const loansInfo = useMemo(() => {
-    if (!canLoans) return 'Keine Berechtigung';
-    if (loansQ.isLoading) return 'Laden…';
+    if (!canLoans) return m.nav.noPermission;
+    if (loansQ.isLoading) return m.nav.loading;
     const n = (loansQ.data ?? []).filter((l) => isoDateLocal(l.loanedAt) === calendarToday).length;
-    if (n === 0) return 'Keine Ausleihen heute';
-    return n === 1 ? '1 Ausleihe heute' : `${n} Ausleihen heute`;
-  }, [canLoans, loansQ.data, loansQ.isLoading, calendarToday]);
+    if (n === 0) return m.nav.loansNoneToday;
+    return n === 1 ? m.nav.loansOneToday : interpolate(m.nav.loansCountToday, { count: n });
+  }, [canLoans, loansQ.data, loansQ.isLoading, calendarToday, m]);
 
   const chatInfo = useMemo(() => {
-    if (!canChat) return 'Keine Berechtigung';
-    if (chatQ.isLoading) return 'Laden…';
-    const n = (chatQ.data ?? []).filter((m) => isoDateLocal(m.createdAt) === calendarToday).length;
-    if (n === 0) return 'Keine Nachrichten heute';
-    return n === 1 ? '1 Nachricht heute' : `${n} Nachrichten heute`;
-  }, [canChat, chatQ.data, chatQ.isLoading, calendarToday]);
+    if (!canChat) return m.nav.noPermission;
+    if (chatQ.isLoading) return m.nav.loading;
+    const n = (chatQ.data ?? []).filter((msg) => isoDateLocal(msg.createdAt) === calendarToday)
+      .length;
+    if (n === 0) return m.nav.chatNoneToday;
+    return n === 1 ? m.nav.chatOneToday : interpolate(m.nav.chatCountToday, { count: n });
+  }, [canChat, chatQ.data, chatQ.isLoading, calendarToday, m]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="shrink-0 border-b border-sidebar-border/80 px-3 py-2.5">
         <BrandLogo compact onDark className="opacity-90" />
         <p className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-sidebar-muted">
-          Kategorien
+          {m.nav.categories}
         </p>
       </div>
       <div className="panel-scroll-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain p-2.5">
         <div className="flex flex-col gap-2">
         <CategoryTile
-          title="BernTicket"
-          info="Aktivierungscode suchen & erstellen"
+          title={m.nav.bernticketTitle}
+          info={m.nav.bernticketInfo}
           onClick={() => onOpen('bernticket')}
           icon={
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
@@ -312,7 +318,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
           }
         />
         <CategoryTile
-          title="Chat"
+          title={m.nav.chatTitle}
           info={chatInfo}
           disabled={!canChat}
           onClick={() => onOpen('chat')}
@@ -327,7 +333,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
           }
         />
         <CategoryTile
-          title="To-Do-Liste"
+          title={m.nav.todoTitle}
           info={todoInfo}
           disabled={!canTodo}
           onClick={() => onOpen('todo')}
@@ -338,7 +344,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
           }
         />
         <CategoryTile
-          title="Schichtübergabe"
+          title={m.nav.notesTitle}
           info={notesInfo}
           disabled={!canNotes}
           onClick={() => onOpen('notes')}
@@ -349,7 +355,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
           }
         />
         <CategoryTile
-          title="Beschwerden"
+          title={m.nav.complaintsTitle}
           info={complaintsInfo}
           disabled={!canComplaints}
           onClick={() => onOpen('complaints')}
@@ -360,7 +366,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
           }
         />
         <CategoryTile
-          title="Leihartikel"
+          title={m.nav.loansTitle}
           info={loansInfo}
           disabled={!canLoans}
           onClick={() => onOpen('loans')}
@@ -384,9 +390,10 @@ function PanelBody({
   onOpen: (v: Exclude<PanelView, 'home'>) => void;
 }) {
   const { user, loading } = useAuth();
+  const { m } = useI18n();
 
   if (loading) {
-    return <p className="bg-sidebar p-3 text-xs text-sidebar-muted">Wird geladen…</p>;
+    return <p className="bg-sidebar p-3 text-xs text-sidebar-muted">{m.nav.loadingApp}</p>;
   }
 
   if (!user) {

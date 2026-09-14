@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/Button';
+import { useI18n } from '@/i18n';
 import {
   BERN_TICKET_2FA_REQUIRED,
   BtApiError,
@@ -61,11 +62,10 @@ function TwoFaPrompt({
   onClose: () => void;
   onDone: () => Promise<void>;
 }) {
+  const { m } = useI18n();
   const [code, setCode] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-
-  if (!open) return null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -77,11 +77,13 @@ function TwoFaPrompt({
       setCode('');
       onClose();
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : '2FA fehlgeschlagen');
+      setErr(ex instanceof Error ? ex.message : m.bernticket.twoFaError);
     } finally {
       setPending(false);
     }
   }
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/55 p-2" role="dialog" aria-modal>
@@ -90,24 +92,22 @@ function TwoFaPrompt({
         className="w-full rounded-2xl border border-white/10 bg-sidebar p-3 shadow-lift"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-xs font-semibold text-white">BernTicket 2FA</h3>
-        <p className="mt-1 text-[10px] text-sidebar-muted">
-          Puma verlangt einen Bestätigungscode (oft an bern-city@prizebyradisson.com).
-        </p>
+        <h3 className="text-xs font-semibold text-white">{m.bernticket.twoFaTitle}</h3>
+        <p className="mt-1 text-[10px] text-sidebar-muted">{m.bernticket.twoFaDescription}</p>
         <input
           className={clsx(inputClass, 'mt-2 w-full')}
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Code"
+          placeholder={m.bernticket.twoFaCodePlaceholder}
           autoFocus
         />
         {err && <p className="mt-1.5 text-[11px] text-rose-300">{err}</p>}
         <div className="mt-2 flex justify-end gap-1.5">
           <Button type="button" variant="secondary" className="min-h-[28px] px-2" onClick={onClose}>
-            Abbrechen
+            {m.common.cancel}
           </Button>
           <Button type="submit" variant="action" className="min-h-[28px] px-2" disabled={pending || !code.trim()}>
-            Bestätigen
+            {m.bernticket.twoFaConfirm}
           </Button>
         </div>
       </form>
@@ -116,6 +116,7 @@ function TwoFaPrompt({
 }
 
 function LoginBlock({ onLoggedIn }: { onLoggedIn: (u: BtUser) => void }) {
+  const { m } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -135,7 +136,7 @@ function LoginBlock({ onLoggedIn }: { onLoggedIn: (u: BtUser) => void }) {
       const user = await btLogin(email, password);
       onLoggedIn(user);
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Login fehlgeschlagen');
+      setErr(ex instanceof Error ? ex.message : m.bernticket.loginError);
     } finally {
       setPending(false);
     }
@@ -143,10 +144,8 @@ function LoginBlock({ onLoggedIn }: { onLoggedIn: (u: BtUser) => void }) {
 
   return (
     <form onSubmit={(e) => void onSubmit(e)} className="space-y-2 p-2.5">
-      <p className="text-[10px] text-sidebar-muted">
-        Mit deinem BernTicket-Konto anmelden (bernticket.com — getrennt von PrizeBern).
-      </p>
-      <Field label="E-Mail">
+      <p className="text-[10px] text-sidebar-muted">{m.bernticket.loginHint}</p>
+      <Field label={m.bernticket.email}>
         <input
           className={inputClass}
           type="email"
@@ -156,7 +155,7 @@ function LoginBlock({ onLoggedIn }: { onLoggedIn: (u: BtUser) => void }) {
           required
         />
       </Field>
-      <Field label="Passwort">
+      <Field label={m.bernticket.password}>
         <input
           className={inputClass}
           type="password"
@@ -168,7 +167,7 @@ function LoginBlock({ onLoggedIn }: { onLoggedIn: (u: BtUser) => void }) {
       </Field>
       {err && <p className="text-[11px] text-rose-300">{err}</p>}
       <Button type="submit" variant="action" fullWidth className="min-h-[32px]" disabled={pending}>
-        {pending ? 'Anmelden…' : 'Bei BernTicket anmelden'}
+        {pending ? m.bernticket.loginPending : m.bernticket.loginSubmit}
       </Button>
     </form>
   );
@@ -189,6 +188,7 @@ function TicketForm({
   onSubmit: (body: BtTicketCreateBody) => void;
   onCancel: () => void;
 }) {
+  const { m } = useI18n();
   const [guestName, setGuestName] = useState(initial?.guestName ?? '');
   const [bookingNumber, setBookingNumber] = useState(initial?.bookingNumber ?? '');
   const [otaNumber, setOtaNumber] = useState(initial?.otaNumber ?? '');
@@ -211,17 +211,17 @@ function TicketForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2 p-2.5">
-      <Field label="Gastname">
+      <Field label={m.bernticket.guestName}>
         <input className={inputClass} value={guestName} onChange={(e) => setGuestName(e.target.value)} required />
       </Field>
-      <Field label="Buchungsnummer">
+      <Field label={m.bernticket.bookingNumber}>
         <input className={inputClass} value={bookingNumber} onChange={(e) => setBookingNumber(e.target.value)} />
       </Field>
-      <Field label="OTA-Nummer">
+      <Field label={m.bernticket.otaNumber}>
         <input className={inputClass} value={otaNumber} onChange={(e) => setOtaNumber(e.target.value)} />
       </Field>
       <div className="grid grid-cols-2 gap-1.5">
-        <Field label="Gültig ab">
+        <Field label={m.bernticket.validFrom}>
           <input
             className={inputClass}
             type="date"
@@ -230,7 +230,7 @@ function TicketForm({
             required
           />
         </Field>
-        <Field label="Gültig bis">
+        <Field label={m.bernticket.validTo}>
           <input
             className={inputClass}
             type="date"
@@ -240,7 +240,7 @@ function TicketForm({
           />
         </Field>
       </div>
-      <Field label="Anzahl Tickets">
+      <Field label={m.bernticket.ticketsAmount}>
         <input
           className={inputClass}
           type="number"
@@ -252,7 +252,7 @@ function TicketForm({
       {error && <p className="text-[11px] text-rose-300">{error}</p>}
       <div className="flex gap-1.5">
         <Button type="button" variant="secondary" className="min-h-[30px] flex-1" onClick={onCancel}>
-          Abbrechen
+          {m.common.cancel}
         </Button>
         <Button
           type="submit"
@@ -260,7 +260,7 @@ function TicketForm({
           className="min-h-[30px] flex-1"
           disabled={pending || !guestName.trim() || (!bookingNumber.trim() && !otaNumber.trim())}
         >
-          {pending ? '…' : submitLabel}
+          {pending ? m.common.ellipsis : submitLabel}
         </Button>
       </div>
     </form>
@@ -278,6 +278,7 @@ function TicketCard({
   onInvalidate: () => void;
   invalidating: boolean;
 }) {
+  const { m } = useI18n();
   const code = getActivationCode(ticket);
   const [copied, setCopied] = useState(false);
 
@@ -310,13 +311,13 @@ function TicketCard({
           type="button"
           onClick={() => void copyCode()}
           className="mt-2 w-full rounded-lg border border-rose-400/30 bg-rose-500/15 px-2 py-1.5 font-mono text-[13px] font-bold tracking-wide text-rose-100"
-          title="Code kopieren"
+          title={m.bernticket.copyCode}
         >
-          {copied ? 'Kopiert' : code}
+          {copied ? m.bernticket.copied : code}
         </button>
       ) : (
         <p className="mt-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-center text-[10px] text-sidebar-muted">
-          Kein Aktivierungscode
+          {m.bernticket.noActivationCode}
         </p>
       )}
       <p className="mt-1.5 text-[9px] text-sidebar-muted">
@@ -324,7 +325,7 @@ function TicketCard({
       </p>
       <div className="mt-2 flex gap-1.5">
         <Button type="button" variant="secondary" className="min-h-[26px] flex-1 text-[10px]" onClick={onEdit}>
-          Bearbeiten
+          {m.bernticket.edit}
         </Button>
         {ticket.status !== 'INVALIDATED' && (
           <Button
@@ -334,7 +335,7 @@ function TicketCard({
             disabled={invalidating}
             onClick={onInvalidate}
           >
-            Invalidieren
+            {m.bernticket.invalidate}
           </Button>
         )}
       </div>
@@ -343,6 +344,7 @@ function TicketCard({
 }
 
 export function BernTicketBoard() {
+  const { m } = useI18n();
   const qc = useQueryClient();
   const [user, setUser] = useState<BtUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -418,7 +420,7 @@ export function BernTicketBoard() {
         setShow2fa(true);
         return;
       }
-      setFormError(e instanceof Error ? e.message : 'Erstellen fehlgeschlagen');
+      setFormError(e instanceof Error ? e.message : m.bernticket.createError);
     }
   }
 
@@ -433,7 +435,7 @@ export function BernTicketBoard() {
         setShow2fa(true);
         return;
       }
-      setFormError(e instanceof Error ? e.message : 'Speichern fehlgeschlagen');
+      setFormError(e instanceof Error ? e.message : m.bernticket.saveError);
     }
   }
 
@@ -449,7 +451,7 @@ export function BernTicketBoard() {
   }
 
   if (authLoading) {
-    return <p className="p-3 text-[11px] text-sidebar-muted">Laden…</p>;
+    return <p className="p-3 text-[11px] text-sidebar-muted">{m.common.loading}</p>;
   }
 
   if (!user) {
@@ -460,7 +462,7 @@ export function BernTicketBoard() {
     <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-2.5 py-1.5">
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold text-white">BernTicket</p>
+          <p className="truncate text-[11px] font-semibold text-white">{m.bernticket.title}</p>
           <p className="truncate text-[9px] text-sidebar-muted">{user.email}</p>
         </div>
         <Button
@@ -475,13 +477,13 @@ export function BernTicketBoard() {
             });
           }}
         >
-          Abmelden
+          {m.bernticket.logout}
         </Button>
       </header>
 
       {mode === 'create' && (
         <TicketForm
-          submitLabel="Erstellen"
+          submitLabel={m.bernticket.create}
           pending={createMut.isPending}
           error={formError}
           onSubmit={(body) => void handleCreate(body)}
@@ -502,7 +504,7 @@ export function BernTicketBoard() {
             validTo: editing.validTo,
             ticketsAmount: editing.ticketsAmount,
           }}
-          submitLabel="Speichern"
+          submitLabel={m.bernticket.save}
           pending={updateMut.isPending}
           error={formError}
           onSubmit={(body) => void handleUpdate(body)}
@@ -528,10 +530,10 @@ export function BernTicketBoard() {
                 className={clsx(inputClass, 'min-w-0 flex-1')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buchungsnr., Gast, Code…"
+                placeholder={m.bernticket.searchPlaceholder}
               />
               <Button type="submit" variant="action" className="min-h-[30px] px-2.5">
-                Suchen
+                {m.bernticket.search}
               </Button>
             </form>
             <Button
@@ -544,27 +546,25 @@ export function BernTicketBoard() {
                 setFormError(null);
               }}
             >
-              + Neues Ticket
+              {m.bernticket.newTicket}
             </Button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2">
             {!query && (
-              <p className="py-4 text-center text-[11px] text-sidebar-muted">
-                Buchungsnummer suchen oder neues Ticket erstellen.
-              </p>
+              <p className="py-4 text-center text-[11px] text-sidebar-muted">{m.bernticket.emptyHint}</p>
             )}
             {query && listQ.isLoading && (
-              <p className="py-4 text-center text-[11px] text-sidebar-muted">Suche…</p>
+              <p className="py-4 text-center text-[11px] text-sidebar-muted">{m.bernticket.searching}</p>
             )}
             {query && listQ.isError && (
               <p className="py-4 text-center text-[11px] text-rose-300">
-                {(listQ.error as Error).message || 'Suche fehlgeschlagen'}
+                {(listQ.error as Error).message || m.bernticket.searchError}
               </p>
             )}
             {query && !listQ.isLoading && tickets.length === 0 && (
               <div className="space-y-2 py-4 text-center">
-                <p className="text-[11px] text-sidebar-muted">Kein Ticket gefunden.</p>
+                <p className="text-[11px] text-sidebar-muted">{m.bernticket.notFound}</p>
                 <Button
                   type="button"
                   variant="action"
@@ -574,7 +574,7 @@ export function BernTicketBoard() {
                     setFormError(null);
                   }}
                 >
-                  Ticket erstellen
+                  {m.bernticket.createTicket}
                 </Button>
               </div>
             )}

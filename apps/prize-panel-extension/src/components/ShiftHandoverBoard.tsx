@@ -3,30 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import type { ShiftHandoverStateDto } from '@housekeeping/shared';
 import { api } from '@/lib/api';
+import { interpolate, useI18n } from '@/i18n';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 
-const t = {
-  title: 'To-Do-Liste',
-  essentialBadge: 'Pflicht',
-  loading: 'Laden…',
-  loadError: 'Laden fehlgeschlagen.',
-  retry: 'Erneut',
-  noTasks: 'Keine Aufgaben.',
-  handoverButton: (next: string) => `→ ${next}`,
-  handoverTitle: 'Übergabe bestätigen',
-  handoverDescription: (from: string, to: string) => `${from} → ${to}`,
-  incompleteWarning: (count: number) => `${count} optional offen`,
-  incompleteEssentialWarning: (count: number) => `${count} Pflicht offen`,
-  confirmLabel: (shift: string) => `„${shift}" eingeben`,
-  cancel: 'Abbrechen',
-  handoverConfirm: 'Bestätigen',
-  handoverPending: '…',
-  handoverSuccess: 'Übergeben.',
-  toggleError: 'Fehler.',
-};
-
-function parseApiError(raw: string): string {
+function parseApiError(raw: string, fallback: string): string {
   try {
     const j = JSON.parse(raw) as { message?: string | string[] };
     if (Array.isArray(j.message)) return j.message.join(', ');
@@ -34,7 +15,7 @@ function parseApiError(raw: string): string {
   } catch {
     /* plain text */
   }
-  return raw || t.toggleError;
+  return raw || fallback;
 }
 
 function shiftAccent(shift: string): string {
@@ -44,6 +25,7 @@ function shiftAccent(shift: string): string {
 }
 
 export function ShiftHandoverBoard() {
+  const { m, intl } = useI18n();
   const qc = useQueryClient();
   const [handoverOpen, setHandoverOpen] = useState(false);
   const [confirmName, setConfirmName] = useState('');
@@ -75,8 +57,8 @@ export function ShiftHandoverBoard() {
               }
             : task,
         );
-        const completedCount = tasks.filter((t) => t.completed).length;
-        const essentialCompletedCount = tasks.filter((t) => t.essential && t.completed).length;
+        const completedCount = tasks.filter((task) => task.completed).length;
+        const essentialCompletedCount = tasks.filter((task) => task.essential && task.completed).length;
         qc.setQueryData<ShiftHandoverStateDto>(['shift-handover'], {
           ...prev,
           tasks,
@@ -88,7 +70,7 @@ export function ShiftHandoverBoard() {
     },
     onError: (err: Error, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(['shift-handover'], ctx.prev);
-      setToast({ msg: parseApiError(err.message), kind: 'warning' });
+      setToast({ msg: parseApiError(err.message, m.handover.toggleError), kind: 'warning' });
     },
     onSuccess: (next) => {
       qc.setQueryData(['shift-handover'], next);
@@ -105,9 +87,10 @@ export function ShiftHandoverBoard() {
       qc.invalidateQueries({ queryKey: ['shift-handover'] });
       setHandoverOpen(false);
       setConfirmName('');
-      setToast({ msg: t.handoverSuccess, kind: 'success' });
+      setToast({ msg: m.handover.success, kind: 'success' });
     },
-    onError: (err: Error) => setToast({ msg: parseApiError(err.message), kind: 'warning' }),
+    onError: (err: Error) =>
+      setToast({ msg: parseApiError(err.message, m.handover.toggleError), kind: 'warning' }),
   });
 
   const incompleteOptionalCount = useMemo(
@@ -128,15 +111,15 @@ export function ShiftHandoverBoard() {
   }, [confirmName, data]);
 
   if (isLoading) {
-    return <p className="bg-sidebar p-3 text-xs text-sidebar-muted">{t.loading}</p>;
+    return <p className="bg-sidebar p-3 text-xs text-sidebar-muted">{m.handover.loading}</p>;
   }
 
   if (isError || !data) {
     return (
       <div className="space-y-2 bg-sidebar p-3">
-        <p className="text-xs text-danger">{t.loadError}</p>
+        <p className="text-xs text-danger">{m.handover.loadError}</p>
         <Button type="button" variant="secondary" className="min-h-[30px]" onClick={() => refetch()}>
-          {t.retry}
+          {m.handover.retry}
         </Button>
       </div>
     );
@@ -147,8 +130,8 @@ export function ShiftHandoverBoard() {
       <header className="shrink-0 border-b border-sidebar-border px-2.5 py-2">
         <p className="text-[10px] font-medium uppercase tracking-wide text-sidebar-muted">
           {(() => {
-            const [y, m, d] = data.activeDate.split('-').map(Number);
-            return new Date(y, m - 1, d).toLocaleDateString('de-CH', {
+            const [y, month, d] = data.activeDate.split('-').map(Number);
+            return new Date(y, month - 1, d).toLocaleDateString(intl, {
               weekday: 'short',
               day: 'numeric',
               month: 'short',
@@ -156,11 +139,11 @@ export function ShiftHandoverBoard() {
             });
           })()}
         </p>
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-sky-300">{t.title}</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-sky-300">{m.handover.title}</h2>
         <p className="mt-0.5 text-sm font-semibold text-white">{data.activeShiftLabel}</p>
         {data.nextHandoverAdvancesDay && (
           <p className="mt-0.5 text-[9px] text-sidebar-muted">
-            Nächste Übergabe → neuer Tag ({data.nextShiftLabel})
+            {interpolate(m.handover.nextDayHint, { nextShift: data.nextShiftLabel })}
           </p>
         )}
       </header>
@@ -186,7 +169,7 @@ export function ShiftHandoverBoard() {
               {data.lastHandoverAt && data.lastHandoverBy && (
                 <p className="mt-0.5 truncate text-[9px] opacity-70">
                   {data.lastHandoverBy.name.split(' ')[0]},{' '}
-                  {new Date(data.lastHandoverAt).toLocaleDateString('de-CH')}
+                  {new Date(data.lastHandoverAt).toLocaleDateString(intl)}
                 </p>
               )}
             </div>
@@ -236,7 +219,7 @@ export function ShiftHandoverBoard() {
                   </span>
                   {task.essential && !task.completed && (
                     <span className="mt-0.5 inline-block rounded bg-sky-400/20 px-1 py-px text-[8px] font-semibold uppercase text-sky-200">
-                      {t.essentialBadge}
+                      {m.handover.essentialBadge}
                     </span>
                   )}
                 </span>
@@ -245,7 +228,7 @@ export function ShiftHandoverBoard() {
           ))}
         </ul>
 
-        {data.tasks.length === 0 && <p className="text-xs text-sidebar-muted">{t.noTasks}</p>}
+        {data.tasks.length === 0 && <p className="text-xs text-sidebar-muted">{m.handover.noTasks}</p>}
 
         <Button
           type="button"
@@ -258,7 +241,7 @@ export function ShiftHandoverBoard() {
             setHandoverOpen(true);
           }}
         >
-          {t.handoverButton(data.nextShiftLabel)}
+          {interpolate(m.handover.handoffButton, { nextShift: data.nextShiftLabel })}
         </Button>
       </div>
 
@@ -273,25 +256,30 @@ export function ShiftHandoverBoard() {
             className="w-full rounded-2xl border border-white/10 bg-sidebar p-3 shadow-lift"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-xs font-semibold text-white">{t.handoverTitle}</h3>
+            <h3 className="text-xs font-semibold text-white">{m.handover.dialogTitle}</h3>
             <p className="mt-1 text-[11px] text-sidebar-muted">
-              {t.handoverDescription(data.activeShiftLabel, data.nextShiftLabel)}
+              {interpolate(m.handover.dialogDescription, {
+                from: data.activeShiftLabel,
+                to: data.nextShiftLabel,
+              })}
             </p>
 
             {incompleteEssentialCount > 0 && (
               <p className="mt-1.5 rounded-md border border-danger/40 bg-danger/15 px-2 py-1 text-[11px] text-red-200">
-                {t.incompleteEssentialWarning(incompleteEssentialCount)}
+                {interpolate(m.handover.incompleteEssential, { count: incompleteEssentialCount })}
               </p>
             )}
 
             {incompleteOptionalCount > 0 && essentialComplete && (
               <p className="mt-1.5 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-1 text-[11px] text-amber-100">
-                {t.incompleteWarning(incompleteOptionalCount)}
+                {interpolate(m.handover.incompleteOptional, { count: incompleteOptionalCount })}
               </p>
             )}
 
             <label className="mt-2 flex flex-col gap-0.5">
-              <span className="text-[10px] text-sidebar-muted">{t.confirmLabel(data.nextShiftLabel)}</span>
+              <span className="text-[10px] text-sidebar-muted">
+                {interpolate(m.handover.confirmLabel, { shift: data.nextShiftLabel })}
+              </span>
               <input
                 className="min-h-[34px] rounded-lg border border-white/15 bg-white/5 px-2 text-xs text-white placeholder:text-sidebar-muted"
                 value={confirmName}
@@ -309,7 +297,7 @@ export function ShiftHandoverBoard() {
                 disabled={handover.isPending}
                 onClick={() => setHandoverOpen(false)}
               >
-                {t.cancel}
+                {m.common.cancel}
               </Button>
               <Button
                 type="button"
@@ -318,7 +306,7 @@ export function ShiftHandoverBoard() {
                 disabled={!confirmMatches || !essentialComplete || handover.isPending}
                 onClick={() => handover.mutate(confirmName.trim())}
               >
-                {handover.isPending ? t.handoverPending : t.handoverConfirm}
+                {handover.isPending ? m.handover.pending : m.handover.confirm}
               </Button>
             </div>
           </div>
