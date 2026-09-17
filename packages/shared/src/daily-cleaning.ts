@@ -103,6 +103,8 @@ export type AutoAssignRunOptions = {
   dirtyRoomTargets?: Array<{ userId: string; count: number }>;
   /** Optional exact dirty-room placements (drag/move in the setup dialog). */
   dirtyRoomAssignments?: Array<{ roomId: string; userId: string }>;
+  /** Optional exact public-area placements from the paint UI. */
+  publicAreaAssignments?: Array<{ publicAreaId: string; userId: string }>;
 };
 
 export type AutoAssignPreviewRoom = {

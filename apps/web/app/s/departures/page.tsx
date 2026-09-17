@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { AppPageChrome, AppPageBody, APP_DARK_CARD } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
+import { useTranslations } from 'next-intl';
 
 function formatSyncedAt(iso: string | null): string {
   if (!iso) return 'Never';
@@ -31,6 +32,7 @@ function isStale(syncedAt: string | null): boolean {
 
 export default function SupervisorDeparturesPage() {
   const qc = useQueryClient();
+  const t = useTranslations('supervisor');
   const today = hotelTodayIso();
   const [date, setDate] = useState(today);
   const [autoOpen, setAutoOpen] = useState(false);
@@ -85,7 +87,7 @@ export default function SupervisorDeparturesPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title="Daily departures"
-        description="Rooms with guests departing on the selected day — use auto-assign to distribute work evenly by floor."
+        description="Rooms with guests departing on the selected day — use room assignment to distribute work."
         actions={
           <>
             <AppChromeTools onEnterMobile={enterMobile} />
@@ -100,7 +102,7 @@ export default function SupervisorDeparturesPage() {
               </Button>
             )}
             <Button variant="action" className="min-h-[40px]" onClick={() => setAutoOpen(true)}>
-              Auto room assignment
+              {t('roomAssignmentButton')}
             </Button>
           </>
         }

@@ -615,6 +615,7 @@ export class DailyCleaningService implements OnModuleInit {
       inspectorUserIds?: string[];
       dirtyRoomTargets?: Array<{ userId: string; count: number }>;
       dirtyRoomAssignments?: Array<{ roomId: string; userId: string }>;
+      publicAreaAssignments?: Array<{ publicAreaId: string; userId: string }>;
     },
     assigner?: User,
   ): Promise<DailyCleaningPlanResponse> {
@@ -707,7 +708,11 @@ export class DailyCleaningService implements OnModuleInit {
     if (!plan) throw new NotFoundException('Plan not found');
 
     // Pin restant + public from supervisor choices before balancing dirty rooms
-    if (restantIds.length > 0) {
+    // (skipped when paint UI sends exact room/public pins — those override below).
+    const paintRoomPins = options.dirtyRoomAssignments !== undefined;
+    const paintPublicPins = options.publicAreaAssignments !== undefined;
+
+    if (restantIds.length > 0 && !paintRoomPins) {
       const openRestants = plan.tasks.filter(
         (task) =>
           task.workType === DailyCleaningWorkType.RESTANT &&
@@ -746,7 +751,7 @@ export class DailyCleaningService implements OnModuleInit {
     }
 
     const publicIds = options.publicAssigneeUserIds?.filter(Boolean) ?? [];
-    if (publicIds.length > 0) {
+    if (publicIds.length > 0 && !paintPublicPins) {
       let idx = 0;
       for (const task of plan.tasks) {
         if (task.workType !== DailyCleaningWorkType.PUBLIC || task.completedAt) continue;
@@ -780,7 +785,8 @@ export class DailyCleaningService implements OnModuleInit {
         pinned: t.pinned,
         assigneeUserId: t.assigneeUserId,
       }));
-    this.applyDirtyRoomPins(items, options.dirtyRoomAssignments);
+    this.applyRoomPins(items, options.dirtyRoomAssignments);
+    this.applyPublicAreaPins(items, options.publicAreaAssignments);
 
     const cleaners: EligibleCleaner[] = refreshed.eligible.map((e) => ({
       housekeeperId: e.id,
@@ -794,15 +800,38 @@ export class DailyCleaningService implements OnModuleInit {
       dirtyRoomTargets: this.toDirtyTargetMap(options.dirtyRoomTargets),
     });
     const byKey = new Map(assignments.map((a) => [a.key, a.housekeeperId]));
+    const roomPinMap = new Map(
+      (options.dirtyRoomAssignments ?? [])
+        .filter((p) => p.roomId && p.userId)
+        .map((p) => [p.roomId, p.userId]),
+    );
+    const publicPinMap = new Map(
+      (options.publicAreaAssignments ?? [])
+        .filter((p) => p.publicAreaId && p.userId)
+        .map((p) => [p.publicAreaId, p.userId]),
+    );
 
     for (const task of plan.tasks) {
       if (task.completedAt) continue;
-      const hk = byKey.get(task.id);
-      if (!hk) continue;
       // Don't move manual pins
       if (task.pinned && task.source === DailyCleaningTaskSource.MANUAL && task.assigneeUserId) {
         continue;
       }
+
+      let hk: string | null | undefined = byKey.get(task.id);
+      if (
+        paintRoomPins &&
+        task.roomId &&
+        (task.workType === DailyCleaningWorkType.DIRTY ||
+          task.workType === DailyCleaningWorkType.RESTANT)
+      ) {
+        hk = roomPinMap.get(task.roomId) ?? null;
+      }
+      if (paintPublicPins && task.publicAreaId && task.workType === DailyCleaningWorkType.PUBLIC) {
+        hk = publicPinMap.get(task.publicAreaId) ?? null;
+      }
+      if (hk === undefined) continue;
+
       await this.prisma.dailyCleaningTask.update({
         where: { id: task.id },
         data: {
@@ -814,7 +843,7 @@ export class DailyCleaningService implements OnModuleInit {
           pinned:
             task.workType === DailyCleaningWorkType.RESTANT ||
             task.workType === DailyCleaningWorkType.PUBLIC
-              ? true
+              ? Boolean(hk)
               : task.pinned,
         },
       });
@@ -840,6 +869,7 @@ export class DailyCleaningService implements OnModuleInit {
       publicAssigneeUserIds?: string[];
       dirtyRoomTargets?: Array<{ userId: string; count: number }>;
       dirtyRoomAssignments?: Array<{ roomId: string; userId: string }>;
+      publicAreaAssignments?: Array<{ publicAreaId: string; userId: string }>;
     },
   ): Promise<AutoAssignPreviewResponse> {
     const dateIso = this.resolveDate(date);
@@ -891,7 +921,8 @@ export class DailyCleaningService implements OnModuleInit {
         assigneeUserId: null,
       })),
     ];
-    this.applyDirtyRoomPins(items, options.dirtyRoomAssignments);
+    this.applyRoomPins(items, options.dirtyRoomAssignments);
+    this.applyPublicAreaPins(items, options.publicAreaAssignments);
 
     const cleaners: EligibleCleaner[] = workingIds.map((id) => ({
       housekeeperId: id,
@@ -952,7 +983,7 @@ export class DailyCleaningService implements OnModuleInit {
     return { date: dateIso, dirtyRoomTotal, people };
   }
 
-  private applyDirtyRoomPins(
+  private applyRoomPins(
     items: BalanceWorkItem[],
     pins?: Array<{ roomId: string; userId: string }>,
   ) {
@@ -960,8 +991,27 @@ export class DailyCleaningService implements OnModuleInit {
     const byRoom = new Map(pins.filter((p) => p.roomId && p.userId).map((p) => [p.roomId, p.userId]));
     if (byRoom.size === 0) return;
     for (const item of items) {
-      if (item.workType !== 'DIRTY' || !item.roomId) continue;
+      if (item.kind !== 'ROOM' || !item.roomId) continue;
+      if (item.workType !== 'DIRTY' && item.workType !== 'RESTANT') continue;
       const hk = byRoom.get(item.roomId);
+      if (!hk) continue;
+      item.pinned = true;
+      item.assigneeUserId = hk;
+    }
+  }
+
+  private applyPublicAreaPins(
+    items: BalanceWorkItem[],
+    pins?: Array<{ publicAreaId: string; userId: string }>,
+  ) {
+    if (!pins?.length) return;
+    const byArea = new Map(
+      pins.filter((p) => p.publicAreaId && p.userId).map((p) => [p.publicAreaId, p.userId]),
+    );
+    if (byArea.size === 0) return;
+    for (const item of items) {
+      if (item.workType !== 'PUBLIC' || !item.publicAreaId) continue;
+      const hk = byArea.get(item.publicAreaId);
       if (!hk) continue;
       item.pinned = true;
       item.assigneeUserId = hk;

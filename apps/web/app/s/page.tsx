@@ -71,7 +71,7 @@ export default function SupervisorDashboardPage() {
               <div className={APP_DARK_CARD + ' p-5'}>
                 <h3 className="font-semibold text-white">Daily departures</h3>
                 <p className="mt-2 text-sm leading-relaxed text-sidebar-muted">
-                  See who is leaving today and auto-assign departure rooms evenly across your team by floor.
+                  See who is leaving today and assign departure rooms across your team.
                 </p>
                 <Link
                   href="/s/departures"
@@ -83,7 +83,7 @@ export default function SupervisorDashboardPage() {
               <div className={APP_DARK_CARD + ' p-5'}>
                 <h3 className="font-semibold text-white">Assignments</h3>
                 <p className="mt-2 text-sm leading-relaxed text-sidebar-muted">
-                  Drag rooms onto housekeepers, run auto-assign, or override suggestions in the board view.
+                  Drag rooms onto housekeepers or run room assignment in the board view.
                 </p>
                 <Link
                   href="/s/board"

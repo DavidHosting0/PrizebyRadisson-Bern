@@ -25,6 +25,14 @@ export class DirtyRoomAssignmentDto {
   userId!: string;
 }
 
+export class PublicAreaAssignmentDto {
+  @IsString()
+  publicAreaId!: string;
+
+  @IsString()
+  userId!: string;
+}
+
 export class RunAutoAssignDto {
   @IsOptional()
   @IsString()
@@ -71,4 +79,10 @@ export class RunAutoAssignDto {
   @ValidateNested({ each: true })
   @Type(() => DirtyRoomAssignmentDto)
   dirtyRoomAssignments?: DirtyRoomAssignmentDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PublicAreaAssignmentDto)
+  publicAreaAssignments?: PublicAreaAssignmentDto[];
 }

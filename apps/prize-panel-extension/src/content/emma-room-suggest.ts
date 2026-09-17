@@ -49,12 +49,28 @@ function getBookingNumber(): string | null {
     const m = hash.match(re);
     if (m) return m[1].replace(/^0+/, '') || m[1];
   }
+
+  // Reservation / check-in titles often show the id
+  for (const el of document.querySelectorAll(
+    '.sapMTitle, a.sapMLnk, [id*="ReservationDetail"] .sapMText, [id*="CheckInDetail"] .sapMText',
+  )) {
+    const t = (el.textContent || '').trim();
+    if (/^\d{6,}$/.test(t)) return t.replace(/^0+/, '') || t;
+  }
   return null;
 }
 
-/** Reservation info bar (check-in and other reservation detail screens). */
+function isVisibleEl(el: HTMLElement): boolean {
+  if (el.classList.contains('sapUiHiddenPlaceholder')) return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 2 && r.height > 2;
+}
+
+/**
+ * Mount root: check-in header, reservation header, or reservation-detail room block.
+ */
 function findReservationInfoBar(): HTMLElement | null {
-  const selectors = [
+  const headerSelectors = [
     '[id$="tms.checkinheaderContent"]',
     '[id*="tms.checkinheaderContent"]',
     '[id*="checkinheaderContent"]',
@@ -63,11 +79,46 @@ function findReservationInfoBar(): HTMLElement | null {
     '[id*="HeaderContent"][id*="tms."]',
     '[id*="CheckInDetail"][id*="headerContent"]',
     '[id*="ReservationDetail"][id*="headerContent"]',
+    '[id*="zey_tms_rs"][id*="headerContent"]',
   ];
-  for (const sel of selectors) {
+  for (const sel of headerSelectors) {
     const el = document.querySelector<HTMLElement>(sel);
-    if (el && el.offsetParent !== null) return el;
+    if (el && isVisibleEl(el)) return el;
   }
+
+  // Reservation overview (ReservationDetail): room / nights block
+  const roomField =
+    document.querySelector<HTMLElement>(
+      '[id*="ReservationDetail"][id*="tms.roomid.valuehelp"]:not([id*="message"])',
+    ) ||
+    document.querySelector<HTMLElement>(
+      '[id*="zey_tms_rs"][id*="tms.roomid.valuehelp"]:not([id*="message"])',
+    ) ||
+    document.querySelector<HTMLElement>('[id$="tms.roomid.valuehelp"]');
+  if (!roomField || !isVisibleEl(roomField)) return null;
+
+  const gridWrap = roomField.closest<HTMLElement>('[id*="Grid-wrapperfor"]');
+  if (gridWrap) {
+    const inner = gridWrap.querySelector<HTMLElement>(':scope > .sapMVBox, :scope > .sapMFlexBox');
+    if (inner && isVisibleEl(inner)) return inner;
+  }
+
+  // Climb to the vbox that contains both Room + Nights
+  let el: HTMLElement | null = roomField;
+  for (let i = 0; i < 10 && el; i++) {
+    const text = (el.innerText || '').replace(/\s+/g, ' ');
+    if (
+      el.classList.contains('sapMVBox') &&
+      /Room/i.test(text) &&
+      /Nights/i.test(text)
+    ) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+
+  const hboxParent = roomField.closest('.sapMHBox')?.parentElement;
+  if (hboxParent instanceof HTMLElement) return hboxParent;
   return null;
 }
 
@@ -79,7 +130,10 @@ function normalizeRoomNumber(raw: string): string {
 
 function scrapeAssignedRoom(): string | null {
   const selectors = [
+    '[id*="ReservationDetail"][id*="tms.roomid.valuehelp-inner"]',
+    '[id*="CheckInDetail"][id*="tms.checkin.roomid.valuehelp-inner"]',
     '[id*="tms.checkin.roomid.valuehelp-inner"]',
+    '[id*="tms.roomid.valuehelp-inner"]',
     '[id*="roomid.valuehelp-inner"]',
     '[id*="roomid"] input.sapMInputBaseInner',
     '[id*="RoomId"] input.sapMInputBaseInner',
@@ -97,11 +151,18 @@ function scrapeAssignedRoom(): string | null {
 
 function findRoomInput(): HTMLInputElement | null {
   const selectors = [
+    '[id*="ReservationDetail"][id*="tms.roomid.valuehelp-inner"]',
+    '[id*="CheckInDetail"][id*="tms.checkin.roomid.valuehelp-inner"]',
     '[id*="tms.checkin.roomid.valuehelp-inner"]',
+    '[id*="tms.roomid.valuehelp-inner"]',
     '[id*="roomid.valuehelp-inner"]',
     '[id*="roomid"] input.sapMInputBaseInner',
     '[id*="RoomId"] input.sapMInputBaseInner',
   ];
+  for (const sel of selectors) {
+    const input = document.querySelector<HTMLInputElement>(sel);
+    if (input && isVisibleEl(input)) return input;
+  }
   for (const sel of selectors) {
     const input = document.querySelector<HTMLInputElement>(sel);
     if (input) return input;

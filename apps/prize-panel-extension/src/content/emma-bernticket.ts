@@ -325,20 +325,31 @@ function ensureStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
+    /* Center BernTicket in the toolbar flex spacer */
+    .sapMTBSpacer:has(#${HOST_ID}),
+    .sapMTBSpacerFlex:has(#${HOST_ID}){
+      display:flex !important;
+      align-items:center !important;
+      justify-content:center !important;
+      min-width:0 !important;
+    }
+
     /* Native-looking toolbar child — no extension “card” chrome */
     #${HOST_ID}.sapMBarChild,
     #${HOST_ID}{
       box-sizing:border-box;
       display:inline-flex !important;
       align-items:center !important;
+      justify-content:center !important;
       gap:0.5rem !important;
-      margin:0 0.25rem 0 0 !important;
+      margin:0 !important;
       padding:0 !important;
       background:transparent !important;
       border:none !important;
       box-shadow:none !important;
       border-radius:0 !important;
       max-width:none !important;
+      flex:0 0 auto !important;
       font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
       font-size:var(--sapFontSize,0.875rem);
       color:var(--sapContent_LabelColor,#6a6d70);
@@ -493,23 +504,28 @@ function mountInToolbar(toolbar: HTMLElement): HTMLElement {
   host?.remove();
   host = document.createElement('div');
   host.id = HOST_ID;
-  host.className = 'sapMBarChild';
   host.setAttribute('data-prize-bernticket', '1');
   host.setAttribute('role', 'region');
   host.setAttribute('aria-label', msgs.emmaBt.brand);
 
-  // Sit with right-side actions (before Check In), like native toolbar controls.
-  const checkIn =
-    toolbar.querySelector('.sapMBtnAccept')?.closest('.sapMBtn, button') ||
-    [...toolbar.querySelectorAll('button.sapMBtn, .sapMBtn')].find((b) =>
-      /check\s*in/i.test(b.textContent || ''),
-    );
-  if (checkIn && checkIn.parentElement === toolbar) {
-    toolbar.insertBefore(host, checkIn);
+  // Prefer flex spacer so the control sits visually centered in the footer bar.
+  const spacer =
+    toolbar.querySelector<HTMLElement>('.sapMTBSpacer.sapMTBSpacerFlex') ||
+    toolbar.querySelector<HTMLElement>('.sapMTBSpacer');
+  if (spacer) {
+    spacer.appendChild(host);
   } else {
-    const spacer = toolbar.querySelector('.sapMTBSpacer');
-    if (spacer?.nextSibling) toolbar.insertBefore(host, spacer.nextSibling);
-    else toolbar.appendChild(host);
+    host.className = 'sapMBarChild';
+    const checkIn =
+      toolbar.querySelector('.sapMBtnAccept')?.closest('.sapMBtn, button') ||
+      [...toolbar.querySelectorAll('button.sapMBtn, .sapMBtn')].find((b) =>
+        /check\s*in/i.test(b.textContent || ''),
+      );
+    if (checkIn && checkIn.parentElement === toolbar) {
+      toolbar.insertBefore(host, checkIn);
+    } else {
+      toolbar.appendChild(host);
+    }
   }
   return host;
 }

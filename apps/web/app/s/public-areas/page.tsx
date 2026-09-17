@@ -72,7 +72,7 @@ export default function PublicAreasPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <AppPageChrome
         title="Public areas"
-        description="Set how often corridors, glass, elevators, and staff areas must be cleaned. Due items are included in the daily auto-assignment."
+        description="Set how often corridors, glass, elevators, and staff areas must be cleaned. Due items are included in today's room assignment."
         actions={<AppChromeTools onEnterMobile={enterMobile} />}
       />
 

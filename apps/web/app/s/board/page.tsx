@@ -18,6 +18,7 @@ import { CommandPaletteTrigger } from '@/components/command/CommandPaletteTrigge
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
 import { useSupervisorMobileMode } from '@/lib/supervisor-mobile-context';
 import { useToast } from '@/components/toast/ToastProvider';
+import { useTranslations } from 'next-intl';
 
 type AssignmentRow = {
   id: string;
@@ -105,6 +106,7 @@ function PublicTaskCard({
 export default function SupervisorBoardPage() {
   const qc = useQueryClient();
   const toast = useToast();
+  const t = useTranslations('supervisor');
   const today = hotelTodayIso();
   const { enterMobile } = useSupervisorMobileMode();
   const [floor, setFloor] = useState<string>('');
@@ -520,7 +522,7 @@ export default function SupervisorBoardPage() {
             )}
             {canSave && (
               <span className="hidden truncate text-xs font-medium text-amber-200 sm:inline">
-                Unsaved auto-assign
+                {t('unsavedAssignment')}
               </span>
             )}
           </>
@@ -579,7 +581,7 @@ export default function SupervisorBoardPage() {
               className="min-h-[40px] shrink-0 shadow-md"
               onClick={() => setAutoOpen(true)}
             >
-              Auto room assignment
+              {t('roomAssignmentButton')}
             </Button>
           </>
         }
@@ -794,7 +796,7 @@ export default function SupervisorBoardPage() {
                   Tomorrow
                 </h2>
                 <p className="mt-0.5 text-[11px] text-sidebar-muted/80">
-                  Leave for next day · not auto-assigned
+                  Leave for next day · not in today's assignment
                 </p>
               </div>
               <div className="space-y-2.5 p-3">

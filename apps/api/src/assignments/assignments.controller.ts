@@ -77,6 +77,7 @@ export class AssignmentsController {
         inspectorUserIds: dto.inspectorUserIds,
         dirtyRoomTargets: dto.dirtyRoomTargets,
         dirtyRoomAssignments: dto.dirtyRoomAssignments,
+        publicAreaAssignments: dto.publicAreaAssignments,
       },
       user,
     );
@@ -93,6 +94,7 @@ export class AssignmentsController {
       publicAssigneeUserIds: dto.publicAssigneeUserIds,
       dirtyRoomTargets: dto.dirtyRoomTargets,
       dirtyRoomAssignments: dto.dirtyRoomAssignments,
+      publicAreaAssignments: dto.publicAreaAssignments,
     });
   }
 
