@@ -24,9 +24,53 @@ import {
 } from '@/components/team-chat/MessageContextMenu';
 import { useLocale } from '@/lib/locale-context';
 import { useTranslations } from 'next-intl';
+import { rejectTeamChatImageFile } from '@housekeeping/shared';
+import { removeTeamChatMessage, upsertTeamChatMessage } from '@/lib/team-chat-cache';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 const LONG_PRESS_MS = 480;
+const PHOTO_COMPRESS_MS = 20_000;
+const CHAT_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(error), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(id);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(id);
+        reject(err);
+      },
+    );
+  });
+}
+
+function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={clsx('block overflow-hidden rounded-lg', hasText ? 'mb-2' : '')}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="max-h-64 w-full object-cover"
+      />
+    </a>
+  );
+}
 
 type ReactionSummary = { emoji: string; count: number; me: boolean };
 
@@ -77,22 +121,7 @@ function ChatMessageBody({
 
   return (
     <>
-      {msg.photoUrl && (
-        <a
-          href={msg.photoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={clsx('block overflow-hidden rounded-lg', hasText ? 'mb-2' : '')}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={msg.photoUrl}
-            alt={t('photoAlt')}
-            className="max-h-64 w-full object-cover"
-          />
-        </a>
-      )}
+      {msg.photoUrl && <ChatPhoto url={msg.photoUrl} alt={t('photoAlt')} hasText={hasText} />}
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
       )}
@@ -298,6 +327,8 @@ export function TeamChatView({
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const photoPreviewUrlRef = useRef<string | null>(null);
+  photoPreviewUrlRef.current = photoPreviewUrl;
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -318,6 +349,7 @@ export function TeamChatView({
   const { data: messages = [], isLoading: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
     queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=300&lang=${locale}`),
+    staleTime: 20_000,
   });
 
   const { data: requests = [], isLoading: loadingReq } = useQuery({
@@ -379,13 +411,19 @@ export function TeamChatView({
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
     const socket = getSocket(token);
     if (!socket) return undefined;
-    const onChat = () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+    const onChat = (payload: ChatMsg) => {
+      if (payload?.id && payload.author?.id) upsertTeamChatMessage(qc, payload);
+    };
     const onReact = () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+    const onDeleted = (payload: { messageId?: string }) => {
+      if (payload?.messageId) removeTeamChatMessage(qc, payload.messageId);
+      else qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+    };
     const onReq = () => qc.invalidateQueries({ queryKey: ['service-requests'] });
     const onDmg = () => qc.invalidateQueries({ queryKey: ['damage-reports'] });
     socket.on('team_chat.message', onChat);
     socket.on('team_chat.reaction', onReact);
-    socket.on('team_chat.deleted', onChat);
+    socket.on('team_chat.deleted', onDeleted);
     socket.on('service_request.created', onReq);
     socket.on('service_request.claimed', onReq);
     socket.on('service_request.resolved', onReq);
@@ -395,7 +433,7 @@ export function TeamChatView({
     return () => {
       socket?.off('team_chat.message', onChat);
       socket?.off('team_chat.reaction', onReact);
-      socket?.off('team_chat.deleted', onChat);
+      socket?.off('team_chat.deleted', onDeleted);
       socket?.off('service_request.created', onReq);
       socket?.off('service_request.claimed', onReq);
       socket?.off('service_request.resolved', onReq);
@@ -509,9 +547,9 @@ export function TeamChatView({
 
   useEffect(() => {
     return () => {
-      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+      if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
     };
-  }, [photoPreviewUrl]);
+  }, []);
 
   const clearPhoto = useCallback(() => {
     setPhotoFile(null);
@@ -524,14 +562,25 @@ export function TeamChatView({
 
   const onPhotoPicked = useCallback(
     (file: File | undefined) => {
-      if (!file || !file.type.startsWith('image/')) return;
+      if (!file) return;
+      const reason = rejectTeamChatImageFile(file);
+      if (reason) {
+        const msg =
+          reason === 'video'
+            ? tChat('videoNotAllowed')
+            : reason === 'tooLarge'
+              ? tChat('photoTooLarge')
+              : tChat('photoNotSupported');
+        toast.push(msg, 'warning');
+        return;
+      }
       setPhotoFile(file);
       setPhotoPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(file);
       });
     },
-    [],
+    [tChat, toast],
   );
 
   const send = useMutation({
@@ -543,11 +592,22 @@ export function TeamChatView({
     }) => {
       let photoS3Key: string | undefined;
       if (payload.photo) {
-        const compressed = await imageCompression(payload.photo, {
-          maxSizeMB: 0.6,
-          maxWidthOrHeight: 1600,
-        });
-        const contentType = compressed.type || payload.photo.type || 'image/jpeg';
+        const skipCompress =
+          payload.photo.size <= 500_000 && /image\/(jpeg|jpg|png|webp)/i.test(payload.photo.type);
+        const compressed = skipCompress
+          ? payload.photo
+          : await withTimeout(
+              imageCompression(payload.photo, {
+                maxSizeMB: 0.6,
+                maxWidthOrHeight: 1600,
+                useWebWorker: true,
+              }),
+              PHOTO_COMPRESS_MS,
+              new Error(tChat('photoUploadFailed')),
+            );
+        const rawType = compressed.type || payload.photo.type || 'image/jpeg';
+        const contentType =
+          rawType.startsWith('image/') && !/heic|heif/i.test(rawType) ? rawType : 'image/jpeg';
         const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
           method: 'POST',
           body: JSON.stringify({ contentType }),
@@ -562,7 +622,7 @@ export function TeamChatView({
         }
         photoS3Key = presign.key;
       }
-      return api('/team-chat/messages', {
+      return api<ChatMsg>('/team-chat/messages', {
         method: 'POST',
         body: JSON.stringify({
           body: payload.text,
@@ -572,14 +632,53 @@ export function TeamChatView({
         }),
       });
     },
-    onSuccess: () => {
+    onMutate: async (payload) => {
+      if (!user) return { tempId: '', preview: null as string | null };
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const preview = payload.photo ? photoPreviewUrl : null;
+      const optimistic: ChatMsg = {
+        id: tempId,
+        body: payload.text,
+        photoUrl: preview,
+        createdAt: new Date().toISOString(),
+        author: {
+          id: user.id,
+          name: user.name,
+          titlePrefix: user.titlePrefix ?? '',
+          avatarUrl: user.avatarUrl,
+        },
+        replyTo: replyTo
+          ? {
+              id: replyTo.id,
+              body: replyTo.body,
+              photoUrl: replyTo.photoUrl,
+              createdAt: '',
+              author: replyTo.author,
+              deleted: false,
+            }
+          : null,
+        reactions: [],
+        mentions: [],
+      };
       setBody('');
       setMentionUserIds([]);
       setReplyTo(null);
-      clearPhoto();
-      qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+      setPhotoFile(null);
+      setPhotoPreviewUrl(null);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+      upsertTeamChatMessage(qc, optimistic);
+      return { tempId, preview };
     },
-    onError: (e: unknown) => {
+    onSuccess: (msg, _payload, ctx) => {
+      if (msg && typeof msg === 'object' && 'id' in msg) {
+        upsertTeamChatMessage(qc, msg);
+      }
+      if (ctx?.preview) URL.revokeObjectURL(ctx.preview);
+    },
+    onError: (e: unknown, payload, ctx) => {
+      if (ctx?.tempId) removeTeamChatMessage(qc, ctx.tempId);
+      if (ctx?.preview) URL.revokeObjectURL(ctx.preview);
+      setBody((current) => (current.trim() ? current : payload.text));
       toast.push(e instanceof Error ? e.message : tChat('sendFailed'), 'warning');
     },
   });
@@ -632,7 +731,7 @@ export function TeamChatView({
   function onSend(e: FormEvent) {
     e.preventDefault();
     const t = body.trim();
-    if ((!t && !photoFile) || send.isPending || !canPost) return;
+    if ((!t && !photoFile) || !canPost) return;
     send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
   }
 
@@ -721,6 +820,7 @@ export function TeamChatView({
 
   const onMsgContextMenu = useCallback(
     (e: React.MouseEvent, m: ChatMsg) => {
+      if (m.id.startsWith('temp-')) return;
       e.preventDefault();
       const anchor = menuAnchorFromEvent(e);
       openMenu(m, anchor.x, anchor.y);
@@ -944,6 +1044,7 @@ export function TeamChatView({
                             ? 'rounded-2xl rounded-bl-md'
                             : 'rounded-2xl',
                         menu?.message.id === m.id && 'ring-2 ring-action/35',
+                        m.id.startsWith('temp-') && 'opacity-70',
                       )}
                     >
                       {!mine && isHead && (
@@ -1111,7 +1212,7 @@ export function TeamChatView({
             <input
               ref={photoInputRef}
               type="file"
-              accept="image/*"
+              accept={CHAT_PHOTO_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 onPhotoPicked(e.target.files?.[0]);
@@ -1121,8 +1222,7 @@ export function TeamChatView({
             <button
               type="button"
               onClick={() => photoInputRef.current?.click()}
-              disabled={send.isPending}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white disabled:opacity-50"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white"
               aria-label={tChat('attachPhoto')}
               title={tChat('attachPhoto')}
             >
@@ -1145,17 +1245,17 @@ export function TeamChatView({
               maxLength={2000}
               onSubmitShortcut={() => {
                 const t = body.trim();
-                if ((!t && !photoFile) || send.isPending || !canPost) return;
+                if ((!t && !photoFile) || !canPost) return;
                 send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
               }}
             />
 
             <button
               type="submit"
-              disabled={send.isPending || (!body.trim() && !photoFile)}
+              disabled={!body.trim() && !photoFile}
               className={clsx(
                 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
-                (body.trim() || photoFile) && !send.isPending
+                body.trim() || photoFile
                   ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
                   : 'bg-white/10 text-sidebar-muted',
               )}

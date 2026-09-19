@@ -1,6 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
@@ -61,6 +61,36 @@ export class S3Service {
     });
     const url = await getSignedUrl(this.client, cmd, { expiresIn: expiresSec });
     return { url, key, bucket: this.bucket };
+  }
+
+  async headObject(key: string): Promise<{ contentType?: string; contentLength?: number } | null> {
+    if (!this.configured) return null;
+    try {
+      const res = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return { contentType: res.ContentType, contentLength: res.ContentLength };
+    } catch (e) {
+      this.log.debug(`headObject failed: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+  }
+
+  /** First bytes only — used to reject MP4/MOV that were uploaded with an image Content-Type. */
+  async getObjectPrefix(key: string, byteCount = 16): Promise<Uint8Array | null> {
+    if (!this.configured) return null;
+    try {
+      const res = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Range: `bytes=0-${Math.max(0, byteCount - 1)}`,
+        }),
+      );
+      const bytes = await res.Body?.transformToByteArray();
+      return bytes ? Uint8Array.from(bytes) : null;
+    } catch (e) {
+      this.log.debug(`getObjectPrefix failed: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
   }
 
   async presignGet(key: string, expiresSec = 900): Promise<{ url: string | null }> {

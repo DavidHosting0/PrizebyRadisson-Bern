@@ -307,6 +307,9 @@
     "photoMessage": "Foto",
     "photoReady": "Foto bereit zum Senden",
     "photoUploadFailed": "Foto konnte nicht hochgeladen werden",
+    "videoNotAllowed": "Videos können nicht im Chat gesendet werden. Bitte nur ein Foto anhängen.",
+    "photoTooLarge": "Die Datei ist zu groß (maximal 25 MB).",
+    "photoNotSupported": "Dieser Dateityp wird nicht unterstützt. Bitte ein Foto wählen.",
     "room": "Zimmer {roomNumber}",
     "markDone": "Erledigt markieren",
     "requestStatus": {
@@ -350,7 +353,10 @@
       "photoMessage": "Foto",
       "photoAlt": "Chat-Foto",
       "photoReady": "Foto bereit zum Senden",
-      "photoUploadFailed": "Foto konnte nicht hochgeladen werden"
+      "photoUploadFailed": "Foto konnte nicht hochgeladen werden",
+      "videoNotAllowed": "Videos können nicht im Chat gesendet werden. Bitte nur ein Foto anhängen.",
+      "photoTooLarge": "Die Datei ist zu groß (maximal 25 MB).",
+      "photoNotSupported": "Dieser Dateityp wird nicht unterstützt. Bitte ein Foto wählen."
     }
   },
   "notifications": {

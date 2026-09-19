@@ -1,14 +1,13 @@
 'use client';
 
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { WS_EVENTS } from '@housekeeping/shared';
 import { ROOMS_LIST_QUERY_KEY } from '@/lib/rooms-query';
 import { useToast } from '@/components/toast/ToastProvider';
 import { getSocket } from '@/lib/socket';
-import { useAuth } from '@/lib/auth-context';
+import { upsertTeamChatMessage } from '@/lib/team-chat-cache';
 
 type RoomStatusPayload = {
   id: string;
@@ -35,34 +34,12 @@ function findRoomInCache(
   return undefined;
 }
 
-function isReceptionChatPath(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return (
-    pathname === '/r/chat' ||
-    pathname.startsWith('/r/chat/') ||
-    pathname === '/r/m/chat' ||
-    pathname.startsWith('/r/m/chat/')
-  );
-}
-
-function previewBody(body: string, max = 80): string {
-  const trimmed = body.replace(/\s+/g, ' ').trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max - 1)}…`;
-}
-
 export function useReceptionRealtime() {
   const qc = useQueryClient();
   const toast = useToast();
   const tToast = useTranslations('toast');
   const tRoom = useTranslations('room.status');
-  const pathname = usePathname();
-  const { user } = useAuth();
   const warned = useRef(false);
-  const pathnameRef = useRef(pathname);
-  const userIdRef = useRef(user?.id);
-  pathnameRef.current = pathname;
-  userIdRef.current = user?.id;
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
@@ -103,7 +80,12 @@ export function useReceptionRealtime() {
 
       if (prev?.derivedStatus === room.derivedStatus) return;
 
-      const statusKey = room.derivedStatus as 'DIRTY' | 'CLEAN' | 'IN_PROGRESS' | 'INSPECTED' | 'OUT_OF_ORDER';
+      const statusKey = room.derivedStatus as
+        | 'DIRTY'
+        | 'CLEAN'
+        | 'IN_PROGRESS'
+        | 'INSPECTED'
+        | 'OUT_OF_ORDER';
       const statusLabel = tRoom(statusKey);
       toast.push(tToast('roomStatus', { roomNumber: room.roomNumber, status: statusLabel }), 'success');
     };
@@ -122,22 +104,13 @@ export function useReceptionRealtime() {
     };
 
     const onTeamChat = (payload: unknown) => {
-      qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
-
-      if (isReceptionChatPath(pathnameRef.current)) return;
-
       const msg = payload as TeamChatMessagePayload;
-      if (!msg?.id) return;
-      const bodyText = msg.body?.trim() ?? '';
-      if (!bodyText && !msg.photoUrl) return;
-      if (msg.author?.id && msg.author.id === userIdRef.current) return;
-
-      const author = msg.author?.name?.trim() || 'Team';
-      const text = tToast('newChatMessage', {
-        author,
-        preview: bodyText ? previewBody(bodyText) : tToast('chatPhoto'),
-      });
-      toast.push(text, 'default', 8000);
+      if (msg?.id && msg.author?.id) {
+        upsertTeamChatMessage(
+          qc,
+          payload as { id: string; body: string; photoUrl?: string | null; author: { id: string } },
+        );
+      }
     };
 
     socket.on('room.status_updated', onRoom);

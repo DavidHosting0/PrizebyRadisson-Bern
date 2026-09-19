@@ -19,6 +19,7 @@ import { useAuth, usePermission } from '@/lib/auth-context';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/Button';
 import { chatUi, dayLabel, type ChatUiStrings } from '@/lib/chat-ui';
+import { mergeTeamChatMessage, rejectTeamChatImageFile } from '@housekeeping/shared';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 const MORE_EMOJIS = [
@@ -95,6 +96,24 @@ type TimelineItem =
   | { kind: 'dmg'; key: string; at: string; dmg: DmgRow };
 
 const DAMAGE_STATUSES = ['REPORTED', 'ACKNOWLEDGED', 'RESOLVED'] as const;
+const PHOTO_COMPRESS_MS = 20_000;
+const CHAT_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(error), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(id);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(id);
+        reject(err);
+      },
+    );
+  });
+}
 
 const TITLE_LABELS: Record<string, string> = {
   CLEANER: 'Cleaner',
@@ -492,6 +511,30 @@ function MessageMenu({
   );
 }
 
+function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={clsx('block overflow-hidden rounded-md', hasText ? 'mb-1' : '')}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        className="max-h-40 w-full object-cover"
+      />
+    </a>
+  );
+}
+
 function MessageBody({
   msg,
   mentions,
@@ -508,18 +551,7 @@ function MessageBody({
 
   return (
     <>
-      {msg.photoUrl && (
-        <a
-          href={msg.photoUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={clsx('block overflow-hidden rounded-md', hasText ? 'mb-1' : '')}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={msg.photoUrl} alt={ui.photoAlt} className="max-h-40 w-full object-cover" />
-        </a>
-      )}
+      {msg.photoUrl && <ChatPhoto url={msg.photoUrl} alt={ui.photoAlt} hasText={hasText} />}
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[11px] leading-snug" />
       )}
@@ -563,6 +595,8 @@ export function TeamChatBoard() {
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const photoPreviewUrlRef = useRef<string | null>(null);
+  photoPreviewUrlRef.current = photoPreviewUrl;
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [err, setErr] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: ChatMsg; x: number; y: number } | null>(null);
@@ -570,7 +604,8 @@ export function TeamChatBoard() {
   const { data: messages = [], isLoading: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
     queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=200&lang=${locale}`),
-    refetchInterval: 5_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const { data: requests = [], isLoading: loadingReq } = useQuery({
@@ -590,9 +625,9 @@ export function TeamChatBoard() {
 
   useEffect(() => {
     return () => {
-      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+      if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
     };
-  }, [photoPreviewUrl]);
+  }, []);
 
   const clearPhoto = useCallback(() => {
     setPhotoFile(null);
@@ -612,11 +647,22 @@ export function TeamChatBoard() {
     }) => {
       let photoS3Key: string | undefined;
       if (payload.photo) {
-        const compressed = await imageCompression(payload.photo, {
-          maxSizeMB: 0.6,
-          maxWidthOrHeight: 1600,
-        });
-        const contentType = compressed.type || payload.photo.type || 'image/jpeg';
+        const skipCompress =
+          payload.photo.size <= 500_000 && /image\/(jpeg|jpg|png|webp)/i.test(payload.photo.type);
+        const compressed = skipCompress
+          ? payload.photo
+          : await withTimeout(
+              imageCompression(payload.photo, {
+                maxSizeMB: 0.6,
+                maxWidthOrHeight: 1600,
+                useWebWorker: true,
+              }),
+              PHOTO_COMPRESS_MS,
+              new Error(ui.photoUploadFailed),
+            );
+        const rawType = compressed.type || payload.photo.type || 'image/jpeg';
+        const contentType =
+          rawType.startsWith('image/') && !/heic|heif/i.test(rawType) ? rawType : 'image/jpeg';
         const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
           method: 'POST',
           body: JSON.stringify({ contentType }),
@@ -629,7 +675,7 @@ export function TeamChatBoard() {
         if (!putRes.ok) throw new Error(ui.photoUploadFailed);
         photoS3Key = presign.key;
       }
-      return api('/team-chat/messages', {
+      return api<ChatMsg>('/team-chat/messages', {
         method: 'POST',
         body: JSON.stringify({
           body: payload.text,
@@ -639,15 +685,64 @@ export function TeamChatBoard() {
         }),
       });
     },
-    onSuccess: () => {
+    onMutate: async (payload) => {
+      if (!user) return { tempId: '', preview: null as string | null };
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const preview = payload.photo ? photoPreviewUrl : null;
+      const optimistic: ChatMsg = {
+        id: tempId,
+        body: payload.text,
+        photoUrl: preview,
+        createdAt: new Date().toISOString(),
+        author: {
+          id: user.id,
+          name: user.name,
+          titlePrefix: user.titlePrefix ?? '',
+          avatarUrl: user.avatarUrl,
+        },
+        replyTo: replyTo
+          ? {
+              id: replyTo.id,
+              body: replyTo.body,
+              photoUrl: replyTo.photoUrl,
+              createdAt: '',
+              author: replyTo.author,
+              deleted: false,
+            }
+          : null,
+        reactions: [],
+        mentions: [],
+      };
       setBody('');
       setMentionUserIds([]);
       setReplyTo(null);
-      clearPhoto();
+      setPhotoFile(null);
+      setPhotoPreviewUrl(null);
       setErr(null);
-      qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
+      if (photoInputRef.current) photoInputRef.current.value = '';
+      qc.setQueriesData<ChatMsg[]>({ queryKey: ['team-chat-messages'] }, (old) =>
+        mergeTeamChatMessage(old, optimistic),
+      );
+      return { tempId, preview };
     },
-    onError: (e: Error) => setErr(e.message),
+    onSuccess: (msg, _payload, ctx) => {
+      if (msg && typeof msg === 'object' && 'id' in msg) {
+        qc.setQueriesData<ChatMsg[]>({ queryKey: ['team-chat-messages'] }, (old) =>
+          mergeTeamChatMessage(old, msg),
+        );
+      }
+      if (ctx?.preview) URL.revokeObjectURL(ctx.preview);
+    },
+    onError: (e: Error, payload, ctx) => {
+      if (ctx?.tempId) {
+        qc.setQueriesData<ChatMsg[]>({ queryKey: ['team-chat-messages'] }, (old) =>
+          (old ?? []).filter((m) => m.id !== ctx.tempId),
+        );
+      }
+      if (ctx?.preview) URL.revokeObjectURL(ctx.preview);
+      setBody((current) => (current.trim() ? current : payload.text));
+      setErr(e.message);
+    },
   });
 
   const toggleReaction = useMutation({
@@ -781,7 +876,7 @@ export function TeamChatBoard() {
 
   function doSend() {
     const text = body.trim();
-    if ((!text && !photoFile) || !canPost || send.isPending) return;
+    if ((!text && !photoFile) || !canPost) return;
     send.mutate({ text, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
   }
 
@@ -986,10 +1081,12 @@ export function TeamChatBoard() {
                   <button
                     type="button"
                     onContextMenu={(e) => {
+                      if (m.id.startsWith('temp-')) return;
                       e.preventDefault();
                       setMenu({ message: m, x: e.clientX, y: e.clientY });
                     }}
                     onClick={(e) => {
+                      if (m.id.startsWith('temp-')) return;
                       if ((e.target as HTMLElement).closest('[data-reaction]')) return;
                       setMenu({ message: m, x: e.clientX, y: e.clientY });
                     }}
@@ -998,6 +1095,7 @@ export function TeamChatBoard() {
                       mine
                         ? 'rounded-tr-sm bg-action text-white'
                         : 'rounded-tl-sm border border-white/10 bg-white/[0.08] text-slate-100',
+                      m.id.startsWith('temp-') && 'opacity-70',
                     )}
                   >
                     {m.replyTo && (
@@ -1120,12 +1218,24 @@ export function TeamChatBoard() {
             <input
               ref={photoInputRef}
               type="file"
-              accept="image/*"
+              accept={CHAT_PHOTO_ACCEPT}
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
-                if (!file || !file.type.startsWith('image/')) return;
+                if (!file) return;
+                const reason = rejectTeamChatImageFile(file);
+                if (reason) {
+                  setErr(
+                    reason === 'video'
+                      ? ui.videoNotAllowed
+                      : reason === 'tooLarge'
+                        ? ui.photoTooLarge
+                        : ui.photoNotSupported,
+                  );
+                  return;
+                }
+                setErr(null);
                 setPhotoFile(file);
                 setPhotoPreviewUrl((prev) => {
                   if (prev) URL.revokeObjectURL(prev);
@@ -1136,8 +1246,7 @@ export function TeamChatBoard() {
             <button
               type="button"
               onClick={() => photoInputRef.current?.click()}
-              disabled={send.isPending}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 text-sidebar-muted hover:text-white disabled:opacity-50"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 text-sidebar-muted hover:text-white"
               aria-label={ui.attachPhoto}
               title={ui.attachPhoto}
             >
@@ -1157,12 +1266,11 @@ export function TeamChatBoard() {
               onMentionUserIdsChange={setMentionUserIds}
               placeholder={ui.placeholder}
               onSubmitShortcut={doSend}
-              disabled={send.isPending}
             />
             <Button
               type="submit"
               variant="action"
-              disabled={send.isPending || (!body.trim() && !photoFile)}
+              disabled={!body.trim() && !photoFile}
               className="h-8 shrink-0 rounded-full px-3 text-[11px]"
             >
               →

@@ -24,6 +24,9 @@ export type ChatUiStrings = {
   photoAlt: string;
   photoReady: string;
   photoUploadFailed: string;
+  videoNotAllowed: string;
+  photoTooLarge: string;
+  photoNotSupported: string;
   noPostPermission: string;
   serviceRequest: string;
   damageReport: string;
@@ -150,6 +153,9 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     photoAlt: 'Chat-Foto',
     photoReady: 'Foto bereit zum Senden',
     photoUploadFailed: 'Foto konnte nicht hochgeladen werden',
+    videoNotAllowed: 'Videos können nicht im Chat gesendet werden. Bitte nur ein Foto anhängen.',
+    photoTooLarge: 'Die Datei ist zu groß (maximal 25 MB).',
+    photoNotSupported: 'Dieser Dateityp wird nicht unterstützt. Bitte ein Foto wählen.',
     noPostPermission: 'Keine Berechtigung zum Schreiben.',
     serviceRequest: 'Serviceanfrage',
     damageReport: 'Schadensmeldung',
@@ -194,6 +200,9 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     photoAlt: 'Chat photo',
     photoReady: 'Photo ready to send',
     photoUploadFailed: 'Could not upload photo',
+    videoNotAllowed: 'Videos cannot be sent in chat. Please attach a photo instead.',
+    photoTooLarge: 'That file is too large (max 25 MB).',
+    photoNotSupported: 'This file type is not supported. Please choose a photo.',
     noPostPermission: 'No permission to post.',
     serviceRequest: 'Service request',
     damageReport: 'Damage report',
@@ -238,6 +247,9 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     photoAlt: 'Foto do chat',
     photoReady: 'Foto pronta para enviar',
     photoUploadFailed: 'Não foi possível carregar a foto',
+    videoNotAllowed: 'Não é possível enviar vídeos no chat. Anexa uma foto.',
+    photoTooLarge: 'O ficheiro é demasiado grande (máx. 25 MB).',
+    photoNotSupported: 'Este tipo de ficheiro não é suportado. Escolhe uma foto.',
     noPostPermission: 'Sem permissão para publicar.',
     serviceRequest: 'Pedido de serviço',
     damageReport: 'Relatório de dano',
@@ -282,6 +294,9 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     photoAlt: 'Foto del chat',
     photoReady: 'Foto lista para enviar',
     photoUploadFailed: 'No se pudo subir la foto',
+    videoNotAllowed: 'No se pueden enviar videos en el chat. Adjunta una foto.',
+    photoTooLarge: 'El archivo es demasiado grande (máx. 25 MB).',
+    photoNotSupported: 'Este tipo de archivo no es compatible. Elige una foto.',
     noPostPermission: 'Sin permiso para publicar.',
     serviceRequest: 'Solicitud de servicio',
     damageReport: 'Parte de daño',
@@ -326,6 +341,9 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     photoAlt: 'Sohbet fotoğrafı',
     photoReady: 'Fotoğraf gönderilmeye hazır',
     photoUploadFailed: 'Fotoğraf yüklenemedi',
+    videoNotAllowed: 'Sohbete video gönderilemez. Lütfen bir fotoğraf ekleyin.',
+    photoTooLarge: 'Dosya çok büyük (en fazla 25 MB).',
+    photoNotSupported: 'Bu dosya türü desteklenmiyor. Lütfen bir fotoğraf seçin.',
     noPostPermission: 'Yazma izniniz yok.',
     serviceRequest: 'Servis talebi',
     damageReport: 'Hasar bildirimi',
@@ -370,6 +388,9 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     photoAlt: 'Фото в чаті',
     photoReady: 'Фото готове до надсилання',
     photoUploadFailed: 'Не вдалося завантажити фото',
+    videoNotAllowed: 'Відео не можна надсилати в чат. Будь ласка, додайте фото.',
+    photoTooLarge: 'Файл завеликий (максимум 25 МБ).',
+    photoNotSupported: 'Цей тип файлу не підтримується. Будь ласка, виберіть фото.',
     noPostPermission: 'Немає дозволу на публікацію.',
     serviceRequest: 'Сервісний запит',
     damageReport: 'Повідомлення про пошкодження',

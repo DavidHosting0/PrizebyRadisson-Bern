@@ -307,6 +307,9 @@
     "photoMessage": "Photo",
     "photoReady": "Photo ready to send",
     "photoUploadFailed": "Could not upload photo",
+    "videoNotAllowed": "Videos cannot be sent in chat. Please attach a photo instead.",
+    "photoTooLarge": "That file is too large (max 25 MB).",
+    "photoNotSupported": "This file type is not supported. Please choose a photo.",
     "room": "Room {roomNumber}",
     "markDone": "Mark done",
     "requestStatus": {
@@ -350,7 +353,10 @@
       "photoMessage": "Photo",
       "photoAlt": "Chat photo",
       "photoReady": "Photo ready to send",
-      "photoUploadFailed": "Could not upload photo"
+      "photoUploadFailed": "Could not upload photo",
+      "videoNotAllowed": "Videos cannot be sent in chat. Please attach a photo instead.",
+      "photoTooLarge": "That file is too large (max 25 MB).",
+      "photoNotSupported": "This file type is not supported. Please choose a photo."
     }
   },
   "notifications": {

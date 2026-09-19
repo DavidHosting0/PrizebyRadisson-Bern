@@ -344,14 +344,20 @@
       "photoMessage": "Fotoğraf",
       "photoAlt": "Sohbet fotoğrafı",
       "photoReady": "Fotoğraf gönderilmeye hazır",
-      "photoUploadFailed": "Fotoğraf yüklenemedi"
+      "photoUploadFailed": "Fotoğraf yüklenemedi",
+      "videoNotAllowed": "Sohbete video gönderilemez. Lütfen bir fotoğraf ekleyin.",
+      "photoTooLarge": "Dosya çok büyük (en fazla 25 MB).",
+      "photoNotSupported": "Bu dosya türü desteklenmiyor. Lütfen bir fotoğraf seçin."
     },
     "attachPhoto": "Fotoğraf ekle",
     "removePhoto": "Fotoğrafı kaldır",
     "photoAlt": "Sohbet fotoğrafı",
     "photoMessage": "Fotoğraf",
     "photoReady": "Fotoğraf gönderilmeye hazır",
-    "photoUploadFailed": "Fotoğraf yüklenemedi"
+    "photoUploadFailed": "Fotoğraf yüklenemedi",
+    "videoNotAllowed": "Sohbete video gönderilemez. Lütfen bir fotoğraf ekleyin.",
+    "photoTooLarge": "Dosya çok büyük (en fazla 25 MB).",
+    "photoNotSupported": "Bu dosya türü desteklenmiyor. Lütfen bir fotoğraf seçin."
   },
   "notifications": {
     "title": "Bildirimler",

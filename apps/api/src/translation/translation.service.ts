@@ -15,6 +15,8 @@ import {
 @Injectable()
 export class TranslationService {
   private readonly log = new Logger(TranslationService.name);
+  private liveInFlight = 0;
+  private static readonly MAX_LIVE = 6;
 
   constructor(private readonly settings: SettingsService) {}
 
@@ -22,7 +24,7 @@ export class TranslationService {
     const cfg = await this.settings.getAiConfigSecrets();
     if (!cfg?.openaiApiKey) return null;
     return {
-      openai: new OpenAI({ apiKey: cfg.openaiApiKey }),
+      openai: new OpenAI({ apiKey: cfg.openaiApiKey, timeout: 10_000, maxRetries: 0 }),
       model: cfg.openaiModel ?? 'gpt-4o-mini',
     };
   }
@@ -99,10 +101,12 @@ export class TranslationService {
 
     const ctx = await this.client();
     if (!ctx) return null;
+    if (this.liveInFlight >= TranslationService.MAX_LIVE) return null;
 
     const shielded = shieldMentions(body, mentions);
     const langName = localeLangName(targetLocale);
 
+    this.liveInFlight++;
     try {
       const res = await ctx.openai.chat.completions.create({
         model: ctx.model,
@@ -134,6 +138,8 @@ export class TranslationService {
     } catch (e) {
       this.log.warn(`chat translation failed: ${e instanceof Error ? e.message : String(e)}`);
       return null;
+    } finally {
+      this.liveInFlight--;
     }
   }
 }

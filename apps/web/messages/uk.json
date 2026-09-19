@@ -344,14 +344,20 @@
       "photoMessage": "Фото",
       "photoAlt": "Фото в чаті",
       "photoReady": "Фото готове до надсилання",
-      "photoUploadFailed": "Не вдалося завантажити фото"
+      "photoUploadFailed": "Не вдалося завантажити фото",
+      "videoNotAllowed": "Відео не можна надсилати в чат. Будь ласка, додайте фото.",
+      "photoTooLarge": "Файл завеликий (максимум 25 МБ).",
+      "photoNotSupported": "Цей тип файлу не підтримується. Будь ласка, виберіть фото."
     },
     "attachPhoto": "Додати фото",
     "removePhoto": "Прибрати фото",
     "photoAlt": "Фото в чаті",
     "photoMessage": "Фото",
     "photoReady": "Фото готове до надсилання",
-    "photoUploadFailed": "Не вдалося завантажити фото"
+    "photoUploadFailed": "Не вдалося завантажити фото",
+    "videoNotAllowed": "Відео не можна надсилати в чат. Будь ласка, додайте фото.",
+    "photoTooLarge": "Файл завеликий (максимум 25 МБ).",
+    "photoNotSupported": "Цей тип файлу не підтримується. Будь ласка, виберіть фото."
   },
   "notifications": {
     "title": "Сповіщення",

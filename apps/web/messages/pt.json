@@ -344,14 +344,20 @@
       "photoMessage": "Foto",
       "photoAlt": "Foto do chat",
       "photoReady": "Foto pronta para enviar",
-      "photoUploadFailed": "Não foi possível carregar a foto"
+      "photoUploadFailed": "Não foi possível carregar a foto",
+      "videoNotAllowed": "Não é possível enviar vídeos no chat. Anexa uma foto.",
+      "photoTooLarge": "O ficheiro é demasiado grande (máx. 25 MB).",
+      "photoNotSupported": "Este tipo de ficheiro não é suportado. Escolhe uma foto."
     },
     "attachPhoto": "Anexar foto",
     "removePhoto": "Remover foto",
     "photoAlt": "Foto do chat",
     "photoMessage": "Foto",
     "photoReady": "Foto pronta para enviar",
-    "photoUploadFailed": "Não foi possível carregar a foto"
+    "photoUploadFailed": "Não foi possível carregar a foto",
+    "videoNotAllowed": "Não é possível enviar vídeos no chat. Anexa uma foto.",
+    "photoTooLarge": "O ficheiro é demasiado grande (máx. 25 MB).",
+    "photoNotSupported": "Este tipo de ficheiro não é suportado. Escolhe uma foto."
   },
   "notifications": {
     "title": "Notificações",

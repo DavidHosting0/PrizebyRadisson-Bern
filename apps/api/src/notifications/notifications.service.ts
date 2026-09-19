@@ -202,20 +202,24 @@ export class NotificationsService {
     authorName: string,
     mentionedUserIds: string[],
     excludeUserId: string,
+    preview?: string,
   ) {
     const userIds = mentionedUserIds.filter((id) => id !== excludeUserId);
     if (userIds.length === 0) return [];
+    const snippet = (preview ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
     return this.createForUsers({
       userIds,
       type: NotificationType.TEAM_CHAT_MENTION,
       title: `${authorName} mentioned you`,
-      body: 'Open team chat to read the message',
+      body: snippet || 'Open team chat to read the message',
       metadata: {
         messageId,
         authorName,
         messageKey: 'teamChatMention',
         messageParams: { authorName },
-        bodyKey: 'teamChatMentionBody',
+        ...(snippet
+          ? {}
+          : { bodyKey: 'teamChatMentionBody' }),
       },
     });
   }

@@ -1,6 +1,15 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PermissionCode, User } from '@prisma/client';
-import { isSupportedLocale, resolveLocale, type SupportedLocale } from '@housekeeping/shared';
+import {
+  isAllowedTeamChatUploadMime,
+  isSupportedLocale,
+  isTeamChatPhotoTooLarge,
+  isTeamChatVideoContentType,
+  orderTeamChatWindow,
+  resolveLocale,
+  sniffTeamChatMediaPrefix,
+  type SupportedLocale,
+} from '@housekeeping/shared';
 import { userPublicSelect } from '../common/user-public.select';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -60,6 +69,8 @@ type MessageRow = {
   mentions: MentionRow[];
 };
 
+type TranslateMode = 'none' | 'cache' | 'live';
+
 const mentionableUserInclude = {
   permissionGrants: { select: { permission: true } },
   roleAssignments: {
@@ -72,6 +83,8 @@ const mentionableUserInclude = {
 @Injectable()
 export class TeamChatService {
   private readonly log = new Logger(TeamChatService.name);
+  private readonly photoSkipCache = new Map<string, { at: number; skip: boolean }>();
+  private static readonly PHOTO_SKIP_TTL_MS = 10 * 60_000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -135,7 +148,36 @@ export class TeamChatService {
     return emoji;
   }
 
-  private async buildMediaUrlMap(rows: MessageRow[]): Promise<{
+  private async shouldSkipChatPhoto(key: string): Promise<boolean> {
+    const hit = this.photoSkipCache.get(key);
+    if (hit && Date.now() - hit.at < TeamChatService.PHOTO_SKIP_TTL_MS) return hit.skip;
+    const meta = await this.s3.headObject(key);
+    const skip = !!(
+      meta &&
+      (isTeamChatPhotoTooLarge(meta.contentLength) || isTeamChatVideoContentType(meta.contentType))
+    );
+    this.photoSkipCache.set(key, { at: Date.now(), skip });
+    if (skip) {
+      this.log.warn(`Skipping chat photo ${key} (video or oversized)`);
+    }
+    return skip;
+  }
+
+  private async assertChatPhotoSafe(key: string) {
+    const meta = await this.s3.headObject(key);
+    if (meta && (isTeamChatPhotoTooLarge(meta.contentLength) || isTeamChatVideoContentType(meta.contentType))) {
+      throw new BadRequestException('Only image uploads are allowed');
+    }
+    const prefix = await this.s3.getObjectPrefix(key);
+    if (prefix && sniffTeamChatMediaPrefix(prefix) === 'video') {
+      throw new BadRequestException('Only image uploads are allowed');
+    }
+  }
+
+  private async buildMediaUrlMap(
+    rows: MessageRow[],
+    opts?: { verifyPhotos?: boolean },
+  ): Promise<{
     avatars: Map<string, string>;
     photos: Map<string, string>;
   }> {
@@ -150,7 +192,22 @@ export class TeamChatService {
       if (r.photoS3Key) photoKeys.add(r.photoS3Key);
       if (r.replyTo?.photoS3Key) photoKeys.add(r.replyTo.photoS3Key);
     }
-    const resolve = async (keys: Set<string>) => {
+    const verifyPhotos = opts?.verifyPhotos !== false;
+    const resolvePhotos = async (keys: Set<string>) => {
+      const entries = await Promise.all(
+        Array.from(keys).map(async (key) => {
+          try {
+            if (verifyPhotos && (await this.shouldSkipChatPhoto(key))) return [key, ''] as const;
+            const { url } = await this.s3.presignGet(key);
+            return [key, url ?? ''] as const;
+          } catch {
+            return [key, ''] as const;
+          }
+        }),
+      );
+      return new Map(entries.filter((entry): entry is readonly [string, string] => !!entry[1]));
+    };
+    const resolveAvatars = async (keys: Set<string>) => {
       const entries = await Promise.all(
         Array.from(keys).map(async (key) => {
           try {
@@ -163,7 +220,7 @@ export class TeamChatService {
       );
       return new Map(entries.filter((entry): entry is readonly [string, string] => !!entry[1]));
     };
-    const [avatars, photos] = await Promise.all([resolve(avatarKeys), resolve(photoKeys)]);
+    const [avatars, photos] = await Promise.all([resolveAvatars(avatarKeys), resolvePhotos(photoKeys)]);
     return { avatars, photos };
   }
 
@@ -189,9 +246,15 @@ export class TeamChatService {
     sourceLocale: string | null,
     mentions: MentionRow[],
     targetLocale: SupportedLocale,
+    mode: TranslateMode = 'cache',
+    transCache?: Map<string, string>,
   ): Promise<{ displayBody: string; bodyTranslated: string | null; isTranslated: boolean }> {
     if (!body.trim()) {
       return { displayBody: '', bodyTranslated: null, isTranslated: false };
+    }
+
+    if (mode === 'none') {
+      return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
 
     const mentionList = this.mentionDtos(mentions);
@@ -205,11 +268,21 @@ export class TeamChatService {
 
     const stored = isSupportedLocale(sourceLocale) ? sourceLocale : null;
 
-    const cached = await this.prisma.teamChatMessageTranslation.findUnique({
-      where: { messageId_locale: { messageId, locale: targetLocale } },
-    });
-    if (cached) {
-      return { displayBody: cached.body, bodyTranslated: body, isTranslated: true };
+    let cachedBody: string | undefined;
+    if (transCache) {
+      cachedBody = transCache.get(messageId);
+    } else {
+      const cached = await this.prisma.teamChatMessageTranslation.findUnique({
+        where: { messageId_locale: { messageId, locale: targetLocale } },
+      });
+      cachedBody = cached?.body;
+    }
+    if (cachedBody) {
+      return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
+    }
+
+    if (mode !== 'live') {
+      return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
 
     const result = await this.translation.translateChatBody(
@@ -258,6 +331,8 @@ export class TeamChatService {
     viewerId: string,
     urls: { avatars: Map<string, string>; photos: Map<string, string> },
     targetLocale: SupportedLocale,
+    mode: TranslateMode = 'cache',
+    transCache?: Map<string, string>,
   ) {
     const { displayBody, bodyTranslated, isTranslated } = await this.resolveTranslatedBody(
       row.id,
@@ -265,6 +340,8 @@ export class TeamChatService {
       row.sourceLocale,
       row.mentions,
       targetLocale,
+      mode,
+      transCache,
     );
 
     let replyTo = null;
@@ -287,6 +364,8 @@ export class TeamChatService {
           null,
           replyMentions,
           targetLocale,
+          mode,
+          transCache,
         );
         replyTo = {
           id: row.replyTo.id,
@@ -330,14 +409,52 @@ export class TeamChatService {
   ) {
     const take = Math.min(Math.max(1, limit), 500);
     const targetLocale = resolveLocale(lang, viewer.preferredLocale);
-    const rows = (await this.prisma.teamChatMessage.findMany({
+    const newestFirst = (await this.prisma.teamChatMessage.findMany({
       take,
       where: { deletedAt: null },
-      orderBy: { createdAt: order },
+      orderBy: { createdAt: 'desc' },
       include: messageInclude,
     })) as unknown as MessageRow[];
-    const urls = await this.buildMediaUrlMap(rows);
-    return Promise.all(rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale)));
+    const rows = orderTeamChatWindow(newestFirst, order);
+    const ids = [...new Set(rows.flatMap((r) => (r.replyTo ? [r.id, r.replyTo.id] : [r.id])))];
+    const [urls, translationRows] = await Promise.all([
+      this.buildMediaUrlMap(rows),
+      ids.length
+        ? this.prisma.teamChatMessageTranslation.findMany({
+            where: { messageId: { in: ids }, locale: targetLocale },
+            select: { messageId: true, body: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const transCache = new Map(translationRows.map((t) => [t.messageId, t.body]));
+    const mapped = await Promise.all(
+      rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale, 'cache', transCache)),
+    );
+    void this.warmMissingTranslations(rows, transCache, targetLocale);
+    return mapped;
+  }
+
+  private warmMissingTranslations(
+    rows: MessageRow[],
+    transCache: Map<string, string>,
+    targetLocale: SupportedLocale,
+  ) {
+    const missing = rows.filter(
+      (r) =>
+        r.body.trim() &&
+        !transCache.has(r.id) &&
+        this.translation.detectLocale(r.body) !== targetLocale,
+    );
+    for (const row of missing.slice(0, 12)) {
+      void this.resolveTranslatedBody(
+        row.id,
+        row.body,
+        row.sourceLocale,
+        row.mentions,
+        targetLocale,
+        'live',
+      ).catch(() => undefined);
+    }
   }
 
   private setSourceLocaleAsync(messageId: string, body: string) {
@@ -400,6 +517,15 @@ export class TeamChatService {
     return urls;
   }
 
+  /** Active users who can read team chat, excluding the author. */
+  private async listChatNotificationRecipientIds(excludeUserId: string): Promise<string[]> {
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, id: { not: excludeUserId } },
+      include: mentionableUserInclude,
+    });
+    return users.filter((u) => this.userHasTeamChatRead(u)).map((u) => u.id);
+  }
+
   private async validateMentionUserIds(mentionUserIds: string[]) {
     const unique = [...new Set(mentionUserIds.filter(Boolean))];
     if (unique.length === 0) return [];
@@ -420,8 +546,8 @@ export class TeamChatService {
   }
 
   async presign(contentType: string) {
-    const mime = (contentType || '').toLowerCase() || 'image/jpeg';
-    if (!mime.startsWith('image/')) {
+    const mime = (contentType || '').toLowerCase().split(';')[0]!.trim() || 'image/jpeg';
+    if (!isAllowedTeamChatUploadMime(mime)) {
       throw new BadRequestException('Only image uploads are allowed');
     }
     const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
@@ -449,41 +575,48 @@ export class TeamChatService {
       throw new BadRequestException('Message too long');
     }
 
+    const mentionPromise = this.validateMentionUserIds(mentionUserIds);
     if (replyToId) {
       const parent = await this.prisma.teamChatMessage.findUnique({
         where: { id: replyToId },
       });
       if (!parent || parent.deletedAt) throw new BadRequestException('Reply target not found');
     }
+    const validMentionIds = await mentionPromise;
 
-    const validMentionIds = await this.validateMentionUserIds(mentionUserIds);
-
-    const msg = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.teamChatMessage.create({
-        data: {
-          body: text,
-          photoS3Key: photoKey,
-          authorId: user.id,
-          replyToId: replyToId ?? null,
-          ...(validMentionIds.length > 0
-            ? {
-                mentions: {
-                  create: validMentionIds.map((userId) => ({ userId })),
-                },
-              }
-            : {}),
-        },
-        include: messageInclude,
-      });
-      return created;
+    const msg = await this.prisma.teamChatMessage.create({
+      data: {
+        body: text,
+        photoS3Key: photoKey,
+        authorId: user.id,
+        replyToId: replyToId ?? null,
+        ...(validMentionIds.length > 0
+          ? {
+              mentions: {
+                create: validMentionIds.map((userId) => ({ userId })),
+              },
+            }
+          : {}),
+      },
+      include: messageInclude,
     });
 
     const row = msg as unknown as MessageRow;
-    const urls = await this.buildMediaUrlMap([row]);
+    const urls = await this.buildMediaUrlMap([row], { verifyPhotos: false });
     const targetLocale = resolveLocale(user.preferredLocale);
-    const mapped = await this.mapMessage(row, user.id, urls, targetLocale);
+    const mapped = await this.mapMessage(row, user.id, urls, targetLocale, 'none');
 
     void this.setSourceLocaleAsync(row.id, row.body);
+    if (photoKey) {
+      void this.assertChatPhotoSafe(photoKey).catch((e) => {
+        this.log.warn(
+          `Unsafe chat photo ${photoKey}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        void this.prisma.teamChatMessage
+          .update({ where: { id: row.id }, data: { photoS3Key: null } })
+          .catch(() => undefined);
+      });
+    }
 
     try {
       this.realtime.emitTeamChatMessage(mapped);
@@ -491,15 +624,23 @@ export class TeamChatService {
       this.log.warn(`team_chat broadcast failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    if (validMentionIds.length > 0) {
-      // Mentions always notify (on/off shift). Await so the row + push are durable.
-      await this.notifications.notifyTeamChatMention(
-        row.id,
-        user.name,
-        validMentionIds,
-        user.id,
-      );
-    }
+    // Every message notifies all chat readers the same way an @mention does
+    // (in-app bell + web push). Actual @highlights stay on `validMentionIds`.
+    void this.listChatNotificationRecipientIds(user.id)
+      .then((recipientIds) =>
+        this.notifications.notifyTeamChatMention(
+          row.id,
+          user.name,
+          recipientIds,
+          user.id,
+          row.body,
+        ),
+      )
+      .catch((e) => {
+        this.log.warn(
+          `team_chat notify failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
 
     return mapped;
   }

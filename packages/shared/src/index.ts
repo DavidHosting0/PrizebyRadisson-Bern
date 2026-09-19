@@ -33,6 +33,7 @@ export * from './room-management';
 export * from './front-office-backup';
 export * from './shift-handover';
 export * from './reception-ops';
+export * from './team-chat-media';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',
