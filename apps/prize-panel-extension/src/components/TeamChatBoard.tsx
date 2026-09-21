@@ -1128,7 +1128,7 @@ export function TeamChatBoard() {
                   {m.reactions.length > 0 && (
                     <div
                       className={clsx(
-                        'mt-0.5 flex flex-wrap gap-0.5',
+                        'mt-1.5 flex flex-wrap gap-0.5',
                         mine ? 'justify-end' : 'justify-start',
                       )}
                     >

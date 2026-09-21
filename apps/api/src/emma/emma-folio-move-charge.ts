@@ -11,6 +11,7 @@ import { emmaHttpFetchCsrfToken, emmaHttpPostBatch } from './emma-http-auth';
 import type { EmmaSyncDebug } from './emma-sync-debug';
 import {
   acquireEmmaFolioEditSession,
+  clearStaleEmmaFolioPostBlock,
   releaseEmmaFolioEditSession,
   saveEmmaFolioDraft,
 } from './emma-folio-edit-session';
@@ -283,6 +284,18 @@ export async function moveEmmaFolioChargesFromJar(
     return results;
   } finally {
     await releaseEmmaFolioEditSession(jar, baseUrl, session, opts.debug);
+    // Same RequestObjectKey as the move session — clears any lagging own-user lock
+    // before Arrival Check opens a Deposit/VCC folio session.
+    await clearStaleEmmaFolioPostBlock(
+      jar,
+      baseUrl,
+      hotelId,
+      reservationId,
+      employee,
+      sapClient,
+      opts.debug,
+      { requestObjectKey: session.requestObjectKey },
+    );
   }
 }
 

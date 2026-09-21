@@ -1009,6 +1009,7 @@ export function TeamChatView({
                   'group relative flex w-full touch-pan-y',
                   mine ? 'justify-end' : 'justify-start',
                   isHead ? 'mt-3' : 'mt-0.5',
+                  (m.reactions ?? []).length > 0 && 'mb-1.5',
                   menu?.message.id === m.id && 'z-10',
                 )}
                 onTouchStart={(e) => onMsgTouchStart(e, m)}
@@ -1093,7 +1094,7 @@ export function TeamChatView({
                     {(m.reactions ?? []).length > 0 && (
                       <div
                         className={clsx(
-                          '-mt-1.5 flex flex-wrap items-center gap-1 px-0.5',
+                          'mt-1.5 flex flex-wrap items-center gap-1 px-0.5',
                           mine ? 'justify-end' : 'justify-start',
                         )}
                       >

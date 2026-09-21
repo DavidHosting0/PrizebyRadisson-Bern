@@ -63,6 +63,14 @@ function assertManageLocksOk(body: string, label: string): void {
   throw new Error(message || `EMMA ${label} did not succeed`);
 }
 
+function isOwnSessionLockConflict(message: string): boolean {
+  return /blocked by your user|close the other session/i.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function postManageLocks(
   jar: EmmaCookieJar,
   baseUrl: string,
@@ -107,6 +115,40 @@ async function postManageLocks(
   assertManageLocksOk(part.body, label);
 }
 
+async function unlockGuestMailSession(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  sapClient: string,
+  session: { hotelId: string; employee: string; requestObjectKey: string },
+  reservationId: string,
+  debug?: EmmaSyncDebug,
+): Promise<void> {
+  for (const forceLock of [false, true]) {
+    try {
+      const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+      await postManageLocks(
+        jar,
+        baseUrl,
+        sapClient,
+        csrf,
+        session,
+        { lock: false, unlock: true, forceLock },
+        debug,
+      );
+      await sleep(250);
+      return;
+    } catch (err) {
+      if (forceLock) {
+        log.warn(
+          `[EMMA] unlock after guest Mail clear failed for ${reservationId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Clear reservation guest Mail via EMMA Guests MERGE (Mail:""), matching the
  * browser HAR: lock → MERGE Guests → unlock. No BP / YEM_UI_BP_SRV write.
@@ -133,11 +175,26 @@ export async function clearEmmaGuestMailFromJar(
 
   let locked = false;
   try {
-    let csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
-    await postManageLocks(jar, baseUrl, sapClient, csrf, session, { lock: true }, params.debug);
+    const lockOnce = async () => {
+      const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+      await postManageLocks(jar, baseUrl, sapClient, csrf, session, { lock: true }, params.debug);
+    };
+
+    try {
+      await lockOnce();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!isOwnSessionLockConflict(message)) throw err;
+      log.warn(
+        `[EMMA] own-session lock conflict before guest Mail clear for ${reservationId} — force closing and retrying`,
+      );
+      await unlockGuestMailSession(jar, baseUrl, sapClient, session, reservationId, params.debug);
+      await sleep(500);
+      await lockOnce();
+    }
     locked = true;
 
-    csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+    const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
     const { body: batchBody, contentType } = buildODataChangesetBatchBody(
       [{ actionPath: mergePath, body: mergeBody, method: 'MERGE' }],
       csrf,
@@ -174,24 +231,7 @@ export async function clearEmmaGuestMailFromJar(
     }
   } finally {
     if (locked) {
-      try {
-        const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
-        await postManageLocks(
-          jar,
-          baseUrl,
-          sapClient,
-          csrf,
-          session,
-          { lock: false, unlock: true },
-          params.debug,
-        );
-      } catch (err) {
-        log.warn(
-          `[EMMA] unlock after guest Mail clear failed for ${reservationId}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
+      await unlockGuestMailSession(jar, baseUrl, sapClient, session, reservationId, params.debug);
     }
   }
 }

@@ -73,6 +73,11 @@ function assertManageLocksOk(body: string, label: string): void {
   throw new Error(message || `EMMA ${label} did not succeed`);
 }
 
+/** Same SAP user still has an open Folio/edit session (browser dialog: close other session). */
+export function isEmmaOwnSessionLockConflict(message: string): boolean {
+  return /blocked by your user|close the other session/i.test(message);
+}
+
 async function postManageLocks(
   jar: EmmaCookieJar,
   baseUrl: string,
@@ -116,6 +121,44 @@ async function postManageLocks(
   assertManageLocksOk(part.body, label);
 }
 
+async function forceCloseOwnFolioSession(
+  jar: EmmaCookieJar,
+  baseUrl: string,
+  session: Pick<EmmaFolioEditSession, 'requestObjectKey' | 'hotelId' | 'employee' | 'sapClient'>,
+  debug?: EmmaSyncDebug,
+): Promise<void> {
+  for (const forceLock of [true, false]) {
+    try {
+      const csrf = await emmaHttpFetchCsrfToken(
+        jar,
+        baseUrl,
+        session.sapClient,
+        EMMA_ODATA_RSRVS_SRV,
+      );
+      await postManageLocks(
+        jar,
+        baseUrl,
+        session.sapClient,
+        csrf,
+        session,
+        { lock: false, unlock: true, forceLock },
+        debug,
+      );
+      await emmaSleep(300);
+      log.log(
+        `[EMMA] force-closed own folio session for key=${session.requestObjectKey} (force=${forceLock})`,
+      );
+      return;
+    } catch (err) {
+      log.warn(
+        `[EMMA] force-close own session (force=${forceLock}) failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+}
+
 /** Open Folio Management edit session (ManageLocks + Draft), required before MoveCharge. */
 export async function acquireEmmaFolioEditSession(
   jar: EmmaCookieJar,
@@ -134,9 +177,26 @@ export async function acquireEmmaFolioEditSession(
     employee,
     sapClient,
   };
-  const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
 
-  await postManageLocks(jar, baseUrl, sapClient, csrf, session, { lock: true }, debug);
+  const lockOnce = async () => {
+    const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
+    await postManageLocks(jar, baseUrl, sapClient, csrf, session, { lock: true }, debug);
+  };
+
+  try {
+    await lockOnce();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!isEmmaOwnSessionLockConflict(message)) throw err;
+    log.warn(
+      `[EMMA] own-session lock conflict for ${reservationId} — closing other session and retrying lock`,
+    );
+    await forceCloseOwnFolioSession(jar, baseUrl, session, debug);
+    await emmaSleep(500);
+    await lockOnce();
+  }
+
+  const csrf = await emmaHttpFetchCsrfToken(jar, baseUrl, sapClient, EMMA_ODATA_RSRVS_SRV);
   await postChangeset(
     jar,
     baseUrl,
@@ -272,15 +332,22 @@ export async function clearStaleEmmaFolioPostBlock(
 
   for (const forceLock of [false, true]) {
     try {
+      const unlockCsrf = await emmaHttpFetchCsrfToken(
+        jar,
+        baseUrl,
+        sapClient,
+        EMMA_ODATA_RSRVS_SRV,
+      );
       await postManageLocks(
         jar,
         baseUrl,
         sapClient,
-        csrf,
+        unlockCsrf,
         session,
         { lock: false, unlock: true, forceLock },
         debug,
       );
+      await emmaSleep(300);
       log.log(
         `[EMMA] released folio lock for ${reservationId} (force=${forceLock})`,
       );

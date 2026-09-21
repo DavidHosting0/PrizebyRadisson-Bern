@@ -40,6 +40,7 @@ import {
 } from '../reservations/reservation-sensitive';
 import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
+import { buildEmmaRequestObjectKey } from '../emma/emma-odata-client';
 import { buildArrivalCheckDecision, FOLIO_3_MANUAL_REASON, type ArrivalCheckDecision } from './arrival-check-rules';
 import { planVccPayment } from './arrival-check-vcc';
 import {
@@ -898,6 +899,16 @@ export class ArrivalCheckService implements OnModuleInit {
           where: { id: itemId },
           data: { movesDone },
         });
+
+        // MoveCharge opens/releases its own Folio edit session. If unlock lags,
+        // the subsequent VCC Deposit lock hits "blocked by your user". Force-clear
+        // with the reservation RequestObjectKey before payment.
+        await this.emma.clearStaleFolioPostBlock({
+          hotelId,
+          reservationId: item.reservationId,
+          requestObjectKey: buildEmmaRequestObjectKey(hotelId, item.reservationId),
+        });
+        await new Promise((r) => setTimeout(r, 400));
       }
 
       let workingFolio: ReservationEmmaFolioBundle = folio;
@@ -1155,7 +1166,11 @@ export class ArrivalCheckService implements OnModuleInit {
       this.log.warn(
         `[ArrivalCheck] ${reservationId}: open EMMA folio draft (${paySensitive.draftStatus ?? '—'} / ${paySensitive.draftLockedBy ?? '—'}) — clearing before VCC`,
       );
-      await this.emma.clearStaleFolioPostBlock({ hotelId, reservationId });
+      await this.emma.clearStaleFolioPostBlock({
+        hotelId,
+        reservationId,
+        requestObjectKey: buildEmmaRequestObjectKey(hotelId, reservationId),
+      });
     }
 
     await this.reservations.fetchFolioFromEmma(reservationId, hotelId);
