@@ -813,19 +813,29 @@ export class ArrivalCheckService implements OnModuleInit {
       }
 
       let emailNote: string | null = null;
-      emailNote = await this.clearOtaPlaceholderGuestEmailIfNeeded(
-        hotelId,
-        item.reservationId,
-        decision.source,
-        detail,
-      );
-      if (emailNote) {
+      const mainGuest = pickMainGuestMail(detail?.guests);
+      if (
+        mainGuest?.mail &&
+        shouldClearGuestEmailForArrivalCheck(decision.source, mainGuest.mail)
+      ) {
         await this.prisma.arrivalCheckRunItem.update({
           where: { id: itemId },
-          data: {
-            statusMessage: `${this.classifyMessage(decision, categoryLabel)} ${emailNote}`,
-          },
+          data: { statusMessage: 'E-Mail wird gelöscht …' },
         });
+        emailNote = await this.clearOtaPlaceholderGuestEmailIfNeeded(
+          hotelId,
+          item.reservationId,
+          decision.source,
+          detail,
+        );
+        if (emailNote) {
+          await this.prisma.arrivalCheckRunItem.update({
+            where: { id: itemId },
+            data: {
+              statusMessage: `${this.classifyMessage(decision, categoryLabel)} ${emailNote}`,
+            },
+          });
+        }
       }
 
       if (hasArrivalCheckForbiddenFolioActivity(folio)) {
@@ -1276,13 +1286,13 @@ export class ArrivalCheckService implements OnModuleInit {
       this.log.log(
         `[ArrivalCheck] ${reservationId}: OTA-Platzhalter-E-Mail entfernt (Gast ${main.guestId})`,
       );
-      return 'OTA-Platzhalter-E-Mail entfernt.';
+      return 'E-Mail wurde gelöscht.';
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.log.warn(
         `[ArrivalCheck] ${reservationId}: E-Mail-Clear fehlgeschlagen: ${msg}`,
       );
-      return `E-Mail-Clear fehlgeschlagen (${msg.slice(0, 120)}).`;
+      return `E-Mail-Löschen fehlgeschlagen (${msg.slice(0, 120)}).`;
     }
   }
 

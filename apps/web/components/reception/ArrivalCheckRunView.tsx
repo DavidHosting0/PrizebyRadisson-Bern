@@ -128,8 +128,15 @@ function RunItemRow({ item, highlight }: { item: ArrivalCheckRunItem; highlight?
         {item.categoryLabel && (
           <p className="mt-0.5 text-xs text-sidebar-muted">{item.categoryLabel}</p>
         )}
-        {item.statusMessage && highlight && (
-          <p className="mt-1.5 text-xs leading-relaxed text-indigo-200">{item.statusMessage}</p>
+        {item.statusMessage && (
+          <p
+            className={clsx(
+              'mt-1.5 text-xs leading-relaxed',
+              highlight ? 'text-indigo-200' : 'text-sidebar-muted',
+            )}
+          >
+            {item.statusMessage}
+          </p>
         )}
         {item.status === 'IN_PROGRESS' && highlight && <StepPills item={item} />}
         {needsManual(item) && !highlight && (
