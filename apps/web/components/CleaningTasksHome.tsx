@@ -121,6 +121,9 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
     const aDep = a.isDepartureToday ? 1 : 0;
     const bDep = b.isDepartureToday ? 1 : 0;
     if (aDep !== bDep) return bDep - aDep;
+    const aExt = a.isExtensiveRestant ? 1 : 0;
+    const bExt = b.isExtensiveRestant ? 1 : 0;
+    if (aExt !== bExt) return bExt - aExt;
     return (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true });
   }
 
@@ -218,7 +221,14 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
           <ul className="mt-3 space-y-3">
             {restantTasks.map((task) => (
               <li key={task.id}>
-                <Card tone="dark" className={clsx(cardClass, 'flex flex-col gap-3')}>
+                <Card
+                  tone="dark"
+                  className={clsx(
+                    cardClass,
+                    'flex flex-col gap-3',
+                    task.isExtensiveRestant && 'ring-2 ring-orange-400/70',
+                  )}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-lg font-semibold text-white">
@@ -228,6 +238,11 @@ export function CleaningTasksHome({ paths }: { paths: CleaningTasksHomePaths }) 
                         <p className="text-xs text-sidebar-muted">{t('floor', { floor: task.floor })}</p>
                       )}
                       <p className="mt-1 text-xs text-sidebar-muted">{t('stayoverRestant')}</p>
+                      {task.isExtensiveRestant && (
+                        <span className="mt-1.5 inline-block rounded-btn bg-orange-400/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-950">
+                          {t('extensiveRestant')}
+                        </span>
+                      )}
                       <DepartureStatus task={task} />
                     </div>
                     <Button

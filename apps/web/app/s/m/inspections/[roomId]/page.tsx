@@ -63,7 +63,7 @@ export default function SupervisorMobileInspectionRoomPage() {
   }
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-4 p-4 pb-[calc(5rem+var(--safe-bottom)+4.5rem)]">
       <div className="flex items-center gap-2">
         <Link
           href="/s/m"
@@ -98,15 +98,6 @@ export default function SupervisorMobileInspectionRoomPage() {
       </Card>
 
       <div className="flex flex-col gap-3">
-        <Button
-          type="button"
-          variant="action"
-          className="min-h-[52px] w-full"
-          disabled={!canInspect}
-          onClick={() => setInspectOpen(true)}
-        >
-          {t('openInspection')}
-        </Button>
         <Button type="button" variant="secondary" className="min-h-[52px] w-full" onClick={() => setLostOpen(true)}>
           {t('reportLostFound')}
         </Button>
@@ -122,6 +113,18 @@ export default function SupervisorMobileInspectionRoomPage() {
         )}
         <Button type="button" variant="ghostOnDark" className="min-h-[48px] w-full" onClick={() => router.push('/s/m')}>
           {t('backToHome')}
+        </Button>
+      </div>
+
+      <div className="fixed bottom-[calc(5rem+var(--safe-bottom))] left-0 right-0 z-30 border-t border-sidebar-border/60 bg-[#121a26]/95 px-4 py-3 backdrop-blur-sm">
+        <Button
+          type="button"
+          variant="action"
+          className="min-h-[52px] w-full text-base font-semibold"
+          disabled={!canInspect}
+          onClick={() => setInspectOpen(true)}
+        >
+          {t('openInspection')}
         </Button>
       </div>
 

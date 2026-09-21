@@ -1,0 +1,18 @@
+---
+description: Carlo CV Bewerbungsregeln (kurze Skills, keine Gedankenstriche)
+globs: **/Carlo CV/**/*
+alwaysApply: false
+---
+
+# Carlo CV Bewerbungen
+
+Wenn du an Bewerbungen unter `Carlo CV` arbeitest (auch `Desktop/Carlo CV`):
+
+- **Kontakt (fest):** E-Mail `carlo.koch@bluewin.ch`, Telefon `+41 78 604 64 95`
+- **Ton:** professionell und natürlich (kein KI Ton); keine Aufzählungen nach Doppelpunkt; wenig Buzzwords; nicht salopp
+- **Qualifikationen:** nur 4–6 zentrale Punkte, eng an der Stelle; Sprachen nicht doppelt listen
+- **Unterschrift:** `carlosignature.png` via `unterschriftBild` im Motivationsschreiben (nicht getippter Name)
+- **Keine** `—` und keine `-` als Trenner im Fließtext; `-` nur in Zeiträumen (`09.2025 - 01.2026`)
+- Sprache: **Italienisch**, nicht Spanisch
+- Pro Stelle eigener Ordner `applications/<slug>/`; Texte je Job neu schärfen
+- Details: `Carlo CV/BEWERBUNG-REGELN.md`

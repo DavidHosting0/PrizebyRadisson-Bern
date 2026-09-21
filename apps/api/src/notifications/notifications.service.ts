@@ -197,16 +197,24 @@ export class NotificationsService {
     });
   }
 
+  private chatPreviewSnippet(preview?: string, hasPhoto = false): string {
+    const snippet = (preview ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (snippet) return snippet;
+    return hasPhoto ? 'Photo' : '';
+  }
+
+  /** Explicit @mention — title: "{author} mentioned you". */
   async notifyTeamChatMention(
     messageId: string,
     authorName: string,
     mentionedUserIds: string[],
     excludeUserId: string,
     preview?: string,
+    hasPhoto = false,
   ) {
     const userIds = mentionedUserIds.filter((id) => id !== excludeUserId);
     if (userIds.length === 0) return [];
-    const snippet = (preview ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const snippet = this.chatPreviewSnippet(preview, hasPhoto);
     return this.createForUsers({
       userIds,
       type: NotificationType.TEAM_CHAT_MENTION,
@@ -218,7 +226,40 @@ export class NotificationsService {
         messageKey: 'teamChatMention',
         messageParams: { authorName },
         ...(snippet
-          ? {}
+          ? hasPhoto && !(preview ?? '').trim()
+            ? { bodyKey: 'teamChatPhoto', bodyParams: {} }
+            : {}
+          : { bodyKey: 'teamChatMentionBody' }),
+      },
+    });
+  }
+
+  /** Broadcast chat message — title: "{author} wrote", body = message preview. */
+  async notifyTeamChatMessage(
+    messageId: string,
+    authorName: string,
+    recipientUserIds: string[],
+    excludeUserId: string,
+    preview?: string,
+    hasPhoto = false,
+  ) {
+    const userIds = recipientUserIds.filter((id) => id !== excludeUserId);
+    if (userIds.length === 0) return [];
+    const snippet = this.chatPreviewSnippet(preview, hasPhoto);
+    return this.createForUsers({
+      userIds,
+      type: NotificationType.TEAM_CHAT_MENTION,
+      title: `${authorName} wrote`,
+      body: snippet || 'Open team chat to read the message',
+      metadata: {
+        messageId,
+        authorName,
+        messageKey: 'teamChatMessage',
+        messageParams: { authorName },
+        ...(snippet
+          ? hasPhoto && !(preview ?? '').trim()
+            ? { bodyKey: 'teamChatPhoto', bodyParams: {} }
+            : {}
           : { bodyKey: 'teamChatMentionBody' }),
       },
     });

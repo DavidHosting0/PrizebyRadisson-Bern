@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import type { DailyCleaningPlanResponse, DailyCleaningTaskDto } from '@housekeeping/shared';
@@ -24,7 +24,7 @@ const PAINT_COLORS = [
   '#C45C26',
   '#2A9D8F',
   '#9B5DE5',
-  '#E9C46A',
+  '#D4A017',
   '#E76F51',
   '#457B9D',
   '#2A9D4F',
@@ -125,6 +125,15 @@ export function RoomAssignmentPaintView({
     return m;
   }, [cleaners]);
 
+  const roomCountByUser = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of cleaners) counts[c.id] = 0;
+    for (const userId of Object.values(roomAssign)) {
+      counts[userId] = (counts[userId] ?? 0) + 1;
+    }
+    return counts;
+  }, [cleaners, roomAssign]);
+
   const openTasks = useMemo(
     () => (planQ.data?.tasks ?? []).filter((t) => !t.completedAt),
     [planQ.data?.tasks],
@@ -144,9 +153,14 @@ export function RoomAssignmentPaintView({
     () =>
       openTasks
         .filter((t) => t.workType === 'RESTANT' && t.roomId)
-        .sort((a, b) =>
-          (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true }),
-        ),
+        .sort((a, b) => {
+          const aExt = a.isExtensiveRestant ? 1 : 0;
+          const bExt = b.isExtensiveRestant ? 1 : 0;
+          if (aExt !== bExt) return bExt - aExt;
+          return (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, {
+            numeric: true,
+          });
+        }),
     [openTasks],
   );
 
@@ -227,6 +241,10 @@ export function RoomAssignmentPaintView({
     [publicTasks, publicAssign],
   );
 
+  const totalRooms = dirtyTasks.length + restantTasks.length;
+  const assignedRooms = totalRooms - unassignedRooms.length;
+  const progressPct = totalRooms > 0 ? Math.round((assignedRooms / totalRooms) * 100) : 100;
+
   const save = useMutation({
     mutationFn: async () => {
       const date = crew.date?.trim() || undefined;
@@ -301,18 +319,30 @@ export function RoomAssignmentPaintView({
   const rootRef = useRef<HTMLDivElement>(null);
   useOverlayKeyboard({ open, onClose: handleClose, containerRef: rootRef });
 
+  const selectedColor = selectedUserId ? colorByUser.get(selectedUserId) : undefined;
+
   if (!open) return null;
 
   return (
-    <div ref={rootRef} className="fixed inset-0 z-[60] flex flex-col bg-[#0f1620] text-white">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6">
+    <div
+      ref={rootRef}
+      className="fixed inset-0 z-[60] flex flex-col text-white"
+      style={{
+        background:
+          'radial-gradient(1200px 500px at 10% -10%, rgba(59,111,160,0.22), transparent 55%), radial-gradient(900px 420px at 90% 0%, rgba(42,157,143,0.12), transparent 50%), #0c121a',
+      }}
+    >
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#111923]/80 px-4 py-3.5 backdrop-blur-md sm:px-6">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold tracking-tight">{t('paintTitle')}</h2>
-          <p className="text-xs text-sidebar-muted">{t('selectCleanerHint')}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-muted">
+            {t('paintEyebrow')}
+          </p>
+          <h2 className="mt-0.5 text-lg font-semibold tracking-tight sm:text-xl">{t('paintTitle')}</h2>
+          <p className="mt-0.5 text-xs text-sidebar-muted">{t('selectCleanerHint')}</p>
         </div>
         <button
           type="button"
-          className="rounded-full p-2 text-sidebar-muted transition hover:bg-white/10 hover:text-white"
+          className="rounded-full border border-white/10 bg-white/5 p-2 text-sidebar-muted transition hover:bg-white/10 hover:text-white"
           aria-label={tCommon('close')}
           onClick={handleClose}
         >
@@ -327,43 +357,62 @@ export function RoomAssignmentPaintView({
         </button>
       </header>
 
-      <div className="shrink-0 border-b border-white/10 px-4 py-3 sm:px-6">
-        <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="shrink-0 border-b border-white/10 bg-[#141c28]/75 px-4 py-3 backdrop-blur-sm sm:px-6">
+        <div className="flex gap-2.5 overflow-x-auto pb-1 sidebar-scroll">
           {cleaners.map((c) => {
             const selected = selectedUserId === c.id;
+            const roomCount = roomCountByUser[c.id] ?? 0;
             return (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setSelectedUserId(c.id)}
                 className={clsx(
-                  'flex min-w-[140px] shrink-0 flex-col rounded-btn border px-3 py-2 text-left transition',
-                  selected ? 'ring-2 ring-white/80' : 'hover:brightness-110',
+                  'group relative flex min-w-[168px] shrink-0 overflow-hidden rounded-xl border text-left transition',
+                  selected
+                    ? 'border-white/30 bg-[#1A2332] shadow-[0_0_0_2px_rgba(255,255,255,0.18)]'
+                    : 'border-white/10 bg-[#1A2332]/80 hover:border-white/20 hover:bg-[#1e2a3a]',
                 )}
-                style={{
-                  backgroundColor: `${c.color}${selected ? 'ee' : '99'}`,
-                  borderColor: c.color,
-                }}
               >
-                <span className="truncate text-sm font-semibold text-white drop-shadow-sm">
-                  {c.name}
-                </span>
-                <span className="mt-1 flex flex-wrap gap-1">
-                  {c.isLate ? (
-                    <span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase">
-                      {t('badgeLate')}
+                <span
+                  className="w-1.5 shrink-0 self-stretch"
+                  style={{ backgroundColor: c.color }}
+                  aria-hidden
+                />
+                <span className="flex min-w-0 flex-1 flex-col gap-1.5 px-3 py-2.5">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-white">{c.name}</span>
+                    <span
+                      className={clsx(
+                        'mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-[#1A2332]',
+                        selected ? 'scale-110' : 'opacity-80',
+                      )}
+                      style={{ backgroundColor: c.color }}
+                      aria-hidden
+                    />
+                  </span>
+                  <span className="text-[11px] font-medium tabular-nums text-slate-300">
+                    {t('paintRoomCount', { count: roomCount })}
+                  </span>
+                  {(c.isLate || c.isRestant || c.isInspect) && (
+                    <span className="flex flex-wrap gap-1">
+                      {c.isLate ? (
+                        <span className="rounded bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+                          {t('badgeLate')}
+                        </span>
+                      ) : null}
+                      {c.isRestant ? (
+                        <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-300">
+                          {t('restants')}
+                        </span>
+                      ) : null}
+                      {c.isInspect ? (
+                        <span className="rounded bg-emerald-400/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-200">
+                          {t('badgeInspect')}
+                        </span>
+                      ) : null}
                     </span>
-                  ) : null}
-                  {c.isRestant ? (
-                    <span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase">
-                      {t('restants')}
-                    </span>
-                  ) : null}
-                  {c.isInspect ? (
-                    <span className="rounded bg-black/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase">
-                      {t('badgeInspect')}
-                    </span>
-                  ) : null}
+                  )}
                 </span>
               </button>
             );
@@ -371,126 +420,139 @@ export function RoomAssignmentPaintView({
         </div>
       </div>
 
-      <div className="sidebar-scroll min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6">
+      <div className="sidebar-scroll min-h-0 flex-1 space-y-7 overflow-y-auto px-4 py-5 sm:px-6">
         {planQ.isLoading ? (
           <p className="text-sm text-sidebar-muted">{t('loadingStaff')}</p>
         ) : (
           <>
-            <section>
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
-                {t('sectionDirty')}
-              </h3>
-              {dirtyByFloor.length === 0 ? (
-                <p className="text-sm text-sidebar-muted">{t('noDirtyForPreview')}</p>
-              ) : (
-                <div className="space-y-4">
-                  {dirtyByFloor.map(([floor, tasks]) => (
-                    <div key={String(floor)}>
-                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <PaintSection
+              title={t('sectionDirty')}
+              count={dirtyTasks.length}
+              empty={dirtyByFloor.length === 0 ? t('noDirtyForPreview') : null}
+            >
+              <div className="space-y-5">
+                {dirtyByFloor.map(([floor, tasks]) => (
+                  <div key={String(floor)}>
+                    <div className="mb-2.5 flex items-center gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                         {floor === 'none' ? '—' : formatFloorLabel(floor)}
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        {tasks.map((task) => (
-                          <PaintTile
-                            key={task.id}
-                            label={task.roomNumber ?? '—'}
-                            color={
-                              task.roomId && roomAssign[task.roomId]
-                                ? colorByUser.get(roomAssign[task.roomId]!)
-                                : undefined
-                            }
-                            onClick={() => task.roomId && paintRoom(task.roomId)}
-                            disabled={!selectedUserId}
-                          />
-                        ))}
-                      </div>
+                      <span className="h-px flex-1 bg-white/8" />
+                      <span className="text-[10px] tabular-nums text-sidebar-muted">{tasks.length}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                    <div className="flex flex-wrap gap-2">
+                      {tasks.map((task) => (
+                        <PaintTile
+                          key={task.id}
+                          label={task.roomNumber ?? '—'}
+                          color={
+                            task.roomId && roomAssign[task.roomId]
+                              ? colorByUser.get(roomAssign[task.roomId]!)
+                              : undefined
+                          }
+                          brushColor={selectedColor}
+                          onClick={() => task.roomId && paintRoom(task.roomId)}
+                          disabled={!selectedUserId}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </PaintSection>
 
-            <section>
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
-                {t('sectionRestants')}
-              </h3>
-              {restantTasks.length === 0 ? (
-                <p className="text-sm text-sidebar-muted">{t('noRestantsPaint')}</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {restantTasks.map((task) => (
-                    <PaintTile
-                      key={task.id}
-                      label={task.roomNumber ?? '—'}
-                      color={
-                        task.roomId && roomAssign[task.roomId]
-                          ? colorByUser.get(roomAssign[task.roomId]!)
-                          : undefined
-                      }
-                      onClick={() => task.roomId && paintRoom(task.roomId)}
-                      disabled={!selectedUserId}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
+            <PaintSection
+              title={t('sectionRestants')}
+              count={restantTasks.length}
+              empty={restantTasks.length === 0 ? t('noRestantsPaint') : null}
+            >
+              <div className="flex flex-wrap gap-2">
+                {restantTasks.map((task) => (
+                  <PaintTile
+                    key={task.id}
+                    label={task.roomNumber ?? '—'}
+                    sub={task.isExtensiveRestant ? t('extensiveRestantShort') : undefined}
+                    highlight={task.isExtensiveRestant === true}
+                    color={
+                      task.roomId && roomAssign[task.roomId]
+                        ? colorByUser.get(roomAssign[task.roomId]!)
+                        : undefined
+                    }
+                    brushColor={selectedColor}
+                    onClick={() => task.roomId && paintRoom(task.roomId)}
+                    disabled={!selectedUserId}
+                  />
+                ))}
+              </div>
+            </PaintSection>
 
-            <section>
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-sidebar-muted">
-                {t('sectionPublic')}
-              </h3>
-              {publicTasks.length === 0 ? (
-                <p className="text-sm text-sidebar-muted">{t('noPublicPaint')}</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {publicTasks.map((task) => (
-                    <PaintTile
-                      key={task.id}
-                      label={task.publicAreaName ?? '—'}
-                      sub={task.floor != null ? formatFloorLabel(task.floor) : undefined}
-                      color={
-                        task.publicAreaId && publicAssign[task.publicAreaId]
-                          ? colorByUser.get(publicAssign[task.publicAreaId]!)
-                          : undefined
-                      }
-                      onClick={() => task.publicAreaId && paintPublic(task.publicAreaId)}
-                      disabled={!selectedUserId}
-                      wide
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
+            <PaintSection
+              title={t('sectionPublic')}
+              count={publicTasks.length}
+              empty={publicTasks.length === 0 ? t('noPublicPaint') : null}
+            >
+              <div className="flex flex-wrap gap-2">
+                {publicTasks.map((task) => (
+                  <PaintTile
+                    key={task.id}
+                    label={task.publicAreaName ?? '—'}
+                    sub={task.floor != null ? formatFloorLabel(task.floor) : undefined}
+                    color={
+                      task.publicAreaId && publicAssign[task.publicAreaId]
+                        ? colorByUser.get(publicAssign[task.publicAreaId]!)
+                        : undefined
+                    }
+                    brushColor={selectedColor}
+                    onClick={() => task.publicAreaId && paintPublic(task.publicAreaId)}
+                    disabled={!selectedUserId}
+                    wide
+                  />
+                ))}
+              </div>
+            </PaintSection>
           </>
         )}
       </div>
 
-      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#141c28] px-4 py-3 sm:px-6">
-        <p className="text-xs text-sidebar-muted">
-          {t('unassignedSummary', {
-            rooms: unassignedRooms.length,
-            publics: unassignedPublics.length,
-          })}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            className="min-h-[44px] border-sidebar-border bg-transparent text-white hover:bg-white/10"
-            onClick={handleClose}
-          >
-            {tCommon('cancel')}
-          </Button>
-          <Button
-            variant="action"
-            className="min-h-[44px]"
-            disabled={save.isPending || planQ.isLoading || cleaners.length === 0}
-            onClick={requestSave}
-          >
-            {save.isPending ? t('saving') : t('saveAssignment')}
-          </Button>
+      <footer className="flex shrink-0 flex-col gap-3 border-t border-white/10 bg-[#111923]/95 px-4 py-3.5 backdrop-blur-md sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full bg-action transition-[width] duration-300"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <p className="shrink-0 text-xs tabular-nums text-sidebar-muted">
+            {t('paintProgress', { assigned: assignedRooms, total: totalRooms })}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-sidebar-muted">
+            {t('unassignedSummary', {
+              rooms: unassignedRooms.length,
+              publics: unassignedPublics.length,
+            })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              className="min-h-[44px] border-sidebar-border bg-transparent text-white hover:bg-white/10"
+              onClick={handleClose}
+            >
+              {tCommon('cancel')}
+            </Button>
+            <Button
+              variant="action"
+              className="min-h-[44px]"
+              disabled={save.isPending || planQ.isLoading || cleaners.length === 0}
+              onClick={requestSave}
+            >
+              {save.isPending ? t('saving') : t('saveAssignment')}
+            </Button>
+          </div>
         </div>
         {save.isError ? (
-          <p className="w-full text-sm text-rose-400">
+          <p className="text-sm text-rose-400">
             {(save.error as Error)?.message || t('runError')}
           </p>
         ) : null}
@@ -498,7 +560,7 @@ export function RoomAssignmentPaintView({
 
       {warnOpen ? (
         <div
-          className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4"
+          className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
           role="presentation"
         >
           <div
@@ -546,20 +608,50 @@ export function RoomAssignmentPaintView({
   );
 }
 
+function PaintSection({
+  title,
+  count,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  empty: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-white/10 bg-[#1A2332]/55 p-4 sm:p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-sidebar-muted">
+          {title}
+        </h3>
+        <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-slate-300">
+          {count}
+        </span>
+      </div>
+      {empty ? <p className="text-sm text-sidebar-muted">{empty}</p> : children}
+    </section>
+  );
+}
+
 function PaintTile({
   label,
   sub,
   color,
+  brushColor,
   onClick,
   disabled,
   wide,
+  highlight,
 }: {
   label: string;
   sub?: string;
   color?: string;
+  brushColor?: string;
   onClick: () => void;
   disabled?: boolean;
   wide?: boolean;
+  highlight?: boolean;
 }) {
   return (
     <button
@@ -567,15 +659,25 @@ function PaintTile({
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'rounded-btn border px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40',
-        wide ? 'min-w-[140px]' : 'min-w-[52px]',
+        'rounded-lg border px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40',
+        wide ? 'min-w-[148px]' : 'min-w-[56px]',
         color
-          ? 'border-transparent text-white shadow-sm'
-          : 'border-dashed border-white/25 bg-white/[0.04] text-slate-200 hover:bg-white/10',
+          ? 'border-transparent text-white shadow-[0_1px_0_rgba(0,0,0,0.25)]'
+          : 'border-dashed border-white/20 bg-white/[0.03] text-slate-200 hover:border-white/35 hover:bg-white/[0.07]',
+        highlight && !color && 'ring-2 ring-orange-400/80 border-orange-400/50 bg-orange-500/15',
+        highlight && color && 'ring-2 ring-orange-200/90',
       )}
-      style={color ? { backgroundColor: color } : undefined}
+      style={
+        color
+          ? { backgroundColor: color }
+          : brushColor
+            ? { boxShadow: `inset 0 0 0 1px ${brushColor}55` }
+            : undefined
+      }
     >
-      <span className="block text-sm font-semibold tabular-nums leading-none">{label}</span>
+      <span className="block text-sm font-semibold tabular-nums leading-none tracking-tight">
+        {label}
+      </span>
       {sub ? <span className="mt-1 block text-[10px] opacity-80">{sub}</span> : null}
     </button>
   );

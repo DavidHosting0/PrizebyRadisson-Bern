@@ -38,6 +38,10 @@ export type ReservationListItem = {
   isArrivalToday?: boolean;
   /** Continuing stay (Anreise vor heute, Abreise nach heute). */
   isRestant?: boolean;
+  /** Restant already ≥5 nights in house — thorough restant clean. */
+  isExtensiveRestant?: boolean;
+  /** Calendar nights since arrival (arrival day = 0). */
+  nightsInHouse?: number;
   /** Timestamp of the last successful arrival check (for the Arrival-Check UI). */
   arrivalCheckCompletedAt?: string | null;
   /** Run id of that earlier arrival check. */

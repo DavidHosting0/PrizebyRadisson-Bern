@@ -140,6 +140,8 @@ export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
 
   if (!open) return null;
 
+  const hasPhoto = Boolean(photoFile);
+
   return (
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
@@ -183,157 +185,194 @@ export function InspectRoomModal({ open, onClose, roomId, roomNumber }: Props) {
 
         <form
           onSubmit={onSubmit}
-          className="sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
-          <div className="space-y-4 p-5">
-            {canReadDamage && (
-              <section className="rounded-xl border border-sidebar-border/60 bg-white/[0.03] p-4">
-                <p className="text-sm font-medium text-white">{t('knownDamage')}</p>
-                <p className="mt-1 text-xs text-sidebar-muted">{t('knownDamageHint')}</p>
-                {damagesQ.isLoading && (
-                  <p className="mt-2 text-xs text-sidebar-muted">{tCommon('loading')}</p>
-                )}
-                {!damagesQ.isLoading && openDamages.length === 0 && (
-                  <p className="mt-2 text-xs text-sidebar-muted">{t('noOpenDamage')}</p>
-                )}
-                {openDamages.length > 0 && (
-                  <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto">
-                    {openDamages.map((d) => (
-                      <li
-                        key={d.id}
-                        className="flex gap-2 rounded-btn border border-sidebar-border/60 bg-sidebar/60 p-2"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={d.photoUrl}
-                          alt=""
-                          className="h-14 w-14 shrink-0 rounded object-cover"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-100">
-                            {damageLabel(d.damageType)}
-                          </p>
-                          <p className="line-clamp-2 text-xs text-sidebar-muted">{d.description}</p>
-                          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-sidebar-muted">
-                            {damageStatusLabel(d.status)}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {canReportDamage && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className={clsx(darkSecondaryBtn, 'mt-3 w-full')}
-                    onClick={() => setDamageOpen(true)}
-                  >
-                    {tHk('reportDamage')}
-                  </Button>
-                )}
-              </section>
-            )}
-
-            <div>
-              <p className="text-sm font-medium text-white">
-                {t('inspectionPhoto')} <span className="text-danger">*</span>
-              </p>
-              <p className="mt-1 text-xs text-sidebar-muted">{t('photoRequiredHint')}</p>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="sr-only"
-                onChange={(e) => {
-                  onPhotoSelected(e.target.files?.[0]);
-                  e.target.value = '';
-                }}
-              />
-              {photoPreview ? (
-                <div className="mt-3 overflow-hidden rounded-btn border border-sidebar-border/60 bg-sidebar/40">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photoPreview}
-                    alt={t('photoPreviewAlt')}
-                    className="aspect-video w-full object-cover"
-                  />
-                  <div className="flex gap-2 border-t border-sidebar-border/60 p-2">
+          <div className="sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <div className="space-y-4 p-5">
+              {canReadDamage && (
+                <section className="rounded-xl border border-sidebar-border/60 bg-white/[0.03] p-4">
+                  <p className="text-sm font-medium text-white">{t('knownDamage')}</p>
+                  <p className="mt-1 text-xs text-sidebar-muted">{t('knownDamageHint')}</p>
+                  {damagesQ.isLoading && (
+                    <p className="mt-2 text-xs text-sidebar-muted">{tCommon('loading')}</p>
+                  )}
+                  {!damagesQ.isLoading && openDamages.length === 0 && (
+                    <p className="mt-2 text-xs text-sidebar-muted">{t('noOpenDamage')}</p>
+                  )}
+                  {openDamages.length > 0 && (
+                    <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto">
+                      {openDamages.map((d) => (
+                        <li
+                          key={d.id}
+                          className="flex gap-2 rounded-btn border border-sidebar-border/60 bg-sidebar/60 p-2"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={d.photoUrl}
+                            alt=""
+                            className="h-14 w-14 shrink-0 rounded object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-100">
+                              {damageLabel(d.damageType)}
+                            </p>
+                            <p className="line-clamp-2 text-xs text-sidebar-muted">{d.description}</p>
+                            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-sidebar-muted">
+                              {damageStatusLabel(d.status)}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {canReportDamage && (
                     <Button
                       type="button"
                       variant="secondary"
-                      className={clsx(darkSecondaryBtn, 'flex-1')}
-                      onClick={() => fileRef.current?.click()}
+                      className={clsx(darkSecondaryBtn, 'mt-3 w-full')}
+                      onClick={() => setDamageOpen(true)}
                     >
-                      {t('retake')}
+                      {tHk('reportDamage')}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="min-h-[44px] text-sidebar-muted hover:bg-white/10 hover:text-white"
-                      onClick={() => {
-                        setPhotoFile(null);
-                        if (photoPreview) URL.revokeObjectURL(photoPreview);
-                        setPhotoPreview(null);
-                      }}
-                    >
-                      {t('remove')}
-                    </Button>
+                  )}
+                </section>
+              )}
+
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {t('inspectionPhoto')} <span className="text-danger">*</span>
+                </p>
+                <p className="mt-1 text-xs text-sidebar-muted">{t('photoRequiredHint')}</p>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only"
+                  onChange={(e) => {
+                    onPhotoSelected(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+                {photoPreview ? (
+                  <div className="mt-3 overflow-hidden rounded-btn border border-sidebar-border/60 bg-sidebar/40">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photoPreview}
+                      alt={t('photoPreviewAlt')}
+                      className="aspect-video w-full object-cover"
+                    />
+                    <div className="flex gap-2 border-t border-sidebar-border/60 p-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className={clsx(darkSecondaryBtn, 'flex-1')}
+                        onClick={() => fileRef.current?.click()}
+                      >
+                        {t('retake')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-[44px] text-sidebar-muted hover:bg-white/10 hover:text-white"
+                        onClick={() => {
+                          setPhotoFile(null);
+                          if (photoPreview) URL.revokeObjectURL(photoPreview);
+                          setPhotoPreview(null);
+                        }}
+                      >
+                        {t('remove')}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className={clsx(darkSecondaryBtn, 'mt-3 min-h-[48px] w-full')}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {t('takePhoto')}
-                </Button>
+                ) : (
+                  <p className="mt-3 rounded-btn border border-dashed border-sidebar-border/70 bg-sidebar/30 px-4 py-6 text-center text-sm text-sidebar-muted">
+                    {t('photoRequiredHint')}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-white">{tHk('notesOptional')}</label>
+                <textarea
+                  className={clsx(APP_DARK_INPUT, 'mt-1.5 min-h-[80px] w-full resize-y py-2.5')}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={t('notesPlaceholder')}
+                  rows={3}
+                />
+              </div>
+
+              {submit.isError && (
+                <p className="text-sm text-danger">
+                  {submit.error instanceof Error ? submit.error.message : tCommon('error')}
+                </p>
               )}
             </div>
-
-            <label className="flex cursor-pointer items-center gap-3 text-sm font-medium text-white">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-sidebar-border bg-sidebar text-action focus:ring-action/30"
-                checked={passed}
-                onChange={(e) => setPassed(e.target.checked)}
-              />
-              {t('passedInspection')}
-            </label>
-
-            <div>
-              <label className="text-sm font-medium text-white">{tHk('notesOptional')}</label>
-              <textarea
-                className={clsx(APP_DARK_INPUT, 'mt-1.5 min-h-[80px] w-full resize-y py-2.5')}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('notesPlaceholder')}
-                rows={3}
-              />
-            </div>
-
-            {submit.isError && (
-              <p className="text-sm text-danger">
-                {submit.error instanceof Error ? submit.error.message : tCommon('error')}
-              </p>
-            )}
           </div>
 
-          <div className="flex shrink-0 flex-wrap gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/30 px-5 py-4">
+          <div className="flex shrink-0 flex-col gap-3 border-t border-sidebar-border/60 bg-sidebar-hover/30 px-5 pt-3 pb-[max(1rem,var(--safe-bottom))]">
             <Button
-              type="submit"
-              variant="action"
-              className="min-h-[48px] min-w-[140px]"
-              disabled={submit.isPending || !photoFile}
+              type="button"
+              variant="ghostOnDark"
+              className="min-h-[40px] w-full text-sm text-sidebar-muted"
+              onClick={onClose}
             >
-              {submit.isPending ? tHk('saving') : t('saveInspection')}
-            </Button>
-            <Button type="button" variant="secondary" className={darkSecondaryBtn} onClick={onClose}>
               {tCommon('cancel')}
             </Button>
+
+            <div
+              className="grid grid-cols-2 gap-2"
+              role="group"
+              aria-label={t('passedInspection')}
+            >
+              <button
+                type="button"
+                className={clsx(
+                  'min-h-[52px] rounded-btn text-sm font-semibold transition-colors duration-tap tap-scale',
+                  passed
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'border border-sidebar-border bg-transparent text-sidebar-muted hover:bg-white/10 hover:text-white',
+                )}
+                aria-pressed={passed}
+                onClick={() => setPassed(true)}
+              >
+                {t('passedInspection')}
+              </button>
+              <button
+                type="button"
+                className={clsx(
+                  'min-h-[52px] rounded-btn text-sm font-semibold transition-colors duration-tap tap-scale',
+                  !passed
+                    ? 'bg-red-700 text-white shadow-sm'
+                    : 'border border-sidebar-border bg-transparent text-sidebar-muted hover:bg-white/10 hover:text-white',
+                )}
+                aria-pressed={!passed}
+                onClick={() => setPassed(false)}
+              >
+                {t('failedInspection')}
+              </button>
+            </div>
+
+            {hasPhoto ? (
+              <Button
+                type="submit"
+                variant="action"
+                className="min-h-[52px] w-full text-base font-semibold"
+                disabled={submit.isPending}
+              >
+                {submit.isPending ? tHk('saving') : t('saveInspection')}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="action"
+                className="min-h-[52px] w-full text-base font-semibold"
+                onClick={() => fileRef.current?.click()}
+              >
+                {t('takePhoto')}
+              </Button>
+            )}
           </div>
         </form>
       </div>

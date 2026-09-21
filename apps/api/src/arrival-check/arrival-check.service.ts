@@ -29,6 +29,8 @@ import {
   hasArrivalCheckForbiddenFolioActivity,
   involvesArrivalCheckForbiddenFolio,
   isArrivalCheckForbiddenFolio,
+  pickMainGuestMail,
+  shouldClearGuestEmailForArrivalCheck,
 } from '@housekeeping/shared';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -810,6 +812,22 @@ export class ArrivalCheckService implements OnModuleInit {
         return;
       }
 
+      let emailNote: string | null = null;
+      emailNote = await this.clearOtaPlaceholderGuestEmailIfNeeded(
+        hotelId,
+        item.reservationId,
+        decision.source,
+        detail,
+      );
+      if (emailNote) {
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: itemId },
+          data: {
+            statusMessage: `${this.classifyMessage(decision, categoryLabel)} ${emailNote}`,
+          },
+        });
+      }
+
       if (hasArrivalCheckForbiddenFolioActivity(folio)) {
         await this.prisma.arrivalCheckRunItem.update({
           where: { id: itemId },
@@ -924,6 +942,7 @@ export class ArrivalCheckService implements OnModuleInit {
       );
 
       const completedAt = new Date();
+      const doneMessage = this.completionMessage(decision, categoryLabel, movesDone, payment);
       await this.prisma.arrivalCheckRunItem.update({
         where: { id: itemId },
         data: {
@@ -936,7 +955,7 @@ export class ArrivalCheckService implements OnModuleInit {
           paymentInvoice: payment.paymentInvoice,
           paymentDepositId: payment.paymentDepositId,
           paymentError: null,
-          statusMessage: this.completionMessage(decision, categoryLabel, movesDone, payment),
+          statusMessage: emailNote ? `${doneMessage} ${emailNote}` : doneMessage,
           finishedAt: completedAt,
         },
       });
@@ -1232,6 +1251,39 @@ export class ArrivalCheckService implements OnModuleInit {
       manual: true,
       manualReason: outcome.message ?? 'VCC-Zahlung nicht möglich – manuelle Prüfung nötig.',
     };
+  }
+
+  /**
+   * Clear OTA guest-mailbox placeholders (e.g. @guest.booking.com) on the main
+   * guest. Non-blocking: failures are logged and surfaced in the status note.
+   */
+  private async clearOtaPlaceholderGuestEmailIfNeeded(
+    hotelId: string,
+    reservationId: string,
+    source: ArrivalCheckSource,
+    detail: ReservationEmmaDetailBundle | null,
+  ): Promise<string | null> {
+    const main = pickMainGuestMail(detail?.guests);
+    if (!main?.mail) return null;
+    if (!shouldClearGuestEmailForArrivalCheck(source, main.mail)) return null;
+
+    try {
+      await this.emma.clearGuestMail({
+        hotelId,
+        reservationId,
+        guestId: main.guestId,
+      });
+      this.log.log(
+        `[ArrivalCheck] ${reservationId}: OTA-Platzhalter-E-Mail entfernt (Gast ${main.guestId})`,
+      );
+      return 'OTA-Platzhalter-E-Mail entfernt.';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.log.warn(
+        `[ArrivalCheck] ${reservationId}: E-Mail-Clear fehlgeschlagen: ${msg}`,
+      );
+      return `E-Mail-Clear fehlgeschlagen (${msg.slice(0, 120)}).`;
+    }
   }
 
   private classifyMessage(decision: ArrivalCheckDecision, categoryLabel: string): string {

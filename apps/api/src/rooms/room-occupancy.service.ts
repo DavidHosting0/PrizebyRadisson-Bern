@@ -117,6 +117,8 @@ export class RoomOccupancyService {
           isDepartureToday: true,
           isArrivalToday: staySignals.isArrivalToday ?? false,
           isRestant: false,
+          isExtensiveRestant: false,
+          nightsInHouse: staySignals.nightsInHouse ?? 0,
           checkOut: stay.checkedOut,
           stayover: stay.stayover,
           expectedDepartureTime: stay.expectedDepartureTime,
@@ -196,7 +198,12 @@ export class RoomOccupancyService {
     if (!stickyToday && !occupancy?.isDepartureToday) return occupancy ?? null;
     if (!stickyToday) return occupancy ?? null;
     if (occupancy) {
-      return { ...occupancy, isDepartureToday: true, isRestant: false };
+      return {
+        ...occupancy,
+        isDepartureToday: true,
+        isRestant: false,
+        isExtensiveRestant: false,
+      };
     }
     const today = hotelTodayIso();
     return {
@@ -206,6 +213,8 @@ export class RoomOccupancyService {
       isDepartureToday: true,
       isArrivalToday: false,
       isRestant: false,
+      isExtensiveRestant: false,
+      nightsInHouse: 0,
       checkOut: true,
       stayover: false,
       expectedDepartureTime: null,
@@ -246,13 +255,16 @@ export class RoomOccupancyService {
     });
     // Departure day stays departure even after checkout (until sticky cleared by inspection).
     const isDepartureToday = departureDate === today;
+    const isRestant = isDepartureToday ? false : (stay.isRestant ?? false);
     return {
       reservationId: row.reservationId,
       mainGuestName: sensitive.mainGuestName,
       departureDate,
       isDepartureToday,
       isArrivalToday: stay.isArrivalToday ?? false,
-      isRestant: isDepartureToday ? false : (stay.isRestant ?? false),
+      isRestant,
+      isExtensiveRestant: isRestant && (stay.isExtensiveRestant ?? false),
+      nightsInHouse: stay.nightsInHouse ?? 0,
       checkOut: row.checkOut,
       stayover: sensitive.stayover,
       expectedDepartureTime: sensitive.expectedDepartureTime,

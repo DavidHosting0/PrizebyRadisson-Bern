@@ -53,14 +53,22 @@ export default function RoomChecklistPage() {
   const { data: daily } = useQuery({
     queryKey: ['assignments', 'my-daily-tasks'],
     queryFn: () =>
-      api<{ date: string; tasks: Array<{ roomId: string | null; workType: string; completedAt: string | null }> }>(
-        '/assignments/my-daily-tasks',
-      ),
+      api<{
+        date: string;
+        tasks: Array<{
+          roomId: string | null;
+          workType: string;
+          completedAt: string | null;
+          isExtensiveRestant?: boolean;
+        }>;
+      }>('/assignments/my-daily-tasks'),
   });
 
-  const isRestantTask = (daily?.tasks ?? []).some(
+  const restantTask = (daily?.tasks ?? []).find(
     (task) => task.roomId === id && task.workType === 'RESTANT' && !task.completedAt,
   );
+  const isRestantTask = !!restantTask;
+  const isExtensiveRestant = restantTask?.isExtensiveRestant === true;
 
   const canMarkClean =
     !!data &&
@@ -134,7 +142,9 @@ export default function RoomChecklistPage() {
 
       {isRestantTask ? (
         <section className="rounded-card border border-sidebar-border/70 bg-sidebar/40 p-4 text-center">
-          <p className="font-medium text-white">{t('restant')}</p>
+          <p className="font-medium text-white">
+            {isExtensiveRestant ? t('extensiveRestant') : t('restant')}
+          </p>
           <p className="mt-1 text-sm text-sidebar-muted">{t('restantHint')}</p>
           <Link
             href="/h"

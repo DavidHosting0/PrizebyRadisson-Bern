@@ -8,6 +8,8 @@ function toStaySignals(occupancy: RoomOccupancy): GuestStaySignals {
   return {
     stayover: occupancy.stayover,
     isRestant: occupancy.isRestant,
+    isExtensiveRestant: occupancy.isExtensiveRestant,
+    nightsInHouse: occupancy.nightsInHouse,
     isArrivalToday: occupancy.isArrivalToday,
     isDepartureToday: occupancy.isDepartureToday,
     checkOut: occupancy.checkOut,
@@ -26,6 +28,7 @@ function occupancyHint(occupancy: RoomOccupancy, t: OccupancyTranslator): string
   }
   if (guest) return guest;
   if (occupancy.isArrivalToday) return t('checkedInToday');
+  if (occupancy.isExtensiveRestant) return t('extensiveRestant');
   if (occupancy.isRestant) return t('restant');
   return t('occupied');
 }

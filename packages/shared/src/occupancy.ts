@@ -9,5 +9,9 @@ export type RoomOccupancy = {
   expectedDepartureTime: string | null;
   isArrivalToday: boolean;
   isRestant: boolean;
+  /** Restant guest already ≥5 nights in house — thorough restant clean. */
+  isExtensiveRestant: boolean;
+  /** Calendar nights since arrival (arrival day = 0). */
+  nightsInHouse: number;
   ocoDone: boolean;
 };

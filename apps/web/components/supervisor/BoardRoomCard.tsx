@@ -18,7 +18,12 @@ export type BoardRoom = {
 };
 
 /** Visual tile category on the assignment board. */
-export type BoardTileKind = 'default' | 'departure' | 'restant' | 'public';
+export type BoardTileKind =
+  | 'default'
+  | 'departure'
+  | 'restant'
+  | 'extensiveRestant'
+  | 'public';
 
 const TILE: Record<
   BoardTileKind,
@@ -67,6 +72,17 @@ const TILE: Record<
     ghost: 'border-amber-900/25 bg-[#C9B56A] ring-amber-700/40',
     ghostMuted: 'text-amber-950/70',
   },
+  extensiveRestant: {
+    card: 'border-orange-950/35 bg-[#B45309] hover:border-orange-300/40 hover:brightness-110',
+    accent: 'bg-gradient-to-b from-orange-300 to-orange-950',
+    title: 'text-orange-50',
+    grip: 'text-orange-100/70 group-hover:text-orange-50',
+    link: 'text-orange-100',
+    badgeRestant: 'bg-black/25 text-orange-50',
+    badgeOverdue: 'bg-black/30 text-amber-100',
+    ghost: 'border-orange-200/35 bg-[#B45309] ring-orange-300/50',
+    ghostMuted: 'text-orange-100/80',
+  },
   public: {
     card: 'border-teal-950/40 bg-[#0D5C63] hover:border-teal-300/35 hover:brightness-110',
     accent: 'bg-gradient-to-b from-teal-300 to-teal-950',
@@ -83,8 +99,10 @@ const TILE: Record<
 export function boardTileKindForRoom(
   room: BoardRoom,
   isRestant?: boolean,
+  isExtensiveRestant?: boolean,
 ): BoardTileKind {
   if (room.occupancy?.isDepartureToday) return 'departure';
+  if (isExtensiveRestant || room.occupancy?.isExtensiveRestant) return 'extensiveRestant';
   if (isRestant || room.occupancy?.isRestant) return 'restant';
   return 'default';
 }
@@ -94,6 +112,7 @@ export function BoardRoomCard({
   onOpen,
   draggable,
   isRestant,
+  isExtensiveRestant,
   overdueDays,
   tileKind: tileKindProp,
   onPointerDownDrag,
@@ -105,6 +124,7 @@ export function BoardRoomCard({
   onOpen?: () => void;
   draggable?: boolean;
   isRestant?: boolean;
+  isExtensiveRestant?: boolean;
   overdueDays?: number | null;
   tileKind?: BoardTileKind;
   onPointerDownDrag?: (e: React.PointerEvent, room: BoardRoom) => void;
@@ -115,9 +135,11 @@ export function BoardRoomCard({
   const tBoard = useTranslations('supervisor.board');
   const tHk = useTranslations('housekeeper');
   const tRoot = useTranslations();
-  const kind = tileKindProp ?? boardTileKindForRoom(room, isRestant);
+  const kind =
+    tileKindProp ?? boardTileKindForRoom(room, isRestant, isExtensiveRestant);
   const t = TILE[kind];
-  const onDark = kind === 'departure' || kind === 'public';
+  const onDark = kind === 'departure' || kind === 'public' || kind === 'extensiveRestant';
+  const isRestantKind = kind === 'restant' || kind === 'extensiveRestant';
 
   const ghostBadgeLabel = () => {
     if (kind === 'departure') {
@@ -125,6 +147,7 @@ export function BoardRoomCard({
         ? tBoard('checkedOut')
         : tBoard('inRoom');
     }
+    if (kind === 'extensiveRestant') return tHk('extensiveRestant');
     if (kind === 'restant') return tHk('restant');
     return roomStatusLabel(room.derivedStatus, (key) => tRoot(key as 'room.status.DIRTY'));
   };
@@ -210,7 +233,7 @@ export function BoardRoomCard({
             <StatusBadge status={room.derivedStatus} variant={onDark ? 'onColor' : 'default'} />
           </div>
           {(kind === 'departure' ||
-            kind === 'restant' ||
+            isRestantKind ||
             (overdueDays != null && overdueDays > 0)) && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {kind === 'departure' && (
@@ -229,14 +252,14 @@ export function BoardRoomCard({
                   )}
                 </>
               )}
-              {kind === 'restant' && (
+              {isRestantKind && (
                 <span
                   className={clsx(
                     'rounded-btn px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
                     t.badgeRestant,
                   )}
                 >
-                  {tHk('restant')}
+                  {kind === 'extensiveRestant' ? tHk('extensiveRestant') : tHk('restant')}
                 </span>
               )}
               {overdueDays != null && overdueDays > 0 && (

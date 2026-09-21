@@ -30,6 +30,8 @@ export type DailyCleaningTaskDto = {
   overdueDays: number | null;
   completedAt: string | null;
   completionReason?: DailyCleaningCompletionReason | null;
+  /** RESTANT only: guest already ≥5 nights in house — thorough clean. */
+  isExtensiveRestant?: boolean;
 };
 
 export type DailyCleaningSummary = {
@@ -182,4 +184,6 @@ export type MyDailyTaskDto = {
   /** Guest has checked out (or OCO done) — relevant when isDepartureToday. */
   guestCheckedOut?: boolean;
   guestName?: string | null;
+  /** RESTANT only: guest already ≥5 nights in house — thorough clean. */
+  isExtensiveRestant?: boolean;
 };

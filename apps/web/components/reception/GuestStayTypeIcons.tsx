@@ -144,10 +144,14 @@ export function GuestStayTypeIcons({ stay, size = 'md', onColor, showLabels }: P
   if (stay.isRestant) {
     items.push({
       key: 'restant',
-      title: stay.stayover ? t('restantStayover') : t('restant'),
-      tone: 'sky',
+      title: stay.isExtensiveRestant
+        ? t('extensiveRestant')
+        : stay.stayover
+          ? t('restantStayover')
+          : t('restant'),
+      tone: stay.isExtensiveRestant ? 'amber' : 'sky',
       icon: <IconRestant />,
-      label: t('restant'),
+      label: stay.isExtensiveRestant ? t('extensiveRestantShort') : t('restant'),
     });
   }
   if (stay.isDepartureToday) {
@@ -184,6 +188,7 @@ export function GuestStayTypeLegend({ compact }: { compact?: boolean }) {
   const entries = [
     { tone: 'indigo' as const, title: t('legendArrivalToday'), icon: <IconArrivalToday /> },
     { tone: 'sky' as const, title: t('restant'), icon: <IconRestant /> },
+    { tone: 'amber' as const, title: t('extensiveRestant'), icon: <IconRestant /> },
     { tone: 'amber' as const, title: t('departureToday'), icon: <IconDeparture /> },
     { tone: 'emerald' as const, title: t('legendCheckedOut'), icon: <IconCheckedOut /> },
   ];

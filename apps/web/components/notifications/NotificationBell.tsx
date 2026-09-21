@@ -39,9 +39,12 @@ function useNotificationText() {
     } | null;
 
     if (meta?.messageKey) {
-      const title = t(meta.messageKey as 'teamChatMention', meta.messageParams ?? {});
+      const title = t(meta.messageKey as 'teamChatMention' | 'teamChatMessage', meta.messageParams ?? {});
       const body = meta.bodyKey
-        ? t(meta.bodyKey as 'teamChatMentionBody', meta.bodyParams ?? meta.messageParams ?? {})
+        ? t(
+            meta.bodyKey as 'teamChatMentionBody' | 'teamChatPhoto',
+            meta.bodyParams ?? meta.messageParams ?? {},
+          )
         : n.body;
       return { title, body };
     }

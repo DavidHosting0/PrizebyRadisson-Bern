@@ -78,9 +78,14 @@ export function OpenCleaningTasksView({
 
     const result: PersonGroup[] = [];
     for (const [key, tasks] of byPerson) {
-      tasks.sort((a, b) =>
-        (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true }),
-      );
+      tasks.sort((a, b) => {
+        const aExt = a.isExtensiveRestant ? 1 : 0;
+        const bExt = b.isExtensiveRestant ? 1 : 0;
+        if (aExt !== bExt) return bExt - aExt;
+        return (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, {
+          numeric: true,
+        });
+      });
       if (key === '__unassigned__') {
         result.push({ key, name: tSup('unassigned'), titlePrefix: null, tasks });
         continue;
@@ -165,10 +170,20 @@ export function OpenCleaningTasksView({
                   <li key={t.id}>
                     <Link
                       href={roomHref(t.roomId!)}
-                      className="flex items-center justify-between gap-3 rounded-btn border border-sidebar-border/50 bg-[#121a26] px-3 py-2.5 transition hover:border-action/40"
+                      className={clsx(
+                        'flex items-center justify-between gap-3 rounded-btn border border-sidebar-border/50 bg-[#121a26] px-3 py-2.5 transition hover:border-action/40',
+                        t.isExtensiveRestant && 'ring-1 ring-inset ring-orange-400/70',
+                      )}
                     >
-                      <span className="font-medium tabular-nums text-slate-100">
-                        {tHk('room', { number: t.roomNumber ?? '—' })}
+                      <span className="min-w-0">
+                        <span className="block font-medium tabular-nums text-slate-100">
+                          {tHk('room', { number: t.roomNumber ?? '—' })}
+                        </span>
+                        {t.isExtensiveRestant && (
+                          <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wide text-orange-300">
+                            {tHk('extensiveRestant')}
+                          </span>
+                        )}
                       </span>
                       <span className="text-xs text-sidebar-muted">
                         {t.floor != null ? tHk('floor', { floor: t.floor }) : tCommon('open')}

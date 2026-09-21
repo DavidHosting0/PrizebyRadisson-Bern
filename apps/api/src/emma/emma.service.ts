@@ -39,6 +39,7 @@ import { clearStaleEmmaFolioPostBlock } from './emma-folio-edit-session';
 import { settleEmmaFolioDepositWithVcc } from './emma-folio-deposit';
 import type { EmmaVccPaymentOutcome } from './emma-folio-payment';
 import { EmmaMutationLock } from './emma-mutation-lock';
+import { clearEmmaGuestMailFromJar } from './emma-guest-mail-clear';
 import {
   emmaCodeToDerivedStatus,
   formatEmmaRoomId,
@@ -902,6 +903,61 @@ export class EmmaService {
         debug: emmaDebug.verbose ? emmaDebug : undefined,
       }),
     );
+  }
+
+  /**
+   * Clear reservation guest Mail (OTA placeholder) via Guests MERGE Mail:"".
+   * Requires operator code for ManageLocks.
+   */
+  async clearGuestMail(params: {
+    hotelId?: string;
+    reservationId: string;
+    guestId?: string;
+  }): Promise<{ ok: true; guestId: string }> {
+    await this.assertIntegrationActive();
+    const creds = await this.settings.getEmmaLoginSecrets();
+    this.assertCredentialsComplete(creds);
+    const operatorCode = creds.operatorCode?.trim();
+    if (!operatorCode) {
+      throw new ForbiddenException(
+        'EMMA Operator-Code fehlt (Admin → EMMA Login). Für Guests Mail-Clear erforderlich.',
+      );
+    }
+    const hid =
+      params.hotelId?.trim() ||
+      creds.hotelId?.trim() ||
+      process.env.EMMA_HOTEL_ID?.trim() ||
+      EMMA_DEFAULT_HOTEL_ID;
+    const sapClient =
+      creds.sapClient?.trim() || process.env.EMMA_SAP_CLIENT?.trim() || EMMA_DEFAULT_SAP_CLIENT;
+    const baseUrl = emmaServerRoot({ baseUrl: creds.baseUrl ?? undefined });
+    const guestId = (params.guestId?.trim() || '01').padStart(2, '0');
+
+    let jar = await this.loadEmmaHttpJar();
+    const probe = await emmaHttpProbeOData(jar, baseUrl, sapClient);
+    if (!probe.ok) {
+      this.log.warn(`[EMMA] HTTP session expired (${probe.reason}) — refresh`);
+      await this.refreshHttpSession();
+      jar = await this.loadEmmaHttpJar();
+    }
+
+    this.log.log(
+      `[EMMA] clearGuestMail reservation=${params.reservationId} guest=${guestId} hotel=${hid}`,
+    );
+
+    const emmaDebug = createEmmaSyncDebug(this.log);
+    await this.mutationLock.run(() =>
+      clearEmmaGuestMailFromJar(jar, baseUrl, {
+        hotelId: hid,
+        reservationId: params.reservationId.trim(),
+        guestId,
+        employee: operatorCode,
+        sapClient,
+        debug: emmaDebug.verbose ? emmaDebug : undefined,
+      }),
+    );
+
+    return { ok: true, guestId };
   }
 
   private hasCompleteCredentials(creds: EmmaLoginStored | null): boolean {

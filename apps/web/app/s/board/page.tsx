@@ -38,6 +38,7 @@ type DragState = {
   active: boolean;
   tileKind: BoardTileKind;
   isRestant?: boolean;
+  isExtensiveRestant?: boolean;
   overdueDays?: number | null;
 };
 
@@ -131,6 +132,7 @@ export default function SupervisorBoardPage() {
     offsetY: number;
     tileKind: BoardTileKind;
     isRestant?: boolean;
+    isExtensiveRestant?: boolean;
     overdueDays?: number | null;
   } | null>(null);
 
@@ -163,10 +165,13 @@ export default function SupervisorBoardPage() {
   });
 
   const restantByRoomId = useMemo(() => {
-    const map = new Map<string, { overdueDays: number | null }>();
+    const map = new Map<string, { overdueDays: number | null; isExtensiveRestant: boolean }>();
     for (const t of plan?.tasks ?? []) {
       if (t.kind === 'ROOM' && t.roomId && t.workType === 'RESTANT') {
-        map.set(t.roomId, { overdueDays: t.overdueDays });
+        map.set(t.roomId, {
+          overdueDays: t.overdueDays,
+          isExtensiveRestant: t.isExtensiveRestant === true,
+        });
       }
     }
     return map;
@@ -415,6 +420,7 @@ export default function SupervisorBoardPage() {
           active: true,
           tileKind: pending.tileKind,
           isRestant: pending.isRestant,
+          isExtensiveRestant: pending.isExtensiveRestant,
           overdueDays: pending.overdueDays,
         };
         dragRef.current = next;
@@ -481,19 +487,25 @@ export default function SupervisorBoardPage() {
   function startRoomDrag(
     e: React.PointerEvent,
     room: BoardRoom,
-    meta?: { isRestant?: boolean; overdueDays?: number | null },
+    meta?: {
+      isRestant?: boolean;
+      isExtensiveRestant?: boolean;
+      overdueDays?: number | null;
+    },
   ) {
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const isRestant = meta?.isRestant;
+    const isExtensiveRestant = meta?.isExtensiveRestant;
     pendingPointer.current = {
       room,
       startX: e.clientX,
       startY: e.clientY,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
-      tileKind: boardTileKindForRoom(room, isRestant),
+      tileKind: boardTileKindForRoom(room, isRestant, isExtensiveRestant),
       isRestant,
+      isExtensiveRestant,
       overdueDays: meta?.overdueDays,
     };
   }
@@ -652,11 +664,13 @@ export default function SupervisorBoardPage() {
                     dragging={draggingRoomId === r.id}
                     onOpen={() => setPanelRoomId(r.id)}
                     isRestant={restantByRoomId.has(r.id)}
+                    isExtensiveRestant={restantByRoomId.get(r.id)?.isExtensiveRestant}
                     overdueDays={overdueByRoomId.get(r.id) ?? restantByRoomId.get(r.id)?.overdueDays}
                     onContextMenu={(e, room) => openAssignMenu(e, room)}
                     onPointerDownDrag={(e, room) =>
                       startRoomDrag(e, room, {
                         isRestant: restantByRoomId.has(room.id),
+                        isExtensiveRestant: restantByRoomId.get(room.id)?.isExtensiveRestant,
                         overdueDays:
                           overdueByRoomId.get(room.id) ?? restantByRoomId.get(room.id)?.overdueDays,
                       })
@@ -741,6 +755,7 @@ export default function SupervisorBoardPage() {
                             dragging={draggingRoomId === full.id}
                             onOpen={() => setPanelRoomId(full.id)}
                             isRestant={restantByRoomId.has(full.id)}
+                            isExtensiveRestant={restantByRoomId.get(full.id)?.isExtensiveRestant}
                             overdueDays={
                               overdueByRoomId.get(full.id) ??
                               restantByRoomId.get(full.id)?.overdueDays
@@ -749,6 +764,8 @@ export default function SupervisorBoardPage() {
                             onPointerDownDrag={(e, room) =>
                               startRoomDrag(e, room, {
                                 isRestant: restantByRoomId.has(room.id),
+                                isExtensiveRestant:
+                                  restantByRoomId.get(room.id)?.isExtensiveRestant,
                                 overdueDays:
                                   overdueByRoomId.get(room.id) ??
                                   restantByRoomId.get(room.id)?.overdueDays,
@@ -841,6 +858,7 @@ export default function SupervisorBoardPage() {
             ghost
             tileKind={drag.tileKind}
             isRestant={drag.isRestant}
+            isExtensiveRestant={drag.isExtensiveRestant}
             overdueDays={drag.overdueDays}
           />
         </div>

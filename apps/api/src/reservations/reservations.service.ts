@@ -791,6 +791,8 @@ export class ReservationsService {
       isDepartureToday: stay.isDepartureToday,
       isArrivalToday: stay.isArrivalToday,
       isRestant: stay.isRestant,
+      isExtensiveRestant: stay.isExtensiveRestant,
+      nightsInHouse: stay.nightsInHouse,
       ocoDone: stay.ocoDone ?? false,
       arrivalCheckCompletedAt: row.arrivalCheckCompletedAt?.toISOString() ?? null,
       arrivalCheckLastRunId: row.arrivalCheckLastRunId ?? null,

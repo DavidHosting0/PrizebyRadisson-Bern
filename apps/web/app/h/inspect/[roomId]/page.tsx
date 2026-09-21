@@ -53,7 +53,7 @@ export default function HousekeeperInspectRoomPage() {
   }
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-4 p-4 pb-[calc(5rem+var(--safe-bottom)+4.5rem)]">
       <div className="flex items-center gap-2">
         <Link
           href="/h"
@@ -86,21 +86,24 @@ export default function HousekeeperInspectRoomPage() {
 
       <Button
         type="button"
-        variant="action"
-        className="min-h-[52px] w-full"
-        disabled={!claimedByMe}
-        onClick={() => setInspectOpen(true)}
-      >
-        {t('openInspection')}
-      </Button>
-      <Button
-        type="button"
         variant="ghostOnDark"
         className="min-h-[48px] w-full"
         onClick={() => router.push('/h')}
       >
         {t('backToHome')}
       </Button>
+
+      <div className="fixed bottom-[calc(5rem+var(--safe-bottom))] left-0 right-0 z-30 border-t border-sidebar-border/60 bg-[#121a26]/95 px-4 py-3 backdrop-blur-sm">
+        <Button
+          type="button"
+          variant="action"
+          className="min-h-[52px] w-full text-base font-semibold"
+          disabled={!claimedByMe}
+          onClick={() => setInspectOpen(true)}
+        >
+          {t('openInspection')}
+        </Button>
+      </div>
 
       <InspectRoomModal
         open={inspectOpen}

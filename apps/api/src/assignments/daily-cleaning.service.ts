@@ -521,7 +521,18 @@ export class DailyCleaningService implements OnModuleInit {
       await this.listEligibleCleaners(dateIso);
     const inspectorCandidates = await this.inspectionQueue.listInspectorCandidates();
     const inspectorsToday = await this.inspectionQueue.listInspectorsForDate(dateIso);
-    const tasks = plan.tasks.map((t) => this.toTaskDto(t));
+    const roomNumbers = plan.tasks
+      .map((t) => t.room?.roomNumber)
+      .filter((n): n is string => Boolean(n));
+    const occupancyByRoom = await this.occupancy.mapForRoomNumbers(roomNumbers);
+    const tasks = plan.tasks.map((t) => {
+      const dto = this.toTaskDto(t);
+      if (dto.workType === 'RESTANT' && t.room?.roomNumber) {
+        dto.isExtensiveRestant =
+          occupancyByRoom.get(t.room.roomNumber)?.isExtensiveRestant ?? false;
+      }
+      return dto;
+    });
 
     const openTasks = tasks.filter((t) => !t.completedAt);
     const workPreview = {
@@ -1530,6 +1541,8 @@ export class DailyCleaningService implements OnModuleInit {
         isDepartureToday: occ?.isDepartureToday ?? false,
         guestCheckedOut: occ ? Boolean(occ.checkOut || occ.ocoDone) : false,
         guestName: occ?.mainGuestName ?? null,
+        isExtensiveRestant:
+          t.workType === 'RESTANT' ? (occ?.isExtensiveRestant ?? false) : false,
       };
     });
 
@@ -1540,6 +1553,9 @@ export class DailyCleaningService implements OnModuleInit {
       const aDep = a.isDepartureToday ? 1 : 0;
       const bDep = b.isDepartureToday ? 1 : 0;
       if (aDep !== bDep) return bDep - aDep;
+      const aExt = a.isExtensiveRestant ? 1 : 0;
+      const bExt = b.isExtensiveRestant ? 1 : 0;
+      if (aExt !== bExt) return bExt - aExt;
       return (a.roomNumber ?? '').localeCompare(b.roomNumber ?? '', undefined, { numeric: true });
     });
 

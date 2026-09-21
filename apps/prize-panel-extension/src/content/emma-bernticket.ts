@@ -1,6 +1,7 @@
 /**
  * Injects BernTicket into EMMA check-in footer toolbar (centered).
- * Falls back to a fixed strip when the SAP toolbar is missing.
+ * When that leiste is missing (e.g. reservation detail), shows a small fixed
+ * chip at the bottom so the activation code is always visible for a booking.
  */
 import {
   BERN_TICKET_2FA_REQUIRED,
@@ -35,14 +36,14 @@ function isLikelyEmmaPage(): boolean {
 }
 
 function getBookingNumber(): string | null {
-  const hash = window.location.hash || '';
+  const haystack = `${window.location.hash}\n${window.location.href}\n${document.title}`;
   const patterns = [
     /ReservationId='(\d+)'/i,
     /ReservationId=(\d+)/i,
     /reservationId[=:]['"]?(\d+)/i,
   ];
   for (const re of patterns) {
-    const m = hash.match(re);
+    const m = haystack.match(re);
     if (m) return m[1].replace(/^0+/, '') || m[1];
   }
 
@@ -62,19 +63,22 @@ function getBookingNumber(): string | null {
   return null;
 }
 
+/** Only the real check-in footer — not generic ObjectPage footers on reservation detail. */
 function findCheckinToolbar(): HTMLElement | null {
   const selectors = [
     '[id$="tms.checkinToolbar"]',
     '[id*="tms.checkinToolbar"]',
-    '[id*="CheckInDetail"][id*="Toolbar"]',
+    '[id*="CheckInDetail"][id*="checkinToolbar" i]',
+    '[id*="CheckInDetail"][id*="CheckinToolbar" i]',
     '[id*="checkinToolbar"]',
-    '.sapUxAPObjectPageFloatingFooter.sapMTB',
-    '.sapUxAPObjectPageFloatingFooter',
-    '.sapFDynamicPageFooter .sapMTB',
   ];
   for (const sel of selectors) {
-    const el = document.querySelector<HTMLElement>(sel);
-    if (el) return el;
+    try {
+      const el = document.querySelector<HTMLElement>(sel);
+      if (el) return el;
+    } catch {
+      // some engines reject "i" in attribute selectors
+    }
   }
   return null;
 }
@@ -402,28 +406,37 @@ function ensureStyles() {
     }
     #${HOST_ID} .pb-bt-btn:disabled{opacity:.5;cursor:not-allowed}
 
-    /* Fallback strip when no toolbar — still flat / SAP-ish */
+    /* Compact bottom chip when check-in toolbar is absent (e.g. reservation detail) */
     #${FALLBACK_ID}{
-      position:fixed;left:50%;bottom:4.5rem;transform:translateX(-50%);
+      position:fixed;left:50%;bottom:0.65rem;transform:translateX(-50%);
       z-index:2147483000;
-      display:inline-flex;align-items:center;gap:0.5rem;
-      padding:0.35rem 0.75rem;
+      display:inline-flex;align-items:center;gap:0.35rem;
+      padding:0.2rem 0.45rem;
       font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
-      font-size:0.875rem;
-      color:#32363a;
-      background:#fff;
+      font-size:0.75rem;
+      line-height:1.2;
+      color:#6a6d70;
+      background:rgba(255,255,255,.96);
       border:1px solid #d9d9d9;
-      border-radius:0.375rem;
-      box-shadow:0 0.125rem 0.5rem rgba(0,0,0,.12);
+      border-radius:0.25rem;
+      box-shadow:0 0.1rem 0.35rem rgba(0,0,0,.1);
+      pointer-events:auto;
+      white-space:nowrap;
     }
+    #${FALLBACK_ID} .pb-bt-label{font-size:inherit;color:#6a6d70;}
+    #${FALLBACK_ID} .pb-bt-muted{font-size:inherit;color:#6a6d70;}
     #${FALLBACK_ID} .pb-bt-code{
       appearance:none;cursor:pointer;font-weight:700;letter-spacing:.04em;
+      font-size:0.75rem;line-height:1.2;
       color:#aa0808;background:#ffebeb;border:1px solid #f5c1c1;
-      border-radius:0.25rem;padding:0.35rem 0.6rem;
+      border-radius:0.2rem;padding:0.15rem 0.4rem;
+    }
+    #${FALLBACK_ID} .pb-bt-code.pb-bt-copied-flash{
+      color:#256f3a;background:#f5fae5;border-color:#99cc33;
     }
     #${FALLBACK_ID} .pb-bt-btn{
       appearance:none;cursor:pointer;font-weight:600;
-      height:2rem;padding:0 0.75rem;border-radius:0.375rem;
+      font-size:0.75rem;height:1.55rem;padding:0 0.5rem;border-radius:0.25rem;
       border:1px solid #0854a0;background:transparent;color:#0854a0;
     }
 
@@ -808,7 +821,9 @@ async function tick() {
   const booking = getBookingNumber();
   const toolbar = findCheckinToolbar();
 
-  if (!booking && !toolbar) {
+  // Always show the code for a reservation — in the check-in leiste when present,
+  // otherwise as a small fixed chip at the bottom (reservation overview etc.).
+  if (!booking) {
     document.getElementById(HOST_ID)?.remove();
     document.getElementById(FALLBACK_ID)?.remove();
     lastBooking = null;
@@ -816,20 +831,15 @@ async function tick() {
   }
 
   const compact = Boolean(toolbar);
+  const expectedHostId = toolbar ? HOST_ID : FALLBACK_ID;
   const host = toolbar ? mountInToolbar(toolbar) : mountFallbackBar();
 
-  if (!booking) {
-    setHostHtml(
-      host,
-      shellToolbar(`<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.noBooking)}</span>`),
-    );
-    lastBooking = null;
-    host.dataset.bound = '';
-    return;
-  }
-
-  if (booking === lastBooking && host.dataset.bound === booking && hostStillMounted(host)) {
-    // Still ensure host is inside current toolbar after SAP rebuilds
+  if (
+    booking === lastBooking &&
+    host.dataset.bound === booking &&
+    host.id === expectedHostId &&
+    hostStillMounted(host)
+  ) {
     if (toolbar && !toolbar.contains(host)) {
       lastBooking = null;
     } else {
@@ -883,6 +893,8 @@ export function startEmmaBernTicketWatcher() {
     const host = document.getElementById(HOST_ID) || document.getElementById(FALLBACK_ID);
     if (host && !hostStillMounted(host)) lastBooking = null;
     if (toolbar && host?.id === HOST_ID && !toolbar.contains(host)) lastBooking = null;
+    if (toolbar && host?.id === FALLBACK_ID) lastBooking = null;
+    if (!toolbar && host?.id === HOST_ID) lastBooking = null;
     if (toolbar && !host) lastBooking = null;
     scheduleRefresh();
   });

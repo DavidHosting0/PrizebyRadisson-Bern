@@ -624,18 +624,35 @@ export class TeamChatService {
       this.log.warn(`team_chat broadcast failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    // Every message notifies all chat readers the same way an @mention does
-    // (in-app bell + web push). Actual @highlights stay on `validMentionIds`.
+    // Notify everyone with chat access: @mentioned users get "mentioned you",
+    // everyone else gets "X wrote …". Push + in-app bell both use this path.
     void this.listChatNotificationRecipientIds(user.id)
-      .then((recipientIds) =>
-        this.notifications.notifyTeamChatMention(
-          row.id,
-          user.name,
-          recipientIds,
-          user.id,
-          row.body,
-        ),
-      )
+      .then(async (recipientIds) => {
+        const mentioned = new Set(
+          validMentionIds.filter((id) => id !== user.id),
+        );
+        const mentionRecipients = recipientIds.filter((id) => mentioned.has(id));
+        const broadcastRecipients = recipientIds.filter((id) => !mentioned.has(id));
+        const hasPhoto = !!row.photoS3Key;
+        await Promise.all([
+          this.notifications.notifyTeamChatMention(
+            row.id,
+            user.name,
+            mentionRecipients,
+            user.id,
+            row.body,
+            hasPhoto,
+          ),
+          this.notifications.notifyTeamChatMessage(
+            row.id,
+            user.name,
+            broadcastRecipients,
+            user.id,
+            row.body,
+            hasPhoto,
+          ),
+        ]);
+      })
       .catch((e) => {
         this.log.warn(
           `team_chat notify failed: ${e instanceof Error ? e.message : String(e)}`,
