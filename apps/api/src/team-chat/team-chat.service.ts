@@ -277,7 +277,11 @@ export class TeamChatService {
       });
       cachedBody = cached?.body;
     }
-    if (cachedBody) {
+    if (cachedBody != null) {
+      // Identity cache = already decided "no translation for this locale" (one AI pass).
+      if (cachedBody === body) {
+        return { displayBody: body, bodyTranslated: null, isTranslated: false };
+      }
       return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
     }
 
@@ -295,8 +299,10 @@ export class TeamChatService {
       return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
 
-    // Model said it's already in the target language.
+    // Model said it's already in the target language — persist identity so we never
+    // spend tokens again for this (message, locale).
     if (result.body === body && result.sourceLocale === targetLocale) {
+      await this.persistTranslation(messageId, targetLocale, body, transCache);
       if (!sourceLocale || sourceLocale !== targetLocale) {
         void this.prisma.teamChatMessage
           .update({
@@ -308,11 +314,7 @@ export class TeamChatService {
       return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
 
-    await this.prisma.teamChatMessageTranslation.upsert({
-      where: { messageId_locale: { messageId, locale: targetLocale } },
-      create: { messageId, locale: targetLocale, body: result.body },
-      update: { body: result.body },
-    });
+    await this.persistTranslation(messageId, targetLocale, result.body, transCache);
 
     if (result.sourceLocale && result.sourceLocale !== stored) {
       void this.prisma.teamChatMessage
@@ -324,6 +326,21 @@ export class TeamChatService {
     }
 
     return { displayBody: result.body, bodyTranslated: body, isTranslated: true };
+  }
+
+  /** One row per (message, locale) — real translation or identity skip marker. */
+  private async persistTranslation(
+    messageId: string,
+    locale: SupportedLocale,
+    body: string,
+    transCache?: Map<string, string>,
+  ) {
+    await this.prisma.teamChatMessageTranslation.upsert({
+      where: { messageId_locale: { messageId, locale } },
+      create: { messageId, locale, body },
+      update: { body },
+    });
+    transCache?.set(messageId, body);
   }
 
   private async mapMessage(
@@ -427,34 +444,89 @@ export class TeamChatService {
         : Promise.resolve([]),
     ]);
     const transCache = new Map(translationRows.map((t) => [t.messageId, t.body]));
+
+    // At most one AI pass per (message, locale): fill a small newest batch, persist to DB.
+    // No background warm — that re-spent tokens on the same gaps every open.
+    await this.fillMissingTranslations(rows, transCache, targetLocale, 15);
+
     const mapped = await Promise.all(
       rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale, 'cache', transCache)),
     );
-    void this.warmMissingTranslations(rows, transCache, targetLocale);
     return mapped;
   }
 
-  private warmMissingTranslations(
+  private messageNeedsTranslation(
+    messageId: string,
+    body: string,
+    transCache: Map<string, string>,
+    targetLocale: SupportedLocale,
+  ): boolean {
+    if (!body.trim() || transCache.has(messageId)) return false;
+    const detected = this.translation.detectLocale(body);
+    if (detected === targetLocale) return false;
+    // Uncertain short bubbles ("ok", "303") — show original, never burn tokens.
+    if (detected == null && body.trim().length < 24) return false;
+    return true;
+  }
+
+  /** Live-translate newest missing bodies into `transCache` before the response is sent. */
+  private async fillMissingTranslations(
     rows: MessageRow[],
     transCache: Map<string, string>,
     targetLocale: SupportedLocale,
+    limit: number,
   ) {
-    const missing = rows.filter(
-      (r) =>
-        r.body.trim() &&
-        !transCache.has(r.id) &&
-        this.translation.detectLocale(r.body) !== targetLocale,
-    );
-    for (const row of missing.slice(0, 12)) {
-      void this.resolveTranslatedBody(
-        row.id,
-        row.body,
-        row.sourceLocale,
-        row.mentions,
-        targetLocale,
-        'live',
-      ).catch(() => undefined);
+    type Job = {
+      messageId: string;
+      body: string;
+      sourceLocale: string | null;
+      mentions: MentionRow[];
+    };
+    const jobs: Job[] = [];
+    for (const row of rows) {
+      if (this.messageNeedsTranslation(row.id, row.body, transCache, targetLocale)) {
+        jobs.push({
+          messageId: row.id,
+          body: row.body,
+          sourceLocale: row.sourceLocale,
+          mentions: row.mentions,
+        });
+      }
+      if (
+        row.replyTo &&
+        !row.replyTo.deletedAt &&
+        this.messageNeedsTranslation(row.replyTo.id, row.replyTo.body, transCache, targetLocale)
+      ) {
+        jobs.push({
+          messageId: row.replyTo.id,
+          body: row.replyTo.body,
+          sourceLocale: null,
+          mentions: [],
+        });
+      }
     }
+
+    // Prefer newest chat lines (rows are chronological ascending).
+    const batch = jobs.slice(-Math.max(0, limit));
+    if (batch.length === 0) return;
+
+    await Promise.all(
+      batch.map(async (job) => {
+        try {
+          await this.resolveTranslatedBody(
+            job.messageId,
+            job.body,
+            job.sourceLocale,
+            job.mentions,
+            targetLocale,
+            'live',
+            transCache,
+          );
+        } catch {
+          // keep original body for this message
+        }
+      }),
+    );
   }
 
   private setSourceLocaleAsync(messageId: string, body: string) {

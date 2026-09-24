@@ -28,6 +28,16 @@ import { rejectTeamChatImageFile } from '@housekeeping/shared';
 import { removeTeamChatMessage, upsertTeamChatMessage } from '@/lib/team-chat-cache';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
+/** Keep forcing bottom while the feed settles (layout + lazy images). */
+const INITIAL_PIN_MS = 1200;
+
+function distanceFromBottom(el: HTMLElement): number {
+  return el.scrollHeight - el.scrollTop - el.clientHeight;
+}
+
+function isElementNearBottom(el: HTMLElement, threshold = NEAR_BOTTOM_THRESHOLD_PX): boolean {
+  return distanceFromBottom(el) <= threshold;
+}
 const LONG_PRESS_MS = 480;
 const PHOTO_COMPRESS_MS = 20_000;
 const CHAT_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif';
@@ -320,8 +330,12 @@ export function TeamChatView({
   const toast = useToast();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
+  /** While true, every layout/resize/image-load re-pins to the latest message. */
+  const pinToBottomRef = useRef(true);
   const hasInitialScrolledRef = useRef(false);
   const prevTimelineTailRef = useRef<string | null>(null);
+  const pinUntilRef = useRef(0);
+  const ignoreScrollRef = useRef(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
@@ -445,42 +459,66 @@ export function TeamChatView({
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
     const el = scrollContainerRef.current;
-    if (!el || el.clientHeight === 0) return false;
+    if (!el || el.clientHeight < 8) return false;
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    ignoreScrollRef.current = true;
     if (behavior === 'smooth') {
       el.scrollTo({ top, behavior: 'smooth' });
     } else {
       el.scrollTop = top;
     }
-    if (force || isNearBottomRef.current) {
+    // Re-measure after write — layout can still be settling.
+    const top2 = Math.max(0, el.scrollHeight - el.clientHeight);
+    if (top2 !== top && behavior !== 'smooth') el.scrollTop = top2;
+    const near = isElementNearBottom(el);
+    if (force || pinToBottomRef.current || isNearBottomRef.current) {
       isNearBottomRef.current = true;
-      setShowJumpToBottom(false);
+      pinToBottomRef.current = true;
+      if (near) setShowJumpToBottom(false);
     }
-    return true;
+    requestAnimationFrame(() => {
+      ignoreScrollRef.current = false;
+    });
+    return near;
   }, []);
 
   const updateNearBottom = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_THRESHOLD_PX;
+    const nearBottom = isElementNearBottom(el);
     isNearBottomRef.current = nearBottom;
-    if (nearBottom) setShowJumpToBottom(false);
+    if (nearBottom) {
+      pinToBottomRef.current = true;
+      setShowJumpToBottom(false);
+    } else {
+      // Treat as user intent to read history — stop auto-pinning.
+      pinToBottomRef.current = false;
+    }
   }, []);
 
   const handleScroll = useCallback(() => {
+    if (ignoreScrollRef.current) return;
     updateNearBottom();
   }, [updateNearBottom]);
 
   const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
+  const feedReady =
+    !loadingMsg && !loadingReq && !(canReadDamage && loadingDmg) && timeline.length > 0;
+
+  const startInitialPinWindow = useCallback(() => {
+    pinToBottomRef.current = true;
+    isNearBottomRef.current = true;
+    pinUntilRef.current = Date.now() + INITIAL_PIN_MS;
+  }, []);
 
   useLayoutEffect(() => {
-    if (loadingMsg || loadingReq || (canReadDamage && loadingDmg)) return;
-    if (timeline.length === 0) return;
+    if (!feedReady) return;
 
     const isInitial = !hasInitialScrolledRef.current;
     const tailChanged = timelineTailKey !== prevTimelineTailRef.current;
 
     if (isInitial) {
+      startInitialPinWindow();
       if (scrollToBottom('auto', true)) {
         hasInitialScrolledRef.current = true;
         prevTimelineTailRef.current = timelineTailKey;
@@ -488,40 +526,61 @@ export function TeamChatView({
       return;
     }
 
-    if (!tailChanged) return;
+    if (!tailChanged) {
+      if (pinToBottomRef.current) scrollToBottom('auto', true);
+      return;
+    }
     prevTimelineTailRef.current = timelineTailKey;
 
-    if (isNearBottomRef.current) {
+    if (pinToBottomRef.current || isNearBottomRef.current) {
       scrollToBottom('smooth', true);
     } else {
       setShowJumpToBottom(true);
     }
-  }, [loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline, timelineTailKey, scrollToBottom]);
+  }, [feedReady, timeline, timelineTailKey, scrollToBottom, startInitialPinWindow]);
 
+  // Retry pin until the flex viewport has a real height and content is laid out.
   useEffect(() => {
-    if (loadingMsg || loadingReq || (canReadDamage && loadingDmg) || timeline.length === 0 || hasInitialScrolledRef.current) return;
+    if (!feedReady) return;
 
+    startInitialPinWindow();
     let frame = 0;
     let rafId = 0;
-    const retry = () => {
-      if (hasInitialScrolledRef.current || frame++ > 40) return;
-      if (scrollToBottom('auto', true)) {
+
+    const tick = () => {
+      if (!pinToBottomRef.current && hasInitialScrolledRef.current) return;
+      const pinned = scrollToBottom('auto', true);
+      if (pinned) {
         hasInitialScrolledRef.current = true;
         prevTimelineTailRef.current = timelineTailKey;
-        return;
       }
-      rafId = requestAnimationFrame(retry);
+      // Keep correcting while the settle window is open (layout/fonts/images).
+      if (frame++ < 90 && Date.now() < pinUntilRef.current && pinToBottomRef.current) {
+        rafId = requestAnimationFrame(tick);
+      }
     };
-    rafId = requestAnimationFrame(retry);
-    return () => cancelAnimationFrame(rafId);
-  }, [loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline.length, timelineTailKey, scrollToBottom]);
+    rafId = requestAnimationFrame(tick);
+
+    const timeoutId = window.setTimeout(() => {
+      if (pinToBottomRef.current) scrollToBottom('auto', true);
+    }, 250);
+    const timeoutId2 = window.setTimeout(() => {
+      if (pinToBottomRef.current) scrollToBottom('auto', true);
+    }, 700);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(timeoutId2);
+    };
+  }, [feedReady, timelineTailKey, scrollToBottom, startInitialPinWindow]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
-    const onResize = () => {
-      if (!hasInitialScrolledRef.current) {
+    const pinIfNeeded = () => {
+      if (!hasInitialScrolledRef.current || pinToBottomRef.current) {
         if (scrollToBottom('auto', true)) {
           hasInitialScrolledRef.current = true;
           prevTimelineTailRef.current = timelineTailKey;
@@ -531,13 +590,25 @@ export function TeamChatView({
       if (isNearBottomRef.current) scrollToBottom('auto', true);
     };
 
-    const observer = new ResizeObserver(onResize);
+    const observer = new ResizeObserver(pinIfNeeded);
     observer.observe(el);
     const inner = el.firstElementChild;
     if (inner) observer.observe(inner);
 
-    return () => observer.disconnect();
-  }, [scrollToBottom, loadingMsg, loadingReq, loadingDmg, canReadDamage, timeline.length, timelineTailKey]);
+    // Lazy chat photos: load events don't bubble — capture on the scroller.
+    const onMediaLoad = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLImageElement)) return;
+      if (!pinToBottomRef.current && !isNearBottomRef.current) return;
+      pinIfNeeded();
+    };
+    el.addEventListener('load', onMediaLoad, true);
+
+    return () => {
+      observer.disconnect();
+      el.removeEventListener('load', onMediaLoad, true);
+    };
+  }, [scrollToBottom, feedReady, timeline.length, timelineTailKey]);
 
   useEffect(() => {
     return () => {
@@ -1133,7 +1204,10 @@ export function TeamChatView({
         <div className="pointer-events-none relative z-10 -mt-10 flex justify-center">
           <button
             type="button"
-            onClick={() => scrollToBottom('smooth', true)}
+            onClick={() => {
+              pinToBottomRef.current = true;
+              scrollToBottom('smooth', true);
+            }}
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sidebar-border bg-sidebar px-3 py-1.5 text-xs font-medium text-white shadow-none transition hover:bg-sidebar-hover"
             aria-label={tChat('jumpToLatest')}
           >

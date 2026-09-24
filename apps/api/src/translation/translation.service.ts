@@ -16,7 +16,9 @@ import {
 export class TranslationService {
   private readonly log = new Logger(TranslationService.name);
   private liveInFlight = 0;
+  private readonly liveWaiters: Array<() => void> = [];
   private static readonly MAX_LIVE = 6;
+  private static readonly LIVE_WAIT_MS = 12_000;
 
   constructor(private readonly settings: SettingsService) {}
 
@@ -29,6 +31,37 @@ export class TranslationService {
     };
   }
 
+  private async acquireLiveSlot(): Promise<boolean> {
+    if (this.liveInFlight < TranslationService.MAX_LIVE) {
+      this.liveInFlight += 1;
+      return true;
+    }
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        const idx = this.liveWaiters.indexOf(wake);
+        if (idx >= 0) this.liveWaiters.splice(idx, 1);
+        resolve(false);
+      }, TranslationService.LIVE_WAIT_MS);
+      const wake = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.liveInFlight += 1;
+        resolve(true);
+      };
+      this.liveWaiters.push(wake);
+    });
+  }
+
+  private releaseLiveSlot(): void {
+    this.liveInFlight = Math.max(0, this.liveInFlight - 1);
+    const next = this.liveWaiters.shift();
+    if (next) next();
+  }
+
   /**
    * Lightweight locale guess for short chat messages.
    * Returns null when uncertain — callers must NOT treat uncertain text as English
@@ -39,15 +72,15 @@ export class TranslationService {
     if (!sample) return null;
 
     const deHints =
-      /\b(und|oder|nicht|ist|sind|zimmer|bitte|danke|guten|hallo|morgen|abend|abreise|anreise|schmutzig|sauber|heute|morgen|für|mit|auch|noch|schon|kann|wir|ihr|sie|der|die|das|ein|eine|keine)\b/i;
+      /\b(und|oder|nicht|sind|zimmer|bitte|danke|guten|hallo|abend|abreise|anreise|schmutzig|sauber|heute|morgen|für|auch|noch|schon|kann|keine)\b/i;
     const enHints =
-      /\b(and|or|not|is|are|room|please|thanks|thank|hello|morning|departure|arrival|dirty|clean|the|this|that|with|have|has|need|needs|guest|floor)\b/i;
+      /\b(and|or|not|are|room|please|thanks|thank|hello|morning|departure|arrival|dirty|clean|this|that|have|has|need|needs|guest|floor)\b/i;
     const ptHints =
-      /\b(não|nao|são|sao|quarto|favor|obrigado|obrigada|olá|ola|bom dia|partida|chegada|sujo|limpo|para|com|uma|pelo|pela)\b/i;
+      /\b(não|nao|são|sao|quarto|favor|obrigado|obrigada|olá|ola|bom dia|partida|chegada|sujo|limpo|para|uma|pelo|pela)\b/i;
     const esHints =
       /\b(habitación|habitacion|gracias|hola|mañana|manana|salida|llegada|sucio|limpio|por favor|buenos|buenas|está|estan|están|también|tambien)\b/i;
     const trHints =
-      /\b(ve|veya|değil|degil|oda|lütfen|lutfen|teşekkür|tesekkur|teşekkürler|tesekkurler|merhaba|sabah|çıkış|cikis|giriş|giris|kirli|temiz|için|icin|var|yok|bir|bu|şu|su|ne|mi|mı|mu|mü|ile|gibi|tamam|evet|hayır|hayir|misafir|kat|bugün|bugun|yarın|yarin|günaydın|gunaydin|iyi|günler|gunler)\b/i;
+      /\b(veya|değil|degil|oda|lütfen|lutfen|teşekkür|tesekkur|teşekkürler|tesekkurler|merhaba|sabah|çıkış|cikis|giriş|giris|kirli|temiz|için|icin|yok|gibi|tamam|evet|hayır|hayir|misafir|kat|bugün|bugun|yarın|yarin|günaydın|gunaydin|günler|gunler)\b/i;
     const ukHints =
       /\b(і|та|або|не|є|кімната|кімнати|будь ласка|дякую|привіт|ранок|виїзд|заїзд|брудний|чистий|добрий|день)\b/i;
 
@@ -60,6 +93,7 @@ export class TranslationService {
       uk: (sample.match(ukHints) ?? []).length,
     };
 
+    // Strong character signals outweigh weak function-word hits.
     if (/[ієїґ]/i.test(sample) || /[а-яА-ЯіІїЇєЄґҐ]{3,}/.test(sample)) scores.uk += 3;
     if (/[ğüşöçıİĞÜŞÖÇ]/.test(sample)) scores.tr += 3;
     if (/[ãõ]/.test(sample)) scores.pt += 2;
@@ -101,12 +135,16 @@ export class TranslationService {
 
     const ctx = await this.client();
     if (!ctx) return null;
-    if (this.liveInFlight >= TranslationService.MAX_LIVE) return null;
+
+    const gotSlot = await this.acquireLiveSlot();
+    if (!gotSlot) {
+      this.log.warn('chat translation skipped: live slot timeout');
+      return null;
+    }
 
     const shielded = shieldMentions(body, mentions);
     const langName = localeLangName(targetLocale);
 
-    this.liveInFlight++;
     try {
       const res = await ctx.openai.chat.completions.create({
         model: ctx.model,
@@ -126,9 +164,14 @@ export class TranslationService {
       if (!translated) return null;
 
       const out = unshieldMentions(translated, mentions);
-      // If model returned the same text and we had no confident source, treat as already target.
-      if (out === body.trim() && detected == null) {
-        return { body, sourceLocale: targetLocale };
+      if (out === body.trim()) {
+        // Uncertain source + unchanged → likely already target.
+        if (detected == null) {
+          return { body, sourceLocale: targetLocale };
+        }
+        // Confident other language but model returned the same text → retry later.
+        if (detected !== targetLocale) return null;
+        return { body, sourceLocale: detected };
       }
 
       return {
@@ -139,7 +182,7 @@ export class TranslationService {
       this.log.warn(`chat translation failed: ${e instanceof Error ? e.message : String(e)}`);
       return null;
     } finally {
-      this.liveInFlight--;
+      this.releaseLiveSlot();
     }
   }
 }
