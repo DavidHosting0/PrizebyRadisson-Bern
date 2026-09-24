@@ -29,15 +29,17 @@ import { rejectTeamChatImageFile } from '@housekeeping/shared';
 import { removeTeamChatMessage, upsertTeamChatMessage } from '@/lib/team-chat-cache';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
-/** Keep forcing bottom while the feed settles (layout + lazy images). */
-const INITIAL_PIN_MS = 2800;
 
-function distanceFromBottom(el: HTMLElement): number {
-  return el.scrollHeight - el.scrollTop - el.clientHeight;
+/**
+ * With `flex-col-reverse`, scrollTop === 0 is the visual bottom (newest messages).
+ * No scroll-into-view needed on open — the browser starts there.
+ */
+function distanceFromLatest(el: HTMLElement): number {
+  return el.scrollTop;
 }
 
-function isElementNearBottom(el: HTMLElement, threshold = NEAR_BOTTOM_THRESHOLD_PX): boolean {
-  return distanceFromBottom(el) <= threshold;
+function isNearLatest(el: HTMLElement, threshold = NEAR_BOTTOM_THRESHOLD_PX): boolean {
+  return distanceFromLatest(el) <= threshold;
 }
 const LONG_PRESS_MS = 480;
 const PHOTO_COMPRESS_MS = 20_000;
@@ -348,15 +350,9 @@ export function TeamChatView({
   const qc = useQueryClient();
   const toast = useToast();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const bottomSentinelRef = useRef<HTMLDivElement>(null);
-  const isNearBottomRef = useRef(true);
-  /** While true, every layout/resize/image-load re-pins to the latest message. */
-  const pinToBottomRef = useRef(true);
-  const hasInitialScrolledRef = useRef(false);
+  const isNearLatestRef = useRef(true);
   const prevTimelineTailRef = useRef<string | null>(null);
-  const pinUntilRef = useRef(0);
   const ignoreScrollRef = useRef(false);
-  const userUnpinnedRef = useRef(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
@@ -484,201 +480,55 @@ export function TeamChatView({
     };
   }, [embedOperationsSocket, qc, locale]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollContainerRef.current;
-    if (!el || el.clientHeight < 8) return false;
+    if (!el) return;
     ignoreScrollRef.current = true;
-    const sentinel = bottomSentinelRef.current;
-    if (sentinel && behavior === 'auto') {
-      // Instant pin — more reliable than scrollTop while layout is still settling.
-      sentinel.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' });
-    }
-    const top = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (behavior === 'smooth') {
-      el.scrollTo({ top, behavior: 'smooth' });
-    } else {
-      el.scrollTop = top;
-    }
-    // Re-measure after write — layout can still be settling.
-    const top2 = Math.max(0, el.scrollHeight - el.clientHeight);
-    if (top2 !== top && behavior !== 'smooth') el.scrollTop = top2;
-    const near = isElementNearBottom(el);
-    if (force || pinToBottomRef.current || isNearBottomRef.current) {
-      isNearBottomRef.current = true;
-      pinToBottomRef.current = true;
-      if (near) setShowJumpToBottom(false);
-    }
+    // flex-col-reverse: latest == scrollTop 0
+    if (behavior === 'smooth') el.scrollTo({ top: 0, behavior: 'smooth' });
+    else el.scrollTop = 0;
+    isNearLatestRef.current = true;
+    setShowJumpToBottom(false);
     requestAnimationFrame(() => {
       ignoreScrollRef.current = false;
     });
-    return near;
-  }, []);
-
-  const updateNearBottom = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    // Layout/image settle often fires scroll events that look like "user scrolled up".
-    // Keep pinning until the initial settle window ends (unless the user clearly unpinned).
-    if (
-      Date.now() < pinUntilRef.current &&
-      pinToBottomRef.current &&
-      !userUnpinnedRef.current
-    ) {
-      isNearBottomRef.current = true;
-      return;
-    }
-    const nearBottom = isElementNearBottom(el);
-    isNearBottomRef.current = nearBottom;
-    if (nearBottom) {
-      pinToBottomRef.current = true;
-      userUnpinnedRef.current = false;
-      setShowJumpToBottom(false);
-    } else {
-      // Treat as user intent to read history — stop auto-pinning.
-      pinToBottomRef.current = false;
-      if (hasInitialScrolledRef.current) setShowJumpToBottom(true);
-    }
   }, []);
 
   const handleScroll = useCallback(() => {
     if (ignoreScrollRef.current) return;
-    updateNearBottom();
-  }, [updateNearBottom]);
-
-  const markUserUnpinned = useCallback(() => {
-    if (ignoreScrollRef.current) return;
     const el = scrollContainerRef.current;
-    if (!el || isElementNearBottom(el)) return;
-    userUnpinnedRef.current = true;
-    pinToBottomRef.current = false;
-    isNearBottomRef.current = false;
-    if (hasInitialScrolledRef.current) setShowJumpToBottom(true);
+    if (!el) return;
+    const near = isNearLatest(el);
+    isNearLatestRef.current = near;
+    setShowJumpToBottom(!near);
   }, []);
 
   const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
   const feedReady =
     !loadingMsg && !loadingReq && !(canReadDamage && loadingDmg) && timeline.length > 0;
 
-  const startInitialPinWindow = useCallback(() => {
-    pinToBottomRef.current = true;
-    isNearBottomRef.current = true;
-    userUnpinnedRef.current = false;
-    pinUntilRef.current = Date.now() + INITIAL_PIN_MS;
-  }, []);
-
+  // Ensure we sit on the latest once the feed exists (flex-col-reverse default is
+  // already scrollTop 0; this covers late layout when the scroller gains height).
   useLayoutEffect(() => {
     if (!feedReady) return;
-
-    const isInitial = !hasInitialScrolledRef.current;
-    const tailChanged = timelineTailKey !== prevTimelineTailRef.current;
-
-    if (isInitial) {
-      startInitialPinWindow();
-      if (scrollToBottom('auto', true)) {
-        hasInitialScrolledRef.current = true;
-        prevTimelineTailRef.current = timelineTailKey;
-      }
-      return;
-    }
-
-    if (!tailChanged) {
-      if (pinToBottomRef.current) scrollToBottom('auto', true);
-      return;
-    }
-    prevTimelineTailRef.current = timelineTailKey;
-
-    if (pinToBottomRef.current || isNearBottomRef.current) {
-      scrollToBottom('smooth', true);
-    } else {
-      setShowJumpToBottom(true);
-    }
-  }, [feedReady, timeline, timelineTailKey, scrollToBottom, startInitialPinWindow]);
-
-  // Retry pin until the flex viewport has a real height and content is laid out.
-  useEffect(() => {
-    if (!feedReady) return;
-
-    startInitialPinWindow();
-    let frame = 0;
-    let rafId = 0;
-    let consecutiveNear = 0;
-
-    const tick = () => {
-      if (userUnpinnedRef.current) return;
-      if (!pinToBottomRef.current && hasInitialScrolledRef.current && Date.now() >= pinUntilRef.current) {
-        return;
-      }
-      const pinned = scrollToBottom('auto', true);
-      if (pinned) {
-        hasInitialScrolledRef.current = true;
-        prevTimelineTailRef.current = timelineTailKey;
-        consecutiveNear += 1;
-      } else {
-        consecutiveNear = 0;
-      }
-      // Keep correcting while settle window is open, or until we've been at bottom
-      // for several frames (lazy images / fonts can still grow the feed).
-      const stillSettling =
-        Date.now() < pinUntilRef.current || consecutiveNear < 8;
-      if (frame++ < 120 && stillSettling && pinToBottomRef.current && !userUnpinnedRef.current) {
-        rafId = requestAnimationFrame(tick);
-      }
-    };
-    rafId = requestAnimationFrame(tick);
-
-    const timeoutId = window.setTimeout(() => {
-      if (pinToBottomRef.current) scrollToBottom('auto', true);
-    }, 250);
-    const timeoutId2 = window.setTimeout(() => {
-      if (pinToBottomRef.current) scrollToBottom('auto', true);
-    }, 900);
-    const timeoutId3 = window.setTimeout(() => {
-      if (pinToBottomRef.current) scrollToBottom('auto', true);
-    }, 1800);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      window.clearTimeout(timeoutId);
-      window.clearTimeout(timeoutId2);
-      window.clearTimeout(timeoutId3);
-    };
-  }, [feedReady, timelineTailKey, scrollToBottom, startInitialPinWindow]);
-
-  useEffect(() => {
     const el = scrollContainerRef.current;
-    if (!el) return;
+    if (!el || el.clientHeight < 8) return;
+    el.scrollTop = 0;
+    isNearLatestRef.current = true;
+  }, [feedReady]);
 
-    const pinIfNeeded = () => {
-      if (userUnpinnedRef.current) return;
-      if (!hasInitialScrolledRef.current || pinToBottomRef.current) {
-        if (scrollToBottom('auto', true)) {
-          hasInitialScrolledRef.current = true;
-          prevTimelineTailRef.current = timelineTailKey;
-        }
-        return;
-      }
-      if (isNearBottomRef.current) scrollToBottom('auto', true);
-    };
-
-    const observer = new ResizeObserver(pinIfNeeded);
-    observer.observe(el);
-    const inner = el.firstElementChild;
-    if (inner) observer.observe(inner);
-
-    // Lazy chat photos: load events don't bubble — capture on the scroller.
-    const onMediaLoad = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLImageElement)) return;
-      if (!pinToBottomRef.current && !isNearBottomRef.current) return;
-      pinIfNeeded();
-    };
-    el.addEventListener('load', onMediaLoad, true);
-
-    return () => {
-      observer.disconnect();
-      el.removeEventListener('load', onMediaLoad, true);
-    };
-  }, [scrollToBottom, feedReady, timeline.length, timelineTailKey]);
+  // Only follow new messages when the user is already on the latest.
+  useEffect(() => {
+    if (!timelineTailKey) return;
+    if (prevTimelineTailRef.current === null) {
+      prevTimelineTailRef.current = timelineTailKey;
+      return;
+    }
+    if (prevTimelineTailRef.current === timelineTailKey) return;
+    prevTimelineTailRef.current = timelineTailKey;
+    if (isNearLatestRef.current) scrollToLatest('auto');
+    else setShowJumpToBottom(true);
+  }, [timelineTailKey, scrollToLatest]);
 
   useEffect(() => {
     return () => {
@@ -991,18 +841,15 @@ export function TeamChatView({
       )}
     >
       <div
-        className="relative h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 [overflow-anchor:none] sm:px-5"
+        className="relative flex h-0 min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain px-3 py-4 [overflow-anchor:none] sm:px-5"
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        onWheel={markUserUnpinned}
-        onTouchMove={markUserUnpinned}
       >
         {/*
-          Spacer (not justify-end): short feeds sit at the bottom; long feeds scroll
-          without scroll-anchoring jumps that leave you on "Yesterday".
+          flex-col-reverse: browser opens at scrollTop 0 = newest messages.
+          Content stays chronological (oldest → newest) inside the inner wrapper.
         */}
-        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
-        <div className="min-h-0 flex-1 grow" aria-hidden />
+        <div className="mx-auto w-full max-w-3xl">
         {(loadingMsg || loadingReq || (canReadDamage && loadingDmg)) && (
           <p className="text-sm text-sidebar-muted">{tChat('loading')}</p>
         )}
@@ -1311,7 +1158,6 @@ export function TeamChatView({
             );
           })}
         </ul>
-        <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden />
         </div>
       </div>
 
@@ -1319,11 +1165,7 @@ export function TeamChatView({
         <div className="pointer-events-none relative z-10 -mt-10 flex justify-center">
           <button
             type="button"
-            onClick={() => {
-              userUnpinnedRef.current = false;
-              pinToBottomRef.current = true;
-              scrollToBottom('smooth', true);
-            }}
+            onClick={() => scrollToLatest('smooth')}
             className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sidebar-border bg-sidebar px-3 py-1.5 text-xs font-medium text-white shadow-none transition hover:bg-sidebar-hover"
             aria-label={tChat('jumpToLatest')}
           >
