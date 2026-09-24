@@ -31,7 +31,7 @@ const messageInclude = {
       author: { select: userPublicSelect },
     },
   },
-  reactions: { select: { userId: true, emoji: true } },
+  reactions: { select: { userId: true, emoji: true, user: { select: userPublicSelect } } },
   mentions: {
     include: {
       user: { select: userPublicSelect },
@@ -65,7 +65,11 @@ type MessageRow = {
     deletedAt: Date | null;
     author: AuthorRow;
   } | null;
-  reactions: { userId: string; emoji: string }[];
+  reactions: {
+    userId: string;
+    emoji: string;
+    user: AuthorRow;
+  }[];
   mentions: MentionRow[];
 };
 
@@ -121,18 +125,36 @@ export class TeamChatService {
   }
 
   private summarizeReactions(
-    reactions: { userId: string; emoji: string }[],
+    reactions: { userId: string; emoji: string; user?: AuthorRow | null }[],
     viewerId: string,
-  ): { emoji: string; count: number; me: boolean }[] {
-    const map = new Map<string, { count: number; me: boolean }>();
+  ): {
+    emoji: string;
+    count: number;
+    me: boolean;
+    users: { id: string; name: string; titlePrefix: string }[];
+  }[] {
+    const map = new Map<
+      string,
+      { count: number; me: boolean; users: { id: string; name: string; titlePrefix: string }[] }
+    >();
     for (const r of reactions) {
-      const cur = map.get(r.emoji) ?? { count: 0, me: false };
+      const cur = map.get(r.emoji) ?? { count: 0, me: false, users: [] };
       cur.count++;
       if (r.userId === viewerId) cur.me = true;
+      const name = r.user?.name?.trim() || '—';
+      const titlePrefix = r.user?.titlePrefix ?? '';
+      if (!cur.users.some((u) => u.id === r.userId)) {
+        cur.users.push({ id: r.userId, name, titlePrefix });
+      }
       map.set(r.emoji, cur);
     }
     return [...map.entries()]
-      .map(([emoji, s]) => ({ emoji, count: s.count, me: s.me }))
+      .map(([emoji, s]) => ({
+        emoji,
+        count: s.count,
+        me: s.me,
+        users: s.users.sort((a, b) => a.name.localeCompare(b.name)),
+      }))
       .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji));
   }
 
@@ -278,11 +300,20 @@ export class TeamChatService {
       cachedBody = cached?.body;
     }
     if (cachedBody != null) {
-      // Identity cache = already decided "no translation for this locale" (one AI pass).
+      // Identity cache = "no translation for this locale". Only trust it when the
+      // text is really in the UI language (or a short uncertain bubble). Wrong
+      // identity rows (DE/EN originals cached as PT/ES/TR/UK) must be ignored.
       if (cachedBody === body) {
-        return { displayBody: body, bodyTranslated: null, isTranslated: false };
+        const identityOk =
+          detected === targetLocale ||
+          (detected == null && body.trim().length < 24);
+        if (identityOk) {
+          return { displayBody: body, bodyTranslated: null, isTranslated: false };
+        }
+        // Fall through and re-translate; overwrite the bad cache on success.
+      } else {
+        return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
       }
-      return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
     }
 
     if (mode !== 'live') {
@@ -299,17 +330,13 @@ export class TeamChatService {
       return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
 
-    // Model said it's already in the target language — persist identity so we never
-    // spend tokens again for this (message, locale).
-    if (result.body === body && result.sourceLocale === targetLocale) {
-      await this.persistTranslation(messageId, targetLocale, body, transCache);
-      if (!sourceLocale || sourceLocale !== targetLocale) {
-        void this.prisma.teamChatMessage
-          .update({
-            where: { id: messageId },
-            data: { sourceLocale: targetLocale },
-          })
-          .catch(() => undefined);
+    // Already in target — only persist identity when detection agrees.
+    if (result.body === body) {
+      if (detected === targetLocale || result.sourceLocale === targetLocale) {
+        if (detected === targetLocale) {
+          await this.persistTranslation(messageId, targetLocale, body, transCache);
+        }
+        return { displayBody: body, bodyTranslated: null, isTranslated: false };
       }
       return { displayBody: body, bodyTranslated: null, isTranslated: false };
     }
@@ -445,9 +472,9 @@ export class TeamChatService {
     ]);
     const transCache = new Map(translationRows.map((t) => [t.messageId, t.body]));
 
-    // At most one AI pass per (message, locale): fill a small newest batch, persist to DB.
-    // No background warm — that re-spent tokens on the same gaps every open.
-    await this.fillMissingTranslations(rows, transCache, targetLocale, 15);
+    // At most one AI pass per (message, locale): fill newest missing, persist to DB.
+    // Bad identity caches (same body as original for another language) are retried.
+    await this.fillMissingTranslations(rows, transCache, targetLocale, 25);
 
     const mapped = await Promise.all(
       rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale, 'cache', transCache)),
@@ -461,9 +488,20 @@ export class TeamChatService {
     transCache: Map<string, string>,
     targetLocale: SupportedLocale,
   ): boolean {
-    if (!body.trim() || transCache.has(messageId)) return false;
+    if (!body.trim()) return false;
+    const cached = transCache.get(messageId);
     const detected = this.translation.detectLocale(body);
     if (detected === targetLocale) return false;
+
+    if (cached != null) {
+      // Real translation already stored.
+      if (cached !== body) return false;
+      // Identity row: only skip when it is trustworthy.
+      if (detected == null && body.trim().length < 24) return false;
+      // Otherwise identity was wrong (e.g. German cached as "already PT") — retranslate.
+      return detected != null || body.trim().length >= 24;
+    }
+
     // Uncertain short bubbles ("ok", "303") — show original, never burn tokens.
     if (detected == null && body.trim().length < 24) return false;
     return true;
@@ -758,6 +796,11 @@ export class TeamChatService {
     this.realtime.emitTeamChatReaction({ messageId });
     const reactions = await this.prisma.teamChatMessageReaction.findMany({
       where: { messageId },
+      select: {
+        userId: true,
+        emoji: true,
+        user: { select: userPublicSelect },
+      },
     });
     return {
       messageId,

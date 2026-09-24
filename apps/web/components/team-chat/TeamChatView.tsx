@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import imageCompression from 'browser-image-compression';
 import { api } from '@/lib/api';
@@ -82,7 +83,25 @@ function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: b
   );
 }
 
-type ReactionSummary = { emoji: string; count: number; me: boolean };
+type ReactionSummary = {
+  emoji: string;
+  count: number;
+  me: boolean;
+  users?: { id: string; name: string; titlePrefix: string }[];
+};
+
+function formatReactionUserNames(
+  users: { id: string; name: string; titlePrefix: string }[] | undefined,
+  viewerId: string | undefined,
+  youLabel: string,
+): string {
+  if (!users?.length) return '';
+  return users
+    .map((u) =>
+      u.id === viewerId ? youLabel : formatUserWithTitlePrefix(u.name, u.titlePrefix),
+    )
+    .join(', ');
+}
 
 type ChatAuthor = {
   id: string;
@@ -349,6 +368,12 @@ export function TeamChatView({
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [menu, setMenu] = useState<{
     message: ChatMsg;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [reactionInfo, setReactionInfo] = useState<{
+    emoji: string;
+    users: { id: string; label: string }[];
     x: number;
     y: number;
   } | null>(null);
@@ -807,8 +832,10 @@ export function TeamChatView({
   }
 
   const closeMenu = useCallback(() => setMenu(null), []);
+  const closeReactionInfo = useCallback(() => setReactionInfo(null), []);
 
   const openMenu = useCallback((message: ChatMsg, x: number, y: number) => {
+    setReactionInfo(null);
     setMenu({ message, x, y });
   }, []);
 
@@ -1169,26 +1196,61 @@ export function TeamChatView({
                           mine ? 'justify-end' : 'justify-start',
                         )}
                       >
-                        {(m.reactions ?? []).map((rx) => (
-                          <button
-                            key={rx.emoji}
-                            type="button"
-                            title={rx.emoji}
-                            disabled={!canPost || toggleReaction.isPending}
-                            onClick={() =>
-                              toggleReaction.mutate({ messageId: m.id, emoji: rx.emoji })
-                            }
-                            className={clsx(
-                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-none transition-colors',
-                              rx.me
-                                ? 'border-action/40 bg-action/20 font-medium text-white'
-                                : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted hover:bg-white/10',
-                            )}
-                          >
-                            <span>{rx.emoji}</span>
-                            <span className="tabular-nums">{rx.count}</span>
-                          </button>
-                        ))}
+                        {(m.reactions ?? []).map((rx) => {
+                          const names = formatReactionUserNames(
+                            rx.users,
+                            user?.id,
+                            tChat('you'),
+                          );
+                          const tip = names
+                            ? `${rx.emoji} — ${names}`
+                            : `${rx.emoji} × ${rx.count}`;
+                          return (
+                            <button
+                              key={rx.emoji}
+                              type="button"
+                              title={tip}
+                              aria-label={
+                                names
+                                  ? tChat('reactedByNames', { emoji: rx.emoji, names })
+                                  : tip
+                              }
+                              disabled={!canPost || toggleReaction.isPending}
+                              onClick={() =>
+                                toggleReaction.mutate({ messageId: m.id, emoji: rx.emoji })
+                              }
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const list =
+                                  rx.users?.map((u) => ({
+                                    id: u.id,
+                                    label:
+                                      u.id === user?.id
+                                        ? tChat('you')
+                                        : formatUserWithTitlePrefix(u.name, u.titlePrefix),
+                                  })) ?? [];
+                                if (list.length === 0) return;
+                                setMenu(null);
+                                setReactionInfo({
+                                  emoji: rx.emoji,
+                                  users: list,
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                });
+                              }}
+                              className={clsx(
+                                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-none transition-colors',
+                                rx.me
+                                  ? 'border-action/40 bg-action/20 font-medium text-white'
+                                  : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted hover:bg-white/10',
+                              )}
+                            >
+                              <span>{rx.emoji}</span>
+                              <span className="tabular-nums">{rx.count}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1352,7 +1414,7 @@ export function TeamChatView({
       {canCreateRequest && <NewRequestModal open={newReqOpen} onClose={() => setNewReqOpen(false)} />}
       <ProfilePhotoSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
 
-      <MessageMenuScrim open={!!menu} />
+      <MessageMenuScrim open={!!menu || !!reactionInfo} />
       <MessageContextMenu
         open={!!menu}
         x={menu?.x ?? 0}
@@ -1375,6 +1437,77 @@ export function TeamChatView({
           deleteMessage.mutate(menu.message.id);
         }}
       />
+      <ReactionReactorsPopover info={reactionInfo} title={tChat('reactedBy')} onClose={closeReactionInfo} />
     </div>
+  );
+}
+
+function ReactionReactorsPopover({
+  info,
+  title,
+  onClose,
+}: {
+  info: { emoji: string; users: { id: string; label: string }[]; x: number; y: number } | null;
+  title: string;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    if (!info) return;
+    const el = panelRef.current;
+    const pad = 12;
+    const width = el?.offsetWidth ?? 160;
+    const height = el?.offsetHeight ?? 80;
+    setPos({
+      left: Math.max(pad, Math.min(info.x, window.innerWidth - width - pad)),
+      top: Math.max(pad, Math.min(info.y, window.innerHeight - height - pad)),
+    });
+  }, [info]);
+
+  useEffect(() => {
+    if (!info) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      const t = e.target as Node | null;
+      if (t && panelRef.current?.contains(t)) return;
+      onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown, { passive: true });
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+    };
+  }, [info, onClose]);
+
+  if (!info || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label={title}
+      className="fixed z-[80] min-w-[10rem] max-w-[16rem] rounded-xl border border-sidebar-border bg-sidebar p-3 shadow-lift"
+      style={{ left: pos.left, top: pos.top }}
+    >
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-white">
+        <span className="text-base leading-none">{info.emoji}</span>
+        {title}
+      </p>
+      <ul className="space-y-1">
+        {info.users.map((u) => (
+          <li key={u.id} className="truncate text-sm text-sidebar-muted">
+            {u.label}
+          </li>
+        ))}
+      </ul>
+    </div>,
+    document.body,
   );
 }

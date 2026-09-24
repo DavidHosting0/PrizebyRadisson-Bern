@@ -32,6 +32,10 @@ export type DailyCleaningTaskDto = {
   completionReason?: DailyCleaningCompletionReason | null;
   /** RESTANT only: guest already ≥5 nights in house — thorough clean. */
   isExtensiveRestant?: boolean;
+  /** Departure today from EMMA occupancy (room tasks only). */
+  isDepartureToday?: boolean;
+  /** Guest has checked out (or OCO done) — relevant when isDepartureToday. */
+  guestCheckedOut?: boolean;
 };
 
 export type DailyCleaningSummary = {

@@ -72,11 +72,11 @@ export class TranslationService {
     if (!sample) return null;
 
     const deHints =
-      /\b(und|oder|nicht|sind|zimmer|bitte|danke|guten|hallo|abend|abreise|anreise|schmutzig|sauber|heute|morgen|für|auch|noch|schon|kann|keine)\b/i;
+      /\b(und|oder|nicht|ist|sind|zimmer|bitte|danke|guten|hallo|abend|abreise|anreise|schmutzig|sauber|heute|morgen|für|mit|auch|noch|schon|kann|keine|der|die|das|ein|eine|wir|ihr)\b/i;
     const enHints =
-      /\b(and|or|not|are|room|please|thanks|thank|hello|morning|departure|arrival|dirty|clean|this|that|have|has|need|needs|guest|floor)\b/i;
+      /\b(and|or|not|is|are|room|please|thanks|thank|hello|morning|departure|arrival|dirty|clean|this|that|have|has|need|needs|guest|floor|the|with)\b/i;
     const ptHints =
-      /\b(não|nao|são|sao|quarto|favor|obrigado|obrigada|olá|ola|bom dia|partida|chegada|sujo|limpo|para|uma|pelo|pela)\b/i;
+      /\b(não|nao|são|sao|quarto|obrigado|obrigada|olá|ola|bom dia|partida|chegada|sujo|limpo|pelo|pela|por favor)\b/i;
     const esHints =
       /\b(habitación|habitacion|gracias|hola|mañana|manana|salida|llegada|sucio|limpio|por favor|buenos|buenas|está|estan|están|también|tambien)\b/i;
     const trHints =
@@ -154,7 +154,8 @@ export class TranslationService {
             role: 'system',
             content:
               `Translate hotel staff chat messages to ${langName}. ` +
-              `If the text is already in ${langName}, return it unchanged. ` +
+              `Always translate if the source is another language. ` +
+              `Only return the text unchanged when it is already clearly in ${langName}. ` +
               'Keep {{MENTION:...}} tokens exactly as-is. Return only the translation.',
           },
           { role: 'user', content: shielded },
@@ -165,13 +166,12 @@ export class TranslationService {
 
       const out = unshieldMentions(translated, mentions);
       if (out === body.trim()) {
-        // Uncertain source + unchanged → likely already target.
-        if (detected == null) {
-          return { body, sourceLocale: targetLocale };
+        // Never treat "unchanged + unknown source" as already-target — that poisoned
+        // PT/ES/TR/UK caches with German/English originals.
+        if (detected === targetLocale) {
+          return { body, sourceLocale: detected };
         }
-        // Confident other language but model returned the same text → retry later.
-        if (detected !== targetLocale) return null;
-        return { body, sourceLocale: detected };
+        return null;
       }
 
       return {

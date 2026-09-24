@@ -7,6 +7,7 @@ import type { DailyCleaningPlanResponse, DailyCleaningTaskDto } from '@housekeep
 import { formatFloorLabel } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { GuestStayTypeIcons } from '@/components/reception/GuestStayTypeIcons';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 import { useTranslations } from 'next-intl';
 
@@ -453,6 +454,8 @@ export function RoomAssignmentPaintView({
                           brushColor={selectedColor}
                           onClick={() => task.roomId && paintRoom(task.roomId)}
                           disabled={!selectedUserId}
+                          isDepartureToday={task.isDepartureToday === true}
+                          guestCheckedOut={task.guestCheckedOut === true}
                         />
                       ))}
                     </div>
@@ -481,6 +484,8 @@ export function RoomAssignmentPaintView({
                     brushColor={selectedColor}
                     onClick={() => task.roomId && paintRoom(task.roomId)}
                     disabled={!selectedUserId}
+                    isDepartureToday={task.isDepartureToday === true}
+                    guestCheckedOut={task.guestCheckedOut === true}
                   />
                 ))}
               </div>
@@ -643,6 +648,8 @@ function PaintTile({
   disabled,
   wide,
   highlight,
+  isDepartureToday,
+  guestCheckedOut,
 }: {
   label: string;
   sub?: string;
@@ -652,6 +659,8 @@ function PaintTile({
   disabled?: boolean;
   wide?: boolean;
   highlight?: boolean;
+  isDepartureToday?: boolean;
+  guestCheckedOut?: boolean;
 }) {
   return (
     <button
@@ -659,7 +668,7 @@ function PaintTile({
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'rounded-lg border px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40',
+        'relative rounded-lg border px-2.5 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-40',
         wide ? 'min-w-[148px]' : 'min-w-[56px]',
         color
           ? 'border-transparent text-white shadow-[0_1px_0_rgba(0,0,0,0.25)]'
@@ -675,8 +684,21 @@ function PaintTile({
             : undefined
       }
     >
-      <span className="block text-sm font-semibold tabular-nums leading-none tracking-tight">
-        {label}
+      <span className="flex items-start justify-between gap-1.5">
+        <span className="block text-sm font-semibold tabular-nums leading-none tracking-tight">
+          {label}
+        </span>
+        {isDepartureToday ? (
+          <GuestStayTypeIcons
+            stay={{
+              isDepartureToday: true,
+              checkOut: guestCheckedOut === true,
+              ocoDone: guestCheckedOut === true,
+            }}
+            size="xs"
+            onColor={Boolean(color)}
+          />
+        ) : null}
       </span>
       {sub ? <span className="mt-1 block text-[10px] opacity-80">{sub}</span> : null}
     </button>

@@ -527,9 +527,13 @@ export class DailyCleaningService implements OnModuleInit {
     const occupancyByRoom = await this.occupancy.mapForRoomNumbers(roomNumbers);
     const tasks = plan.tasks.map((t) => {
       const dto = this.toTaskDto(t);
-      if (dto.workType === 'RESTANT' && t.room?.roomNumber) {
-        dto.isExtensiveRestant =
-          occupancyByRoom.get(t.room.roomNumber)?.isExtensiveRestant ?? false;
+      if (t.room?.roomNumber) {
+        const occ = occupancyByRoom.get(t.room.roomNumber);
+        dto.isDepartureToday = occ?.isDepartureToday ?? false;
+        dto.guestCheckedOut = occ ? Boolean(occ.checkOut || occ.ocoDone) : false;
+        if (dto.workType === 'RESTANT') {
+          dto.isExtensiveRestant = occ?.isExtensiveRestant ?? false;
+        }
       }
       return dto;
     });

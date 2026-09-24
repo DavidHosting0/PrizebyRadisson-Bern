@@ -28,7 +28,12 @@ const MORE_EMOJIS = [
   '⭐', '🍀', '☕', '🍕',
 ] as const;
 
-type ReactionSummary = { emoji: string; count: number; me: boolean };
+type ReactionSummary = {
+  emoji: string;
+  count: number;
+  me: boolean;
+  users?: { id: string; name: string; titlePrefix: string }[];
+};
 
 type ChatAuthor = {
   id: string;
@@ -1132,11 +1137,22 @@ export function TeamChatBoard() {
                         mine ? 'justify-end' : 'justify-start',
                       )}
                     >
-                      {m.reactions.map((r) => (
+                      {m.reactions.map((r) => {
+                        const names = (r.users ?? [])
+                          .map((u) =>
+                            u.id === user?.id
+                              ? 'You'
+                              : u.titlePrefix
+                                ? `${u.titlePrefix} · ${u.name}`
+                                : u.name,
+                          )
+                          .join(', ');
+                        return (
                         <button
                           key={r.emoji}
                           type="button"
                           data-reaction
+                          title={names ? `${r.emoji} — ${names}` : r.emoji}
                           disabled={!canPost}
                           onClick={() =>
                             toggleReaction.mutate({ messageId: m.id, emoji: r.emoji })
@@ -1151,7 +1167,8 @@ export function TeamChatBoard() {
                           <span>{r.emoji}</span>
                           <span>{r.count}</span>
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {!isHead && (
