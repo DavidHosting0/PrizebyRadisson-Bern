@@ -121,10 +121,11 @@ export class TranslationService {
       /\b(und|oder|nicht|ist|sind|zimmer|bitte|danke|guten|hallo|abend|abreise|anreise|schmutzig|sauber|heute|morgen|für|mit|auch|noch|schon|kann|keine|der|die|das|ein|eine|wir|ihr)\b/i;
     const enHints =
       /\b(and|or|not|is|are|room|please|thanks|thank|hello|morning|departure|arrival|dirty|clean|this|that|have|has|need|needs|guest|floor|the|with)\b/i;
+    // Avoid shared "por favor" — it tied PT/ES and preferred ES, poisoning PT caches.
     const ptHints =
-      /\b(não|nao|são|sao|quarto|obrigado|obrigada|olá|ola|bom dia|partida|chegada|sujo|limpo|pelo|pela|por favor)\b/i;
+      /\b(não|nao|são|sao|quarto|quartos|obrigado|obrigada|olá|ola|bom dia|partida|chegada|sujo|limpo|pelo|pela|limpe|hóspede|hospede)\b/i;
     const esHints =
-      /\b(habitación|habitacion|gracias|hola|mañana|manana|salida|llegada|sucio|limpio|por favor|buenos|buenas|está|estan|están|también|tambien)\b/i;
+      /\b(habitación|habitacion|gracias|hola|mañana|manana|salida|llegada|sucio|limpio|buenos|buenas|está|estan|están|también|tambien|huésped|huesped|limpia)\b/i;
     const trHints =
       /\b(veya|değil|degil|oda|lütfen|lutfen|teşekkür|tesekkur|teşekkürler|tesekkurler|merhaba|sabah|çıkış|cikis|giriş|giris|kirli|temiz|için|icin|yok|gibi|tamam|evet|hayır|hayir|misafir|kat|bugün|bugun|yarın|yarin|günaydın|gunaydin|günler|gunler)\b/i;
     const ukHints =
@@ -142,27 +143,50 @@ export class TranslationService {
     // Strong character signals outweigh weak function-word hits.
     if (/[ієїґ]/i.test(sample) || /[а-яА-ЯіІїЇєЄґҐ]{3,}/.test(sample)) scores.uk += 3;
     if (/[ğüşöçıİĞÜŞÖÇ]/.test(sample)) scores.tr += 3;
-    if (/[ãõ]/.test(sample)) scores.pt += 2;
+    if (/[ãõ]/i.test(sample)) scores.pt += 3;
     if (/[äöüß]/i.test(sample)) scores.de += 2;
-    if (/[ñ¿¡]/.test(sample)) scores.es += 2;
+    if (/[ñ¿¡]/.test(sample)) scores.es += 3;
 
     const best = Math.max(...Object.values(scores));
     if (best === 0) {
       if (/[ієїґ]/i.test(sample) || /[а-яА-Я]{3,}/.test(sample)) return 'uk';
       if (/[ğüşöçıİĞÜŞÖÇ]/.test(sample)) return 'tr';
-      if (/[ãõ]/.test(sample)) return 'pt';
+      if (/[ãõ]/i.test(sample)) return 'pt';
       if (/[äöüß]/i.test(sample)) return 'de';
       if (/[ñ¿¡]/.test(sample)) return 'es';
       // Uncertain — do not guess "en" (breaks EN UI translation).
       return null;
     }
 
-    // Prefer distinctive locales when scores tie.
-    const order: SupportedLocale[] = ['uk', 'tr', 'es', 'pt', 'de', 'en'];
+    // Prefer distinctive locales when scores tie (pt before es — shared hotel vocab).
+    const order: SupportedLocale[] = ['uk', 'tr', 'pt', 'es', 'de', 'en'];
     for (const locale of order) {
       if (scores[locale] === best) return locale;
     }
     return null;
+  }
+
+  /**
+   * Only treat a cached translation as poisoned when we are confident it is the
+   * wrong language. Weak/null detection must NOT discard ES/TR/UK rows.
+   */
+  translationLooksPlausible(cachedBody: string, targetLocale: SupportedLocale): boolean {
+    const cachedLang = this.detectLocale(cachedBody);
+    if (!cachedLang || cachedLang === targetLocale) return true;
+    // Clear DE/EN original parked under another locale — classic poison.
+    if (
+      (cachedLang === 'de' || cachedLang === 'en') &&
+      targetLocale !== 'de' &&
+      targetLocale !== 'en'
+    ) {
+      return false;
+    }
+    // Ukrainian target without Cyrillic but detected as Latin language.
+    if (targetLocale === 'uk' && !/[а-яА-ЯіІїЇєЄґҐ]/.test(cachedBody)) {
+      return false;
+    }
+    // Otherwise keep the cache (PT↔ES confusion etc.).
+    return true;
   }
 
   async translateChatBody(
@@ -389,18 +413,11 @@ export class TranslationService {
       }
 
       for (const locale of targets) {
-        const value = parsed[locale];
+        const value = this.pickLocaleField(parsed, locale);
         if (typeof value !== 'string') continue;
         const translated = unshieldMentions(value.trim(), mentions);
         if (!translated || translated === trimmed) continue;
-        // Drop clearly wrong-language buckets (e.g. German text stored under "en").
-        const outLang = this.detectLocale(translated);
-        if (outLang && outLang !== locale && !(outLang === detected)) {
-          this.log.warn(
-            `chat multi-locale: dropped ${locale} result (looks like ${outLang})`,
-          );
-          continue;
-        }
+        // Trust the model key — weak detectLocale used to drop valid ES/TR/UK rows.
         byLocale.set(locale, translated);
       }
     } catch (e) {
@@ -413,5 +430,21 @@ export class TranslationService {
     }
 
     return { sourceLocale: detected, byLocale };
+  }
+
+  /** Accept `es`, `ES`, `Spanish`, etc. from model JSON. */
+  private pickLocaleField(
+    parsed: Record<string, unknown>,
+    locale: SupportedLocale,
+  ): string | undefined {
+    const direct = parsed[locale];
+    if (typeof direct === 'string') return direct;
+    const upper = parsed[locale.toUpperCase()];
+    if (typeof upper === 'string') return upper;
+    const byName = parsed[localeLangName(locale)];
+    if (typeof byName === 'string') return byName;
+    const byNameLower = parsed[localeLangName(locale).toLowerCase()];
+    if (typeof byNameLower === 'string') return byNameLower;
+    return undefined;
   }
 }

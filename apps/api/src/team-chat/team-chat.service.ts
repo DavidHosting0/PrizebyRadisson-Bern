@@ -314,13 +314,8 @@ export class TeamChatService {
         }
         // Fall through and re-translate; overwrite the bad cache on success.
       } else {
-        // Reject poisoned cache (e.g. German text stored under English locale key).
-        const cachedLang = this.translation.detectLocale(cachedBody);
-        if (
-          cachedLang &&
-          cachedLang !== targetLocale &&
-          cachedLang !== detected
-        ) {
+        // Reject only clearly poisoned cache (DE/EN parked under another locale).
+        if (!this.translation.translationLooksPlausible(cachedBody, targetLocale)) {
           // Ignore bad row; show original / retranslate below.
         } else {
           return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
@@ -486,7 +481,7 @@ export class TeamChatService {
 
     // Safety-net only: new messages are prefetched on create (1 OpenAI call → all locales).
     // List polls should almost always hit DB cache — keep backfill tiny.
-    await this.fillMissingTranslations(rows, transCache, targetLocale, 5);
+    await this.fillMissingTranslations(rows, transCache, targetLocale, 10);
 
     const mapped = await Promise.all(
       rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale, 'cache', transCache)),
@@ -506,13 +501,9 @@ export class TeamChatService {
     if (detected === targetLocale) return false;
 
     if (cached != null) {
-      // Real translation already stored — only if it looks like the target language.
+      // Real translation already stored — keep unless clearly poisoned.
       if (cached !== body) {
-        const cachedLang = this.translation.detectLocale(cached);
-        if (
-          cachedLang === targetLocale ||
-          (cachedLang == null && cached !== body)
-        ) {
+        if (this.translation.translationLooksPlausible(cached, targetLocale)) {
           return false;
         }
         // Poisoned cache — needs a fresh translate.

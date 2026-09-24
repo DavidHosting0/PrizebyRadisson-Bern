@@ -27,6 +27,7 @@ describe('TranslationService.detectLocale', () => {
   it('detects Spanish and Portuguese', () => {
     assert.equal(svc.detectLocale('La habitación está sucia, gracias'), 'es');
     assert.equal(svc.detectLocale('O quarto está sujo, obrigado'), 'pt');
+    assert.equal(svc.detectLocale('Por favor limpe o quarto, obrigado'), 'pt');
   });
 
   it('detects Ukrainian via Cyrillic', () => {
@@ -36,5 +37,15 @@ describe('TranslationService.detectLocale', () => {
   it('does not guess English when uncertain', () => {
     assert.equal(svc.detectLocale('303'), null);
     assert.equal(svc.detectLocale('ok'), null);
+  });
+
+  it('keeps plausible ES/TR/UK translations', () => {
+    assert.equal(
+      svc.translationLooksPlausible('Por favor limpia la habitación, gracias', 'es'),
+      true,
+    );
+    assert.equal(svc.translationLooksPlausible('Lütfen odayı temizleyin', 'tr'), true);
+    assert.equal(svc.translationLooksPlausible('Будь ласка, приберіть кімнату', 'uk'), true);
+    assert.equal(svc.translationLooksPlausible('Bitte Zimmer reinigen', 'pt'), false);
   });
 });
