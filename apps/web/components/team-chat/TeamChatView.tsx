@@ -30,7 +30,7 @@ import { removeTeamChatMessage, upsertTeamChatMessage } from '@/lib/team-chat-ca
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 /** Keep forcing bottom while the feed settles (layout + lazy images). */
-const INITIAL_PIN_MS = 1200;
+const INITIAL_PIN_MS = 2800;
 
 function distanceFromBottom(el: HTMLElement): number {
   return el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -348,6 +348,7 @@ export function TeamChatView({
   const qc = useQueryClient();
   const toast = useToast();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   /** While true, every layout/resize/image-load re-pins to the latest message. */
   const pinToBottomRef = useRef(true);
@@ -355,6 +356,7 @@ export function TeamChatView({
   const prevTimelineTailRef = useRef<string | null>(null);
   const pinUntilRef = useRef(0);
   const ignoreScrollRef = useRef(false);
+  const userUnpinnedRef = useRef(false);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
@@ -485,8 +487,13 @@ export function TeamChatView({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto', force = false) => {
     const el = scrollContainerRef.current;
     if (!el || el.clientHeight < 8) return false;
-    const top = Math.max(0, el.scrollHeight - el.clientHeight);
     ignoreScrollRef.current = true;
+    const sentinel = bottomSentinelRef.current;
+    if (sentinel && behavior === 'auto') {
+      // Instant pin — more reliable than scrollTop while layout is still settling.
+      sentinel.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' });
+    }
+    const top = Math.max(0, el.scrollHeight - el.clientHeight);
     if (behavior === 'smooth') {
       el.scrollTo({ top, behavior: 'smooth' });
     } else {
@@ -510,14 +517,26 @@ export function TeamChatView({
   const updateNearBottom = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    // Layout/image settle often fires scroll events that look like "user scrolled up".
+    // Keep pinning until the initial settle window ends (unless the user clearly unpinned).
+    if (
+      Date.now() < pinUntilRef.current &&
+      pinToBottomRef.current &&
+      !userUnpinnedRef.current
+    ) {
+      isNearBottomRef.current = true;
+      return;
+    }
     const nearBottom = isElementNearBottom(el);
     isNearBottomRef.current = nearBottom;
     if (nearBottom) {
       pinToBottomRef.current = true;
+      userUnpinnedRef.current = false;
       setShowJumpToBottom(false);
     } else {
       // Treat as user intent to read history — stop auto-pinning.
       pinToBottomRef.current = false;
+      if (hasInitialScrolledRef.current) setShowJumpToBottom(true);
     }
   }, []);
 
@@ -526,6 +545,16 @@ export function TeamChatView({
     updateNearBottom();
   }, [updateNearBottom]);
 
+  const markUserUnpinned = useCallback(() => {
+    if (ignoreScrollRef.current) return;
+    const el = scrollContainerRef.current;
+    if (!el || isElementNearBottom(el)) return;
+    userUnpinnedRef.current = true;
+    pinToBottomRef.current = false;
+    isNearBottomRef.current = false;
+    if (hasInitialScrolledRef.current) setShowJumpToBottom(true);
+  }, []);
+
   const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
   const feedReady =
     !loadingMsg && !loadingReq && !(canReadDamage && loadingDmg) && timeline.length > 0;
@@ -533,6 +562,7 @@ export function TeamChatView({
   const startInitialPinWindow = useCallback(() => {
     pinToBottomRef.current = true;
     isNearBottomRef.current = true;
+    userUnpinnedRef.current = false;
     pinUntilRef.current = Date.now() + INITIAL_PIN_MS;
   }, []);
 
@@ -571,16 +601,26 @@ export function TeamChatView({
     startInitialPinWindow();
     let frame = 0;
     let rafId = 0;
+    let consecutiveNear = 0;
 
     const tick = () => {
-      if (!pinToBottomRef.current && hasInitialScrolledRef.current) return;
+      if (userUnpinnedRef.current) return;
+      if (!pinToBottomRef.current && hasInitialScrolledRef.current && Date.now() >= pinUntilRef.current) {
+        return;
+      }
       const pinned = scrollToBottom('auto', true);
       if (pinned) {
         hasInitialScrolledRef.current = true;
         prevTimelineTailRef.current = timelineTailKey;
+        consecutiveNear += 1;
+      } else {
+        consecutiveNear = 0;
       }
-      // Keep correcting while the settle window is open (layout/fonts/images).
-      if (frame++ < 90 && Date.now() < pinUntilRef.current && pinToBottomRef.current) {
+      // Keep correcting while settle window is open, or until we've been at bottom
+      // for several frames (lazy images / fonts can still grow the feed).
+      const stillSettling =
+        Date.now() < pinUntilRef.current || consecutiveNear < 8;
+      if (frame++ < 120 && stillSettling && pinToBottomRef.current && !userUnpinnedRef.current) {
         rafId = requestAnimationFrame(tick);
       }
     };
@@ -591,12 +631,16 @@ export function TeamChatView({
     }, 250);
     const timeoutId2 = window.setTimeout(() => {
       if (pinToBottomRef.current) scrollToBottom('auto', true);
-    }, 700);
+    }, 900);
+    const timeoutId3 = window.setTimeout(() => {
+      if (pinToBottomRef.current) scrollToBottom('auto', true);
+    }, 1800);
 
     return () => {
       cancelAnimationFrame(rafId);
       window.clearTimeout(timeoutId);
       window.clearTimeout(timeoutId2);
+      window.clearTimeout(timeoutId3);
     };
   }, [feedReady, timelineTailKey, scrollToBottom, startInitialPinWindow]);
 
@@ -605,6 +649,7 @@ export function TeamChatView({
     if (!el) return;
 
     const pinIfNeeded = () => {
+      if (userUnpinnedRef.current) return;
       if (!hasInitialScrolledRef.current || pinToBottomRef.current) {
         if (scrollToBottom('auto', true)) {
           hasInitialScrolledRef.current = true;
@@ -946,11 +991,18 @@ export function TeamChatView({
       )}
     >
       <div
-        className="relative h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5"
+        className="relative h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 [overflow-anchor:none] sm:px-5"
         ref={scrollContainerRef}
         onScroll={handleScroll}
+        onWheel={markUserUnpinned}
+        onTouchMove={markUserUnpinned}
       >
-        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end">
+        {/*
+          Spacer (not justify-end): short feeds sit at the bottom; long feeds scroll
+          without scroll-anchoring jumps that leave you on "Yesterday".
+        */}
+        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col">
+        <div className="min-h-0 flex-1 grow" aria-hidden />
         {(loadingMsg || loadingReq || (canReadDamage && loadingDmg)) && (
           <p className="text-sm text-sidebar-muted">{tChat('loading')}</p>
         )}
@@ -1259,6 +1311,7 @@ export function TeamChatView({
             );
           })}
         </ul>
+        <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden />
         </div>
       </div>
 
@@ -1267,6 +1320,7 @@ export function TeamChatView({
           <button
             type="button"
             onClick={() => {
+              userUnpinnedRef.current = false;
               pinToBottomRef.current = true;
               scrollToBottom('smooth', true);
             }}

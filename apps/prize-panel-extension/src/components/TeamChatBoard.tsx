@@ -594,7 +594,9 @@ export function TeamChatBoard() {
   const ui = useMemo(() => chatUi(locale), [locale]);
   const isHk = user?.role === 'HOUSEKEEPER' || user?.role === 'SUPERVISOR';
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
+  const hasPinnedRef = useRef(false);
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
@@ -868,9 +870,22 @@ export function TeamChatBoard() {
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el || isLoading) return;
-    if (nearBottomRef.current) {
+    if (!nearBottomRef.current && hasPinnedRef.current) return;
+    const pin = () => {
+      bottomSentinelRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' });
       el.scrollTop = el.scrollHeight;
-    }
+      nearBottomRef.current = true;
+      hasPinnedRef.current = true;
+    };
+    pin();
+    const t1 = window.setTimeout(pin, 80);
+    const t2 = window.setTimeout(pin, 320);
+    const t3 = window.setTimeout(pin, 900);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
   }, [feedCount, isLoading]);
 
   function onScroll() {
@@ -1186,6 +1201,7 @@ export function TeamChatBoard() {
             );
           })}
         </ul>
+        <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
 
       {replyTo && (

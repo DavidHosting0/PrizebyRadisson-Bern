@@ -16,7 +16,9 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { S3Service } from '../storage/s3.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { TranslationService } from '../translation/translation.service';
+import {
+  TranslationService,
+} from '../translation/translation.service';
 
 /** Narrow reaction fields so Prisma never nests `message` (avoids circular JSON on serialize). */
 const messageInclude = {
@@ -312,7 +314,17 @@ export class TeamChatService {
         }
         // Fall through and re-translate; overwrite the bad cache on success.
       } else {
-        return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
+        // Reject poisoned cache (e.g. German text stored under English locale key).
+        const cachedLang = this.translation.detectLocale(cachedBody);
+        if (
+          cachedLang &&
+          cachedLang !== targetLocale &&
+          cachedLang !== detected
+        ) {
+          // Ignore bad row; show original / retranslate below.
+        } else {
+          return { displayBody: cachedBody, bodyTranslated: body, isTranslated: true };
+        }
       }
     }
 
@@ -472,9 +484,9 @@ export class TeamChatService {
     ]);
     const transCache = new Map(translationRows.map((t) => [t.messageId, t.body]));
 
-    // At most one AI pass per (message, locale): fill newest missing, persist to DB.
-    // Bad identity caches (same body as original for another language) are retried.
-    await this.fillMissingTranslations(rows, transCache, targetLocale, 25);
+    // Safety-net only: new messages are prefetched on create (1 OpenAI call → all locales).
+    // List polls should almost always hit DB cache — keep backfill tiny.
+    await this.fillMissingTranslations(rows, transCache, targetLocale, 5);
 
     const mapped = await Promise.all(
       rows.map((r) => this.mapMessage(r, viewer.id, urls, targetLocale, 'cache', transCache)),
@@ -494,8 +506,18 @@ export class TeamChatService {
     if (detected === targetLocale) return false;
 
     if (cached != null) {
-      // Real translation already stored.
-      if (cached !== body) return false;
+      // Real translation already stored — only if it looks like the target language.
+      if (cached !== body) {
+        const cachedLang = this.translation.detectLocale(cached);
+        if (
+          cachedLang === targetLocale ||
+          (cachedLang == null && cached !== body)
+        ) {
+          return false;
+        }
+        // Poisoned cache — needs a fresh translate.
+        return true;
+      }
       // Identity row: only skip when it is trustworthy.
       if (detected == null && body.trim().length < 24) return false;
       // Otherwise identity was wrong (e.g. German cached as "already PT") — retranslate.
@@ -514,6 +536,8 @@ export class TeamChatService {
     targetLocale: SupportedLocale,
     limit: number,
   ) {
+    if (this.translation.isRateLimited()) return;
+
     type Job = {
       messageId: string;
       body: string;
@@ -521,8 +545,13 @@ export class TeamChatService {
       mentions: MentionRow[];
     };
     const jobs: Job[] = [];
+    const seen = new Set<string>();
     for (const row of rows) {
-      if (this.messageNeedsTranslation(row.id, row.body, transCache, targetLocale)) {
+      if (
+        !seen.has(row.id) &&
+        this.messageNeedsTranslation(row.id, row.body, transCache, targetLocale)
+      ) {
+        seen.add(row.id);
         jobs.push({
           messageId: row.id,
           body: row.body,
@@ -533,8 +562,10 @@ export class TeamChatService {
       if (
         row.replyTo &&
         !row.replyTo.deletedAt &&
+        !seen.has(row.replyTo.id) &&
         this.messageNeedsTranslation(row.replyTo.id, row.replyTo.body, transCache, targetLocale)
       ) {
+        seen.add(row.replyTo.id);
         jobs.push({
           messageId: row.replyTo.id,
           body: row.replyTo.body,
@@ -545,26 +576,46 @@ export class TeamChatService {
     }
 
     // Prefer newest chat lines (rows are chronological ascending).
+    // Keep this small: one OpenAI call translates the whole batch.
     const batch = jobs.slice(-Math.max(0, limit));
     if (batch.length === 0) return;
 
-    await Promise.all(
-      batch.map(async (job) => {
-        try {
-          await this.resolveTranslatedBody(
-            job.messageId,
-            job.body,
-            job.sourceLocale,
-            job.mentions,
-            targetLocale,
-            'live',
-            transCache,
-          );
-        } catch {
-          // keep original body for this message
-        }
-      }),
+    const results = await this.translation.translateChatBodies(
+      batch.map((job) => ({
+        id: job.messageId,
+        body: job.body,
+        mentions: this.mentionDtos(job.mentions),
+        sourceLocale: this.translation.detectLocale(job.body),
+      })),
+      targetLocale,
     );
+
+    for (const job of batch) {
+      const result = results.get(job.messageId);
+      if (!result) continue;
+
+      if (result.body === job.body) {
+        const detected = this.translation.detectLocale(job.body);
+        if (detected === targetLocale || result.sourceLocale === targetLocale) {
+          if (detected === targetLocale) {
+            await this.persistTranslation(job.messageId, targetLocale, job.body, transCache);
+          }
+        }
+        continue;
+      }
+
+      await this.persistTranslation(job.messageId, targetLocale, result.body, transCache);
+
+      const stored = isSupportedLocale(job.sourceLocale) ? job.sourceLocale : null;
+      if (result.sourceLocale && result.sourceLocale !== stored) {
+        void this.prisma.teamChatMessage
+          .update({
+            where: { id: job.messageId },
+            data: { sourceLocale: result.sourceLocale },
+          })
+          .catch(() => undefined);
+      }
+    }
   }
 
   private setSourceLocaleAsync(messageId: string, body: string) {
@@ -579,6 +630,30 @@ export class TeamChatService {
       .catch((e) => {
         this.log.warn(`sourceLocale update failed: ${e instanceof Error ? e.message : String(e)}`);
       });
+  }
+
+  /** One OpenAI call after post → cache every UI locale so list polls never re-translate. */
+  private async prefetchTranslationsForMessage(row: MessageRow) {
+    if (!row.body.trim()) return;
+    try {
+      const { sourceLocale, byLocale } = await this.translation.translateChatBodyToAllLocales(
+        row.body,
+        this.mentionDtos(row.mentions),
+        row.sourceLocale,
+      );
+      if (sourceLocale) {
+        void this.prisma.teamChatMessage
+          .update({ where: { id: row.id }, data: { sourceLocale } })
+          .catch(() => undefined);
+      }
+      for (const [locale, body] of byLocale) {
+        await this.persistTranslation(row.id, locale, body);
+      }
+    } catch (e) {
+      this.log.warn(
+        `prefetch translations failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   async listMentionables(query: string) {
@@ -717,6 +792,7 @@ export class TeamChatService {
     const mapped = await this.mapMessage(row, user.id, urls, targetLocale, 'none');
 
     void this.setSourceLocaleAsync(row.id, row.body);
+    void this.prefetchTranslationsForMessage(row);
     if (photoKey) {
       void this.assertChatPhotoSafe(photoKey).catch((e) => {
         this.log.warn(
