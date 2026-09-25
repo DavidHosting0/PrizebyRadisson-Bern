@@ -560,29 +560,33 @@ function MessageBody({
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[11px] leading-snug" />
       )}
-      {hasTranslation && hasText && !showOriginal ? (
-        <p className="mt-0.5 text-right text-[8px] leading-snug text-sidebar-muted/80">
-          {ui.aiTranslated}
-        </p>
-      ) : null}
       {hasTranslation && hasText && (
-        <button
-          type="button"
-          onClick={() => setShowOriginal((v) => !v)}
-          title={showOriginal ? ui.showTranslation : ui.showOriginal}
-          aria-label={showOriginal ? ui.showTranslation : ui.showOriginal}
-          className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded text-sky-300/90 hover:bg-white/10 hover:text-sky-200"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+        <div className="mt-0.5 flex items-center gap-0.5">
+          {!showOriginal ? (
+            <span className="min-w-0 flex-1 truncate text-right text-[6.5px] leading-none text-sidebar-muted/70">
+              {ui.aiTranslated}
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1" />
+          )}
+          <button
+            type="button"
+            onClick={() => setShowOriginal((v) => !v)}
+            title={showOriginal ? ui.showTranslation : ui.showOriginal}
+            aria-label={showOriginal ? ui.showTranslation : ui.showOriginal}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-sky-300/90 hover:bg-white/10 hover:text-sky-200"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       )}
     </>
   );
@@ -613,12 +617,15 @@ export function TeamChatBoard() {
   const [err, setErr] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: ChatMsg; x: number; y: number } | null>(null);
 
-  const { data: messages = [], isLoading: loadingMsg } = useQuery({
+  const { data: messages, isPending: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
     queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=200&lang=${locale}`),
-    staleTime: 15_000,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
     refetchInterval: 20_000,
   });
+  const chatReady = !loadingMsg;
+  const messageList = messages ?? [];
 
   const { data: requests = [], isLoading: loadingReq } = useQuery({
     queryKey: ['service-requests'],
@@ -633,7 +640,7 @@ export function TeamChatBoard() {
     refetchInterval: 8_000,
   });
 
-  const isLoading = loadingMsg || loadingReq || (canReadDamage && loadingDmg);
+  const isLoading = !chatReady || loadingReq || (canReadDamage && loadingDmg);
 
   useEffect(() => {
     return () => {
@@ -807,24 +814,28 @@ export function TeamChatBoard() {
 
   const timeline = useMemo(() => {
     const combined: TimelineItem[] = [
-      ...messages.map((msg) => ({
+      ...messageList.map((msg) => ({
         kind: 'msg' as const,
         at: msg.createdAt,
         key: `m-${msg.id}`,
         msg,
       })),
-      ...requests.map((req) => ({
-        kind: 'req' as const,
-        at: req.createdAt,
-        key: `r-${req.id}`,
-        req,
-      })),
-      ...damages.map((dmg) => ({
-        kind: 'dmg' as const,
-        at: dmg.reportedAt,
-        key: `d-${dmg.id}`,
-        dmg,
-      })),
+      ...(chatReady
+        ? requests.map((req) => ({
+            kind: 'req' as const,
+            at: req.createdAt,
+            key: `r-${req.id}`,
+            req,
+          }))
+        : []),
+      ...(chatReady
+        ? damages.map((dmg) => ({
+            kind: 'dmg' as const,
+            at: dmg.reportedAt,
+            key: `d-${dmg.id}`,
+            dmg,
+          }))
+        : []),
     ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     const items: TimelineItem[] = [];
@@ -843,7 +854,7 @@ export function TeamChatBoard() {
       items.push(item);
     }
     return items;
-  }, [messages, requests, damages, locale]);
+  }, [messageList, chatReady, requests, damages, locale]);
 
   const feedCount = useMemo(
     () => timeline.filter((i) => i.kind !== 'day').length,
@@ -924,15 +935,16 @@ export function TeamChatBoard() {
         onScroll={onScroll}
         className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
       >
-        {isLoading && (
+        {!chatReady && (
           <p className="py-4 text-center text-[11px] text-sidebar-muted">{ui.loading}</p>
         )}
-        {!isLoading && feedCount === 0 && (
+        {chatReady && !isLoading && feedCount === 0 && (
           <p className="py-6 text-center text-[11px] text-sidebar-muted">{ui.empty}</p>
         )}
 
         <ul className="flex flex-col gap-1">
-          {timeline.map((item) => {
+          {chatReady
+            ? timeline.map((item) => {
             if (item.kind === 'day') {
               return (
                 <li key={item.key} className="my-1.5 flex justify-center">
@@ -1204,7 +1216,8 @@ export function TeamChatBoard() {
                 </div>
               </li>
             );
-          })}
+          })
+            : null}
         </ul>
         <div ref={bottomSentinelRef} className="h-px w-full shrink-0" aria-hidden />
       </div>

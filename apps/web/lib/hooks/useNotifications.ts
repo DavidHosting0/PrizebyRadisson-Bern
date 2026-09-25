@@ -3,10 +3,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import type { NotificationDto } from '@housekeeping/shared';
 import { WS_EVENTS } from '@housekeeping/shared';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
+import { resolveNotificationText } from '@/lib/notification-text';
 import { useToast } from '@/components/toast/ToastProvider';
 
 export const NOTIFICATIONS_QUERY_KEY = ['notifications'] as const;
@@ -16,6 +18,7 @@ export function useNotifications() {
   const qc = useQueryClient();
   const toast = useToast();
   const pathname = usePathname();
+  const tNotify = useTranslations('notifications');
 
   const { data: unreadCount = 0 } = useQuery({
     queryKey: NOTIFICATIONS_UNREAD_KEY,
@@ -48,8 +51,11 @@ export function useNotifications() {
           return;
         }
       }
-      if (n?.title) {
-        toast.push(n.title, 'success');
+      if (n) {
+        const { title } = resolveNotificationText(n, (key, params) =>
+          tNotify(key as 'teamChatMention', params),
+        );
+        if (title) toast.push(title, 'success');
       }
     };
 
@@ -57,7 +63,7 @@ export function useNotifications() {
     return () => {
       socket.off(WS_EVENTS.NOTIFICATION_CREATED, onNotification);
     };
-  }, [qc, toast, pathname]);
+  }, [qc, toast, pathname, tNotify]);
 
   const markRead = useCallback(
     async (id: string) => {

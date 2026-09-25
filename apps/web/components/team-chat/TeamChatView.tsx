@@ -26,7 +26,7 @@ import {
 import { useLocale } from '@/lib/locale-context';
 import { useTranslations } from 'next-intl';
 import { rejectTeamChatImageFile } from '@housekeeping/shared';
-import { removeTeamChatMessage, upsertTeamChatMessage } from '@/lib/team-chat-cache';
+import { removeTeamChatMessage, upsertTeamChatMessage, teamChatQueryOptions } from '@/lib/team-chat-cache';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 
@@ -183,39 +183,43 @@ function ChatMessageBody({
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
       )}
-      {hasTranslation && hasText && !showOriginal ? (
-        <p
-          className={clsx(
-            'mt-1 text-right text-[9px] leading-snug tracking-wide',
-            mine ? 'text-white/45' : 'text-sidebar-muted/70',
-          )}
-        >
-          {t('aiTranslated')}
-        </p>
-      ) : null}
       {hasTranslation && hasText && (
-        <button
-          type="button"
-          onClick={() => setShowOriginal((v) => !v)}
-          title={showOriginal ? t('showTranslation') : t('showOriginal')}
-          aria-label={showOriginal ? t('showTranslation') : t('showOriginal')}
-          className={clsx(
-            'mt-1 inline-flex h-6 w-6 items-center justify-center rounded-md transition-colors',
-            mine
-              ? 'text-white/65 hover:bg-white/10 hover:text-white'
-              : 'text-sidebar-muted hover:bg-white/10 hover:text-white',
+        <div className="mt-0.5 flex items-center gap-0.5">
+          {!showOriginal ? (
+            <span
+              className={clsx(
+                'min-w-0 flex-1 truncate text-right text-[7px] leading-none tracking-wide',
+                mine ? 'text-white/40' : 'text-sidebar-muted/65',
+              )}
+            >
+              {t('aiTranslated')}
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1" />
           )}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowOriginal((v) => !v)}
+            title={showOriginal ? t('showTranslation') : t('showOriginal')}
+            aria-label={showOriginal ? t('showTranslation') : t('showOriginal')}
+            className={clsx(
+              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
+              mine
+                ? 'text-white/65 hover:bg-white/10 hover:text-white'
+                : 'text-sidebar-muted hover:bg-white/10 hover:text-white',
+            )}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       )}
     </>
   );
@@ -422,11 +426,14 @@ export function TeamChatView({
   const longPressTriggered = useRef(false);
 
 
-  const { data: messages = [], isLoading: loadingMsg } = useQuery({
+  const { data: messages, isPending: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
     queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=300&lang=${locale}`),
-    staleTime: 20_000,
+    ...teamChatQueryOptions,
   });
+  // Wait until messages query has data (or settled) so cached damages don't flash alone.
+  const chatReady = !loadingMsg;
+  const messageList = messages ?? [];
 
   const { data: requests = [], isLoading: loadingReq } = useQuery({
     queryKey: ['service-requests'],
@@ -440,24 +447,29 @@ export function TeamChatView({
   });
 
   const timeline = useMemo<TimelineItem[]>(() => {
-    const m: TimelineItem[] = messages.map((msg) => ({
+    const m: TimelineItem[] = messageList.map((msg) => ({
       kind: 'msg',
       at: msg.createdAt,
       key: `m-${msg.id}`,
       msg,
     }));
-    const r: TimelineItem[] = requests.map((req) => ({
-      kind: 'req',
-      at: req.createdAt,
-      key: `r-${req.id}`,
-      req,
-    }));
-    const d: TimelineItem[] = damages.map((dmg) => ({
-      kind: 'dmg',
-      at: dmg.reportedAt,
-      key: `d-${dmg.id}`,
-      dmg,
-    }));
+    // Wait for chat messages before merging side feeds (often already cached → flash alone).
+    const r: TimelineItem[] = chatReady
+      ? requests.map((req) => ({
+          kind: 'req',
+          at: req.createdAt,
+          key: `r-${req.id}`,
+          req,
+        }))
+      : [];
+    const d: TimelineItem[] = chatReady
+      ? damages.map((dmg) => ({
+          kind: 'dmg',
+          at: dmg.reportedAt,
+          key: `d-${dmg.id}`,
+          dmg,
+        }))
+      : [];
     const combined = [...m, ...r, ...d].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     // Inject day dividers at each date boundary.
@@ -477,7 +489,7 @@ export function TeamChatView({
       withDividers.push(item);
     }
     return withDividers;
-  }, [messages, requests, damages, tChat]);
+  }, [messageList, chatReady, requests, damages, tChat]);
 
   const groupTails = useMemo(() => computeIsGroupTail(timeline), [timeline]);
   const groupHeads = useMemo(() => computeIsGroupHead(timeline), [timeline]);
@@ -543,8 +555,7 @@ export function TeamChatView({
   }, []);
 
   const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
-  const feedReady =
-    !loadingMsg && !loadingReq && !(canReadDamage && loadingDmg) && timeline.length > 0;
+  const feedReady = chatReady && timeline.length > 0;
 
   // Ensure we sit on the latest once the feed exists (flex-col-reverse default is
   // already scrollTop 0; this covers late layout when the scroller gains height).
@@ -941,10 +952,10 @@ export function TeamChatView({
           Content stays chronological (oldest → newest) inside the inner wrapper.
         */}
         <div className="mx-auto w-full max-w-3xl">
-        {(loadingMsg || loadingReq || (canReadDamage && loadingDmg)) && (
+        {!chatReady && (
           <p className="text-sm text-sidebar-muted">{tChat('loading')}</p>
         )}
-        {!loadingMsg &&
+        {chatReady &&
           !loadingReq &&
           !(canReadDamage && loadingDmg) &&
           timeline.filter((i) => i.kind !== 'day').length === 0 && (
@@ -954,7 +965,8 @@ export function TeamChatView({
         )}
 
         <ul className="flex w-full flex-col">
-          {timeline.map((item) => {
+          {chatReady
+            ? timeline.map((item) => {
             if (item.kind === 'day') {
               return (
                 <li key={item.key} className="my-3 flex justify-center">
@@ -1249,7 +1261,8 @@ export function TeamChatView({
                 </div>
               </li>
             );
-          })}
+          })
+            : null}
         </ul>
         </div>
       </div>

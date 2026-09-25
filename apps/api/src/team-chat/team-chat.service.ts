@@ -699,7 +699,21 @@ export class TeamChatService {
         const mentionRecipients = recipientIds.filter((id) => mentioned.has(id));
         const broadcastRecipients = recipientIds.filter((id) => !mentioned.has(id));
         const hasPhoto = !!row.photoS3Key;
-        await Promise.all([
+
+        let mentionedNames: string[] = [];
+        if (mentioned.size > 0) {
+          const mentionedUsers = await this.prisma.user.findMany({
+            where: { id: { in: [...mentioned] } },
+            select: { id: true, name: true },
+          });
+          const nameById = new Map(mentionedUsers.map((u) => [u.id, u.name]));
+          mentionedNames = validMentionIds
+            .filter((id) => id !== user.id)
+            .map((id) => nameById.get(id))
+            .filter((n): n is string => !!n);
+        }
+
+        const tasks: Promise<unknown>[] = [
           this.notifications.notifyTeamChatMention(
             row.id,
             user.name,
@@ -708,15 +722,34 @@ export class TeamChatService {
             row.body,
             hasPhoto,
           ),
-          this.notifications.notifyTeamChatMessage(
-            row.id,
-            user.name,
-            broadcastRecipients,
-            user.id,
-            row.body,
-            hasPhoto,
-          ),
-        ]);
+        ];
+
+        if (mentionedNames.length > 0) {
+          tasks.push(
+            this.notifications.notifyTeamChatMentionOther(
+              row.id,
+              user.name,
+              mentionedNames,
+              broadcastRecipients,
+              user.id,
+              row.body,
+              hasPhoto,
+            ),
+          );
+        } else {
+          tasks.push(
+            this.notifications.notifyTeamChatMessage(
+              row.id,
+              user.name,
+              broadcastRecipients,
+              user.id,
+              row.body,
+              hasPhoto,
+            ),
+          );
+        }
+
+        await Promise.all(tasks);
       })
       .catch((e) => {
         this.log.warn(

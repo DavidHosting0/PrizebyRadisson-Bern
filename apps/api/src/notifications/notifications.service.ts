@@ -11,12 +11,24 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { PushService } from '../push/push.service';
 import { DailyCleaningService } from '../assignments/daily-cleaning.service';
 import { notificationLinkPath } from './notification-link-path';
+import {
+  formatNameList,
+  notificationLocale,
+  t,
+  type NotificationMessageKey,
+} from './notification-i18n';
 
 type CreateNotificationInput = {
   userIds: string[];
   type: NotificationType;
-  title: string;
-  body: string;
+  /** Title template key resolved per recipient locale. */
+  titleKey: NotificationMessageKey;
+  titleParams?: Record<string, string>;
+  /** Body template key; when omitted, `bodyText` / snippet is used as-is. */
+  bodyKey?: NotificationMessageKey;
+  bodyParams?: Record<string, string>;
+  /** Raw body text (e.g. chat snippet) when no bodyKey — not localized. */
+  bodyText?: string;
   metadata?: Prisma.InputJsonValue;
   /** When set, used for all recipients instead of role-based paths. */
   linkPath?: string;
@@ -114,20 +126,29 @@ export class NotificationsService {
 
     const users = await this.prisma.user.findMany({
       where: { id: { in: uniqueIds }, isActive: true },
-      select: { id: true, role: true },
+      select: { id: true, role: true, preferredLocale: true },
     });
     if (users.length === 0) return [];
 
+    const titleParams = input.titleParams ?? {};
+
     const created: Notification[] = [];
     for (const user of users) {
+      const locale = notificationLocale(user.preferredLocale);
+      const title = t(locale, input.titleKey, titleParams);
+      const bodyParams = this.resolveBodyParams(locale, input.bodyParams);
+      const body = input.bodyKey
+        ? t(locale, input.bodyKey, bodyParams)
+        : (input.bodyText ?? '');
+
       const linkPath =
         input.linkPath ?? notificationLinkPath(user.role, input.type);
       const row = await this.prisma.notification.create({
         data: {
           userId: user.id,
           type: input.type,
-          title: input.title,
-          body: input.body,
+          title,
+          body,
           linkPath,
           metadata: input.metadata ?? Prisma.JsonNull,
         },
@@ -141,11 +162,10 @@ export class NotificationsService {
           `notification socket failed for ${user.id}: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      // Await push so delivery attempts finish before the request ends (retries inside PushService).
       try {
         await this.push.sendToUser(user.id, {
-          title: input.title,
-          body: input.body,
+          title,
+          body,
           linkPath,
           tag: `hk-${input.type}`,
         });
@@ -156,6 +176,21 @@ export class NotificationsService {
       }
     }
     return created.map((r) => this.toDto(r));
+  }
+
+  /** Resolve priorityKey → localized priority label for body templates. */
+  private resolveBodyParams(
+    locale: string,
+    params?: Record<string, string>,
+  ): Record<string, string> {
+    if (!params) return {};
+    const out = { ...params };
+    const pk = out.priorityKey;
+    if (pk === 'priorityUrgent' || pk === 'priorityNormal') {
+      out.priority = t(locale, pk);
+      delete out.priorityKey;
+    }
+    return out;
   }
 
   async notifyServiceRequestCreated(
@@ -174,11 +209,22 @@ export class NotificationsService {
       );
       return [];
     }
+    const priorityKey: NotificationMessageKey =
+      req.priority === 'URGENT' ? 'priorityUrgent' : 'priorityNormal';
+
     return this.createForUsers({
       userIds,
       type: NotificationType.SERVICE_REQUEST_CREATED,
-      title: `New request — Room ${req.room.roomNumber}`,
-      body: `${req.type.label} (${req.priority === 'URGENT' ? 'Urgent' : 'Normal'})`,
+      titleKey: 'serviceRequestCreated',
+      titleParams: {
+        roomNumber: req.room.roomNumber,
+        typeLabel: req.type.label,
+      },
+      bodyKey: 'serviceRequestBody',
+      bodyParams: {
+        typeLabel: req.type.label,
+        priorityKey,
+      },
       metadata: {
         serviceRequestId: req.id,
         roomNumber: req.room.roomNumber,
@@ -186,24 +232,32 @@ export class NotificationsService {
         messageParams: {
           roomNumber: req.room.roomNumber,
           typeLabel: req.type.label,
-          priority: req.priority === 'URGENT' ? 'Urgent' : 'Normal',
         },
         bodyKey: 'serviceRequestBody',
         bodyParams: {
           typeLabel: req.type.label,
-          priority: req.priority === 'URGENT' ? 'Urgent' : 'Normal',
+          priorityKey,
         },
       },
     });
   }
 
-  private chatPreviewSnippet(preview?: string, hasPhoto = false): string {
-    const snippet = (preview ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
-    if (snippet) return snippet;
-    return hasPhoto ? 'Photo' : '';
+  private chatPreviewSnippet(preview?: string): string {
+    return (preview ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
   }
 
-  /** Explicit @mention — title: "{author} mentioned you". */
+  private chatBodyOptions(preview?: string, hasPhoto = false) {
+    const snippet = this.chatPreviewSnippet(preview);
+    if (snippet) {
+      return { bodyText: snippet } as const;
+    }
+    if (hasPhoto) {
+      return { bodyKey: 'teamChatPhoto' as const, bodyParams: {} };
+    }
+    return { bodyKey: 'teamChatMentionBody' as const, bodyParams: {} };
+  }
+
+  /** Explicit @mention of the recipient — "You were mentioned by X". */
   async notifyTeamChatMention(
     messageId: string,
     authorName: string,
@@ -214,27 +268,132 @@ export class NotificationsService {
   ) {
     const userIds = mentionedUserIds.filter((id) => id !== excludeUserId);
     if (userIds.length === 0) return [];
-    const snippet = this.chatPreviewSnippet(preview, hasPhoto);
+    const bodyOpts = this.chatBodyOptions(preview, hasPhoto);
     return this.createForUsers({
       userIds,
       type: NotificationType.TEAM_CHAT_MENTION,
-      title: `${authorName} mentioned you`,
-      body: snippet || 'Open team chat to read the message',
+      titleKey: 'teamChatMention',
+      titleParams: { authorName },
+      ...bodyOpts,
       metadata: {
         messageId,
         authorName,
         messageKey: 'teamChatMention',
         messageParams: { authorName },
-        ...(snippet
-          ? hasPhoto && !(preview ?? '').trim()
-            ? { bodyKey: 'teamChatPhoto', bodyParams: {} }
-            : {}
-          : { bodyKey: 'teamChatMentionBody' }),
+        ...(bodyOpts.bodyKey
+          ? { bodyKey: bodyOpts.bodyKey, bodyParams: bodyOpts.bodyParams ?? {} }
+          : {}),
       },
     });
   }
 
-  /** Broadcast chat message — title: "{author} wrote", body = message preview. */
+  /**
+   * Bystander when message has @mentions — "X mentioned Y".
+   * `mentionedNames` are display names of the mentioned users.
+   */
+  async notifyTeamChatMentionOther(
+    messageId: string,
+    authorName: string,
+    mentionedNames: string[],
+    recipientUserIds: string[],
+    excludeUserId: string,
+    preview?: string,
+    hasPhoto = false,
+  ) {
+    const userIds = recipientUserIds.filter((id) => id !== excludeUserId);
+    if (userIds.length === 0 || mentionedNames.length === 0) return [];
+    const bodyOpts = this.chatBodyOptions(preview, hasPhoto);
+    return this.createLocalizedMentionOther({
+      messageId,
+      authorName,
+      mentionedNames,
+      userIds,
+      bodyOpts,
+    });
+  }
+
+  private async createLocalizedMentionOther(opts: {
+    messageId: string;
+    authorName: string;
+    mentionedNames: string[];
+    userIds: string[];
+    bodyOpts: ReturnType<NotificationsService['chatBodyOptions']>;
+  }) {
+    const uniqueIds = [...new Set(opts.userIds)].filter(Boolean);
+    if (uniqueIds.length === 0) return [];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: uniqueIds }, isActive: true },
+      select: { id: true, role: true, preferredLocale: true },
+    });
+    if (users.length === 0) return [];
+
+    const created: Notification[] = [];
+    for (const user of users) {
+      const locale = notificationLocale(user.preferredLocale);
+      const mentionedNames = formatNameList(locale, opts.mentionedNames);
+      const title = t(locale, 'teamChatMentionOther', {
+        authorName: opts.authorName,
+        mentionedNames,
+      });
+      const body = opts.bodyOpts.bodyKey
+        ? t(locale, opts.bodyOpts.bodyKey, opts.bodyOpts.bodyParams ?? {})
+        : (opts.bodyOpts.bodyText ?? '');
+
+      const linkPath = notificationLinkPath(user.role, NotificationType.TEAM_CHAT_MENTION);
+      const metadata = {
+        messageId: opts.messageId,
+        authorName: opts.authorName,
+        mentionedNameList: opts.mentionedNames,
+        messageKey: 'teamChatMentionOther',
+        messageParams: {
+          authorName: opts.authorName,
+          mentionedNames,
+        },
+        ...(opts.bodyOpts.bodyKey
+          ? {
+              bodyKey: opts.bodyOpts.bodyKey,
+              bodyParams: opts.bodyOpts.bodyParams ?? {},
+            }
+          : {}),
+      };
+
+      const row = await this.prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: NotificationType.TEAM_CHAT_MENTION,
+          title,
+          body,
+          linkPath,
+          metadata,
+        },
+      });
+      created.push(row);
+      const dto = this.toDto(row);
+      try {
+        this.realtime.emitToUser(user.id, WS_EVENTS.NOTIFICATION_CREATED, dto);
+      } catch (e) {
+        this.log.warn(
+          `notification socket failed for ${user.id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+      try {
+        await this.push.sendToUser(user.id, {
+          title,
+          body,
+          linkPath,
+          tag: `hk-${NotificationType.TEAM_CHAT_MENTION}`,
+        });
+      } catch (e) {
+        this.log.warn(
+          `notification push failed for ${user.id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    return created.map((r) => this.toDto(r));
+  }
+
+  /** Broadcast chat message without mentions — "{author} wrote". */
   async notifyTeamChatMessage(
     messageId: string,
     authorName: string,
@@ -245,22 +404,21 @@ export class NotificationsService {
   ) {
     const userIds = recipientUserIds.filter((id) => id !== excludeUserId);
     if (userIds.length === 0) return [];
-    const snippet = this.chatPreviewSnippet(preview, hasPhoto);
+    const bodyOpts = this.chatBodyOptions(preview, hasPhoto);
     return this.createForUsers({
       userIds,
       type: NotificationType.TEAM_CHAT_MENTION,
-      title: `${authorName} wrote`,
-      body: snippet || 'Open team chat to read the message',
+      titleKey: 'teamChatMessage',
+      titleParams: { authorName },
+      ...bodyOpts,
       metadata: {
         messageId,
         authorName,
         messageKey: 'teamChatMessage',
         messageParams: { authorName },
-        ...(snippet
-          ? hasPhoto && !(preview ?? '').trim()
-            ? { bodyKey: 'teamChatPhoto', bodyParams: {} }
-            : {}
-          : { bodyKey: 'teamChatMentionBody' }),
+        ...(bodyOpts.bodyKey
+          ? { bodyKey: bodyOpts.bodyKey, bodyParams: bodyOpts.bodyParams ?? {} }
+          : {}),
       },
     });
   }

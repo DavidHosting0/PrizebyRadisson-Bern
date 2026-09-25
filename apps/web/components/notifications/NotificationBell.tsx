@@ -10,6 +10,7 @@ import type { NotificationDto } from '@housekeeping/shared';
 import { IconBell } from '@/components/icons';
 import { useNotifications } from '@/lib/hooks/useNotifications';
 import { useListKeyboard } from '@/lib/hooks/useOverlayKeyboard';
+import { resolveNotificationText } from '@/lib/notification-text';
 
 const MENU_WIDTH = 352;
 const MENU_MIN_HEIGHT = 160;
@@ -29,27 +30,7 @@ function formatRelativeTime(iso: string): string {
 
 function useNotificationText() {
   const t = useTranslations('notifications');
-
-  return (n: NotificationDto) => {
-    const meta = n.metadata as {
-      messageKey?: string;
-      messageParams?: Record<string, string>;
-      bodyKey?: string;
-      bodyParams?: Record<string, string>;
-    } | null;
-
-    if (meta?.messageKey) {
-      const title = t(meta.messageKey as 'teamChatMention' | 'teamChatMessage', meta.messageParams ?? {});
-      const body = meta.bodyKey
-        ? t(
-            meta.bodyKey as 'teamChatMentionBody' | 'teamChatPhoto',
-            meta.bodyParams ?? meta.messageParams ?? {},
-          )
-        : n.body;
-      return { title, body };
-    }
-    return { title: n.title, body: n.body };
-  };
+  return (n: NotificationDto) => resolveNotificationText(n, (key, params) => t(key as 'teamChatMention', params));
 }
 
 function useMenuPosition(open: boolean, buttonRef: React.RefObject<HTMLButtonElement | null>) {
