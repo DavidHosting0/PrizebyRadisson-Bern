@@ -89,11 +89,24 @@ type ReactionSummary = {
   emoji: string;
   count: number;
   me: boolean;
-  users?: { id: string; name: string; titlePrefix: string }[];
+  users?: {
+    id: string;
+    name: string;
+    titlePrefix: string;
+    avatarUrl?: string | null;
+  }[];
+};
+
+type ReactionReactor = {
+  id: string;
+  name: string;
+  titlePrefix: string;
+  avatarUrl?: string | null;
+  isYou: boolean;
 };
 
 function formatReactionUserNames(
-  users: { id: string; name: string; titlePrefix: string }[] | undefined,
+  users: ReactionSummary['users'],
   viewerId: string | undefined,
   youLabel: string,
 ): string {
@@ -103,6 +116,20 @@ function formatReactionUserNames(
       u.id === viewerId ? youLabel : formatUserWithTitlePrefix(u.name, u.titlePrefix),
     )
     .join(', ');
+}
+
+function toReactionReactors(
+  users: ReactionSummary['users'],
+  viewerId: string | undefined,
+): ReactionReactor[] {
+  if (!users?.length) return [];
+  return users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    titlePrefix: u.titlePrefix,
+    avatarUrl: u.avatarUrl ?? null,
+    isYou: u.id === viewerId,
+  }));
 }
 
 type ChatAuthor = {
@@ -156,6 +183,16 @@ function ChatMessageBody({
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
       )}
+      {hasTranslation && hasText && !showOriginal ? (
+        <p
+          className={clsx(
+            'mt-1 text-right text-[9px] leading-snug tracking-wide',
+            mine ? 'text-white/45' : 'text-sidebar-muted/70',
+          )}
+        >
+          {t('aiTranslated')}
+        </p>
+      ) : null}
       {hasTranslation && hasText && (
         <button
           type="button"
@@ -371,10 +408,12 @@ export function TeamChatView({
   } | null>(null);
   const [reactionInfo, setReactionInfo] = useState<{
     emoji: string;
-    users: { id: string; label: string }[];
+    users: ReactionReactor[];
     x: number;
     y: number;
+    pinned: boolean;
   } | null>(null);
+  const reactionHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
@@ -449,7 +488,7 @@ export function TeamChatView({
     const socket = getSocket(token);
     if (!socket) return undefined;
     const onChat = (payload: ChatMsg) => {
-      if (payload?.id && payload.author?.id) upsertTeamChatMessage(qc, payload);
+      if (payload?.id && payload.author?.id) upsertTeamChatMessage(qc, payload, locale);
     };
     const onReact = () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
     const onDeleted = (payload: { messageId?: string }) => {
@@ -613,7 +652,7 @@ export function TeamChatView({
         }
         photoS3Key = presign.key;
       }
-      return api<ChatMsg>('/team-chat/messages', {
+      return api<ChatMsg>(`/team-chat/messages?lang=${locale}`, {
         method: 'POST',
         body: JSON.stringify({
           body: payload.text,
@@ -727,9 +766,61 @@ export function TeamChatView({
   }
 
   const closeMenu = useCallback(() => setMenu(null), []);
-  const closeReactionInfo = useCallback(() => setReactionInfo(null), []);
+  const closeReactionInfo = useCallback(() => {
+    if (reactionHoverTimer.current) {
+      clearTimeout(reactionHoverTimer.current);
+      reactionHoverTimer.current = null;
+    }
+    setReactionInfo(null);
+  }, []);
+
+  const openReactionInfo = useCallback(
+    (
+      emoji: string,
+      users: ReactionSummary['users'],
+      x: number,
+      y: number,
+      pinned = false,
+    ) => {
+      const list = toReactionReactors(users, user?.id);
+      if (list.length === 0) return;
+      const show = () => {
+        setMenu(null);
+        setReactionInfo({ emoji, users: list, x, y, pinned });
+      };
+      if (reactionHoverTimer.current) {
+        clearTimeout(reactionHoverTimer.current);
+        reactionHoverTimer.current = null;
+      }
+      if (pinned) {
+        show();
+        return;
+      }
+      reactionHoverTimer.current = setTimeout(show, 220);
+    },
+    [user?.id],
+  );
+
+  const scheduleCloseReactionInfo = useCallback(() => {
+    if (reactionHoverTimer.current) clearTimeout(reactionHoverTimer.current);
+    reactionHoverTimer.current = setTimeout(() => {
+      setReactionInfo((cur) => (cur?.pinned ? cur : null));
+      reactionHoverTimer.current = null;
+    }, 160);
+  }, []);
+
+  const keepReactionInfoOpen = useCallback(() => {
+    if (reactionHoverTimer.current) {
+      clearTimeout(reactionHoverTimer.current);
+      reactionHoverTimer.current = null;
+    }
+  }, []);
 
   const openMenu = useCallback((message: ChatMsg, x: number, y: number) => {
+    if (reactionHoverTimer.current) {
+      clearTimeout(reactionHoverTimer.current);
+      reactionHoverTimer.current = null;
+    }
     setReactionInfo(null);
     setMenu({ message, x, y });
   }, []);
@@ -1118,25 +1209,27 @@ export function TeamChatView({
                               onClick={() =>
                                 toggleReaction.mutate({ messageId: m.id, emoji: rx.emoji })
                               }
+                              onMouseEnter={(e) => {
+                                const r = e.currentTarget.getBoundingClientRect();
+                                openReactionInfo(
+                                  rx.emoji,
+                                  rx.users,
+                                  r.left + r.width / 2,
+                                  r.top,
+                                  false,
+                                );
+                              }}
+                              onMouseLeave={scheduleCloseReactionInfo}
                               onContextMenu={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                const list =
-                                  rx.users?.map((u) => ({
-                                    id: u.id,
-                                    label:
-                                      u.id === user?.id
-                                        ? tChat('you')
-                                        : formatUserWithTitlePrefix(u.name, u.titlePrefix),
-                                  })) ?? [];
-                                if (list.length === 0) return;
-                                setMenu(null);
-                                setReactionInfo({
-                                  emoji: rx.emoji,
-                                  users: list,
-                                  x: e.clientX,
-                                  y: e.clientY,
-                                });
+                                openReactionInfo(
+                                  rx.emoji,
+                                  rx.users,
+                                  e.clientX,
+                                  e.clientY,
+                                  true,
+                                );
                               }}
                               className={clsx(
                                 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-none transition-colors',
@@ -1310,7 +1403,7 @@ export function TeamChatView({
       {canCreateRequest && <NewRequestModal open={newReqOpen} onClose={() => setNewReqOpen(false)} />}
       <ProfilePhotoSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
 
-      <MessageMenuScrim open={!!menu || !!reactionInfo} />
+      <MessageMenuScrim open={!!menu || !!reactionInfo?.pinned} />
       <MessageContextMenu
         open={!!menu}
         x={menu?.x ?? 0}
@@ -1333,7 +1426,15 @@ export function TeamChatView({
           deleteMessage.mutate(menu.message.id);
         }}
       />
-      <ReactionReactorsPopover info={reactionInfo} title={tChat('reactedBy')} onClose={closeReactionInfo} />
+      <ReactionReactorsPopover
+        info={reactionInfo}
+        title={tChat('reactedBy')}
+        youLabel={tChat('you')}
+        peopleCountLabel={tChat('reactorsCount', { count: reactionInfo?.users.length ?? 0 })}
+        onClose={closeReactionInfo}
+        onKeepOpen={keepReactionInfoOpen}
+        onScheduleClose={scheduleCloseReactionInfo}
+      />
     </div>
   );
 }
@@ -1341,25 +1442,47 @@ export function TeamChatView({
 function ReactionReactorsPopover({
   info,
   title,
+  youLabel,
+  peopleCountLabel,
   onClose,
+  onKeepOpen,
+  onScheduleClose,
 }: {
-  info: { emoji: string; users: { id: string; label: string }[]; x: number; y: number } | null;
+  info: {
+    emoji: string;
+    users: ReactionReactor[];
+    x: number;
+    y: number;
+    pinned: boolean;
+  } | null;
   title: string;
+  youLabel: string;
+  peopleCountLabel: string;
   onClose: () => void;
+  onKeepOpen: () => void;
+  onScheduleClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: 0, top: 0 });
+  const [visible, setVisible] = useState(false);
 
   useLayoutEffect(() => {
-    if (!info) return;
+    if (!info) {
+      setVisible(false);
+      return;
+    }
     const el = panelRef.current;
     const pad = 12;
-    const width = el?.offsetWidth ?? 160;
-    const height = el?.offsetHeight ?? 80;
+    const width = el?.offsetWidth ?? 220;
+    const height = el?.offsetHeight ?? 120;
+    let top = info.y - height - 10;
+    if (top < pad) top = info.y + 14;
     setPos({
-      left: Math.max(pad, Math.min(info.x, window.innerWidth - width - pad)),
-      top: Math.max(pad, Math.min(info.y, window.innerHeight - height - pad)),
+      left: Math.max(pad, Math.min(info.x - width / 2, window.innerWidth - width - pad)),
+      top: Math.max(pad, Math.min(top, window.innerHeight - height - pad)),
     });
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
   }, [info]);
 
   useEffect(() => {
@@ -1389,19 +1512,61 @@ function ReactionReactorsPopover({
       ref={panelRef}
       role="dialog"
       aria-label={title}
-      className="fixed z-[80] min-w-[10rem] max-w-[16rem] rounded-xl border border-sidebar-border bg-sidebar p-3 shadow-lift"
+      onMouseEnter={onKeepOpen}
+      onMouseLeave={() => {
+        if (!info.pinned) onScheduleClose();
+      }}
+      className={clsx(
+        'fixed z-[80] w-[min(100vw-1.5rem,17.5rem)] overflow-hidden rounded-2xl',
+        'border border-white/10 bg-[#1a2332]/95 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.65)] backdrop-blur-md',
+        'transition duration-150 ease-out',
+        visible ? 'translate-y-0 opacity-100' : 'translate-y-1 opacity-0',
+      )}
       style={{ left: pos.left, top: pos.top }}
     >
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-white">
-        <span className="text-base leading-none">{info.emoji}</span>
-        {title}
-      </p>
-      <ul className="space-y-1">
-        {info.users.map((u) => (
-          <li key={u.id} className="truncate text-sm text-sidebar-muted">
-            {u.label}
-          </li>
-        ))}
+      <div className="flex items-center gap-3 border-b border-white/[0.08] bg-gradient-to-r from-action/20 via-action/5 to-transparent px-3.5 py-3">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-[26px] leading-none shadow-inner ring-1 ring-white/15"
+          aria-hidden
+        >
+          {info.emoji}
+        </span>
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold tracking-tight text-white">{title}</p>
+          <p className="mt-0.5 text-[11px] text-sidebar-muted">{peopleCountLabel}</p>
+        </div>
+      </div>
+      <ul className="max-h-56 overflow-y-auto overscroll-contain py-1.5">
+        {info.users.map((u) => {
+          const role = userTitlePrefixLabel(u.titlePrefix);
+          return (
+            <li
+              key={u.id}
+              className="flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-white/[0.04]"
+            >
+              <Avatar name={u.name} url={u.avatarUrl} size={32} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium text-white">
+                  {u.name}
+                  {u.isYou ? (
+                    <span className="ml-1.5 rounded-md bg-action/20 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-action">
+                      {youLabel}
+                    </span>
+                  ) : null}
+                </p>
+                {role ? (
+                  <p className="truncate text-[11px] text-sidebar-muted">{role}</p>
+                ) : null}
+              </div>
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/5 text-[14px] ring-1 ring-white/10"
+                aria-hidden
+              >
+                {info.emoji}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>,
     document.body,

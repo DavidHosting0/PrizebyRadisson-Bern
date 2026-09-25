@@ -37,11 +37,15 @@ export class TeamChatController {
 
   @Post('messages')
   @RequirePermissions(PermissionCode.TEAM_CHAT_POST)
-  post(@Body() dto: PostTeamChatDto, @CurrentUser() user: User) {
+  post(
+    @Body() dto: PostTeamChatDto,
+    @CurrentUser() user: User,
+    @Query('lang') lang?: string,
+  ) {
     const replyToId = dto.replyToId?.trim() || undefined;
     const mentionUserIds = dto.mentionUserIds?.filter(Boolean) ?? [];
     const photoS3Key = dto.photoS3Key?.trim() || undefined;
-    return this.svc.create(dto.body ?? '', user, replyToId, mentionUserIds, photoS3Key);
+    return this.svc.create(dto.body ?? '', user, replyToId, mentionUserIds, photoS3Key, lang);
   }
 
   @Post('messages/:messageId/reactions')

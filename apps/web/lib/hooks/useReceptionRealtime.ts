@@ -7,6 +7,7 @@ import { WS_EVENTS } from '@housekeeping/shared';
 import { ROOMS_LIST_QUERY_KEY } from '@/lib/rooms-query';
 import { useToast } from '@/components/toast/ToastProvider';
 import { getSocket } from '@/lib/socket';
+import { useLocale } from '@/lib/locale-context';
 import { upsertTeamChatMessage } from '@/lib/team-chat-cache';
 
 type RoomStatusPayload = {
@@ -20,6 +21,7 @@ type TeamChatMessagePayload = {
   body?: string;
   photoUrl?: string | null;
   author?: { id?: string; name?: string };
+  translationsByLocale?: Record<string, string> | null;
 };
 
 function findRoomInCache(
@@ -37,6 +39,7 @@ function findRoomInCache(
 export function useReceptionRealtime() {
   const qc = useQueryClient();
   const toast = useToast();
+  const { locale } = useLocale();
   const tToast = useTranslations('toast');
   const tRoom = useTranslations('room.status');
   const warned = useRef(false);
@@ -108,7 +111,14 @@ export function useReceptionRealtime() {
       if (msg?.id && msg.author?.id) {
         upsertTeamChatMessage(
           qc,
-          payload as { id: string; body: string; photoUrl?: string | null; author: { id: string } },
+          payload as {
+            id: string;
+            body: string;
+            photoUrl?: string | null;
+            author: { id: string };
+            translationsByLocale?: Record<string, string> | null;
+          },
+          locale,
         );
       }
     };
@@ -128,5 +138,5 @@ export function useReceptionRealtime() {
       socket?.off('service_request.updated', onUpdated);
       socket?.off(WS_EVENTS.TEAM_CHAT_MESSAGE, onTeamChat);
     };
-  }, [qc, toast, tToast, tRoom]);
+  }, [qc, toast, tToast, tRoom, locale]);
 }

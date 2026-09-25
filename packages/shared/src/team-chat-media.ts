@@ -88,9 +88,36 @@ export function orderTeamChatWindow<T>(newestFirst: T[], order: 'asc' | 'desc'):
 export type TeamChatMergeMsg = {
   id: string;
   body: string;
+  bodyTranslated?: string | null;
+  isTranslated?: boolean;
+  /** Original text keyed by UI locale — used for live socket payloads. */
+  translationsByLocale?: Record<string, string> | null;
   photoUrl?: string | null;
   author: { id: string };
 };
+
+/** Pick display body for the viewer's UI language from a live/socket payload. */
+export function localizeTeamChatMessage<T extends TeamChatMergeMsg>(
+  msg: T,
+  locale: string,
+): T {
+  const translated = msg.translationsByLocale?.[locale]?.trim();
+  const original = msg.body;
+  if (!translated || translated === original) {
+    return {
+      ...msg,
+      body: original,
+      bodyTranslated: null,
+      isTranslated: false,
+    };
+  }
+  return {
+    ...msg,
+    body: translated,
+    bodyTranslated: original,
+    isTranslated: true,
+  };
+}
 
 /** Insert/replace a chat message, swapping a matching optimistic `temp-` row when the server reply arrives. */
 export function mergeTeamChatMessage<T extends TeamChatMergeMsg>(
@@ -107,7 +134,11 @@ export function mergeTeamChatMessage<T extends TeamChatMergeMsg>(
   if (!incoming.id.startsWith('temp-')) {
     const tempIdx = old.findIndex((m) => {
       if (!m.id.startsWith('temp-') || m.author.id !== incoming.author.id) return false;
-      if (m.body.trim() || incoming.body.trim()) return m.body === incoming.body;
+      const incomingOriginal = incoming.bodyTranslated ?? incoming.body;
+      const tempOriginal = m.bodyTranslated ?? m.body;
+      if (tempOriginal.trim() || incomingOriginal.trim()) {
+        return tempOriginal === incomingOriginal || m.body === incoming.body;
+      }
       return !!(m.photoUrl && incoming.photoUrl);
     });
     if (tempIdx >= 0) {

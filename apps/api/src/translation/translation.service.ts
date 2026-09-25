@@ -67,7 +67,8 @@ export class TranslationService {
     const cfg = await this.settings.getAiConfigSecrets();
     if (!cfg?.openaiApiKey) return null;
     return {
-      openai: new OpenAI({ apiKey: cfg.openaiApiKey, timeout: 20_000, maxRetries: 0 }),
+      // Short timeout — chat UX expects sub-second to a few seconds, not long stalls.
+      openai: new OpenAI({ apiKey: cfg.openaiApiKey, timeout: 8_000, maxRetries: 0 }),
       model: cfg.openaiModel ?? 'gpt-4o-mini',
     };
   }
@@ -350,6 +351,7 @@ export class TranslationService {
     body: string,
     mentions: MentionForPlaceholder[],
     sourceLocale?: string | null,
+    onlyLocales?: SupportedLocale[],
   ): Promise<{ sourceLocale: SupportedLocale | null; byLocale: Map<SupportedLocale, string> }> {
     const byLocale = new Map<SupportedLocale, string>();
     const trimmed = body.trim();
@@ -359,7 +361,9 @@ export class TranslationService {
 
     const detected =
       (isSupportedLocale(sourceLocale) ? sourceLocale : null) ?? this.detectLocale(body);
-    const targets = SUPPORTED_LOCALES.filter((locale) => locale !== detected);
+    const targets = (onlyLocales?.length ? onlyLocales : [...SUPPORTED_LOCALES]).filter(
+      (locale) => locale !== detected,
+    );
     if (targets.length === 0) {
       return { sourceLocale: detected, byLocale };
     }
@@ -379,24 +383,23 @@ export class TranslationService {
     }
 
     const shielded = shieldMentions(body, mentions);
-    const targetNames = targets.map((locale) => `${locale}=${localeLangName(locale)}`).join(', ');
+    const targetNames = targets.map((locale) => `${locale}=${localeLangName(locale)}`).join(',');
+    // Keep completion small/fast: ~2× source length per target locale.
+    const maxTokens = Math.min(
+      600,
+      Math.max(120, Math.ceil((shielded.length * targets.length) / 2) + 40),
+    );
 
     try {
       const res = await ctx.openai.chat.completions.create({
         model: ctx.model,
-        temperature: 0.2,
+        temperature: 0,
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
-            content:
-              `Translate one hotel staff chat message into multiple languages. ` +
-              `Return a JSON object with keys: ${targets.join(', ')}. ` +
-              `Language names: ${targetNames}. ` +
-              `Each key MUST contain only that language (e.g. "en" = English only, "de" = German only). ` +
-              `Do not put German text into non-German keys. ` +
-              `Always translate when the source is another language. ` +
-              'Keep {{MENTION:...}} tokens exactly as-is. No commentary.',
+            content: `Translate to ${targetNames}. JSON keys:${targets.join(',')}. Keep {{MENTION:...}}.`,
           },
           { role: 'user', content: shielded },
         ],
@@ -417,7 +420,6 @@ export class TranslationService {
         if (typeof value !== 'string') continue;
         const translated = unshieldMentions(value.trim(), mentions);
         if (!translated || translated === trimmed) continue;
-        // Trust the model key — weak detectLocale used to drop valid ES/TR/UK rows.
         byLocale.set(locale, translated);
       }
     } catch (e) {

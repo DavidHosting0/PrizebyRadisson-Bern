@@ -560,6 +560,11 @@ function MessageBody({
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[11px] leading-snug" />
       )}
+      {hasTranslation && hasText && !showOriginal ? (
+        <p className="mt-0.5 text-right text-[8px] leading-snug text-sidebar-muted/80">
+          {ui.aiTranslated}
+        </p>
+      ) : null}
       {hasTranslation && hasText && (
         <button
           type="button"
@@ -682,7 +687,7 @@ export function TeamChatBoard() {
         if (!putRes.ok) throw new Error(ui.photoUploadFailed);
         photoS3Key = presign.key;
       }
-      return api<ChatMsg>('/team-chat/messages', {
+      return api<ChatMsg>(`/team-chat/messages?lang=${locale}`, {
         method: 'POST',
         body: JSON.stringify({
           body: payload.text,

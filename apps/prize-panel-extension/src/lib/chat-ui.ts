@@ -9,6 +9,7 @@ export type ChatUiStrings = {
   yesterday: string;
   showOriginal: string;
   showTranslation: string;
+  aiTranslated: string;
   more: string;
   moreEmojis: string;
   emojis: string;
@@ -138,6 +139,7 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     yesterday: 'Gestern',
     showOriginal: 'Original anzeigen',
     showTranslation: 'Übersetzung anzeigen',
+    aiTranslated: 'Diese Nachricht wurde von KI übersetzt',
     more: 'Mehr',
     moreEmojis: 'Mehr Emojis',
     emojis: 'Emojis',
@@ -185,6 +187,7 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     yesterday: 'Yesterday',
     showOriginal: 'Show original',
     showTranslation: 'Show translation',
+    aiTranslated: 'This message was translated by AI',
     more: 'More',
     moreEmojis: 'More emojis',
     emojis: 'Emojis',
@@ -232,6 +235,7 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     yesterday: 'Ontem',
     showOriginal: 'Mostrar original',
     showTranslation: 'Mostrar tradução',
+    aiTranslated: 'Esta mensagem foi traduzida por IA',
     more: 'Mais',
     moreEmojis: 'Mais emojis',
     emojis: 'Emojis',
@@ -279,6 +283,7 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     yesterday: 'Ayer',
     showOriginal: 'Mostrar original',
     showTranslation: 'Mostrar traducción',
+    aiTranslated: 'Este mensaje fue traducido por IA',
     more: 'Más',
     moreEmojis: 'Más emojis',
     emojis: 'Emojis',
@@ -326,6 +331,7 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     yesterday: 'Dün',
     showOriginal: 'Orijinali göster',
     showTranslation: 'Çeviriyi göster',
+    aiTranslated: 'Bu mesaj yapay zeka tarafından çevrildi',
     more: 'Daha fazla',
     moreEmojis: 'Daha fazla emoji',
     emojis: 'Emojiler',
@@ -373,6 +379,7 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     yesterday: 'Вчора',
     showOriginal: 'Показати оригінал',
     showTranslation: 'Показати переклад',
+    aiTranslated: 'Це повідомлення перекладено ШІ',
     more: 'Більше',
     moreEmojis: 'Більше емодзі',
     emojis: 'Емодзі',

@@ -273,6 +273,7 @@
     "react": "Реакція",
     "reactedBy": "Відреагували",
     "reactedByNames": "{emoji} — {names}",
+    "reactorsCount": "{count, plural, one {# особа} few {# особи} many {# осіб} other {# осіб}}",
     "you": "Ви",
     "moreEmojis": "Більше емодзі",
     "delete": "Видалити",
@@ -361,7 +362,8 @@
     "photoUploadFailed": "Не вдалося завантажити фото",
     "videoNotAllowed": "Відео не можна надсилати в чат. Будь ласка, додайте фото.",
     "photoTooLarge": "Файл завеликий (максимум 25 МБ).",
-    "photoNotSupported": "Цей тип файлу не підтримується. Будь ласка, виберіть фото."
+    "photoNotSupported": "Цей тип файлу не підтримується. Будь ласка, виберіть фото.",
+    "aiTranslated": "Це повідомлення перекладено ШІ"
   },
   "notifications": {
     "title": "Сповіщення",

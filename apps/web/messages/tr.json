@@ -273,6 +273,7 @@
     "react": "Tepki ver",
     "reactedBy": "Tepki verenler",
     "reactedByNames": "{emoji} — {names}",
+    "reactorsCount": "{count, plural, one {# kişi} other {# kişi}}",
     "you": "Sen",
     "moreEmojis": "Daha fazla emoji",
     "delete": "Sil",
@@ -361,7 +362,8 @@
     "photoUploadFailed": "Fotoğraf yüklenemedi",
     "videoNotAllowed": "Sohbete video gönderilemez. Lütfen bir fotoğraf ekleyin.",
     "photoTooLarge": "Dosya çok büyük (en fazla 25 MB).",
-    "photoNotSupported": "Bu dosya türü desteklenmiyor. Lütfen bir fotoğraf seçin."
+    "photoNotSupported": "Bu dosya türü desteklenmiyor. Lütfen bir fotoğraf seçin.",
+    "aiTranslated": "Bu mesaj yapay zeka tarafından çevrildi"
   },
   "notifications": {
     "title": "Bildirimler",

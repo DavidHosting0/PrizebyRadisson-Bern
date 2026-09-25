@@ -1,10 +1,19 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { mergeTeamChatMessage, type TeamChatMergeMsg } from '@housekeeping/shared';
+import {
+  localizeTeamChatMessage,
+  mergeTeamChatMessage,
+  type TeamChatMergeMsg,
+} from '@housekeeping/shared';
 
 const CHAT_QUERY = { queryKey: ['team-chat-messages'] } as const;
 
-export function upsertTeamChatMessage<T extends TeamChatMergeMsg>(qc: QueryClient, msg: T) {
-  qc.setQueriesData<T[]>(CHAT_QUERY, (old) => mergeTeamChatMessage(old, msg));
+export function upsertTeamChatMessage<T extends TeamChatMergeMsg>(
+  qc: QueryClient,
+  msg: T,
+  locale?: string,
+) {
+  const localized = locale ? localizeTeamChatMessage(msg, locale) : msg;
+  qc.setQueriesData<T[]>(CHAT_QUERY, (old) => mergeTeamChatMessage(old, localized));
 }
 
 export function removeTeamChatMessage(qc: QueryClient, messageId: string) {

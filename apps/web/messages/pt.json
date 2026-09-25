@@ -273,6 +273,7 @@
     "react": "Reagir",
     "reactedBy": "Reagiram",
     "reactedByNames": "{emoji} — {names}",
+    "reactorsCount": "{count, plural, one {# pessoa} other {# pessoas}}",
     "you": "Tu",
     "moreEmojis": "Mais emojis",
     "delete": "Eliminar",
@@ -361,7 +362,8 @@
     "photoUploadFailed": "Não foi possível carregar a foto",
     "videoNotAllowed": "Não é possível enviar vídeos no chat. Anexa uma foto.",
     "photoTooLarge": "O ficheiro é demasiado grande (máx. 25 MB).",
-    "photoNotSupported": "Este tipo de ficheiro não é suportado. Escolhe uma foto."
+    "photoNotSupported": "Este tipo de ficheiro não é suportado. Escolhe uma foto.",
+    "aiTranslated": "Esta mensagem foi traduzida por IA"
   },
   "notifications": {
     "title": "Notificações",
