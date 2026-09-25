@@ -410,6 +410,7 @@ export function TeamChatView({
     x: number;
     y: number;
   } | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [reactionInfo, setReactionInfo] = useState<{
     emoji: string;
     users: ReactionReactor[];
@@ -738,6 +739,7 @@ export function TeamChatView({
       api(`/team-chat/messages/${messageId}`, { method: 'DELETE' }),
     onSuccess: () => {
       setMenu(null);
+      setPendingDeleteId(null);
       qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
       toast.push(tChat('messageDeleted'), 'success');
     },
@@ -1435,10 +1437,51 @@ export function TeamChatView({
         }}
         onDelete={() => {
           if (!menu) return;
-          if (!window.confirm(tChat('deleteConfirm'))) return;
-          deleteMessage.mutate(menu.message.id);
+          setPendingDeleteId(menu.message.id);
+          closeMenu();
         }}
       />
+      {pendingDeleteId ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
+          role="presentation"
+          onClick={() => {
+            if (!deleteMessage.isPending) setPendingDeleteId(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="team-chat-delete-title"
+            className="w-full max-w-sm rounded-t-2xl border border-sidebar-border/80 bg-[#1A2332] p-5 shadow-lift sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="team-chat-delete-title" className="text-base font-semibold text-white">
+              {tChat('delete')}
+            </h3>
+            <p className="mt-2 text-sm text-sidebar-muted">{tChat('deleteConfirm')}</p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                className="border-sidebar-border bg-transparent text-white hover:bg-white/10"
+                disabled={deleteMessage.isPending}
+                onClick={() => setPendingDeleteId(null)}
+              >
+                {tCommon('cancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={deleteMessage.isPending}
+                onClick={() => deleteMessage.mutate(pendingDeleteId)}
+              >
+                {tChat('delete')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <ReactionReactorsPopover
         info={reactionInfo}
         title={tChat('reactedBy')}

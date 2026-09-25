@@ -16,6 +16,8 @@ export type ChatUiStrings = {
   back: string;
   reply: string;
   delete: string;
+  deleteConfirm: string;
+  cancel: string;
   deletedMessage: string;
   replyingTo: (name: string) => string;
   placeholder: string;
@@ -146,6 +148,8 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     back: 'Zurück',
     reply: 'Antworten',
     delete: 'Löschen',
+    deleteConfirm: 'Diese Nachricht wirklich löschen?',
+    cancel: 'Abbrechen',
     deletedMessage: 'Gelöschte Nachricht',
     replyingTo: 'Antwort an {name}',
     placeholder: 'Nachricht… @ für Erwähnung',
@@ -194,6 +198,8 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     back: 'Back',
     reply: 'Reply',
     delete: 'Delete',
+    deleteConfirm: 'Delete this message?',
+    cancel: 'Cancel',
     deletedMessage: 'Deleted message',
     replyingTo: 'Replying to {name}',
     placeholder: 'Message… @ to mention',
@@ -242,6 +248,8 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     back: 'Voltar',
     reply: 'Responder',
     delete: 'Eliminar',
+    deleteConfirm: 'Eliminar esta mensagem?',
+    cancel: 'Cancelar',
     deletedMessage: 'Mensagem eliminada',
     replyingTo: 'A responder a {name}',
     placeholder: 'Mensagem… @ para mencionar',
@@ -290,6 +298,8 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     back: 'Atrás',
     reply: 'Responder',
     delete: 'Eliminar',
+    deleteConfirm: '¿Eliminar este mensaje?',
+    cancel: 'Cancelar',
     deletedMessage: 'Mensaje eliminado',
     replyingTo: 'Respondiendo a {name}',
     placeholder: 'Mensaje… @ para mencionar',
@@ -338,6 +348,8 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     back: 'Geri',
     reply: 'Yanıtla',
     delete: 'Sil',
+    deleteConfirm: 'Bu mesaj silinsin mi?',
+    cancel: 'İptal',
     deletedMessage: 'Silinen mesaj',
     replyingTo: '{name} yanıtlanıyor',
     placeholder: 'Mesaj… @ ile bahset',
@@ -386,6 +398,8 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     back: 'Назад',
     reply: 'Відповісти',
     delete: 'Видалити',
+    deleteConfirm: 'Видалити це повідомлення?',
+    cancel: 'Скасувати',
     deletedMessage: 'Видалене повідомлення',
     replyingTo: 'Відповідь {name}',
     placeholder: 'Повідомлення… @ щоб згадати',

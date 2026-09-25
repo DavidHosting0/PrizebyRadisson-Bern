@@ -616,6 +616,7 @@ export function TeamChatBoard() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [err, setErr] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ message: ChatMsg; x: number; y: number } | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const { data: messages, isPending: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
@@ -781,6 +782,7 @@ export function TeamChatBoard() {
       api(`/team-chat/messages/${messageId}`, { method: 'DELETE' }),
     onSuccess: () => {
       setMenu(null);
+      setPendingDeleteId(null);
       qc.invalidateQueries({ queryKey: ['team-chat-messages'] });
     },
     onError: (e: Error) => setErr(e.message),
@@ -1358,10 +1360,51 @@ export function TeamChatBoard() {
         }}
         onDelete={() => {
           if (!menu) return;
-          deleteMessage.mutate(menu.message.id);
+          setPendingDeleteId(menu.message.id);
+          setMenu(null);
         }}
         onClose={() => setMenu(null)}
       />
+      {pendingDeleteId ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-3"
+          role="presentation"
+          onClick={() => {
+            if (!deleteMessage.isPending) setPendingDeleteId(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ext-chat-delete-title"
+            className="w-full max-w-[260px] rounded-xl border border-sidebar-border bg-[#1A2332] p-3 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="ext-chat-delete-title" className="text-[12px] font-semibold text-white">
+              {ui.delete}
+            </h3>
+            <p className="mt-1.5 text-[11px] text-sidebar-muted">{ui.deleteConfirm}</p>
+            <div className="mt-3 flex justify-end gap-1.5">
+              <button
+                type="button"
+                disabled={deleteMessage.isPending}
+                className="rounded-md px-2.5 py-1.5 text-[11px] text-sidebar-muted hover:bg-white/10 hover:text-white"
+                onClick={() => setPendingDeleteId(null)}
+              >
+                {ui.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={deleteMessage.isPending}
+                className="rounded-md bg-rose-600 px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-rose-500"
+                onClick={() => deleteMessage.mutate(pendingDeleteId)}
+              >
+                {ui.delete}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
