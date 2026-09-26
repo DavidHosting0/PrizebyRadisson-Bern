@@ -32,13 +32,29 @@ export function ReviewAnalyzerDashboard() {
   const [data, setData] = useState<ReviewAnalyzerOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [jobStatus, setJobStatus] = useState<string | null>(null);
 
   const load = async () => {
     try {
       setError(null);
-      setData(await reviewApi.overview());
+      const [overview, jobs] = await Promise.all([reviewApi.overview(), reviewApi.importJobs()]);
+      setData(overview);
+      const latest = jobs[0] as
+        | { status?: string; errorMessage?: string | null; importedCount?: number; skippedCount?: number }
+        | undefined;
+      if (latest) {
+        setJobStatus(
+          `${latest.status}${latest.errorMessage ? ` — ${latest.errorMessage}` : ''}${
+            latest.importedCount != null ? ` (+${latest.importedCount}/skip ${latest.skippedCount ?? 0})` : ''
+          }`,
+        );
+        return latest.status === 'RUNNING';
+      }
+      setJobStatus(null);
+      return false;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     }
   };
 
@@ -46,14 +62,26 @@ export function ReviewAnalyzerDashboard() {
     void load();
   }, []);
 
+  useEffect(() => {
+    if (!busy && !jobStatus?.startsWith('RUNNING')) return;
+    const id = setInterval(() => {
+      void (async () => {
+        const stillRunning = await load();
+        if (!stillRunning) setBusy(false);
+      })();
+    }, 2500);
+    return () => clearInterval(id);
+  }, [busy, jobStatus]);
+
   const runImport = async () => {
     setBusy(true);
+    setError(null);
     try {
-      await reviewApi.importNow();
+      const res = (await reviewApi.importNow()) as { message?: string; started?: boolean };
+      setJobStatus(res.message ?? 'Import started…');
       await load();
     } catch (e) {
       setError((e as Error).message);
-    } finally {
       setBusy(false);
     }
   };
@@ -119,6 +147,10 @@ export function ReviewAnalyzerDashboard() {
                 <RaStat label="Last 7 days" value={data.reviewsLast7d} />
                 <RaStat label="This month" value={data.reviewsThisMonth} />
               </div>
+
+              {jobStatus ? (
+                <p className="text-xs text-sky-300">Import status: {jobStatus}</p>
+              ) : null}
 
               {data.latestImport ? (
                 <p className="text-xs text-sidebar-muted">

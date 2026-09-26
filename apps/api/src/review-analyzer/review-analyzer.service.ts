@@ -269,7 +269,7 @@ export class ReviewAnalyzerService {
   }
 
   triggerImport(mode?: 'historical' | 'incremental') {
-    return this.imports.runImport({ mode, force: true });
+    return this.imports.startImport({ mode, force: true });
   }
 
   triggerAnalyze(limit?: number) {

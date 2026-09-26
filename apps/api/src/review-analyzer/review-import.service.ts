@@ -7,11 +7,13 @@ import { ReviewAiService } from './review-ai.service';
 import { ReviewQueueService } from './review-queue.service';
 import { monthsAgoUtc } from './review-utils';
 import { SettingsService } from '../settings/settings.service';
+import { ReviewAnalyticsService } from './review-analytics.service';
 
 @Injectable()
 export class ReviewImportService {
   private readonly logger = new Logger(ReviewImportService.name);
   private running = false;
+  private queued = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -19,23 +21,36 @@ export class ReviewImportService {
     private readonly ai: ReviewAiService,
     private readonly queue: ReviewQueueService,
     private readonly appSettings: SettingsService,
+    private readonly analytics: ReviewAnalyticsService,
   ) {}
 
-  async runImport(opts?: { mode?: 'historical' | 'incremental'; force?: boolean }) {
-    if (this.running) {
-      return { ok: false, message: 'Import already running' };
+  /**
+   * Starts import in the background and returns immediately (avoids Nginx 504).
+   */
+  async startImport(opts?: { mode?: 'historical' | 'incremental'; force?: boolean }) {
+    if (this.running || this.queued) {
+      const current = await this.prisma.reviewImportJob.findFirst({
+        where: { status: ReviewJobStatus.RUNNING },
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        ok: false,
+        started: false,
+        message: 'Import already running',
+        jobId: current?.id ?? null,
+        job: current,
+      };
     }
+
     const settings = await this.settingsSvc.get();
     if (!settings.enabled && !opts?.force) {
-      return { ok: false, message: 'Review Analyzer import disabled' };
+      return { ok: false, started: false, message: 'Review Analyzer import disabled', jobId: null };
     }
 
     const existingCount = await this.prisma.guestReview.count({
       where: { source: ReviewSource.BOOKING, hotelKey: settings.hotelKey },
     });
-    const mode =
-      opts?.mode ?? (existingCount === 0 ? 'historical' : 'incremental');
-    const cutoff = monthsAgoUtc(settings.historicalMonths);
+    const mode = opts?.mode ?? (existingCount === 0 ? 'historical' : 'incremental');
 
     const job = await this.prisma.reviewImportJob.create({
       data: {
@@ -43,14 +58,80 @@ export class ReviewImportService {
         status: ReviewJobStatus.RUNNING,
         mode,
         startedAt: new Date(),
+        errorMessage: 'queued — starting Playwright…',
       },
     });
 
+    this.queued = true;
+    setImmediate(() => {
+      void this.executeImport(job.id, mode)
+        .catch((err) => {
+          this.logger.error(`Background import crashed: ${(err as Error).message}`);
+        })
+        .finally(() => {
+          this.queued = false;
+        });
+    });
+
+    return {
+      ok: true,
+      started: true,
+      message: 'Import started in background — status updates below',
+      jobId: job.id,
+      mode,
+      job,
+    };
+  }
+
+  /** Cron path: create job and await scrape (no HTTP client waiting). */
+  async runImport(opts?: { mode?: 'historical' | 'incremental'; force?: boolean }) {
+    if (this.running || this.queued) {
+      return { ok: false, message: 'Import already running' };
+    }
+    const settings = await this.settingsSvc.get();
+    if (!settings.enabled && !opts?.force) {
+      return { ok: false, message: 'Review Analyzer import disabled' };
+    }
+    const existingCount = await this.prisma.guestReview.count({
+      where: { source: ReviewSource.BOOKING, hotelKey: settings.hotelKey },
+    });
+    const mode = opts?.mode ?? (existingCount === 0 ? 'historical' : 'incremental');
+    const job = await this.prisma.reviewImportJob.create({
+      data: {
+        source: ReviewSource.BOOKING,
+        status: ReviewJobStatus.RUNNING,
+        mode,
+        startedAt: new Date(),
+        errorMessage: 'cron — starting Playwright…',
+      },
+    });
+    await this.executeImport(job.id, mode);
+    const finished = await this.prisma.reviewImportJob.findUnique({ where: { id: job.id } });
+    return {
+      ok: finished?.status === ReviewJobStatus.SUCCESS || finished?.status === ReviewJobStatus.EMPTY,
+      jobId: job.id,
+      importedCount: finished?.importedCount ?? 0,
+      skippedCount: finished?.skippedCount ?? 0,
+      status: finished?.status,
+      mode,
+    };
+  }
+
+  private async executeImport(jobId: string, mode: string) {
+    if (this.running) return;
     this.running = true;
+    this.queued = false;
     let importedCount = 0;
     let skippedCount = 0;
+    const settings = await this.settingsSvc.get();
+    const cutoff = monthsAgoUtc(settings.historicalMonths);
 
     try {
+      await this.prisma.reviewImportJob.update({
+        where: { id: jobId },
+        data: { errorMessage: `scraping Booking (${mode}, last ${settings.historicalMonths} months)…` },
+      });
+
       const knownIds = new Set(
         (
           await this.prisma.guestReview.findMany({
@@ -68,6 +149,19 @@ export class ReviewImportService {
         maxPages: settings.maxPagesPerRun,
         headless: process.env.REVIEW_ANALYZER_HEADLESS !== 'false',
         incrementalStopIds: mode === 'incremental' ? knownIds : undefined,
+        onProgress: async (p) => {
+          await this.prisma.reviewImportJob.update({
+            where: { id: jobId },
+            data: { errorMessage: p.message },
+          });
+        },
+      });
+
+      await this.prisma.reviewImportJob.update({
+        where: { id: jobId },
+        data: {
+          errorMessage: `saving ${scraped.reviews.length} reviews (stopped: ${scraped.stoppedReason})…`,
+        },
       });
 
       for (const r of scraped.reviews) {
@@ -151,28 +245,31 @@ export class ReviewImportService {
           : ReviewJobStatus.SUCCESS;
 
       await this.prisma.reviewImportJob.update({
-        where: { id: job.id },
+        where: { id: jobId },
         data: {
           status,
           finishedAt: new Date(),
           importedCount,
           skippedCount,
-          errorMessage:
-            scraped.stoppedReason === 'completed'
-              ? null
-              : `stopped: ${scraped.stoppedReason}; pages=${scraped.pagesFetched}`,
+          errorMessage: `done: ${scraped.stoppedReason}; pages=${scraped.pagesFetched}; scraped=${scraped.reviews.length}`,
         },
       });
 
       this.logger.log(
         `Import ${mode}: imported=${importedCount} skipped=${skippedCount} status=${status}`,
       );
-      return { ok: true, jobId: job.id, importedCount, skippedCount, status, mode };
+
+      // Recompute metrics after successful import (best-effort)
+      if (status !== ReviewJobStatus.EMPTY) {
+        await this.analytics.recomputeMetrics(settings.hotelKey).catch((e) => {
+          this.logger.warn(`Post-import recompute failed: ${(e as Error).message}`);
+        });
+      }
     } catch (err) {
       const message = (err as Error).message ?? String(err);
       this.logger.error(`Import failed: ${message}`);
       await this.prisma.reviewImportJob.update({
-        where: { id: job.id },
+        where: { id: jobId },
         data: {
           status: ReviewJobStatus.FAILED,
           finishedAt: new Date(),
@@ -190,13 +287,11 @@ export class ReviewImportService {
             severity: ReviewPriority.HIGH,
             title: 'Review import failed',
             message,
-            payload: { jobId: job.id },
+            payload: { jobId },
           },
         });
       }
-      // retry once after delay via queue
-      await this.queue.enqueueImportRetry(job.id);
-      return { ok: false, message, jobId: job.id };
+      await this.queue.enqueueImportRetry(jobId);
     } finally {
       this.running = false;
     }
