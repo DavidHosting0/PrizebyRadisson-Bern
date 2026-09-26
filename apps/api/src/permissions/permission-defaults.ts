@@ -122,6 +122,7 @@ export function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.LOST_FOUND_CREATE);
   s.add(PermissionCode.LOST_FOUND_UPDATE);
   s.add(PermissionCode.DAMAGE_REPORT_READ);
+  s.add(PermissionCode.DAMAGE_REPORT_CREATE);
   s.add(PermissionCode.DAMAGE_REPORT_UPDATE);
   s.add(PermissionCode.FLOOR_PLAN_READ);
   s.add(PermissionCode.TEAM_CHAT_READ);

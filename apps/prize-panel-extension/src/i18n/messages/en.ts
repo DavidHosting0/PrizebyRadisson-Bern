@@ -220,6 +220,8 @@ const en: ExtensionMessages = {
     ready: 'Ready now',
     assignFailed: 'EMMA assignment failed',
     noSuggestion: 'No matching room',
+    loadFailed: 'Suggestions could not be loaded',
+    signInRequired: 'Sign in to the PrizeBern extension',
     loading: 'Loading suggestion',
     reasonVip: 'VIP',
     reasonPremium: 'Premium',

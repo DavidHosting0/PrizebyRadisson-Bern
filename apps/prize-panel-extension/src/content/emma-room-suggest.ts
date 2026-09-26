@@ -222,8 +222,7 @@ function scrapeDetailArrivalIso(): string | null {
 function detailEligible(): boolean {
   if (scrapeAssignedRoom()) return false;
   const arrival = scrapeDetailArrivalIso();
-  // If we cannot read arrival on this view, still allow when room empty + booking known
-  // only when arrival parses as today; unknown arrival → hide (strict per plan)
+  if (!arrival) return true;
   return isDateToday(arrival);
 }
 
@@ -234,50 +233,18 @@ function formatRoomForEmma(roomNumber: string, sample?: string | null): string {
   return n.padStart(Math.max(width, n.length), '0');
 }
 
-const HELD_KEY = 'prize-room-holds';
 const CACHE_MS = 20_000;
 
-type Hold = { reservationId: string; roomNumber: string };
-
-const suggestionCache = new Map<string, { at: number; value: ApiRoomSuggestion | null }>();
-const detailMode = new Map<string, 'plan' | 'now'>();
+type PlanList = {
+  at: number;
+  items: Array<{ reservationId: string; suggestion: ApiRoomSuggestion | null }>;
+  error: string | null;
+};
+let planList: PlanList | null = null;
 const detailInflight = new Set<string>();
 let suggestion: ApiRoomSuggestion | null = null;
 let suggestionLoading = false;
 let assigning = false;
-
-function readHolds(): Hold[] {
-  try {
-    const raw = sessionStorage.getItem(HELD_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (row): row is Hold =>
-        !!row &&
-        typeof row === 'object' &&
-        typeof (row as Hold).reservationId === 'string' &&
-        typeof (row as Hold).roomNumber === 'string',
-    );
-  } catch {
-    return [];
-  }
-}
-
-function heldQuery(): string {
-  return readHolds()
-    .map((hold) => `${hold.reservationId}:${hold.roomNumber}`)
-    .join(',');
-}
-
-function rememberHold(reservationId: string, roomNumber: string) {
-  const room = normalizeRoomNumber(roomNumber);
-  const holds = readHolds().filter(
-    (hold) => hold.reservationId !== reservationId && normalizeRoomNumber(hold.roomNumber) !== room,
-  );
-  holds.push({ reservationId, roomNumber: room });
-  sessionStorage.setItem(HELD_KEY, JSON.stringify(holds));
-  suggestionCache.clear();
-}
 
 function reasonLine(reasons: string[]): string {
   const labels: Record<string, string> = {
@@ -302,27 +269,75 @@ function reasonLine(reasons: string[]): string {
     .join(' · ');
 }
 
-async function fetchSuggestion(
-  reservationId: string,
-  mode: 'plan' | 'now',
-): Promise<ApiRoomSuggestion | null> {
-  const held = heldQuery();
-  const key = `${reservationId}:${mode}:${held}`;
-  const hit = suggestionCache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
-  const q = new URLSearchParams({ mode });
-  if (held) q.set('held', held);
-  const res = await api<{ suggestion: ApiRoomSuggestion | null }>(
-    `/reservations/${encodeURIComponent(reservationId)}/room-suggestion?${q}`,
-  );
-  suggestionCache.set(key, { at: Date.now(), value: res.suggestion });
-  return res.suggestion;
+function sameReservation(a: string, b: string): boolean {
+  const strip = (value: string) => value.replace(/^0+/, '') || value;
+  return a === b || strip(a) === strip(b);
+}
+
+function suggestionErrorText(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? '');
+  if (/401|unauthorized|invalid token|jwt/i.test(raw)) return msgs.emmaRoom.signInRequired;
+  return msgs.emmaRoom.loadFailed;
+}
+
+async function loadPlanList(): Promise<PlanList> {
+  const freshFor = planList?.error ? 5_000 : CACHE_MS;
+  if (planList && Date.now() - planList.at < freshFor) return planList;
+  try {
+    const res = await api<{ items: PlanList['items'] }>('/reservations/room-suggestions');
+    planList = { at: Date.now(), items: res.items ?? [], error: null };
+  } catch (err) {
+    planList = { at: Date.now(), items: [], error: suggestionErrorText(err) };
+  }
+  return planList;
+}
+
+function suggestionForReservation(items: PlanList['items'], reservationId: string): ApiRoomSuggestion | null {
+  return items.find((item) => sameReservation(item.reservationId, reservationId))?.suggestion ?? null;
+}
+
+function ensureRowNote(cell: HTMLElement, text: string, isError: boolean): HTMLElement {
+  const vbox =
+    cell.querySelector<HTMLElement>('.sapMVBox') ||
+    cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
+    cell;
+  let host = cell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
+  if (!host) {
+    host = document.createElement('div');
+    host.setAttribute(ROW_ATTR, 'row');
+    vbox.appendChild(host);
+  }
+  host.dataset.booking = '';
+  host.dataset.room = '';
+  host.dataset.note = text;
+  host.innerHTML = '';
+  const note = document.createElement('span');
+  note.className = `pb-ra-row-note${isError ? ' is-error' : ''}`;
+  note.textContent = text;
+  note.title = text;
+  host.appendChild(note);
+  return host;
 }
 
 async function acceptSuggestion(row: ApiRoomSuggestion): Promise<string> {
   await assignEmmaRoom(row.reservationId, row.roomNumber);
-  rememberHold(row.reservationId, row.roomNumber);
+  planList = null;
+  await api(`/reservations/${encodeURIComponent(row.reservationId)}/room-suggestion/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ roomNumber: row.roomNumber }),
+  });
+  planList = null;
   return row.roomNumber;
+}
+
+async function requestArrivingNow(reservationId: string): Promise<ApiRoomSuggestion | null> {
+  planList = null;
+  const res = await api<{ suggestion: ApiRoomSuggestion | null }>(
+    `/reservations/${encodeURIComponent(reservationId)}/room-suggestion/arriving-now`,
+    { method: 'POST' },
+  );
+  planList = null;
+  return res.suggestion;
 }
 
 function ensureStyles() {
@@ -332,8 +347,8 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
-  if (style.dataset.v === '5') return;
-  style.dataset.v = '5';
+  if (style.dataset.v === '6') return;
+  style.dataset.v = '6';
   style.textContent = `
     /* Detail: compact chip inline at the Room field */
     #${HOST_ID}{
@@ -441,6 +456,11 @@ function ensureStyles() {
       white-space:nowrap;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code:hover{filter:brightness(0.97);}
+    [${ROW_ATTR}="row"] .pb-ra-row-note{
+      display:inline-block;max-width:9.5rem;margin-left:4px;
+      font-size:10px;font-weight:650;line-height:1.2;color:#9a3412;
+    }
+    [${ROW_ATTR}="row"] .pb-ra-row-note.is-error{color:#9b1c1c;}
     #${HOST_ID} .pb-ra-now{
       appearance:none;cursor:pointer;border:1px solid #cbd5e1;background:#fff;
       border-radius:6px;padding:3px 6px;font-size:10px;font-weight:700;color:#1a2332;
@@ -569,14 +589,27 @@ function renderHost(host: HTMLElement) {
     e.preventDefault();
     e.stopPropagation();
     const booking = getBookingNumber();
-    if (!booking) return;
-    detailMode.set(booking, 'now');
-    suggestionCache.clear();
-    lastKey = null;
-    suggestion = null;
-    statusText = '';
-    statusWarn = false;
-    scheduleRefresh();
+    if (!booking || assigning) return;
+    assigning = true;
+    suggestionLoading = true;
+    renderHost(host);
+    void requestArrivingNow(booking)
+      .then((next) => {
+        suggestion = next;
+        lastKey = null;
+        statusText = next ? '' : msgs.emmaRoom.noSuggestion;
+        statusWarn = !next;
+      })
+      .catch((err: unknown) => {
+        statusText = suggestionErrorText(err);
+        statusWarn = true;
+      })
+      .finally(() => {
+        assigning = false;
+        suggestionLoading = false;
+        renderHost(host);
+        scheduleRefresh();
+      });
   });
 }
 
@@ -806,6 +839,7 @@ async function scanCheckInList() {
   );
   const rowSet = new Set(rows);
   const seen = new Set<HTMLElement>();
+  const plan = await loadPlanList();
 
   for (const row of rows) {
     const booking = bookingFromListRow(row);
@@ -824,26 +858,24 @@ async function scanCheckInList() {
     }
 
     const arrivalIso = arrivalIsoFromRow(row, arrivalCell);
-    if (!isDateToday(arrivalIso)) {
-      if (existing && !arrivalIso) {
-        seen.add(existing);
-        continue;
-      }
+    if (arrivalIso && !isDateToday(arrivalIso)) {
       existing?.remove();
       continue;
     }
 
-    try {
-      const sug = await fetchSuggestion(booking, 'plan');
-      if (!sug) {
-        existing?.remove();
-        continue;
-      }
-      const host = ensureRowChip(roomCell, sug);
-      seen.add(host);
-    } catch {
-      if (existing) seen.add(existing);
+    if (plan.error) {
+      seen.add(ensureRowNote(roomCell, plan.error, true));
+      continue;
     }
+
+    const item = plan.items.find((rowItem) => sameReservation(rowItem.reservationId, booking));
+    if (!item?.suggestion) {
+      if (item) seen.add(ensureRowNote(roomCell, msgs.emmaRoom.noSuggestion, false));
+      else existing?.remove();
+      continue;
+    }
+
+    seen.add(ensureRowChip(roomCell, item.suggestion));
   }
 
   document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => {
@@ -877,11 +909,10 @@ async function tickDetail() {
   }
 
   const host = mountInRoomField(mountParent);
-  const mode = detailMode.get(booking) ?? 'plan';
-  const key = `${booking}:${mode}:${heldQuery()}`;
+  const key = booking;
   if (host.dataset.key === key || detailInflight.has(key)) return;
   detailInflight.add(key);
-  const bookingChanged = !lastKey || !lastKey.startsWith(`${booking}:`);
+  const bookingChanged = lastKey !== key;
   lastKey = key;
   if (bookingChanged) {
     statusText = '';
@@ -890,14 +921,24 @@ async function tickDetail() {
   suggestionLoading = true;
   renderHost(host);
   try {
-    const next = await fetchSuggestion(booking, mode);
+    const plan = await loadPlanList();
     if (lastKey !== key) return;
-    suggestion = next;
+    if (plan.error) {
+      suggestion = null;
+      statusText = plan.error;
+      statusWarn = true;
+    } else {
+      suggestion = suggestionForReservation(plan.items, booking);
+      if (!suggestion) {
+        statusText = msgs.emmaRoom.noSuggestion;
+        statusWarn = true;
+      }
+    }
     host.dataset.key = key;
-  } catch {
+  } catch (err) {
     if (lastKey !== key) return;
     suggestion = null;
-    statusText = msgs.emmaRoom.noSuggestion;
+    statusText = suggestionErrorText(err);
     statusWarn = true;
     host.dataset.key = key;
   } finally {

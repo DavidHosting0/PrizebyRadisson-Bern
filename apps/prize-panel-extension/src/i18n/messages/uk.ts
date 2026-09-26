@@ -222,6 +222,8 @@ const uk: ExtensionMessages = {
     ready: 'Готово зараз',
     assignFailed: 'Призначення EMMA не вдалося',
     noSuggestion: 'Немає підхожого номера',
+    loadFailed: 'Пропозиції не завантажено',
+    signInRequired: 'Увійдіть у розширення PrizeBern',
     loading: 'Завантаження пропозиції',
     reasonVip: 'VIP',
     reasonPremium: 'Premium',

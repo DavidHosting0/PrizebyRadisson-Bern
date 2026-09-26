@@ -302,6 +302,7 @@ export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
   '/r/floor-plan': IconMap,
   '/r/rooms': IconBuilding,
   '/r/arrivals': IconCalendar,
+  '/r/room-suggestions': IconReservations,
   '/r/arrival-check': IconArrivalCheck,
   '/r/in-house': IconInHouse,
   '/r/reservations': IconReservations,

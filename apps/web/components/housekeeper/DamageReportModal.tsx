@@ -1,39 +1,100 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { FormEvent, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import clsx from 'clsx';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
+import { roomsListQueryOptions } from '@/lib/rooms-query';
 import { useDamageTypeOptions } from '@/lib/damageReportTypes';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/toast/ToastProvider';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 import { APP_DARK_CARD, APP_DARK_INPUT } from '@/components/nav/AppPageChrome';
+
+type RoomOpt = { id: string; roomNumber: string };
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  roomId: string;
-  roomNumber: string;
+  /** Fixed room (housekeeper / inspect flows). Omit when `pickRoom`. */
+  roomId?: string;
+  roomNumber?: string;
+  /** Show room search + select (chat / reception). */
+  pickRoom?: boolean;
 };
 
 const darkSecondaryBtn =
   'min-h-[44px] border border-sidebar-border bg-transparent text-white hover:bg-white/10';
 
-export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) {
+const selectFieldClass = `${APP_DARK_INPUT} mt-1.5 w-full min-h-[44px] cursor-pointer appearance-none py-2.5 pl-3 pr-10 disabled:cursor-not-allowed disabled:opacity-60`;
+
+function SelectChevron() {
+  return (
+    <svg
+      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-muted"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+export function DamageReportModal({ open, onClose, roomId: fixedRoomId, roomNumber: fixedRoomNumber, pickRoom }: Props) {
   const t = useTranslations('housekeeper');
+  const tReq = useTranslations('reception.newRequest');
   const tToast = useTranslations('toast');
   const tCommon = useTranslations('common');
   const qc = useQueryClient();
+  const toast = useToast();
   const damageTypeOptions = useDamageTypeOptions();
   const fileRef = useRef<HTMLInputElement>(null);
   const [damageType, setDamageType] = useState<string>('FURNITURE');
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [pickedRoomId, setPickedRoomId] = useState('');
+  const [roomQ, setRoomQ] = useState('');
+
+  const { data: rooms = [] } = useQuery({
+    ...roomsListQueryOptions<RoomOpt>(),
+    enabled: open && !!pickRoom,
+  });
+
+  useEffect(() => {
+    if (!open || !pickRoom || rooms.length === 0) return;
+    setPickedRoomId((prev) => prev || rooms[0].id);
+  }, [open, pickRoom, rooms]);
+
+  const filteredRooms = useMemo(() => {
+    const q = roomQ.trim().toLowerCase();
+    if (!q) return rooms;
+    return rooms.filter((r) => r.roomNumber.toLowerCase().includes(q));
+  }, [rooms, roomQ]);
+
+  const roomOptions = useMemo(() => {
+    const base = filteredRooms.length > 0 ? filteredRooms : rooms;
+    if (!pickedRoomId) return base;
+    if (base.some((r) => r.id === pickedRoomId)) return base;
+    const chosen = rooms.find((r) => r.id === pickedRoomId);
+    return chosen ? [chosen, ...base] : base;
+  }, [rooms, filteredRooms, pickedRoomId]);
+
+  const roomId = pickRoom ? pickedRoomId : (fixedRoomId ?? '');
+  const roomNumber =
+    pickRoom
+      ? (rooms.find((r) => r.id === pickedRoomId)?.roomNumber ?? '')
+      : (fixedRoomNumber ?? '');
 
   const submit = useMutation({
     mutationFn: async () => {
+      if (!roomId) throw new Error(tReq('chooseRoomContinue'));
       const desc = description.trim();
       if (!desc) throw new Error(t('descriptionRequired'));
       if (!file) throw new Error(t('photoRequired'));
@@ -67,7 +128,14 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
       setDamageType('FURNITURE');
       setDescription('');
       setFile(null);
+      setRoomQ('');
+      if (pickRoom) setPickedRoomId('');
+      toast.push(t('reportCreated'), 'success');
       onClose();
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : tToast('error');
+      toast.push(msg, 'warning');
     },
   });
 
@@ -101,9 +169,13 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-sidebar-border/60 px-5 py-4">
           <div className="min-w-0">
             <h2 id="damage-report-title" className="text-lg font-semibold tracking-tight text-white">
-              {t('damageTitle')}
+              {pickRoom ? t('maintenanceTitle') : t('damageTitle')}
             </h2>
-            <p className="mt-1 text-sm text-sidebar-muted">{t('room', { number: roomNumber })}</p>
+            {!pickRoom && roomNumber ? (
+              <p className="mt-1 text-sm text-sidebar-muted">{t('room', { number: roomNumber })}</p>
+            ) : (
+              <p className="mt-1 text-sm text-sidebar-muted">{t('maintenanceSubtitle')}</p>
+            )}
           </div>
           <button
             type="button"
@@ -124,6 +196,38 @@ export function DamageReportModal({ open, onClose, roomId, roomNumber }: Props) 
 
         <form onSubmit={onSubmit} className="sidebar-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
           <div className="space-y-4 p-5">
+            {pickRoom && (
+              <div>
+                <label className="text-sm font-medium text-white">{tReq('room')}</label>
+                <input
+                  type="search"
+                  className={clsx(APP_DARK_INPUT, 'mt-1.5 w-full min-h-[44px] px-3 py-2')}
+                  placeholder={tReq('searchRoom')}
+                  value={roomQ}
+                  onChange={(e) => setRoomQ(e.target.value)}
+                />
+                <div className="relative mt-2">
+                  <select
+                    className={selectFieldClass}
+                    value={pickedRoomId}
+                    onChange={(e) => setPickedRoomId(e.target.value)}
+                    required
+                    disabled={rooms.length === 0}
+                  >
+                    {rooms.length === 0 ? (
+                      <option value="">{tReq('noRooms')}</option>
+                    ) : (
+                      roomOptions.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.roomNumber}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <SelectChevron />
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-white">{t('damageType')}</label>
               <select

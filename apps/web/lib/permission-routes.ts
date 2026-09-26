@@ -44,6 +44,8 @@ export const RECEPTION_NAV: NavItem[] = [
 
   { href: '/r/arrivals', labelKey: 'arrivals', permission: 'RESERVATIONS_READ' },
 
+  { href: '/r/room-suggestions', labelKey: 'roomSuggestions', permission: 'RESERVATIONS_READ' },
+
   { href: '/r/arrival-check', labelKey: 'arrivalCheck', permission: 'ARRIVAL_CHECK' },
 
   { href: '/r/in-house', labelKey: 'inHouse', permission: 'RESERVATIONS_READ' },

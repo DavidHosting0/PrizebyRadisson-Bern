@@ -1,6 +1,9 @@
 /** Original file picked in the client before compression. */
 export const TEAM_CHAT_MAX_SOURCE_PHOTO_BYTES = 25 * 1024 * 1024;
 
+/** Max images attached to one team-chat message (WhatsApp-style album). */
+export const TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE = 10;
+
 /** Stored object after upload. Chat photos are compressed to ~0.6MB; videos are much larger. */
 export const TEAM_CHAT_MAX_STORED_PHOTO_BYTES = 2.5 * 1024 * 1024;
 
@@ -93,6 +96,8 @@ export type TeamChatMergeMsg = {
   /** Original text keyed by UI locale — used for live socket payloads. */
   translationsByLocale?: Record<string, string> | null;
   photoUrl?: string | null;
+  /** Presigned URLs for album attachments (preferred over single photoUrl). */
+  photoUrls?: string[] | null;
   author: { id: string };
 };
 
@@ -139,7 +144,10 @@ export function mergeTeamChatMessage<T extends TeamChatMergeMsg>(
       if (tempOriginal.trim() || incomingOriginal.trim()) {
         return tempOriginal === incomingOriginal || m.body === incoming.body;
       }
-      return !!(m.photoUrl && incoming.photoUrl);
+      return !!(
+        (m.photoUrl && incoming.photoUrl) ||
+        ((m.photoUrls?.length ?? 0) > 0 && (incoming.photoUrls?.length ?? 0) > 0)
+      );
     });
     if (tempIdx >= 0) {
       const next = old.slice();

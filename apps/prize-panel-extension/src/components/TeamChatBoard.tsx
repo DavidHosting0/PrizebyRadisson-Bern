@@ -516,7 +516,17 @@ function MessageMenu({
   );
 }
 
-function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: boolean }) {
+function ChatPhoto({
+  url,
+  alt,
+  hasText,
+  onOpen,
+}: {
+  url: string;
+  alt: string;
+  hasText: boolean;
+  onOpen?: () => void;
+}) {
   const [failed, setFailed] = useState(false);
   // Keep prior signed URL while the object path is unchanged (poll re-signs query string)
   const stableRef = useRef(url);
@@ -527,12 +537,13 @@ function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: b
   const src = stableRef.current;
   if (failed) return null;
   return (
-    <a
-      href={src}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={clsx('block overflow-hidden rounded-md', hasText ? 'mb-1' : '')}
-      onClick={(e) => e.stopPropagation()}
+    <button
+      type="button"
+      className={clsx('block w-full overflow-hidden rounded-md text-left', hasText ? 'mb-1' : '')}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen?.();
+      }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -543,7 +554,7 @@ function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: b
         onError={() => setFailed(true)}
         className="max-h-40 w-full object-cover"
       />
-    </a>
+    </button>
   );
 }
 
@@ -557,13 +568,40 @@ function MessageBody({
   ui: ChatUiStrings;
 }) {
   const [showOriginal, setShowOriginal] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const hasTranslation = !!msg.isTranslated && !!msg.bodyTranslated;
   const displayBody = hasTranslation && showOriginal ? msg.bodyTranslated! : msg.body;
   const hasText = !!displayBody.trim();
 
   return (
     <>
-      {msg.photoUrl && <ChatPhoto url={msg.photoUrl} alt={ui.photoAlt} hasText={hasText} />}
+      {msg.photoUrl && (
+        <ChatPhoto
+          url={msg.photoUrl}
+          alt={ui.photoAlt}
+          hasText={hasText}
+          onOpen={() => setLightboxOpen(true)}
+        />
+      )}
+      {lightboxOpen && msg.photoUrl && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 p-4"
+              role="dialog"
+              aria-modal="true"
+              onClick={() => setLightboxOpen(false)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={msg.photoUrl}
+                alt={ui.photoAlt}
+                className="max-h-full max-w-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[11px] leading-snug" />
       )}

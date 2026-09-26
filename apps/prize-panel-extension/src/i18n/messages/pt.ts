@@ -222,6 +222,8 @@ const pt: ExtensionMessages = {
     ready: 'Pronto agora',
     assignFailed: 'Atribuição EMMA falhou',
     noSuggestion: 'Sem quarto adequado',
+    loadFailed: 'Não foi possível carregar as sugestões',
+    signInRequired: 'Inicie sessão na extensão PrizeBern',
     loading: 'A carregar sugestão',
     reasonVip: 'VIP',
     reasonPremium: 'Premium',

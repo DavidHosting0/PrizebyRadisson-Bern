@@ -222,6 +222,8 @@ const es: ExtensionMessages = {
     ready: 'Listo ahora',
     assignFailed: 'Asignación EMMA fallida',
     noSuggestion: 'Sin habitación adecuada',
+    loadFailed: 'No se pudieron cargar las sugerencias',
+    signInRequired: 'Inicia sesión en la extensión PrizeBern',
     loading: 'Cargando sugerencia',
     reasonVip: 'VIP',
     reasonPremium: 'Premium',

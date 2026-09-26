@@ -424,14 +424,20 @@ function chooseForGuest(
 }
 
 export function suggestRoomForReservation(input: RoomSuggestInput): RoomSuggestion | null {
+  const match = runAssignments(input).find((row) => row.reservationId === input.reservationId);
+  return match ?? null;
+}
+
+export function suggestAllRooms(input: Omit<RoomSuggestInput, 'reservationId'>): RoomSuggestion[] {
+  return runAssignments({ ...input, reservationId: '' });
+}
+
+function runAssignments(input: RoomSuggestInput): RoomSuggestion[] {
   const rooms = input.rooms.map(decorate).filter((room): room is Candidate => room != null);
   const guests = input.guests.map((guest) => ({
     ...guest,
     assignedRoom: effectiveAssigned(guest, input),
   }));
-  const target = guests.find((guest) => guest.reservationId === input.reservationId);
-  if (!target || target.assignedRoom) return null;
-
   const queue = guests
     .filter((guest) => !guest.assignedRoom)
     .sort((a, b) => {
@@ -449,26 +455,21 @@ export function suggestRoomForReservation(input: RoomSuggestInput): RoomSuggesti
     placed.add(guest.reservationId);
     taken.add(guest.assignedRoom);
   }
-  let match: { room: Candidate; reasons: RoomSuggestReason[] } | null = null;
+  const results: RoomSuggestion[] = [];
   for (const guest of queue) {
     const choice = chooseForGuest(guest, guests, rooms, input, placed, taken);
-    if (choice) {
-      placed.add(guest.reservationId);
-      taken.add(choice.room.roomNumber);
-    }
-    if (guest.reservationId === input.reservationId) {
-      match = choice;
-      break;
-    }
+    if (!choice) continue;
+    placed.add(guest.reservationId);
+    taken.add(choice.room.roomNumber);
+    results.push({
+      reservationId: guest.reservationId,
+      roomNumber: choice.room.roomNumber,
+      floor: choice.room.floor,
+      category: choice.room.category,
+      bookedCategory: bookedRoomCategory(guest.roomType),
+      readyNow: choice.room.readyNow,
+      reasons: choice.reasons,
+    });
   }
-  if (!match) return null;
-  return {
-    reservationId: input.reservationId,
-    roomNumber: match.room.roomNumber,
-    floor: match.room.floor,
-    category: match.room.category,
-    bookedCategory: bookedRoomCategory(target.roomType),
-    readyNow: match.room.readyNow,
-    reasons: match.reasons,
-  };
+  return results;
 }

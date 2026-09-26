@@ -93,7 +93,8 @@ export class DamageReportsService {
     if (
       user.role !== UserRole.HOUSEKEEPER &&
       user.role !== UserRole.SUPERVISOR &&
-      user.role !== UserRole.ADMIN
+      user.role !== UserRole.ADMIN &&
+      user.role !== UserRole.RECEPTION
     ) {
       throw new ForbiddenException();
     }

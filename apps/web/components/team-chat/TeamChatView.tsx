@@ -11,6 +11,7 @@ import { useAuth, usePermission } from '@/lib/auth-context';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { NewRequestModal } from '@/components/reception/NewRequestModal';
+import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { useToast } from '@/components/toast/ToastProvider';
@@ -25,8 +26,9 @@ import {
 } from '@/components/team-chat/MessageContextMenu';
 import { useLocale } from '@/lib/locale-context';
 import { useTranslations } from 'next-intl';
-import { rejectTeamChatImageFile } from '@housekeeping/shared';
+import { rejectTeamChatImageFile, TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE } from '@housekeeping/shared';
 import { removeTeamChatMessage, upsertTeamChatMessage, teamChatQueryOptions } from '@/lib/team-chat-cache';
+import { ChatPhotoAlbum, ChatPhotoLightbox } from '@/components/team-chat/ChatPhotoAlbum';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 
@@ -61,34 +63,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<
   });
 }
 
-function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: boolean }) {
-  const [failed, setFailed] = useState(false);
-  const stableRef = useRef(url);
-  const base = url.split('?')[0];
-  if (stableRef.current.split('?')[0] !== base) {
-    stableRef.current = url;
-  }
-  const src = stableRef.current;
-  if (failed) return null;
-  return (
-    <a
-      href={src}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={clsx('block overflow-hidden rounded-lg', hasText ? 'mb-2' : '')}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(true)}
-        className="max-h-64 w-full object-cover"
-      />
-    </a>
-  );
+function messagePhotoUrls(msg: { photoUrl?: string | null; photoUrls?: string[] | null }): string[] {
+  const urls = (msg.photoUrls ?? []).filter(Boolean);
+  if (urls.length > 0) return urls;
+  return msg.photoUrl ? [msg.photoUrl] : [];
 }
 
 type ReactionSummary = {
@@ -152,6 +130,7 @@ type ChatMsg = {
   sourceLocale?: string | null;
   isTranslated?: boolean;
   photoUrl?: string | null;
+  photoUrls?: string[] | null;
   createdAt: string;
   author: ChatAuthor;
   replyTo: {
@@ -159,6 +138,7 @@ type ChatMsg = {
     body: string;
     bodyTranslated?: string | null;
     photoUrl?: string | null;
+    photoUrls?: string[] | null;
     createdAt: string;
     author: ChatAuthor;
     deleted?: boolean;
@@ -171,10 +151,12 @@ function ChatMessageBody({
   msg,
   mine,
   mentions,
+  onOpenPhotos,
 }: {
   msg: ChatMsg;
   mine: boolean;
   mentions?: ChatAuthor[];
+  onOpenPhotos: (urls: string[], index: number) => void;
 }) {
   const t = useTranslations('chat');
   const [showOriginal, setShowOriginal] = useState(false);
@@ -182,10 +164,19 @@ function ChatMessageBody({
   const displayBody =
     hasTranslation && showOriginal ? msg.bodyTranslated! : msg.body;
   const hasText = !!displayBody.trim();
+  const photos = messagePhotoUrls(msg);
 
   return (
     <>
-      {msg.photoUrl && <ChatPhoto url={msg.photoUrl} alt={t('photoAlt')} hasText={hasText} />}
+      {photos.length > 0 && (
+        <ChatPhotoAlbum
+          urls={photos}
+          alt={t('photoAlt')}
+          hasText={hasText}
+          moreLabel={(n) => t('morePhotos', { count: n })}
+          onOpen={(index) => onOpenPhotos(photos, index)}
+        />
+      )}
       {hasText && (
         <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
       )}
@@ -390,6 +381,7 @@ export function TeamChatView({
   const tCommon = useTranslations('common');
   const damageLabel = useDamageTypeLabel();
   const canCreateRequest = usePermission('SERVICE_REQUEST_CREATE');
+  const canCreateDamage = usePermission('DAMAGE_REPORT_CREATE');
   const canPost = usePermission('TEAM_CHAT_POST');
   const canDelete = usePermission('TEAM_CHAT_DELETE');
   const canReadDamage = usePermission('DAMAGE_REPORT_READ');
@@ -403,12 +395,14 @@ export function TeamChatView({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [body, setBody] = useState('');
   const [mentionUserIds, setMentionUserIds] = useState<string[]>([]);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
-  const photoPreviewUrlRef = useRef<string | null>(null);
-  photoPreviewUrlRef.current = photoPreviewUrl;
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  const photoPreviewUrlsRef = useRef<string[]>([]);
+  photoPreviewUrlsRef.current = photoPreviewUrls;
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
   const [newReqOpen, setNewReqOpen] = useState(false);
+  const [newDmgOpen, setNewDmgOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [menu, setMenu] = useState<{
@@ -595,40 +589,92 @@ export function TeamChatView({
 
   useEffect(() => {
     return () => {
-      if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
+      for (const url of photoPreviewUrlsRef.current) URL.revokeObjectURL(url);
     };
   }, []);
 
-  const clearPhoto = useCallback(() => {
-    setPhotoFile(null);
-    setPhotoPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
+  const removePhotoAt = useCallback((index: number) => {
+    setPhotoFiles((prev) => prev.filter((_, i) => i !== index));
+    setPhotoPreviewUrls((prev) => {
+      const url = prev[index];
+      if (url) URL.revokeObjectURL(url);
+      return prev.filter((_, i) => i !== index);
     });
-    if (photoInputRef.current) photoInputRef.current.value = '';
   }, []);
 
-  const onPhotoPicked = useCallback(
-    (file: File | undefined) => {
-      if (!file) return;
-      const reason = rejectTeamChatImageFile(file);
-      if (reason) {
-        const msg =
-          reason === 'video'
-            ? tChat('videoNotAllowed')
-            : reason === 'tooLarge'
-              ? tChat('photoTooLarge')
-              : tChat('photoNotSupported');
-        toast.push(msg, 'warning');
-        return;
+  const onPhotosPicked = useCallback(
+    (list: FileList | File[] | null | undefined) => {
+      if (!list) return;
+      const incoming = Array.from(list);
+      if (incoming.length === 0) return;
+      const accepted: File[] = [];
+      for (const file of incoming) {
+        const reason = rejectTeamChatImageFile(file);
+        if (reason) {
+          const msg =
+            reason === 'video'
+              ? tChat('videoNotAllowed')
+              : reason === 'tooLarge'
+                ? tChat('photoTooLarge')
+                : tChat('photoNotSupported');
+          toast.push(msg, 'warning');
+          continue;
+        }
+        accepted.push(file);
       }
-      setPhotoFile(file);
-      setPhotoPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(file);
+      if (accepted.length === 0) return;
+      setPhotoFiles((prev) => {
+        const room = Math.max(0, TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE - prev.length);
+        const add = accepted.slice(0, room);
+        if (accepted.length > room) {
+          toast.push(tChat('tooManyPhotos', { max: TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE }), 'warning');
+        }
+        if (add.length === 0) return prev;
+        setPhotoPreviewUrls((urls) => [...urls, ...add.map((f) => URL.createObjectURL(f))]);
+        return [...prev, ...add];
       });
     },
     [tChat, toast],
+  );
+
+  const openPhotoLightbox = useCallback((urls: string[], index: number) => {
+    if (urls.length === 0) return;
+    setLightbox({ urls, index });
+  }, []);
+
+  const uploadChatPhoto = useCallback(
+    async (file: File): Promise<string> => {
+      const skipCompress =
+        file.size <= 500_000 && /image\/(jpeg|jpg|png|webp)/i.test(file.type);
+      const compressed = skipCompress
+        ? file
+        : await withTimeout(
+            imageCompression(file, {
+              maxSizeMB: 0.6,
+              maxWidthOrHeight: 1600,
+              useWebWorker: true,
+            }),
+            PHOTO_COMPRESS_MS,
+            new Error(tChat('photoUploadFailed')),
+          );
+      const rawType = compressed.type || file.type || 'image/jpeg';
+      const contentType =
+        rawType.startsWith('image/') && !/heic|heif/i.test(rawType) ? rawType : 'image/jpeg';
+      const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
+        method: 'POST',
+        body: JSON.stringify({ contentType }),
+      });
+      const putRes = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: compressed,
+      });
+      if (!putRes.ok) {
+        throw new Error(tChat('photoUploadFailed'));
+      }
+      return presign.key;
+    },
+    [tChat],
   );
 
   const send = useMutation({
@@ -636,39 +682,12 @@ export function TeamChatView({
       text: string;
       replyToId?: string;
       mentionUserIds: string[];
-      photo?: File | null;
+      photos?: File[];
     }) => {
-      let photoS3Key: string | undefined;
-      if (payload.photo) {
-        const skipCompress =
-          payload.photo.size <= 500_000 && /image\/(jpeg|jpg|png|webp)/i.test(payload.photo.type);
-        const compressed = skipCompress
-          ? payload.photo
-          : await withTimeout(
-              imageCompression(payload.photo, {
-                maxSizeMB: 0.6,
-                maxWidthOrHeight: 1600,
-                useWebWorker: true,
-              }),
-              PHOTO_COMPRESS_MS,
-              new Error(tChat('photoUploadFailed')),
-            );
-        const rawType = compressed.type || payload.photo.type || 'image/jpeg';
-        const contentType =
-          rawType.startsWith('image/') && !/heic|heif/i.test(rawType) ? rawType : 'image/jpeg';
-        const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
-          method: 'POST',
-          body: JSON.stringify({ contentType }),
-        });
-        const putRes = await fetch(presign.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': contentType },
-          body: compressed,
-        });
-        if (!putRes.ok) {
-          throw new Error(tChat('photoUploadFailed'));
-        }
-        photoS3Key = presign.key;
+      const files = payload.photos ?? [];
+      const photoS3Keys: string[] = [];
+      for (const file of files) {
+        photoS3Keys.push(await uploadChatPhoto(file));
       }
       return api<ChatMsg>(`/team-chat/messages?lang=${locale}`, {
         method: 'POST',
@@ -676,18 +695,20 @@ export function TeamChatView({
           body: payload.text,
           replyToId: payload.replyToId,
           mentionUserIds: payload.mentionUserIds,
-          photoS3Key,
+          photoS3Keys,
+          photoS3Key: photoS3Keys[0],
         }),
       });
     },
     onMutate: async (payload) => {
-      if (!user) return { tempId: '', preview: null as string | null };
+      if (!user) return { tempId: '', previews: [] as string[] };
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const preview = payload.photo ? photoPreviewUrl : null;
+      const previews = [...photoPreviewUrls];
       const optimistic: ChatMsg = {
         id: tempId,
         body: payload.text,
-        photoUrl: preview,
+        photoUrl: previews[0] ?? null,
+        photoUrls: previews,
         createdAt: new Date().toISOString(),
         author: {
           id: user.id,
@@ -700,6 +721,7 @@ export function TeamChatView({
               id: replyTo.id,
               body: replyTo.body,
               photoUrl: replyTo.photoUrl,
+              photoUrls: replyTo.photoUrl ? [replyTo.photoUrl] : [],
               createdAt: '',
               author: replyTo.author,
               deleted: false,
@@ -711,21 +733,21 @@ export function TeamChatView({
       setBody('');
       setMentionUserIds([]);
       setReplyTo(null);
-      setPhotoFile(null);
-      setPhotoPreviewUrl(null);
+      setPhotoFiles([]);
+      setPhotoPreviewUrls([]);
       if (photoInputRef.current) photoInputRef.current.value = '';
       upsertTeamChatMessage(qc, optimistic);
-      return { tempId, preview };
+      return { tempId, previews };
     },
     onSuccess: (msg, _payload, ctx) => {
       if (msg && typeof msg === 'object' && 'id' in msg) {
         upsertTeamChatMessage(qc, msg);
       }
-      if (ctx?.preview) URL.revokeObjectURL(ctx.preview);
+      for (const url of ctx?.previews ?? []) URL.revokeObjectURL(url);
     },
     onError: (e: unknown, payload, ctx) => {
       if (ctx?.tempId) removeTeamChatMessage(qc, ctx.tempId);
-      if (ctx?.preview) URL.revokeObjectURL(ctx.preview);
+      for (const url of ctx?.previews ?? []) URL.revokeObjectURL(url);
       setBody((current) => (current.trim() ? current : payload.text));
       toast.push(e instanceof Error ? e.message : tChat('sendFailed'), 'warning');
     },
@@ -780,8 +802,8 @@ export function TeamChatView({
   function onSend(e: FormEvent) {
     e.preventDefault();
     const t = body.trim();
-    if ((!t && !photoFile) || !canPost) return;
-    send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
+    if ((!t && photoFiles.length === 0) || !canPost) return;
+    send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photos: photoFiles });
   }
 
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -1187,7 +1209,12 @@ export function TeamChatView({
                         </div>
                       )}
 
-                      <ChatMessageBody msg={m} mine={mine} mentions={m.mentions} />
+                      <ChatMessageBody
+                        msg={m}
+                        mine={mine}
+                        mentions={m.mentions}
+                        onOpenPhotos={openPhotoLightbox}
+                      />
 
                       <span
                         className={clsx(
@@ -1314,21 +1341,45 @@ export function TeamChatView({
               </button>
             </div>
           )}
-          {photoPreviewUrl && (
-            <div className="mx-auto flex w-full max-w-3xl items-start gap-2 border-b border-sidebar-border/60 px-3 py-2">
-              <div className="relative h-16 w-16 overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photoPreviewUrl} alt="" className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={clearPhoto}
-                  className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
-                  aria-label={tChat('removePhoto')}
-                >
-                  ✕
-                </button>
+          {photoPreviewUrls.length > 0 && (
+            <div className="mx-auto w-full max-w-3xl border-b border-sidebar-border/60 px-3 py-2">
+              <div className="flex flex-wrap gap-2">
+                {photoPreviewUrls.map((url, i) => (
+                  <div
+                    key={url}
+                    className="relative h-16 w-16 overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt=""
+                      className="h-full w-full cursor-pointer object-cover"
+                      onClick={() => openPhotoLightbox(photoPreviewUrls, i)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePhotoAt(i)}
+                      className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
+                      aria-label={tChat('removePhoto')}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {photoFiles.length < TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE && (
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className="inline-flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-sidebar-border/80 bg-white/5 text-lg text-sidebar-muted transition hover:border-action/40 hover:text-white"
+                    aria-label={tChat('attachPhoto')}
+                  >
+                    +
+                  </button>
+                )}
               </div>
-              <p className="pt-1 text-xs text-sidebar-muted">{tChat('photoReady')}</p>
+              <p className="mt-1.5 text-xs text-sidebar-muted">
+                {tChat('photosReady', { count: photoFiles.length })}
+              </p>
             </div>
           )}
           <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 py-2.5 sm:px-4">
@@ -1356,13 +1407,34 @@ export function TeamChatView({
               </button>
             )}
 
+            {canCreateDamage && (
+              <button
+                type="button"
+                onClick={() => setNewDmgOpen(true)}
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-rose-400/40 hover:text-rose-200"
+                aria-label={tChat('newMaintenanceReport')}
+                title={tChat('newMaintenanceReport')}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M14.7 6.3a1 1 0 011.4 0l1.6 1.6a1 1 0 010 1.4l-8.5 8.5H6v-1.6l8.7-8.9z"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M4 20h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+
             <input
               ref={photoInputRef}
               type="file"
               accept={CHAT_PHOTO_ACCEPT}
+              multiple
               className="hidden"
               onChange={(e) => {
-                onPhotoPicked(e.target.files?.[0]);
+                onPhotosPicked(e.target.files);
                 e.target.value = '';
               }}
             />
@@ -1392,17 +1464,17 @@ export function TeamChatView({
               maxLength={2000}
               onSubmitShortcut={() => {
                 const t = body.trim();
-                if ((!t && !photoFile) || !canPost) return;
-                send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photo: photoFile });
+                if ((!t && photoFiles.length === 0) || !canPost) return;
+                send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photos: photoFiles });
               }}
             />
 
             <button
               type="submit"
-              disabled={!body.trim() && !photoFile}
+              disabled={!body.trim() && photoFiles.length === 0}
               className={clsx(
                 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
-                body.trim() || photoFile
+                body.trim() || photoFiles.length > 0
                   ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
                   : 'bg-white/10 text-sidebar-muted',
               )}
@@ -1422,6 +1494,9 @@ export function TeamChatView({
       )}
 
       {canCreateRequest && <NewRequestModal open={newReqOpen} onClose={() => setNewReqOpen(false)} />}
+      {canCreateDamage && (
+        <DamageReportModal open={newDmgOpen} onClose={() => setNewDmgOpen(false)} pickRoom />
+      )}
       <ProfilePhotoSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
 
       <MessageMenuScrim open={!!menu || !!reactionInfo?.pinned} />
@@ -1497,6 +1572,18 @@ export function TeamChatView({
         onKeepOpen={keepReactionInfoOpen}
         onScheduleClose={scheduleCloseReactionInfo}
       />
+      {lightbox && (
+        <ChatPhotoLightbox
+          urls={lightbox.urls}
+          index={lightbox.index}
+          alt={tChat('photoAlt')}
+          closeLabel={tCommon('close')}
+          prevLabel={tChat('prevPhoto')}
+          nextLabel={tChat('nextPhoto')}
+          onClose={() => setLightbox(null)}
+          onIndexChange={(index) => setLightbox((cur) => (cur ? { ...cur, index } : cur))}
+        />
+      )}
     </div>
   );
 }

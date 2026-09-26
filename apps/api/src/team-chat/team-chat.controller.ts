@@ -44,8 +44,11 @@ export class TeamChatController {
   ) {
     const replyToId = dto.replyToId?.trim() || undefined;
     const mentionUserIds = dto.mentionUserIds?.filter(Boolean) ?? [];
-    const photoS3Key = dto.photoS3Key?.trim() || undefined;
-    return this.svc.create(dto.body ?? '', user, replyToId, mentionUserIds, photoS3Key, lang);
+    const photoS3Keys = [
+      ...(dto.photoS3Keys?.filter(Boolean) ?? []),
+      ...(dto.photoS3Key?.trim() ? [dto.photoS3Key.trim()] : []),
+    ];
+    return this.svc.create(dto.body ?? '', user, replyToId, mentionUserIds, photoS3Keys, lang);
   }
 
   @Post('messages/:messageId/reactions')

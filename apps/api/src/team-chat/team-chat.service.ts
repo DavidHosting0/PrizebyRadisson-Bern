@@ -9,6 +9,7 @@ import {
   resolveLocale,
   sniffTeamChatMediaPrefix,
   SUPPORTED_LOCALES,
+  TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE,
   type SupportedLocale,
 } from '@housekeeping/shared';
 import { userPublicSelect } from '../common/user-public.select';
@@ -27,6 +28,7 @@ const messageInclude = {
       id: true,
       body: true,
       photoS3Key: true,
+      photoS3Keys: true,
       createdAt: true,
       deletedAt: true,
       author: { select: userPublicSelect },
@@ -55,6 +57,7 @@ type MessageRow = {
   id: string;
   body: string;
   photoS3Key: string | null;
+  photoS3Keys: string[];
   sourceLocale: string | null;
   createdAt: Date;
   author: AuthorRow;
@@ -62,6 +65,7 @@ type MessageRow = {
     id: string;
     body: string;
     photoS3Key: string | null;
+    photoS3Keys?: string[];
     createdAt: Date;
     deletedAt: Date | null;
     author: AuthorRow;
@@ -73,6 +77,16 @@ type MessageRow = {
   }[];
   mentions: MentionRow[];
 };
+
+function messagePhotoKeys(row: {
+  photoS3Key?: string | null;
+  photoS3Keys?: string[] | null;
+}): string[] {
+  const keys = (row.photoS3Keys ?? []).map((k) => k.trim()).filter(Boolean);
+  if (keys.length > 0) return [...new Set(keys)];
+  const legacy = row.photoS3Key?.trim();
+  return legacy ? [legacy] : [];
+}
 
 type TranslateMode = 'none' | 'cache';
 
@@ -224,8 +238,10 @@ export class TeamChatService {
       for (const rx of r.reactions) {
         if (rx.user.avatarS3Key) avatarKeys.add(rx.user.avatarS3Key);
       }
-      if (r.photoS3Key) photoKeys.add(r.photoS3Key);
-      if (r.replyTo?.photoS3Key) photoKeys.add(r.replyTo.photoS3Key);
+      for (const key of messagePhotoKeys(r)) photoKeys.add(key);
+      if (r.replyTo) {
+        for (const key of messagePhotoKeys(r.replyTo)) photoKeys.add(key);
+      }
     }
     const verifyPhotos = opts?.verifyPhotos !== false;
     const resolvePhotos = async (keys: Set<string>) => {
@@ -364,6 +380,7 @@ export class TeamChatService {
           body: '',
           bodyTranslated: null,
           photoUrl: null,
+          photoUrls: [],
           createdAt: row.replyTo.createdAt,
           author: this.authorDto(row.replyTo.author, urls.avatars),
           deleted: true,
@@ -379,13 +396,15 @@ export class TeamChatService {
           mode,
           transCache,
         );
+        const replyPhotoUrls = messagePhotoKeys(row.replyTo)
+          .map((key) => urls.photos.get(key) ?? '')
+          .filter(Boolean);
         replyTo = {
           id: row.replyTo.id,
           body: replyTranslation.displayBody,
           bodyTranslated: replyTranslation.isTranslated ? row.replyTo.body : null,
-          photoUrl: row.replyTo.photoS3Key
-            ? urls.photos.get(row.replyTo.photoS3Key) ?? null
-            : null,
+          photoUrl: replyPhotoUrls[0] ?? null,
+          photoUrls: replyPhotoUrls,
           createdAt: row.replyTo.createdAt,
           author: this.authorDto(row.replyTo.author, urls.avatars),
           deleted: false,
@@ -398,13 +417,18 @@ export class TeamChatService {
         (isSupportedLocale(row.sourceLocale) ? row.sourceLocale : null)
       : null;
 
+    const photoUrls = messagePhotoKeys(row)
+      .map((key) => urls.photos.get(key) ?? '')
+      .filter(Boolean);
+
     return {
       id: row.id,
       body: displayBody,
       bodyTranslated,
       sourceLocale,
       isTranslated,
-      photoUrl: row.photoS3Key ? urls.photos.get(row.photoS3Key) ?? null : null,
+      photoUrl: photoUrls[0] ?? null,
+      photoUrls,
       createdAt: row.createdAt,
       author: this.authorDto(row.author, urls.avatars),
       replyTo,
@@ -602,16 +626,24 @@ export class TeamChatService {
     user: User,
     replyToId?: string,
     mentionUserIds: string[] = [],
-    photoS3Key?: string,
+    photoS3KeysInput: string[] = [],
     lang?: string,
   ) {
     const text = (body ?? '').trim();
-    const photoKey = photoS3Key?.trim() || null;
-    if (!text && !photoKey) {
+    const photoKeys = [
+      ...new Set(
+        photoS3KeysInput
+          .map((k) => k.trim())
+          .filter((k) => k.length > 0),
+      ),
+    ].slice(0, TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE);
+    if (!text && photoKeys.length === 0) {
       throw new BadRequestException('Message body or photo required');
     }
-    if (photoKey && !photoKey.startsWith('team-chat/')) {
-      throw new BadRequestException('Invalid photo key');
+    for (const key of photoKeys) {
+      if (!key.startsWith('team-chat/')) {
+        throw new BadRequestException('Invalid photo key');
+      }
     }
     if (text.length > 2000) {
       throw new BadRequestException('Message too long');
@@ -627,10 +659,12 @@ export class TeamChatService {
     const validMentionIds = await mentionPromise;
 
     const detected = text ? this.translation.detectLocale(text) : null;
+    const primaryKey = photoKeys[0] ?? null;
     const msg = await this.prisma.teamChatMessage.create({
       data: {
         body: text,
-        photoS3Key: photoKey,
+        photoS3Key: primaryKey,
+        photoS3Keys: photoKeys,
         authorId: user.id,
         replyToId: replyToId ?? null,
         sourceLocale: detected,
@@ -662,13 +696,24 @@ export class TeamChatService {
     // Sender: instant HTTP reply with what they typed.
     const mapped = await this.mapMessage(row, user.id, urls, targetLocale, 'none');
 
-    if (photoKey) {
+    for (const photoKey of photoKeys) {
       void this.assertChatPhotoSafe(photoKey).catch((e) => {
         this.log.warn(
           `Unsafe chat photo ${photoKey}: ${e instanceof Error ? e.message : String(e)}`,
         );
         void this.prisma.teamChatMessage
-          .update({ where: { id: row.id }, data: { photoS3Key: null } })
+          .findUnique({ where: { id: row.id }, select: { photoS3Keys: true } })
+          .then(async (cur) => {
+            if (!cur) return;
+            const next = (cur.photoS3Keys ?? []).filter((k) => k !== photoKey);
+            await this.prisma.teamChatMessage.update({
+              where: { id: row.id },
+              data: {
+                photoS3Keys: next,
+                photoS3Key: next[0] ?? null,
+              },
+            });
+          })
           .catch(() => undefined);
       });
     }
@@ -698,7 +743,7 @@ export class TeamChatService {
         );
         const mentionRecipients = recipientIds.filter((id) => mentioned.has(id));
         const broadcastRecipients = recipientIds.filter((id) => !mentioned.has(id));
-        const hasPhoto = !!row.photoS3Key;
+        const hasPhoto = messagePhotoKeys(row).length > 0;
 
         let mentionedNames: string[] = [];
         if (mentioned.size > 0) {

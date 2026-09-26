@@ -4,10 +4,12 @@ import {
   DerivedRoomStatus,
   allHotelRoomNumbers,
   formatHotelDateOnly,
+  floorFromRoomNumber,
   normalizeGuestName,
+  physicalRoomCategory,
+  suggestAllRooms,
   suggestRoomForReservation,
   type RoomSuggestGuest,
-  type RoomSuggestMode,
   type RoomSuggestRoom,
   type RoomSuggestion,
 } from '@housekeeping/shared';
@@ -26,6 +28,17 @@ export type RoomSuggestionResponse = {
   suggestion: RoomSuggestion | null;
 };
 
+export type RoomSuggestionListItem = {
+  reservationId: string;
+  guestName: string | null;
+  roomType: string | null;
+  nights: number | null;
+  numPax: number | null;
+  vipDesc: string | null;
+  tier: string | null;
+  suggestion: RoomSuggestion | null;
+};
+
 @Injectable()
 export class RoomSuggestionService {
   private nameCache: NameCache | null = null;
@@ -37,18 +50,79 @@ export class RoomSuggestionService {
     private readonly roomStatus: RoomStatusService,
   ) {}
 
-  async suggest(
-    reservationId: string,
-    mode: RoomSuggestMode,
-    hotelId?: string,
-    heldRooms?: Record<string, string>,
-  ): Promise<RoomSuggestionResponse> {
+  async suggest(reservationId: string, hotelId?: string): Promise<RoomSuggestionResponse> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
-    const today = todayIsoDate();
-    const todayDate = dateOnlyFromIso(today);
     const target = await this.findSnapshot(hid, reservationId);
     if (!target) throw new NotFoundException('Reservation not found');
+    const { items } = await this.list(hid);
+    const suggestion =
+      items.find((item) => sameReservation(item.reservationId, target.reservationId))?.suggestion ?? null;
+    return { suggestion };
+  }
 
+  async accept(reservationId: string, roomNumber: string, hotelId?: string): Promise<RoomSuggestionResponse> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const target = await this.findSnapshot(hid, reservationId);
+    if (!target) throw new NotFoundException('Reservation not found');
+    const room = String(parseInt(roomNumber, 10));
+    if (!Number.isFinite(Number(room))) throw new NotFoundException('Room not found');
+    await this.prisma.roomSuggestionLock.deleteMany({
+      where: { hotelId: hid, roomNumber: room, reservationId: { not: target.reservationId } },
+    });
+    const suggestion = lockSuggestion(target.reservationId, room);
+    await this.upsertLock(hid, suggestion, 'accepted');
+    return { suggestion };
+  }
+
+  async arrivingNow(reservationId: string, hotelId?: string): Promise<RoomSuggestionResponse> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const target = await this.findSnapshot(hid, reservationId);
+    if (!target) throw new NotFoundException('Reservation not found');
+    await this.prisma.roomSuggestionLock.deleteMany({
+      where: { hotelId: hid, reservationId: target.reservationId, kind: 'now' },
+    });
+    const board = await this.loadBoard(hid);
+    const suggestion = suggestRoomForReservation({
+      mode: 'now',
+      reservationId: canonicalReservationId(board.guests, target.reservationId),
+      guests: board.guests,
+      rooms: board.inventory,
+      blockedRoomsByGuest: board.blocked,
+      heldRooms: board.held,
+    });
+    if (suggestion) await this.upsertLock(hid, suggestion, 'now');
+    return { suggestion };
+  }
+
+  async list(hotelId?: string): Promise<{ items: RoomSuggestionListItem[] }> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const board = await this.loadBoard(hid);
+    const suggestions = suggestAllRooms({
+      mode: 'plan',
+      guests: board.guests,
+      rooms: board.inventory,
+      blockedRoomsByGuest: board.blocked,
+      heldRooms: board.held,
+    });
+    const byId = new Map(suggestions.map((row) => [row.reservationId, row]));
+    const items = board.guests
+      .filter((guest) => !guest.assignedRoom)
+      .map((guest) => ({
+        reservationId: guest.reservationId,
+        guestName: guest.guestName,
+        roomType: guest.roomType,
+        nights: guest.nights,
+        numPax: guest.numPax,
+        vipDesc: guest.vipDesc,
+        tier: guest.tier,
+        suggestion: board.locks.get(guest.reservationId) ?? byId.get(guest.reservationId) ?? null,
+      }));
+    return { items };
+  }
+
+  private async loadBoard(hid: string) {
+    const today = todayIsoDate();
+    const todayDate = dateOnlyFromIso(today);
     const arrivals = await this.prisma.reservationSnapshot.findMany({
       where: { hotelId: hid, arrivalDate: todayDate, checkOut: false },
       select: {
@@ -90,9 +164,24 @@ export class RoomSuggestionService {
       },
     });
 
+    const assignedIds = arrivals.filter((row) => row.roomId).map((row) => row.reservationId);
+    if (assignedIds.length) {
+      await this.prisma.roomSuggestionLock.deleteMany({
+        where: { hotelId: hid, reservationId: { in: assignedIds } },
+      });
+    }
+    const lockRows = await this.prisma.roomSuggestionLock.findMany({ where: { hotelId: hid } });
+    const locks = new Map<string, RoomSuggestion>();
+    const heldInput: Record<string, string> = {};
+    for (const row of lockRows) {
+      const suggestion = suggestionFromLock(row);
+      locks.set(row.reservationId, suggestion);
+      heldInput[row.reservationId] = suggestion.roomNumber;
+    }
+
     const counts = await this.previousStayCounts(hid, todayDate);
     const guests = arrivals.map((row) => this.toGuest(row, counts));
-    const held = remapHeld(guests, heldRooms ?? {});
+    const held = remapHeld(guests, heldInput);
     const inventory = await this.inventory(occupying, today);
     const blockedRoomsByGuest: Record<string, string[]> = {};
     for (const guest of guests) {
@@ -108,15 +197,30 @@ export class RoomSuggestionService {
         .map((row) => String(parseInt(row.roomId!, 10)));
     }
 
-    const suggestion = suggestRoomForReservation({
-      mode,
-      reservationId: canonicalReservationId(guests, target.reservationId),
+    return {
       guests,
-      rooms: inventory,
-      blockedRoomsByGuest,
-      heldRooms: held,
+      inventory,
+      blocked: blockedRoomsByGuest,
+      held,
+      locks,
+    };
+  }
+
+  private upsertLock(hotelId: string, suggestion: RoomSuggestion, kind: 'accepted' | 'now') {
+    const data = {
+      roomNumber: suggestion.roomNumber,
+      kind,
+      floor: suggestion.floor,
+      category: suggestion.category,
+      bookedCategory: suggestion.bookedCategory,
+      readyNow: suggestion.readyNow,
+      reasons: JSON.stringify(suggestion.reasons),
+    };
+    return this.prisma.roomSuggestionLock.upsert({
+      where: { hotelId_reservationId: { hotelId, reservationId: suggestion.reservationId } },
+      create: { hotelId, reservationId: suggestion.reservationId, ...data },
+      update: data,
     });
-    return { suggestion };
   }
 
   private async findSnapshot(hotelId: string, reservationId: string) {
@@ -275,6 +379,59 @@ function canonicalReservationId(guests: RoomSuggestGuest[], reservationId: strin
       (guest) => guest.reservationId === reservationId || guest.reservationId.replace(/^0+/, '') === stripped,
     )?.reservationId ?? reservationId
   );
+}
+
+function sameReservation(a: string, b: string): boolean {
+  const strip = (value: string) => value.replace(/^0+/, '') || value;
+  return a === b || strip(a) === strip(b);
+}
+
+function lockSuggestion(reservationId: string, roomNumber: string): RoomSuggestion {
+  return {
+    reservationId,
+    roomNumber,
+    floor: floorFromRoomNumber(roomNumber),
+    category: physicalRoomCategory(roomNumber),
+    bookedCategory: 'standard',
+    readyNow: true,
+    reasons: [],
+  };
+}
+
+function suggestionFromLock(row: {
+  reservationId: string;
+  roomNumber: string;
+  floor: number | null;
+  category: string | null;
+  bookedCategory: string | null;
+  readyNow: boolean;
+  reasons: string;
+}): RoomSuggestion {
+  let reasons: RoomSuggestion['reasons'] = [];
+  try {
+    const parsed = JSON.parse(row.reasons) as unknown;
+    if (Array.isArray(parsed)) {
+      reasons = parsed.filter((item): item is RoomSuggestion['reasons'][number] => typeof item === 'string');
+    }
+  } catch {
+    reasons = [];
+  }
+  const category = row.category === 'corner' || row.category === 'view' || row.category === 'standard'
+    ? row.category
+    : physicalRoomCategory(row.roomNumber);
+  const bookedCategory =
+    row.bookedCategory === 'corner' || row.bookedCategory === 'view' || row.bookedCategory === 'standard'
+      ? row.bookedCategory
+      : 'standard';
+  return {
+    reservationId: row.reservationId,
+    roomNumber: row.roomNumber,
+    floor: row.floor,
+    category,
+    bookedCategory,
+    readyNow: row.readyNow,
+    reasons,
+  };
 }
 
 function remapHeld(guests: RoomSuggestGuest[], held: Record<string, string>): Record<string, string> {

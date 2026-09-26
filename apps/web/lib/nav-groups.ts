@@ -70,7 +70,7 @@ export const RECEPTION_NAV_GROUPS: NavGroupDef[] = [
 
     labelKey: 'guests',
 
-    hrefs: ['/r/arrivals', '/r/arrival-check', '/r/in-house', '/r/reservations'],
+    hrefs: ['/r/arrivals', '/r/room-suggestions', '/r/arrival-check', '/r/in-house', '/r/reservations'],
 
   },
 

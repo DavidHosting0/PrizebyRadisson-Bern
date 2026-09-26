@@ -32,7 +32,7 @@ export type CommandItem = {
 };
 
 const QUICK_HREFS: Record<string, string[]> = {
-  RECEPTION: ['/r', '/r/arrivals', '/r/rooms', '/r/requests'],
+  RECEPTION: ['/r', '/r/arrivals', '/r/room-suggestions', '/r/rooms', '/r/requests'],
   SUPERVISOR: ['/s', '/s/board', '/s/open-tasks', '/s/departures', '/s/room-tasks'],
   HOUSEKEEPER: ['/h', '/h/requests'],
   TECHNICIAN: ['/t/maintenance', '/t/rooms'],

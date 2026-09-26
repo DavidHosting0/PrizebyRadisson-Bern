@@ -7,7 +7,8 @@ import { RequirePermissions } from '../common/decorators/require-permissions.dec
 import { MoveFolioChargeDto } from './dto/move-folio-charge.dto';
 import { ReservationsAnalyticsService } from './reservations-analytics.service';
 import { ReservationsService } from './reservations.service';
-import { parseHeldRooms, RoomSuggestionService } from './room-suggestion.service';
+import { AcceptRoomSuggestionDto } from './dto/accept-room-suggestion.dto';
+import { RoomSuggestionService } from './room-suggestion.service';
 
 @Controller('reservations')
 export class ReservationsController {
@@ -115,20 +116,37 @@ export class ReservationsController {
     return this.reservations.moveFolioChargeFromEmma(reservationId, dto);
   }
 
-  @Get(':reservationId/room-suggestion')
+  @Get('room-suggestions')
   @RequirePermissions(PermissionCode.RESERVATIONS_READ)
-  roomSuggestion(
+  listRoomSuggestions(@Query('hotelId') hotelId?: string) {
+    return this.roomSuggestions.list(hotelId);
+  }
+
+  @Post(':reservationId/room-suggestion/accept')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_READ)
+  acceptRoomSuggestion(
     @Param('reservationId') reservationId: string,
-    @Query('mode') mode?: string,
-    @Query('held') held?: string,
+    @Body() dto: AcceptRoomSuggestionDto,
     @Query('hotelId') hotelId?: string,
   ) {
-    return this.roomSuggestions.suggest(
-      reservationId,
-      mode === 'now' ? 'now' : 'plan',
-      hotelId,
-      parseHeldRooms(held),
-    );
+    return this.roomSuggestions.accept(reservationId, dto.roomNumber, hotelId);
+  }
+
+  @Post(':reservationId/room-suggestion/arriving-now')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_READ)
+  arrivingNowRoomSuggestion(
+    @Param('reservationId') reservationId: string,
+    @Query('hotelId') hotelId?: string,
+  ) {
+    return this.roomSuggestions.arrivingNow(reservationId, hotelId);
+  }
+
+  @Get(':reservationId/room-suggestion')
+  @RequirePermissions(PermissionCode.RESERVATIONS_READ)
+  roomSuggestion(@Param('reservationId') reservationId: string, @Query('hotelId') hotelId?: string) {
+    return this.roomSuggestions.suggest(reservationId, hotelId);
   }
 
   @Get(':reservationId')

@@ -222,6 +222,8 @@ const tr: ExtensionMessages = {
     ready: 'Şimdi hazır',
     assignFailed: 'EMMA ataması başarısız',
     noSuggestion: 'Uygun oda yok',
+    loadFailed: 'Öneriler yüklenemedi',
+    signInRequired: 'PrizeBern uzantısında oturum açın',
     loading: 'Öneri yükleniyor',
     reasonVip: 'VIP',
     reasonPremium: 'Premium',

@@ -222,6 +222,8 @@ const de: ExtensionMessages = {
     ready: 'Sofort bereit',
     assignFailed: 'EMMA-Zuweisung fehlgeschlagen',
     noSuggestion: 'Kein passendes Zimmer',
+    loadFailed: 'Vorschläge nicht geladen',
+    signInRequired: 'In der PrizeBern-Extension anmelden',
     loading: 'Vorschlag wird geladen',
     reasonVip: 'VIP',
     reasonPremium: 'Premium',

@@ -516,43 +516,241 @@ async function extractReviewsOnPage(page: Page): Promise<ScrapedBookingReview[]>
 }
 
 /**
- * From Analyzer _click_next_page_number —
- * pagination via ol.a81722b979 button[aria-current=page] → next number.
+ * Fingerprint of the first review card — used to detect that pagination actually moved.
  */
-async function clickNextPageNumber(page: Page): Promise<boolean> {
+async function firstReviewFingerprint(page: Page): Promise<string> {
+  const card = page.locator("[data-testid='review-card']").first();
+  if ((await card.count()) === 0) return '';
+  const score = safeText(
+    await card.locator("[data-testid='review-score']").first().textContent().catch(() => ''),
+  );
+  const name = safeText(
+    await card
+      .locator("[data-testid='review-avatar']")
+      .first()
+      .textContent()
+      .catch(() => ''),
+  );
+  const date = safeText(
+    await card
+      .locator("[data-testid='review-date'], [data-testid='review-stay-date']")
+      .first()
+      .textContent()
+      .catch(() => ''),
+  );
+  return `${score}|${name}|${date}`.slice(0, 200);
+}
+
+async function waitForReviewsChanged(page: Page, before: string, timeoutMs = 12_000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await page.waitForTimeout(400);
+    const now = await firstReviewFingerprint(page);
+    if (now && now !== before) return true;
+  }
+  return false;
+}
+
+async function readCurrentPageNumber(page: Page): Promise<number | null> {
+  // Prefer the review pager (ol with page buttons), not header nav aria-current
+  const reviewCurrent = page.locator("ol button[aria-current='page']").first();
+  if ((await reviewCurrent.count()) > 0) {
+    const label =
+      (await reviewCurrent.getAttribute('aria-label'))?.trim() ||
+      safeText(await reviewCurrent.innerText().catch(() => '')) ||
+      '';
+    const m = label.match(/(\d+)\s*$/);
+    if (m) {
+      const n = parseInt(m[1]!, 10);
+      if (Number.isFinite(n) && n >= 1) return n;
+    }
+  }
+
+  const sels = [
+    "[data-testid='pagination'] button[aria-current='page']",
+    "nav button[aria-current='page']",
+    "button[aria-current='page']",
+    "a[aria-current='page']",
+    "li[aria-current='page'] button",
+    "li[aria-current='page'] a",
+  ];
+  for (const sel of sels) {
+    const btn = page.locator(sel).first();
+    if ((await btn.count()) === 0) continue;
+    const label =
+      (await btn.getAttribute('aria-label'))?.trim() ||
+      safeText(await btn.innerText().catch(() => '')) ||
+      '';
+    // de: "Seite 2", en: "Page 2" / " 2" / "2"
+    if (!/seite|page|\d/i.test(label)) continue;
+    if (/aufenthalte|flüge|overview|startseite/i.test(label)) continue;
+    const m = label.match(/(\d+)\s*$/);
+    if (m) {
+      const n = parseInt(m[1]!, 10);
+      if (Number.isFinite(n) && n >= 1) return n;
+    }
+  }
+  return null;
+}
+
+async function tryClickLocator(loc: Locator): Promise<boolean> {
   try {
-    const currentBtn = page.locator("ol.a81722b979 button[aria-current='page']").first();
-    if ((await currentBtn.count()) === 0) {
-      // Fallback: Next page button
-      const next = page.locator("button[aria-label='Next page'], button[aria-label='Nächste Seite']").last();
-      if ((await next.count()) === 0) return false;
-      const disabled =
-        (await next.getAttribute('disabled')) != null ||
-        (await next.getAttribute('aria-disabled')) === 'true';
-      if (disabled) return false;
-      await next.scrollIntoViewIfNeeded({ timeout: 5000 });
-      await next.click({ timeout: 5000 });
-      await page.waitForTimeout(DELAY_BETWEEN_PAGES_MS);
-      return true;
-    }
-    await currentBtn.scrollIntoViewIfNeeded({ timeout: 5000 });
-    const label = (await currentBtn.getAttribute('aria-label'))?.trim() ?? '';
-    const currentNum = parseInt(label, 10);
-    if (!Number.isFinite(currentNum)) return false;
-    const nextNum = currentNum + 1;
-    // Analyzer uses aria-label with leading space: " {n}"
-    let nextBtn = page.locator(`ol.a81722b979 button[aria-label=' ${nextNum}']`).first();
-    if ((await nextBtn.count()) === 0) {
-      nextBtn = page.locator(`ol.a81722b979 button[aria-label='${nextNum}']`).first();
-    }
-    if ((await nextBtn.count()) === 0) return false;
-    await nextBtn.scrollIntoViewIfNeeded({ timeout: 5000 });
-    await nextBtn.click({ timeout: 5000 });
-    await page.waitForTimeout(DELAY_BETWEEN_PAGES_MS);
+    if ((await loc.count()) === 0) return false;
+    const el = loc.first();
+    const disabled =
+      (await el.getAttribute('disabled')) != null ||
+      (await el.getAttribute('aria-disabled')) === 'true' ||
+      (await el.isDisabled().catch(() => false));
+    if (disabled) return false;
+    await el.scrollIntoViewIfNeeded({ timeout: 5000 });
+    await el.click({ timeout: 5000 });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Advance Booking review pagination. Booking rotates hashed class names often,
+ * so we try several strategies and verify the first review card actually changed.
+ */
+async function clickNextPageNumber(page: Page, logger?: Logger): Promise<boolean> {
+  // Ensure pager is in view (often below the fold)
+  const pager = page
+    .locator(
+      "[data-testid='pagination'], nav[aria-label*='agination' i], nav[aria-label*='Seiten' i], ol:has(button[aria-current='page']), ol:has(button[aria-label])",
+    )
+    .first();
+  if ((await pager.count()) > 0) {
+    await pager.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => undefined);
+    await page.waitForTimeout(300);
+  }
+
+  const before = await firstReviewFingerprint(page);
+  const currentNum = await readCurrentPageNumber(page);
+  const nextNum = currentNum != null ? currentNum + 1 : null;
+
+  const numberSelectors =
+    nextNum == null
+      ? []
+      : [
+          // de-DE: aria-label="Seite 2"  |  en: "Page 2" / " 2"
+          `ol button[aria-label='Seite ${nextNum}']`,
+          `ol button[aria-label='Page ${nextNum}']`,
+          `ol button[aria-label=' ${nextNum}']`,
+          `ol button[aria-label='${nextNum}']`,
+          `button[aria-label='Seite ${nextNum}']`,
+          `button[aria-label='Page ${nextNum}']`,
+          `button[aria-label=' ${nextNum}']`,
+          `button[aria-label='${nextNum}']`,
+          `[data-testid='pagination'] button[aria-label='Seite ${nextNum}']`,
+          `[data-testid='pagination'] button[aria-label='Page ${nextNum}']`,
+          `a[data-page-number='${nextNum}']`,
+          `button[data-page-number='${nextNum}']`,
+          `li[data-page-number='${nextNum}'] button`,
+          `li[data-page-number='${nextNum}'] a`,
+          `ol button:text-is("${nextNum}")`,
+          `[data-testid='pagination'] button:text-is("${nextNum}")`,
+          `nav button:text-is("${nextNum}")`,
+        ];
+
+  const nextLabelSelectors = [
+    "button[aria-label='Next page']",
+    "button[aria-label='Nächste Seite']",
+    "button[aria-label='Next']",
+    "a[aria-label='Next page']",
+    "a[aria-label='Nächste Seite']",
+    "button[aria-label*='Next page' i]",
+    "button[aria-label*='Nächste Seite' i]",
+    "button[aria-label*='Go to next' i]",
+    "a.pagenext",
+    "button.pagenext",
+    "[data-testid='pagination'] button[aria-label*='ext' i]",
+    "[data-testid='pagination'] button[aria-label*='ächste' i]",
+  ];
+
+  const strategies: Array<{ name: string; run: () => Promise<boolean> }> = [];
+
+  if (nextNum != null) {
+    strategies.push({
+      name: `role:button:Seite ${nextNum}`,
+      run: async () =>
+        tryClickLocator(page.getByRole('button', { name: new RegExp(`Seite\\s+${nextNum}\\b`, 'i') })),
+    });
+    strategies.push({
+      name: `role:button:Page ${nextNum}`,
+      run: async () =>
+        tryClickLocator(page.getByRole('button', { name: new RegExp(`Page\\s+${nextNum}\\b`, 'i') })),
+    });
+    strategies.push({
+      name: `role:button:${nextNum}`,
+      run: async () =>
+        tryClickLocator(page.getByRole('button', { name: new RegExp(`^\\s*${nextNum}\\s*$`) })),
+    });
+    strategies.push({
+      name: `role:link:${nextNum}`,
+      run: async () =>
+        tryClickLocator(page.getByRole('link', { name: new RegExp(`^\\s*${nextNum}\\s*$`) })),
+    });
+  }
+
+  for (const sel of numberSelectors) {
+    strategies.push({
+      name: `num:${sel.slice(0, 60)}`,
+      run: async () => tryClickLocator(page.locator(sel)),
+    });
+  }
+
+  strategies.push({
+    name: 'role:next-de',
+    run: async () => tryClickLocator(page.getByRole('button', { name: /nächste/i }).last()),
+  });
+  strategies.push({
+    name: 'role:next-en',
+    run: async () => tryClickLocator(page.getByRole('button', { name: /next/i }).last()),
+  });
+
+  for (const sel of nextLabelSelectors) {
+    strategies.push({
+      name: `next:${sel.slice(0, 60)}`,
+      run: async () => tryClickLocator(page.locator(sel).last()),
+    });
+  }
+
+  // Chevron / arrow icon buttons near pagination (last enabled control)
+  strategies.push({
+    name: 'pagination-last-enabled',
+    run: async () => {
+      const root = page
+        .locator(
+          "[data-testid='pagination'], nav[aria-label*='agination' i], nav[aria-label*='Seiten' i], ol",
+        )
+        .last();
+      if ((await root.count()) === 0) return false;
+      const buttons = root.locator('button:not([disabled]):not([aria-disabled="true"])');
+      const n = await buttons.count();
+      if (n < 2) return false;
+      return tryClickLocator(buttons.nth(n - 1));
+    },
+  });
+
+  for (const s of strategies) {
+    const clicked = await s.run();
+    if (!clicked) continue;
+    await page.waitForTimeout(800);
+    const changed = await waitForReviewsChanged(page, before);
+    if (changed) {
+      logger?.log(`Pagination OK via ${s.name} (page ${currentNum ?? '?'} → ${nextNum ?? '?'})`);
+      await page.waitForTimeout(DELAY_BETWEEN_PAGES_MS);
+      return true;
+    }
+    logger?.warn(`Pagination click (${s.name}) did not change reviews — trying next strategy`);
+  }
+
+  logger?.warn(
+    `Pagination failed (current page=${currentNum ?? 'unknown'}, fingerprint=${before.slice(0, 40)})`,
+  );
+  return false;
 }
 
 export async function scrapeBookingReviews(opts: {
@@ -678,9 +876,12 @@ export async function scrapeBookingReviews(opts: {
             break;
           }
 
-          const moved = await clickNextPageNumber(page);
+          const moved = await clickNextPageNumber(page, logger);
           if (!moved) {
-            stoppedReason = 'no_more_pages';
+            stoppedReason =
+              pagesFetched <= 1
+                ? 'no_more_pages (pagination control not found — only first page scraped)'
+                : 'no_more_pages';
             break;
           }
           await page.waitForTimeout(1000);

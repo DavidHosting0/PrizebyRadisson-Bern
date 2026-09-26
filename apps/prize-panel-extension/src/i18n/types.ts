@@ -228,6 +228,8 @@ export type ExtensionMessages = {
     ready: string;
     assignFailed: string;
     noSuggestion: string;
+    loadFailed: string;
+    signInRequired: string;
     loading: string;
     reasonVip: string;
     reasonPremium: string;
