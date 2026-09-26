@@ -2,18 +2,36 @@ import { createHash } from 'node:crypto';
 
 /** Shared Playwright mutex so Puzzel and Review Analyzer never run Chromium concurrently. */
 let chain: Promise<void> = Promise.resolve();
+let mutexBusy = false;
+let mutexWaiters = 0;
 
-export async function withPlaywrightMutex<T>(fn: () => Promise<T>): Promise<T> {
+export function isPlaywrightMutexBusy() {
+  return mutexBusy;
+}
+
+export async function withPlaywrightMutex<T>(
+  fn: () => Promise<T>,
+  onWaiting?: (msg: string) => void | Promise<void>,
+): Promise<T> {
   let release!: () => void;
   const next = new Promise<void>((resolve) => {
     release = resolve;
   });
   const prev = chain;
   chain = chain.then(() => next);
+  if (mutexBusy) {
+    mutexWaiters++;
+    await onWaiting?.(
+      `waiting for Playwright lock (${mutexWaiters} waiting — Puzzel or another import may be using Chromium)…`,
+    );
+  }
   await prev;
+  mutexWaiters = Math.max(0, mutexWaiters - 1);
+  mutexBusy = true;
   try {
     return await fn();
   } finally {
+    mutexBusy = false;
     release();
   }
 }

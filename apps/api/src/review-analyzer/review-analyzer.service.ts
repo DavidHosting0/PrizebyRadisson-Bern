@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
+  ReviewJobStatus,
   ReviewMentionPolarity,
   ReviewPriority,
   ReviewSentiment,
@@ -46,8 +47,26 @@ export class ReviewAnalyzerService {
 
   async onBootstrap() {
     await this.ai.ensureTaxonomy();
+    await this.failStaleImportJobs();
     await this.repairBogusScores();
     await this.repairDuplicatedReviewTexts();
+  }
+
+  /** Mark orphaned RUNNING jobs (e.g. after PM2 restart / crash) as FAILED. */
+  async failStaleImportJobs(maxAgeMinutes = 20) {
+    const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
+    const result = await this.prisma.reviewImportJob.updateMany({
+      where: {
+        status: ReviewJobStatus.RUNNING,
+        OR: [{ startedAt: { lt: cutoff } }, { startedAt: null, createdAt: { lt: cutoff } }],
+      },
+      data: {
+        status: ReviewJobStatus.FAILED,
+        finishedAt: new Date(),
+        errorMessage: `stale RUNNING job auto-failed after ${maxAgeMinutes}m (process restart or hang)`,
+      },
+    });
+    return { failed: result.count };
   }
 
   /** Fix scores like 1010 that came from duplicated Booking DOM text. */

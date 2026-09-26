@@ -28,6 +28,19 @@ export class ReviewImportService {
    * Starts import in the background and returns immediately (avoids Nginx 504).
    */
   async startImport(opts?: { mode?: 'historical' | 'incremental'; force?: boolean }) {
+    // Clear stale DB jobs so UI doesn't look forever-running after a crash
+    await this.prisma.reviewImportJob.updateMany({
+      where: {
+        status: ReviewJobStatus.RUNNING,
+        startedAt: { lt: new Date(Date.now() - 15 * 60_000) },
+      },
+      data: {
+        status: ReviewJobStatus.FAILED,
+        finishedAt: new Date(),
+        errorMessage: 'stale RUNNING job cleared before new import',
+      },
+    });
+
     if (this.running || this.queued) {
       const current = await this.prisma.reviewImportJob.findFirst({
         where: { status: ReviewJobStatus.RUNNING },

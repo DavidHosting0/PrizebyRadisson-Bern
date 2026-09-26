@@ -64,8 +64,9 @@ const MONTHS: Record<string, number> = {
 };
 
 const DELAY_BETWEEN_PAGES_MS = 2000;
-const DELAY_AFTER_LOAD_MS = 2000;
-const MAX_LOAD_RETRIES = 3;
+const DELAY_AFTER_LOAD_MS = 1500;
+const MAX_LOAD_RETRIES = 2;
+const GOTO_TIMEOUT_MS = 45_000;
 
 function safeText(s: string | null | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim();
@@ -425,7 +426,6 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
 /** From Analyzer _extract_reviews_on_page */
 async function extractReviewsOnPage(page: Page): Promise<ScrapedBookingReview[]> {
   const reviews: ScrapedBookingReview[] = [];
-  // Prefer language-independent cards; fallback to DE/EN aria anchors (Analyzer)
   let cards = page.locator("[data-testid='review-card']");
   let n = await cards.count();
   if (n === 0) {
@@ -434,18 +434,14 @@ async function extractReviewsOnPage(page: Page): Promise<ScrapedBookingReview[]>
     );
     n = await anchors.count();
     for (let i = 0; i < n; i++) {
-      const anchor = anchors.nth(i);
-      await anchor.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => undefined);
-      const card = anchor.locator('xpath=..');
+      const card = anchors.nth(i).locator('xpath=..');
       const rev = await parseReviewFromCard(card);
       if (rev) reviews.push(rev);
     }
     return reviews;
   }
   for (let i = 0; i < n; i++) {
-    const card = cards.nth(i);
-    await card.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => undefined);
-    const rev = await parseReviewFromCard(card);
+    const rev = await parseReviewFromCard(cards.nth(i));
     if (rev) reviews.push(rev);
   }
   return reviews;
@@ -500,7 +496,11 @@ export async function scrapeBookingReviews(opts: {
   onProgress?: (p: BookingScrapeProgress) => void | Promise<void>;
 }): Promise<BookingImportResult> {
   const logger = new Logger('BookingImporter');
-  // Prefer .de.html — matches Analyzer de-DE locale / proven selectors
+  const progress = async (message: string, page = 0, collected = 0) => {
+    logger.log(message);
+    await opts.onProgress?.({ page, collected, message });
+  };
+
   let hotelUrl = (opts.url?.trim() || DEFAULT_BOOKING_URL)
     .replace(/\.en-gb\.html/i, '.de.html')
     .replace(/\.en\.html/i, '.de.html');
@@ -510,93 +510,126 @@ export async function scrapeBookingReviews(opts: {
   const maxPages = opts.maxPages ?? 200;
   const headless = opts.headless !== false;
 
-  return withPlaywrightMutex(async () => {
-    const browser = await chromium.launch({ headless });
-    const context = await browser.newContext({
-      locale: 'de-DE',
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    });
-    const page = await context.newPage();
-    const collected = new Map<string, ScrapedBookingReview>();
-    let pagesFetched = 0;
-    let stoppedReason = 'completed';
+  await progress(`opening Booking: ${hotelUrl.slice(0, 80)}…`);
 
-    try {
-      let loaded = false;
-      for (let attempt = 0; attempt <= MAX_LOAD_RETRIES && !loaded; attempt++) {
-        try {
-          await page.goto(hotelUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-          await page.waitForTimeout(DELAY_AFTER_LOAD_MS);
-          await dismissCookies(page);
-          if (!page.url().includes('booking.com')) {
-            throw new Error(`Unexpected redirect: ${page.url()}`);
-          }
-          await openReviewsSection(page, logger);
-          await page.waitForTimeout(1000);
-          loaded = true;
-        } catch (e) {
-          logger.warn(`Load attempt ${attempt + 1} failed: ${(e as Error).message}`);
-          await page.waitForTimeout(5000);
-        }
-      }
-      if (!loaded) {
-        return { reviews: [], pagesFetched: 0, stoppedReason: 'load_failed' };
-      }
-
-      for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
-        pagesFetched++;
-        const pageReviews = await extractReviewsOnPage(page);
-        let newOnPage = 0;
-        for (const r of pageReviews) {
-          if (!collected.has(r.externalId)) {
-            collected.set(r.externalId, r);
-            newOnPage++;
-          }
-        }
-        const msg = `page ${pagesFetched}: +${newOnPage} new / ${pageReviews.length} on page (total ${collected.size})`;
-        logger.log(msg);
-        await opts.onProgress?.({ page: pagesFetched, collected: collected.size, message: msg });
-
-        const list = [...collected.values()].sort(
-          (a, b) => b.reviewedAt.getTime() - a.reviewedAt.getTime(),
+  return withPlaywrightMutex(
+    async () => {
+      await progress('Playwright lock acquired — launching Chromium…');
+      let browser;
+      try {
+        browser = await chromium.launch({ headless });
+      } catch (e) {
+        const msg = (e as Error).message;
+        await progress(
+          `Chromium launch failed: ${msg}. On server run: cd apps/api && npx playwright install chromium`,
         );
-        if (list.length) {
-          const oldest = list[list.length - 1]!;
-          if (oldest.reviewedAt < opts.cutoffDate) {
-            stoppedReason = 'reached_cutoff';
-            break;
+        throw e;
+      }
+      const context = await browser.newContext({
+        locale: 'de-DE',
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      });
+      const page = await context.newPage();
+      const collected = new Map<string, ScrapedBookingReview>();
+      let pagesFetched = 0;
+      let stoppedReason = 'completed';
+
+      try {
+        let loaded = false;
+        let lastError = '';
+        for (let attempt = 0; attempt <= MAX_LOAD_RETRIES && !loaded; attempt++) {
+          try {
+            await progress(`loading hotel page (attempt ${attempt + 1}/${MAX_LOAD_RETRIES + 1})…`);
+            await page.goto(hotelUrl, { waitUntil: 'domcontentloaded', timeout: GOTO_TIMEOUT_MS });
+            await page.waitForTimeout(DELAY_AFTER_LOAD_MS);
+            await progress(`page loaded: ${page.url().slice(0, 90)} — cookies/reviews tab…`);
+            await dismissCookies(page);
+            if (!page.url().includes('booking.com')) {
+              throw new Error(`Unexpected redirect: ${page.url()}`);
+            }
+            await openReviewsSection(page, logger);
+            await progress('reviews section opened — waiting for cards…');
+            await page
+              .waitForSelector("[data-testid='review-card']", { timeout: 20_000 })
+              .catch(() => undefined);
+            const n = await page.locator("[data-testid='review-card']").count();
+            await progress(`found ${n} review cards on first view`);
+            if (n === 0) {
+              throw new Error('No review-card elements found (blocked or layout change?)');
+            }
+            loaded = true;
+          } catch (e) {
+            lastError = (e as Error).message;
+            logger.warn(`Load attempt ${attempt + 1} failed: ${lastError}`);
+            await progress(`load failed (${attempt + 1}): ${lastError}`);
+            await page.waitForTimeout(3000);
           }
-          if (opts.incrementalStopIds?.size && pageIdx > 0) {
-            const known = list.filter((r) => opts.incrementalStopIds!.has(r.externalId)).length;
-            if (known >= Math.min(8, list.length) && newOnPage === 0) {
-              stoppedReason = 'incremental_overlap';
-              break;
+        }
+        if (!loaded) {
+          return {
+            reviews: [],
+            pagesFetched: 0,
+            stoppedReason: `load_failed: ${lastError}`,
+          };
+        }
+
+        for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
+          pagesFetched++;
+          const pageReviews = await extractReviewsOnPage(page);
+          let newOnPage = 0;
+          for (const r of pageReviews) {
+            if (!collected.has(r.externalId)) {
+              collected.set(r.externalId, r);
+              newOnPage++;
             }
           }
+          const msg = `page ${pagesFetched}: +${newOnPage} new / ${pageReviews.length} on page (total ${collected.size})`;
+          await progress(msg, pagesFetched, collected.size);
+
+          const list = [...collected.values()].sort(
+            (a, b) => b.reviewedAt.getTime() - a.reviewedAt.getTime(),
+          );
+          if (list.length) {
+            const oldest = list[list.length - 1]!;
+            if (oldest.reviewedAt < opts.cutoffDate) {
+              stoppedReason = 'reached_cutoff';
+              break;
+            }
+            if (opts.incrementalStopIds?.size && pageIdx > 0) {
+              const known = list.filter((r) => opts.incrementalStopIds!.has(r.externalId)).length;
+              if (known >= Math.min(8, list.length) && newOnPage === 0) {
+                stoppedReason = 'incremental_overlap';
+                break;
+              }
+            }
+          }
+
+          if (pageReviews.length === 0 && pageIdx === 0) {
+            stoppedReason = 'no_cards';
+            break;
+          }
+
+          const moved = await clickNextPageNumber(page);
+          if (!moved) {
+            stoppedReason = 'no_more_pages';
+            break;
+          }
+          await page.waitForTimeout(1000);
         }
 
-        if (pageReviews.length === 0 && pageIdx === 0) {
-          stoppedReason = 'no_cards';
-          break;
-        }
-
-        const moved = await clickNextPageNumber(page);
-        if (!moved) {
-          stoppedReason = 'no_more_pages';
-          break;
-        }
-        await page.waitForTimeout(1000);
+        const reviews = [...collected.values()].filter((r) => r.reviewedAt >= opts.cutoffDate);
+        await progress(
+          `done: ${reviews.length} in window / ${collected.size} total (${pagesFetched} pages, ${stoppedReason})`,
+          pagesFetched,
+          collected.size,
+        );
+        return { reviews, pagesFetched, stoppedReason };
+      } finally {
+        await context.close().catch(() => undefined);
+        await browser.close().catch(() => undefined);
       }
-
-      const reviews = [...collected.values()].filter((r) => r.reviewedAt >= opts.cutoffDate);
-      logger.log(
-        `Booking scrape done: ${reviews.length} in window / ${collected.size} total (${pagesFetched} pages, ${stoppedReason})`,
-      );
-      return { reviews, pagesFetched, stoppedReason };
-    } finally {
-      await context.close().catch(() => undefined);
-      await browser.close().catch(() => undefined);
-    }
-  });
+    },
+    (msg) => progress(msg),
+  );
 }
