@@ -77,13 +77,22 @@
       "operations": "Операції",
       "tools": "Команда та інструменти",
       "roomManagement": "Керування номерами",
-      "frontOffice": "Рецепція"
+      "frontOffice": "Рецепція",
+      "reviewAnalyzer": "Review Analyzer"
     },
     "teamChat": "Командний чат",
     "puzzleTickets": "Тікети Puzzle",
     "collapse": "Згорнути",
     "expandSidebar": "Розгорнути бічну панель",
-    "collapseSidebar": "Згорнути бічну панель"
+    "collapseSidebar": "Згорнути бічну панель",
+    "reviewAnalyzer": "Review Analyzer",
+    "reviewAnalyzerReviews": "Відгуки",
+    "reviewAnalyzerProblems": "Проблеми",
+    "reviewAnalyzerStrengths": "Сильні сторони",
+    "reviewAnalyzerTrends": "Тренди",
+    "reviewAnalyzerReports": "Звіти",
+    "reviewAnalyzerAlerts": "Сповіщення",
+    "reviewAnalyzerSettings": "Налаштування"
   },
   "frontOfficeBackup": {
     "title": "Резерв EMMA — рецепція",
@@ -541,7 +550,7 @@
     "reservationsPage": {
       "description": "Пошук усіх локально збережених бронювань EMMA та перегляд деталей",
       "loadingStored": "Завантаження збережених бронювань…",
-      "searchResults": "{count} результатів для «{query}»",
+      "searchResults": "{count} результатів для «{query}» (будь-який період, макс. 500)",
       "storedCount": "{count} збережених бронювань (спочатку новіші, макс. 500)",
       "emptySearch": "Бронювань за цим пошуком не знайдено.",
       "emptyNone": "Ще немає збережених бронювань. Запустіть синхронізацію в Заїзди або Admin → EMMA.",

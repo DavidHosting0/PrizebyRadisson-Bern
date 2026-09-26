@@ -40,6 +40,7 @@ import { ShiftNotesModule } from './shift-notes/shift-notes.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { LoansModule } from './loans/loans.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
+import { ReviewAnalyzerModule } from './review-analyzer/review-analyzer.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -88,6 +89,7 @@ import configuration from './config/configuration';
     ComplaintsModule,
     LoansModule,
     ActivityLogModule,
+    ReviewAnalyzerModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

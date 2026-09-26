@@ -69,3 +69,17 @@ npm run dev:web
 ## Webhooks / realtime
 
 Socket.IO namespace `/operations` broadcasts `room.status_updated`, `service_request.*`, and checklist events. The reception floor view subscribes and refreshes room data.
+
+## Review Analyzer (Hotel Review Intelligence)
+
+Permission-gated Reception module under `/r/review-analyzer/*`.
+
+- **Permission:** `REVIEW_ANALYZER_READ` — **not** included in Reception Full. Grant via Admin → Roles/Users. Admins have all permissions automatically.
+- **Settings** tab is **Admin-only**; other subpages require the permission.
+- **Data:** Booking.com reviews scraped with Playwright (shared Chromium + mutex with Puzzel). First successful empty DB run imports the last **24 months**; then hourly incremental imports.
+- **AI:** Uses Admin → AI OpenAI config (default `gpt-4o-mini`). Rough one-time cost for ~2k–5k reviews is typically a few USD with mini; ongoing often under $1/month.
+- **Queues:** BullMQ via `REDIS_URL` (falls back to in-process if Redis is down). Start Redis: `docker compose up -d redis`.
+- **Playwright:** `cd apps/api && npx playwright install chromium`
+- **Env:** see `REVIEW_ANALYZER_*` and `REDIS_URL` in `.env.example`.
+- **API:** `/api/v1/review-analyzer/*` (overview, reviews, analytics, alerts, reports, import, analyze, export, settings).
+- Seed installs topic taxonomy only (no demo reviews). Trigger import from Dashboard or Admin Settings.

@@ -10,6 +10,8 @@ export class S3Service {
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly configured: boolean;
+  /** Cache signed GET URLs so polling clients keep a stable img src. */
+  private readonly getUrlCache = new Map<string, { url: string; exp: number }>();
 
   constructor(private readonly config: ConfigService) {
     const region = this.config.get<string>('s3.region') ?? 'us-east-1';
@@ -98,8 +100,26 @@ export class S3Service {
     // that include optional photo/avatar URLs keep working. Uploads (presignPut)
     // still throw ServiceUnavailable so the UI can surface it clearly.
     if (!this.configured) return { url: null };
+
+    // Reuse the same signed URL for a while so chat/avatar <img> src stays stable
+    // across polling (new signatures force browsers to re-download the image).
+    const now = Date.now();
+    const cached = this.getUrlCache.get(key);
+    if (cached && cached.exp - now > 120_000) {
+      return { url: cached.url };
+    }
+
     const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: key });
     const url = await getSignedUrl(this.client, cmd, { expiresIn: expiresSec });
+    this.getUrlCache.set(key, { url, exp: now + expiresSec * 1000 });
+    // Bound cache size (simple eviction of oldest half when large)
+    if (this.getUrlCache.size > 2000) {
+      let i = 0;
+      for (const k of this.getUrlCache.keys()) {
+        this.getUrlCache.delete(k);
+        if (++i > 1000) break;
+      }
+    }
     return { url };
   }
 

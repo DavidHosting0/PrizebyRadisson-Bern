@@ -81,7 +81,7 @@ export function useCommandSearch(
   const { data: reservations = [], isLoading: resLoading } = useQuery({
     queryKey: ['command-search', 'reservations', q],
     queryFn: () => {
-      const params = new URLSearchParams({ tab: 'all', q });
+      const params = new URLSearchParams({ tab: 'all', q, limit: String(MAX_PER_GROUP) });
       return api<ReservationListItem[]>(`/reservations?${params}`);
     },
     enabled: !!user && q.length >= 2 && hasPermission(user, 'RESERVATIONS_READ'),

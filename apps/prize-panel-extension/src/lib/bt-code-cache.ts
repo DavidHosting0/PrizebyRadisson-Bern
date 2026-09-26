@@ -21,9 +21,13 @@ export function normalizeBooking(raw: string): string {
 }
 
 export function peekCachedCode(booking: string): { code: string | null } | null {
-  const hit = codeCache.get(booking);
+  const hit = codeCache.get(normalizeBooking(booking));
   if (!hit || Date.now() - hit.at >= CACHE_TTL_MS) return null;
   return { code: hit.code };
+}
+
+export function putCachedCode(booking: string, code: string | null) {
+  codeCache.set(normalizeBooking(booking), { code, at: Date.now() });
 }
 
 export function clearBtCodeCache() {

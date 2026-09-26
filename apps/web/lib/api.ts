@@ -23,7 +23,7 @@ export type Me = {
   roles?: MeRole[];
 };
 
-function getTokens() {
+export function getTokens() {
   if (typeof window === 'undefined') return { access: null as string | null, refresh: null as string | null };
   return {
     access: localStorage.getItem('accessToken'),

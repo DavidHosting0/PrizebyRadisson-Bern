@@ -33,6 +33,38 @@ import {
   resolveOutstandingBalance,
   outstandingBalanceForStorage,
 } from './reservation-balance';
+import {
+  RESERVATION_LIST_LIMIT,
+  RESERVATION_SEARCH_BATCH,
+  clampReservationSearchLimit,
+  collectPagedMatches,
+  reservationListItemMatchesQuery,
+  reservationSearchPageWhere,
+} from './reservation-search';
+
+const reservationListSelect = {
+  id: true,
+  hotelId: true,
+  reservationId: true,
+  roomId: true,
+  arrivalDate: true,
+  departureDate: true,
+  nightsStay: true,
+  roomType: true,
+  mealPlan: true,
+  tier: true,
+  numPax: true,
+  checkIn: true,
+  checkOut: true,
+  checkInQueue: true,
+  inTodayArrivals: true,
+  sensitiveEnc: true,
+  detailFetchedAt: true,
+  folioFetchedAt: true,
+  arrivalCheckCompletedAt: true,
+  arrivalCheckLastRunId: true,
+  syncedAt: true,
+} satisfies Prisma.ReservationSnapshotSelect;
 
 @Injectable()
 export class ReservationsService {
@@ -222,12 +254,17 @@ export class ReservationsService {
     date?: string;
     q?: string;
     hotelId?: string;
+    limit?: number;
   }): Promise<ReservationListItem[]> {
     if (opts.tab !== 'all') {
       this.scheduleSyncOnView(`list:${opts.tab}`);
     }
     const hotelId = opts.hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
     const q = opts.q?.trim().toLowerCase();
+
+    if (opts.tab === 'all' && q) {
+      return this.searchStored(hotelId, q, clampReservationSearchLimit(opts.limit));
+    }
 
     const where: Prisma.ReservationSnapshotWhereInput = { hotelId };
 
@@ -256,7 +293,8 @@ export class ReservationsService {
         opts.tab === 'all'
           ? [{ arrivalDate: 'desc' }, { reservationId: 'asc' }]
           : [{ arrivalDate: 'asc' }, { reservationId: 'asc' }],
-      take: opts.tab === 'all' ? (q ? 2000 : 500) : undefined,
+      take: opts.tab === 'all' ? RESERVATION_LIST_LIMIT : undefined,
+      select: reservationListSelect,
     });
 
     const mapped = rows.map((r) => this.toListItem(r, opts.tab === 'inhouse'));
@@ -278,16 +316,37 @@ export class ReservationsService {
     }
 
     if (!q) return mapped;
-    return mapped.filter(
-      (r) =>
-        r.mainGuestName?.toLowerCase().includes(q) ||
-        r.reservationId.toLowerCase().includes(q) ||
-        r.roomId?.toLowerCase().includes(q) ||
-        r.groupName?.toLowerCase().includes(q) ||
-        r.roomType?.toLowerCase().includes(q) ||
-        r.vipDesc?.toLowerCase().includes(q) ||
-        r.tier?.toLowerCase().includes(q),
-    );
+    return mapped.filter((r) => reservationListItemMatchesQuery(r, q));
+  }
+
+  /**
+   * Search every stored snapshot (guest names are encrypted, so this scans
+   * newest-arrival-first) and return at most `limit` matches.
+   */
+  private async searchStored(
+    hotelId: string,
+    q: string,
+    limit: number,
+  ): Promise<ReservationListItem[]> {
+    const pages = await collectPagedMatches({
+      batchSize: RESERVATION_SEARCH_BATCH,
+      limit,
+      fetchPage: async (cursor) => {
+        const rows = await this.prisma.reservationSnapshot.findMany({
+          where: reservationSearchPageWhere(hotelId, cursor),
+          orderBy: [{ arrivalDate: 'desc' }, { id: 'desc' }],
+          take: RESERVATION_SEARCH_BATCH,
+          select: reservationListSelect,
+        });
+        return rows.map((row) => ({
+          cursor: { arrivalDate: row.arrivalDate, id: row.id },
+          item: this.toListItem(row),
+        }));
+      },
+      matches: (row) => reservationListItemMatchesQuery(row.item, q),
+      cursorOf: (row) => row.cursor,
+    });
+    return pages.map((row) => row.item);
   }
 
   async findOne(reservationId: string, hotelId?: string): Promise<ReservationDetail> {
@@ -523,7 +582,7 @@ export class ReservationsService {
   }
 
   /** Delete snapshots and guest stays whose departure was more than retentionDays ago. */
-  async purgeExpired(retentionDays = 30): Promise<number> {
+  async purgeExpired(retentionDays = 730): Promise<number> {
     const cutoff = new Date();
     cutoff.setUTCDate(cutoff.getUTCDate() - retentionDays);
     const [snapshotResult, stayResult] = await Promise.all([

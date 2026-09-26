@@ -77,13 +77,22 @@
       "operations": "Operations",
       "tools": "Team & tools",
       "roomManagement": "Room management",
-      "frontOffice": "Front office"
+      "frontOffice": "Front office",
+      "reviewAnalyzer": "Review Analyzer"
     },
     "teamChat": "Team chat",
     "puzzleTickets": "Puzzle tickets",
     "collapse": "Collapse",
     "expandSidebar": "Expand sidebar",
-    "collapseSidebar": "Collapse sidebar"
+    "collapseSidebar": "Collapse sidebar",
+    "reviewAnalyzer": "Review Analyzer",
+    "reviewAnalyzerReviews": "Reviews",
+    "reviewAnalyzerProblems": "Problems",
+    "reviewAnalyzerStrengths": "Strengths",
+    "reviewAnalyzerTrends": "Trends",
+    "reviewAnalyzerReports": "Reports",
+    "reviewAnalyzerAlerts": "Alerts",
+    "reviewAnalyzerSettings": "Settings"
   },
   "frontOfficeBackup": {
     "title": "EMMA backup — front office",
@@ -541,7 +550,7 @@
     "reservationsPage": {
       "description": "Search all locally stored EMMA reservations and view details",
       "loadingStored": "Loading stored reservations…",
-      "searchResults": "{count} results for \"{query}\"",
+      "searchResults": "{count} results for \"{query}\" (any date, max. 500)",
       "storedCount": "{count} stored reservations (newest first, max. 500)",
       "emptySearch": "No reservations found for this search.",
       "emptyNone": "No stored reservations yet. Trigger sync under Arrivals or Admin → EMMA.",

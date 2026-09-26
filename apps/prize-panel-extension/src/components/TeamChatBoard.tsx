@@ -518,10 +518,17 @@ function MessageMenu({
 
 function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: boolean }) {
   const [failed, setFailed] = useState(false);
+  // Keep prior signed URL while the object path is unchanged (poll re-signs query string)
+  const stableRef = useRef(url);
+  const base = url.split('?')[0];
+  if (stableRef.current.split('?')[0] !== base) {
+    stableRef.current = url;
+  }
+  const src = stableRef.current;
   if (failed) return null;
   return (
     <a
-      href={url}
+      href={src}
       target="_blank"
       rel="noopener noreferrer"
       className={clsx('block overflow-hidden rounded-md', hasText ? 'mb-1' : '')}
@@ -529,7 +536,7 @@ function ChatPhoto({ url, alt, hasText }: { url: string; alt: string; hasText: b
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={url}
+        src={src}
         alt={alt}
         loading="lazy"
         decoding="async"

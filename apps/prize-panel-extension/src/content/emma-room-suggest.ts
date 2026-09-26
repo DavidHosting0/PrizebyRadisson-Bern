@@ -4,13 +4,10 @@
  * - Compact chip in Check-in list Room column
  * Only when arrival is today and no fixed room is assigned.
  */
-import {
-  allHotelRoomNumbers,
-  compareRoomNumbers,
-  floorFromRoomNumber,
-  formatFloorLabel,
-} from '@housekeeping/shared';
+import { floorFromRoomNumber, formatFloorLabel } from '@housekeeping/shared';
+import { api } from '../lib/api';
 import { isDateToday, parseEmmaDate } from '../lib/emma-dates';
+import { assignEmmaRoom } from './emma-room-assign';
 import {
   getMessages,
   interpolate,
@@ -25,17 +22,15 @@ const HOST_ID = 'prize-ra-host';
 const STYLE_ID = 'prize-ra-style';
 const ROW_ATTR = 'data-prize-room-assign';
 
-type SuggestKind = 'default' | 'higher' | 'lower' | 'extra_bed';
-
-type RoomSuggestion = {
+type ApiRoomSuggestion = {
+  reservationId: string;
   roomNumber: string;
   floor: number | null;
-  kind: SuggestKind;
-  label: string;
+  category: string;
+  bookedCategory: string;
+  readyNow: boolean;
+  reasons: string[];
 };
-
-const HOTEL_ROOMS = allHotelRoomNumbers().sort(compareRoomNumbers);
-const HOTEL_ROOM_SET = new Set(HOTEL_ROOMS);
 
 function isLikelyEmmaPage(): boolean {
   if (/ReservationId=/i.test(window.location.hash)) return true;
@@ -52,7 +47,7 @@ function getBookingNumber(): string | null {
   ];
   for (const re of patterns) {
     const m = hash.match(re);
-    if (m) return m[1].replace(/^0+/, '') || m[1];
+    if (m) return m[1];
   }
 
   for (const el of document.querySelectorAll(
@@ -60,7 +55,7 @@ function getBookingNumber(): string | null {
   )) {
     if (el.closest(`[${ROW_ATTR}]`)) continue;
     const t = (el.textContent || '').trim();
-    if (/^\d{6,}$/.test(t)) return t.replace(/^0+/, '') || t;
+    if (/^\d{6,}$/.test(t)) return t;
   }
   return null;
 }
@@ -79,7 +74,7 @@ function normalizeRoomNumber(raw: string): string {
 
 function isKnownHotelRoom(raw: string): boolean {
   const n = normalizeRoomNumber(raw);
-  return Boolean(n && HOTEL_ROOM_SET.has(n));
+  return floorFromRoomNumber(n) != null;
 }
 
 function scrapeAssignedRoom(): string | null {
@@ -239,43 +234,95 @@ function formatRoomForEmma(roomNumber: string, sample?: string | null): string {
   return n.padStart(Math.max(width, n.length), '0');
 }
 
-function roomIndex(roomNumber: string): number {
-  const n = normalizeRoomNumber(roomNumber);
-  return HOTEL_ROOMS.findIndex((r) => r === n);
+const HELD_KEY = 'prize-room-holds';
+const CACHE_MS = 20_000;
+
+type Hold = { reservationId: string; roomNumber: string };
+
+const suggestionCache = new Map<string, { at: number; value: ApiRoomSuggestion | null }>();
+const detailMode = new Map<string, 'plan' | 'now'>();
+const detailInflight = new Set<string>();
+let suggestion: ApiRoomSuggestion | null = null;
+let suggestionLoading = false;
+let assigning = false;
+
+function readHolds(): Hold[] {
+  try {
+    const raw = sessionStorage.getItem(HELD_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (row): row is Hold =>
+        !!row &&
+        typeof row === 'object' &&
+        typeof (row as Hold).reservationId === 'string' &&
+        typeof (row as Hold).roomNumber === 'string',
+    );
+  } catch {
+    return [];
+  }
 }
 
-function mockSuggest(
-  bookingNumber: string | null,
-  kind: SuggestKind,
-  current?: string | null,
-): RoomSuggestion {
-  const assigned = current ? normalizeRoomNumber(current) : null;
-  let idx = 0;
-  if (assigned) {
-    const a = roomIndex(assigned);
-    if (a >= 0) idx = a;
-  } else if (bookingNumber) {
-    const seed = [...bookingNumber].reduce((s, c) => s + c.charCodeAt(0), 0);
-    idx = seed % HOTEL_ROOMS.length;
-  }
+function heldQuery(): string {
+  return readHolds()
+    .map((hold) => `${hold.reservationId}:${hold.roomNumber}`)
+    .join(',');
+}
 
-  if (kind === 'higher') {
-    idx = Math.min(HOTEL_ROOMS.length - 1, idx + 1);
-  } else if (kind === 'lower') {
-    idx = Math.max(0, idx - 1);
-  } else if (kind === 'extra_bed') {
-    idx = Math.min(HOTEL_ROOMS.length - 1, idx + 2);
-  }
+function rememberHold(reservationId: string, roomNumber: string) {
+  const room = normalizeRoomNumber(roomNumber);
+  const holds = readHolds().filter(
+    (hold) => hold.reservationId !== reservationId && normalizeRoomNumber(hold.roomNumber) !== room,
+  );
+  holds.push({ reservationId, roomNumber: room });
+  sessionStorage.setItem(HELD_KEY, JSON.stringify(holds));
+  suggestionCache.clear();
+}
 
-  const roomNumber = HOTEL_ROOMS[idx] || '101';
-  const floor = floorFromRoomNumber(roomNumber);
-  const labels: Record<SuggestKind, string> = {
-    default: msgs.emmaRoom.labelDefault,
-    higher: msgs.emmaRoom.labelHigher,
-    lower: msgs.emmaRoom.labelLower,
-    extra_bed: msgs.emmaRoom.labelExtraBed,
+function reasonLine(reasons: string[]): string {
+  const labels: Record<string, string> = {
+    vip: msgs.emmaRoom.reasonVip,
+    premium: msgs.emmaRoom.reasonPremium,
+    repeat: msgs.emmaRoom.reasonRepeat,
+    one_night: msgs.emmaRoom.reasonOneNight,
+    long_stay: msgs.emmaRoom.reasonLongStay,
+    three_pax: msgs.emmaRoom.reasonThreePax,
+    no_basement: msgs.emmaRoom.reasonNoBasement,
+    not_ready: msgs.emmaRoom.reasonNotReady,
+    category_not_ready: msgs.emmaRoom.reasonCategoryNotReady,
+    overbook_view: msgs.emmaRoom.reasonOverbookView,
+    overbook_corner: msgs.emmaRoom.reasonOverbookCorner,
+    overbook_standard: msgs.emmaRoom.reasonOverbookStandard,
+    wheelchair: msgs.emmaRoom.reasonWheelchair,
   };
-  return { roomNumber, floor, kind, label: labels[kind] };
+  return reasons
+    .map((reason) => labels[reason])
+    .filter((label): label is string => Boolean(label))
+    .slice(0, 3)
+    .join(' · ');
+}
+
+async function fetchSuggestion(
+  reservationId: string,
+  mode: 'plan' | 'now',
+): Promise<ApiRoomSuggestion | null> {
+  const held = heldQuery();
+  const key = `${reservationId}:${mode}:${held}`;
+  const hit = suggestionCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const q = new URLSearchParams({ mode });
+  if (held) q.set('held', held);
+  const res = await api<{ suggestion: ApiRoomSuggestion | null }>(
+    `/reservations/${encodeURIComponent(reservationId)}/room-suggestion?${q}`,
+  );
+  suggestionCache.set(key, { at: Date.now(), value: res.suggestion });
+  return res.suggestion;
+}
+
+async function acceptSuggestion(row: ApiRoomSuggestion): Promise<string> {
+  await assignEmmaRoom(row.reservationId, row.roomNumber);
+  rememberHold(row.reservationId, row.roomNumber);
+  return row.roomNumber;
 }
 
 function ensureStyles() {
@@ -285,8 +332,8 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
-  if (style.dataset.v === '3') return;
-  style.dataset.v = '3';
+  if (style.dataset.v === '5') return;
+  style.dataset.v = '5';
   style.textContent = `
     /* Detail: compact chip inline at the Room field */
     #${HOST_ID}{
@@ -364,32 +411,46 @@ function ensureStyles() {
       font-size:8px;color:#94a3b8;line-height:1.25;
     }
 
-    /* Check-in list Room column — inline next to room number (cell max-height clips siblings) */
+    /* Check-in list Room column — under empty room slot, survive cell clipping */
+    .sapUiTableDataCell:has([${ROW_ATTR}="row"]) .sapUiTableCellInner,
+    .sapUiTableDataCell:has([${ROW_ATTR}="row"]) .sapMVBox{
+      overflow:visible !important;
+      max-height:none !important;
+    }
     [${ROW_ATTR}="row"]{
-      display:inline-flex;
+      display:flex !important;
       align-items:center;
-      gap:0.2rem;
-      margin:0;
+      gap:0.25rem;
+      margin:0.2rem 0 0 0;
       line-height:1.15;
       max-width:100%;
-      vertical-align:middle;
       flex-shrink:0;
+      position:relative;
+      z-index:20;
+      pointer-events:auto;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code{
       appearance:none;cursor:pointer;
       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:0.75rem;font-weight:700;letter-spacing:.03em;
+      font-size:0.78rem;font-weight:800;letter-spacing:.03em;
       color:#0f172a;
       background:#dbeafe;
-      border:1px solid #3b82f6;
+      border:1px solid #2563eb;
       border-radius:0.25rem;
-      padding:0.12rem 0.4rem;
+      padding:0.15rem 0.45rem;
       white-space:nowrap;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code:hover{filter:brightness(0.97);}
-    [${ROW_ATTR}="row"] .pb-ra-row-hint{
-      font-size:0.6rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-      color:#3b82f6;
+    #${HOST_ID} .pb-ra-now{
+      appearance:none;cursor:pointer;border:1px solid #cbd5e1;background:#fff;
+      border-radius:6px;padding:3px 6px;font-size:10px;font-weight:700;color:#1a2332;
+    }
+    #${HOST_ID} .pb-ra-now:hover{background:#f1f5f9;}
+    [${ROW_ATTR}="row"] .pb-ra-row-code.pb-ra-dirty{background:#ffedd5;border-color:#c2410c;color:#9a3412;}
+    [${ROW_ATTR}="row"] .pb-ra-row-accept{
+      appearance:none;cursor:pointer;border:1px solid #15803d;background:#15803d;color:#fff;
+      border-radius:0.25rem;width:1.35rem;height:1.35rem;font-size:0.75rem;font-weight:800;
+      line-height:1;
     }
   `;
 }
@@ -422,14 +483,9 @@ function mountInRoomField(parent: HTMLElement): HTMLElement {
 function iconCheck() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>`;
 }
-function iconEdit() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`;
-}
 
 let lastKey: string | null = null;
 let refreshTimer: number | null = null;
-let suggestion: RoomSuggestion | null = null;
-let menuOpen = false;
 let statusText = '';
 let statusWarn = false;
 
@@ -448,68 +504,79 @@ function applyRoomToEmma(roomNumber: string): boolean {
 }
 
 function renderHost(host: HTMLElement) {
-  if (!suggestion) return;
   host.setAttribute('aria-label', msgs.emmaRoom.title);
-  const floorLabel = formatFloorLabel(suggestion.floor);
+  if (suggestionLoading && !suggestion) {
+    host.innerHTML = `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.loading)}</div>`;
+    return;
+  }
+  if (!suggestion) {
+    host.innerHTML =
+      `<div class="pb-ra-note">${escapeHtml(statusText || msgs.emmaRoom.noSuggestion)}</div>`;
+    return;
+  }
+  const floorLabel = formatFloorLabel(suggestion.floor ?? floorFromRoomNumber(suggestion.roomNumber));
+  const readyLabel = suggestion.readyNow ? msgs.emmaRoom.ready : msgs.emmaRoom.dirty;
+  const reasons = reasonLine(suggestion.reasons);
+  const meta = [floorLabel, readyLabel, reasons].filter(Boolean).join(' · ');
   const statusHtml = statusText
     ? `<div class="pb-ra-status${statusWarn ? ' pb-ra-warn' : ''}">${escapeHtml(statusText)}</div>`
     : '';
-
   const accept = msgs.emmaRoom.accept;
-  const edit = msgs.emmaRoom.edit;
+  const arriving = msgs.emmaRoom.arrivingNow;
   host.innerHTML =
     `<div class="pb-ra-top">` +
     `<span class="pb-ra-title"><span class="pb-ra-dot" aria-hidden="true"></span>${escapeHtml(msgs.emmaRoom.title)}</span>` +
-    `<span class="pb-ra-badge">${escapeHtml(suggestion.label)}</span>` +
+    `<span class="pb-ra-badge">${escapeHtml(readyLabel)}</span>` +
     `</div>` +
     `<div class="pb-ra-main">` +
     `<div><div class="pb-ra-room">${escapeHtml(suggestion.roomNumber)}</div>` +
-    `<div class="pb-ra-meta">${escapeHtml(floorLabel)}</div></div>` +
+    `<div class="pb-ra-meta">${escapeHtml(meta)}</div></div>` +
     `<div class="pb-ra-actions">` +
     `<button type="button" class="pb-ra-btn pb-ra-accept" title="${escapeAttr(accept)}" aria-label="${escapeAttr(accept)}">${iconCheck()}</button>` +
-    `<button type="button" class="pb-ra-btn pb-ra-edit" title="${escapeAttr(edit)}" aria-label="${escapeAttr(edit)}" aria-expanded="${menuOpen}">${iconEdit()}</button>` +
     `</div></div>` +
-    `<div class="pb-ra-menu${menuOpen ? '' : ' pb-ra-hidden'}">` +
-    `<button type="button" class="pb-ra-opt" data-kind="higher">${escapeHtml(msgs.emmaRoom.higher)}</button>` +
-    `<button type="button" class="pb-ra-opt" data-kind="lower">${escapeHtml(msgs.emmaRoom.lower)}</button>` +
-    `<button type="button" class="pb-ra-opt" data-kind="extra_bed">${escapeHtml(msgs.emmaRoom.extraBed)}</button>` +
-    `</div>` +
+    `<button type="button" class="pb-ra-now">${escapeHtml(arriving)}</button>` +
     statusHtml +
     `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.previewNote)}</div>`;
 
   host.querySelector('.pb-ra-accept')?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!suggestion) return;
-    const ok = applyRoomToEmma(suggestion.roomNumber);
-    statusText = ok
-      ? interpolate(msgs.emmaRoom.applied, { room: suggestion.roomNumber })
-      : interpolate(msgs.emmaRoom.appliedNoField, { room: suggestion.roomNumber });
-    statusWarn = !ok;
-    menuOpen = false;
-    renderHost(host);
-    scheduleRefresh();
+    if (!suggestion || assigning) return;
+    const current = suggestion;
+    assigning = true;
+    void acceptSuggestion(current)
+      .then((room) => {
+        applyRoomToEmma(room);
+        statusText = interpolate(msgs.emmaRoom.applied, { room });
+        statusWarn = false;
+        suggestion = null;
+        lastKey = null;
+      })
+      .catch((err: unknown) => {
+        statusText = err instanceof Error && err.message && err.message !== 'CSRF'
+          ? `${msgs.emmaRoom.assignFailed}: ${err.message}`
+          : msgs.emmaRoom.assignFailed;
+        statusWarn = true;
+      })
+      .finally(() => {
+        assigning = false;
+        renderHost(host);
+        scheduleRefresh();
+      });
   });
 
-  host.querySelector('.pb-ra-edit')?.addEventListener('click', (e) => {
+  host.querySelector('.pb-ra-now')?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    menuOpen = !menuOpen;
-    renderHost(host);
-  });
-
-  host.querySelectorAll<HTMLButtonElement>('.pb-ra-opt').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const kind = (btn.dataset.kind || 'default') as SuggestKind;
-      const booking = getBookingNumber();
-      suggestion = mockSuggest(booking, kind, suggestion?.roomNumber || null);
-      statusText = '';
-      statusWarn = false;
-      menuOpen = false;
-      renderHost(host);
-    });
+    const booking = getBookingNumber();
+    if (!booking) return;
+    detailMode.set(booking, 'now');
+    suggestionCache.clear();
+    lastKey = null;
+    suggestion = null;
+    statusText = '';
+    statusWarn = false;
+    scheduleRefresh();
   });
 }
 
@@ -583,13 +650,24 @@ function cellByColIndex(row: HTMLElement, colIndex: number): HTMLElement | null 
 }
 
 function bookingFromListRow(row: HTMLElement): string | null {
-  const cell =
-    row.querySelector<HTMLElement>('[id$="-col0"]') ||
-    row.querySelector<HTMLElement>('td.sapUiTableCellFirst');
+  const re = /-col0$/;
+  let cell: HTMLElement | null = null;
+  for (const el of row.querySelectorAll<HTMLElement>('[id*="-col"]')) {
+    if (re.test(el.id)) {
+      cell = el;
+      break;
+    }
+  }
+  if (!cell) {
+    cell =
+      row.querySelector<HTMLElement>('td.sapUiTableCellFirst') ||
+      row.querySelector<HTMLElement>('td.sapUiTableDataCell');
+  }
   if (!cell) return null;
   for (const el of cell.querySelectorAll('.sapMText, a.sapMLnk')) {
+    if (el.closest(`[${ROW_ATTR}]`)) continue;
     const t = (el.textContent || '').trim();
-    if (/^\d{6,}$/.test(t)) return t.replace(/^0+/, '') || t;
+    if (/^\d{6,}$/.test(t)) return t;
   }
   return null;
 }
@@ -605,21 +683,6 @@ function roomFromListCell(cell: HTMLElement): string | null {
   return null;
 }
 
-/** Mount inside the room-number line so chips are not clipped by cell max-height. */
-function findListRoomChipMount(cell: HTMLElement): HTMLElement {
-  for (const el of cell.querySelectorAll('.sapMText')) {
-    if (el.closest(`[${ROW_ATTR}]`)) continue;
-    if (el.parentElement) return el.parentElement;
-  }
-  const hbox = cell.querySelector('.sapMHBox') as HTMLElement | null;
-  if (hbox) return hbox;
-  const vbox = cell.querySelector('.sapMVBox') as HTMLElement | null;
-  if (vbox) return vbox;
-  return (
-    (cell.querySelector('.sapUiTableCellInner') as HTMLElement | null) || cell
-  );
-}
-
 function arrivalFromListCell(cell: HTMLElement): string | null {
   // Prefer the date line (e.g. "Sep 26, 2026"), not the time ObjStatus
   for (const el of cell.querySelectorAll('.sapMText')) {
@@ -627,71 +690,113 @@ function arrivalFromListCell(cell: HTMLElement): string | null {
     const iso = parseEmmaDate(t);
     if (iso) return iso;
   }
-  const iso = parseEmmaDate((cell.textContent || '').trim());
-  return iso;
+  return parseEmmaDate((cell.textContent || '').trim());
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    ta.remove();
+/** Prefer Arrival column; fall back to any parseable date in the row. */
+function arrivalIsoFromRow(row: HTMLElement, arrivalCell: HTMLElement | null): string | null {
+  if (arrivalCell) {
+    const iso = arrivalFromListCell(arrivalCell);
+    if (iso) return iso;
   }
+  for (const el of row.querySelectorAll('.sapMText')) {
+    if (el.closest(`[${ROW_ATTR}]`)) continue;
+    const iso = parseEmmaDate((el.textContent || '').trim());
+    if (iso) return iso;
+  }
+  return null;
 }
 
-function ensureRowChip(cell: HTMLElement, booking: string, roomNumber: string): HTMLElement {
-  const mount = findListRoomChipMount(cell);
+function ensureRowChip(cell: HTMLElement, rowSuggestion: ApiRoomSuggestion): HTMLElement {
+  const booking = rowSuggestion.reservationId;
+  const roomNumber = rowSuggestion.roomNumber;
+  const vbox =
+    cell.querySelector<HTMLElement>('.sapMVBox') ||
+    cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
+    cell;
+  const after =
+    vbox.querySelector<HTMLElement>(':scope > .sapMHBox') ||
+    vbox.querySelector<HTMLElement>(':scope > .sapMFlexItem');
+
   let host = cell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
-  if (host && host.dataset.booking === booking && host.dataset.room === roomNumber) {
-    if (host.parentElement !== mount) mount.appendChild(host);
+  if (host && host.dataset.booking === booking && host.dataset.room === roomNumber && host.dataset.ready === String(rowSuggestion.readyNow)) {
+    if (host.parentElement !== vbox) {
+      if (after && after.parentElement === vbox) after.insertAdjacentElement('afterend', host);
+      else vbox.appendChild(host);
+    }
     return host;
   }
   if (host) {
     host.dataset.booking = booking;
     host.dataset.room = roomNumber;
-    if (host.parentElement !== mount) mount.appendChild(host);
+    if (host.parentElement !== vbox) {
+      if (after && after.parentElement === vbox) after.insertAdjacentElement('afterend', host);
+      else vbox.appendChild(host);
+    }
   } else {
-    host = document.createElement('span');
+    host = document.createElement('div');
     host.setAttribute(ROW_ATTR, 'row');
-    host.dataset.booking = booking;
-    host.dataset.room = roomNumber;
-    mount.appendChild(host);
+    if (after && after.parentElement === vbox) after.insertAdjacentElement('afterend', host);
+    else vbox.appendChild(host);
   }
+  host.dataset.booking = booking;
+  host.dataset.room = roomNumber;
+  host.dataset.ready = String(rowSuggestion.readyNow);
 
   host.innerHTML = '';
-  const hint = document.createElement('span');
-  hint.className = 'pb-ra-row-hint';
-  hint.textContent = '→';
-  hint.setAttribute('aria-hidden', 'true');
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'pb-ra-row-code';
-  // Show padded like EMMA (4 digits) for familiar look
+  btn.className = `pb-ra-row-code${rowSuggestion.readyNow ? '' : ' pb-ra-dirty'}`;
   const display = roomNumber.padStart(4, '0');
   btn.textContent = display;
-  btn.title = `${msgs.emmaRoom.title}: ${display}`;
-  btn.setAttribute('aria-label', `${msgs.emmaRoom.title} ${display}`);
-  btn.addEventListener('click', (e) => {
+  const reason = reasonLine(rowSuggestion.reasons);
+  btn.title = [msgs.emmaRoom.title, display, rowSuggestion.readyNow ? msgs.emmaRoom.ready : msgs.emmaRoom.dirty, reason]
+    .filter(Boolean)
+    .join(' · ');
+  btn.setAttribute('aria-label', btn.title);
+  const accept = document.createElement('button');
+  accept.type = 'button';
+  accept.className = 'pb-ra-row-accept';
+  accept.textContent = '✓';
+  accept.title = msgs.emmaRoom.accept;
+  accept.setAttribute('aria-label', msgs.emmaRoom.accept);
+  accept.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void copyText(display);
+    if (assigning) return;
+    assigning = true;
+    void acceptSuggestion(rowSuggestion)
+      .then(() => {
+        const text = cell.querySelector<HTMLElement>('.sapMText, a.sapMLnk');
+        if (text && !text.closest(`[${ROW_ATTR}]`)) text.textContent = display;
+        host?.remove();
+      })
+      .catch(() => {
+        btn.title = msgs.emmaRoom.assignFailed;
+      })
+      .finally(() => {
+        assigning = false;
+      });
   });
-  host.appendChild(hint);
   host.appendChild(btn);
+  host.appendChild(accept);
   return host;
 }
 
-function scanCheckInList() {
+function isCheckInListPage(): boolean {
+  return Boolean(
+    document.querySelector(
+      '[id*="CheckInList"], [id*="checkInList.table"], [id*="tms.checkInList"]',
+    ),
+  );
+}
+
+async function scanCheckInList() {
   const table = findCheckInListTable();
   if (!table) {
-    document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
+    if (!isCheckInListPage()) {
+      document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
+    }
     return;
   }
 
@@ -699,7 +804,7 @@ function scanCheckInList() {
   const rows = table.querySelectorAll<HTMLElement>(
     'tbody tr.sapUiTableContentRow, tbody tr.sapUiTableTr',
   );
-
+  const rowSet = new Set(rows);
   const seen = new Set<HTMLElement>();
 
   for (const row of rows) {
@@ -711,21 +816,40 @@ function scanCheckInList() {
     if (!roomCell) continue;
 
     const fixed = roomFromListCell(roomCell);
-    const arrivalIso = arrivalCell ? arrivalFromListCell(arrivalCell) : null;
+    const existing = roomCell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
 
-    if (fixed || !isDateToday(arrivalIso)) {
-      roomCell.querySelector(`[${ROW_ATTR}="row"]`)?.remove();
+    if (fixed) {
+      existing?.remove();
       continue;
     }
 
-    const sug = mockSuggest(booking, 'default', null);
-    const host = ensureRowChip(roomCell, booking, sug.roomNumber);
-    seen.add(host);
+    const arrivalIso = arrivalIsoFromRow(row, arrivalCell);
+    if (!isDateToday(arrivalIso)) {
+      if (existing && !arrivalIso) {
+        seen.add(existing);
+        continue;
+      }
+      existing?.remove();
+      continue;
+    }
+
+    try {
+      const sug = await fetchSuggestion(booking, 'plan');
+      if (!sug) {
+        existing?.remove();
+        continue;
+      }
+      const host = ensureRowChip(roomCell, sug);
+      seen.add(host);
+    } catch {
+      if (existing) seen.add(existing);
+    }
   }
 
-  // Clean orphaned chips in this table
-  table.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => {
-    if (el instanceof HTMLElement && !seen.has(el)) el.remove();
+  document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => {
+    if (!(el instanceof HTMLElement) || seen.has(el)) return;
+    const row = el.closest('tr.sapUiTableContentRow, tr.sapUiTableTr');
+    if (!row || !rowSet.has(row as HTMLElement)) el.remove();
   });
 }
 
@@ -733,7 +857,7 @@ function clearDetailHost() {
   document.getElementById(HOST_ID)?.remove();
   lastKey = null;
   suggestion = null;
-  menuOpen = false;
+  suggestionLoading = false;
   statusText = '';
   statusWarn = false;
 }
@@ -742,7 +866,6 @@ async function tickDetail() {
   const booking = getBookingNumber();
   const mountParent = findRoomFieldMountParent();
 
-  // On list-only pages there is no room field — fine
   if (!mountParent || !booking) {
     clearDetailHost();
     return;
@@ -754,18 +877,34 @@ async function tickDetail() {
   }
 
   const host = mountInRoomField(mountParent);
-  const key = `${booking}:empty`;
-  if (key !== lastKey || !suggestion || !host.querySelector('.pb-ra-room')) {
-    const bookingChanged = !lastKey || !lastKey.startsWith(`${booking}:`);
-    lastKey = key;
-    if (bookingChanged || !suggestion) {
-      menuOpen = false;
-      statusText = '';
-      statusWarn = false;
-      suggestion = mockSuggest(booking, 'default', null);
-    }
-    renderHost(host);
+  const mode = detailMode.get(booking) ?? 'plan';
+  const key = `${booking}:${mode}:${heldQuery()}`;
+  if (host.dataset.key === key || detailInflight.has(key)) return;
+  detailInflight.add(key);
+  const bookingChanged = !lastKey || !lastKey.startsWith(`${booking}:`);
+  lastKey = key;
+  if (bookingChanged) {
+    statusText = '';
+    statusWarn = false;
   }
+  suggestionLoading = true;
+  renderHost(host);
+  try {
+    const next = await fetchSuggestion(booking, mode);
+    if (lastKey !== key) return;
+    suggestion = next;
+    host.dataset.key = key;
+  } catch {
+    if (lastKey !== key) return;
+    suggestion = null;
+    statusText = msgs.emmaRoom.noSuggestion;
+    statusWarn = true;
+    host.dataset.key = key;
+  } finally {
+    suggestionLoading = false;
+    detailInflight.delete(key);
+  }
+  if (lastKey === key) renderHost(host);
 }
 
 async function tick() {
@@ -776,7 +915,7 @@ async function tick() {
   }
 
   ensureStyles();
-  scanCheckInList();
+  await scanCheckInList();
   await tickDetail();
 }
 
@@ -804,6 +943,7 @@ export function startEmmaRoomSuggestWatcher() {
   window.addEventListener('hashchange', () => {
     lastKey = null;
     suggestion = null;
+    document.getElementById(HOST_ID)?.removeAttribute('data-key');
     scheduleRefresh();
   });
 

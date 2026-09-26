@@ -85,6 +85,7 @@ enum PermissionCode {
   LOANS_CATALOG_WRITE
   ACTIVITY_LOG_READ
   PUBLIC_AREA_MANAGE
+  REVIEW_ANALYZER_READ
 }
 
 enum ActivityLogCategory {
@@ -1449,4 +1450,290 @@ model ActivityLog {
   @@index([action])
   @@index([category])
   @@index([resourceType, resourceId])
+}
+
+// ─── Review Analyzer ─────────────────────────────────────────────────────────
+
+enum ReviewSource {
+  BOOKING
+  GOOGLE
+  TRIPADVISOR
+  EXPEDIA
+  HOTELS
+  OTHER
+}
+
+enum ReviewSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  MIXED
+}
+
+enum ReviewMentionPolarity {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+enum ReviewPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ReviewJobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  EMPTY
+}
+
+enum ReviewAlertType {
+  SCORE_DROP
+  TOPIC_SPIKE
+  NEGATIVE_TREND
+  CRITICAL_REVIEW
+  ANOMALY
+  IMPORT_FAILED
+}
+
+model GuestReview {
+  id              String       @id @default(cuid())
+  source          ReviewSource @default(BOOKING)
+  externalId      String
+  hotelKey        String       @default("CHBRNPR")
+  reviewedAt      DateTime
+  stayDate        DateTime?
+  score           Float
+  positiveText    String?      @db.Text
+  negativeText    String?      @db.Text
+  fullText        String       @db.Text
+  language        String?
+  guestName       String?
+  guestCountry    String?
+  travelType      String?
+  stayNights      Int?
+  roomCategory    String?
+  contentHash     String
+  importedAt      DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  rawPayload      Json?
+
+  categoryScores GuestReviewCategoryScore[]
+  analysis       ReviewAnalysis?
+  mentions       ReviewMention[]
+
+  @@unique([source, externalId])
+  @@index([reviewedAt(sort: Desc)])
+  @@index([score])
+  @@index([language])
+  @@index([guestCountry])
+  @@index([hotelKey, reviewedAt])
+  @@index([contentHash])
+}
+
+model GuestReviewCategoryScore {
+  id       String @id @default(cuid())
+  reviewId String
+  review   GuestReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  category String
+  score    Float
+
+  @@unique([reviewId, category])
+  @@index([category])
+}
+
+model ReviewAnalysis {
+  id             String          @id @default(cuid())
+  reviewId       String          @unique
+  review         GuestReview     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  sentiment      ReviewSentiment
+  sentimentScore Int
+  summaryEn      String          @db.Text
+  translationEn  String?         @db.Text
+  positives      Json
+  negatives      Json
+  model          String?
+  analyzedAt     DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model ReviewTopic {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  category    String
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  mentions    ReviewMention[]
+  clusterLinks ReviewProblemClusterTopic[]
+}
+
+model ReviewMention {
+  id         String                @id @default(cuid())
+  reviewId   String
+  review     GuestReview           @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  topicId    String
+  topic      ReviewTopic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  polarity   ReviewMentionPolarity
+  severity   ReviewPriority?
+  priority   ReviewPriority?
+  evidence   String?
+  clusterId  String?
+  cluster    ReviewProblemCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  createdAt  DateTime              @default(now())
+
+  @@index([reviewId])
+  @@index([topicId])
+  @@index([polarity])
+  @@index([priority])
+  @@index([clusterId])
+}
+
+model ReviewProblemCluster {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique
+  title                 String
+  rootCauseHypothesis   String?  @db.Text
+  suggestedAction       String?  @db.Text
+  priority              ReviewPriority @default(MEDIUM)
+  mentionCount          Int      @default(0)
+  negativePct           Float    @default(0)
+  trendPct              Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  mentions              ReviewMention[]
+  topics                ReviewProblemClusterTopic[]
+}
+
+model ReviewProblemClusterTopic {
+  clusterId String
+  topicId   String
+  cluster   ReviewProblemCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  topic     ReviewTopic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([clusterId, topicId])
+}
+
+model DailyReviewMetric {
+  id              String   @id @default(cuid())
+  hotelKey        String   @default("CHBRNPR")
+  date            DateTime @db.Date
+  reviewCount     Int      @default(0)
+  averageScore    Float    @default(0)
+  positivePct     Float    @default(0)
+  negativePct     Float    @default(0)
+  mixedPct        Float    @default(0)
+  neutralPct      Float    @default(0)
+  topPositive     String?
+  topNegative     String?
+  categoryScores  Json?
+  topicStats      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([hotelKey, date])
+  @@index([date])
+}
+
+model WeeklyReviewMetric {
+  id              String   @id @default(cuid())
+  hotelKey        String   @default("CHBRNPR")
+  year            Int
+  week            Int
+  weekStart       DateTime @db.Date
+  reviewCount     Int      @default(0)
+  averageScore    Float    @default(0)
+  positivePct     Float    @default(0)
+  negativePct     Float    @default(0)
+  topPositiveThemes Json?
+  topNegativeThemes Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([hotelKey, year, week])
+  @@index([weekStart])
+}
+
+model MonthlyReviewMetric {
+  id              String   @id @default(cuid())
+  hotelKey        String   @default("CHBRNPR")
+  year            Int
+  month           Int
+  reviewCount     Int      @default(0)
+  averageScore    Float    @default(0)
+  positivePct     Float    @default(0)
+  negativePct     Float    @default(0)
+  topStrengths    Json?
+  topProblems     Json?
+  categoryScores  Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([hotelKey, year, month])
+}
+
+model ReviewAlert {
+  id             String          @id @default(cuid())
+  hotelKey       String          @default("CHBRNPR")
+  type           ReviewAlertType
+  severity       ReviewPriority  @default(MEDIUM)
+  title          String
+  message        String          @db.Text
+  payload        Json?
+  acknowledgedAt DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([acknowledgedAt])
+  @@index([type])
+}
+
+model ReviewImportJob {
+  id           String          @id @default(cuid())
+  source       ReviewSource    @default(BOOKING)
+  status       ReviewJobStatus @default(PENDING)
+  mode         String          @default("incremental")
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  importedCount Int            @default(0)
+  skippedCount Int             @default(0)
+  errorMessage String?         @db.Text
+  retryCount   Int             @default(0)
+  createdAt    DateTime        @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([status])
+}
+
+model ReviewAnalysisJob {
+  id           String          @id @default(cuid())
+  reviewId     String?
+  status       ReviewJobStatus @default(PENDING)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  errorMessage String?         @db.Text
+  retryCount   Int             @default(0)
+  createdAt    DateTime        @default(now())
+
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model ReviewManagementReport {
+  id          String   @id @default(cuid())
+  hotelKey    String   @default("CHBRNPR")
+  periodType  String
+  periodKey   String
+  title       String
+  summaryEn   String   @db.Text
+  payload     Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([hotelKey, periodType, periodKey])
+  @@index([periodType, periodKey])
 }

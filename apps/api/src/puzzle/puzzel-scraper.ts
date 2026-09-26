@@ -698,11 +698,17 @@ export async function scrapePuzzelTicketsOnPage(
   return [...uniq.values()];
 }
 
+import { withPlaywrightMutex } from '../review-analyzer/review-utils';
+
 /**
  * Headless scrape: establishes a fresh browser session per call.
  * Caller must persist rows; timeouts assume relatively fast CM instance.
  */
 export async function scrapePuzzelTickets(opts: PuzzelScrapeOpts): Promise<PuzzelScrapedRow[]> {
+  return withPlaywrightMutex(() => scrapePuzzelTicketsUnlocked(opts));
+}
+
+async function scrapePuzzelTicketsUnlocked(opts: PuzzelScrapeOpts): Promise<PuzzelScrapedRow[]> {
   const baseUrl = normBase(opts.baseUrl);
   const ticketUrl = `${baseUrl}${opts.ticketsPath.startsWith('/') ? '' : '/'}${opts.ticketsPath}`;
 

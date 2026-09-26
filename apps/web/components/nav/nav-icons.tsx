@@ -281,6 +281,20 @@ export function IconClipboard({ className }: { className?: string }) {
   );
 }
 
+export function IconReviewAnalyzer({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 19V5m0 14h16M8 15l3-4 2 2 4-6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export type NavIcon = ComponentType<{ className?: string }>;
 
 export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
@@ -305,6 +319,14 @@ export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
   '/r/monitor-map': IconMonitor,
   '/r/room-management': IconRoomManagement,
   '/r/front-office/backup': IconFrontOfficeBackup,
+  '/r/review-analyzer': IconReviewAnalyzer,
+  '/r/review-analyzer/reviews': IconReviewAnalyzer,
+  '/r/review-analyzer/problems': IconDamage,
+  '/r/review-analyzer/strengths': IconClipboard,
+  '/r/review-analyzer/trends': IconReviewAnalyzer,
+  '/r/review-analyzer/reports': IconGuide,
+  '/r/review-analyzer/alerts': IconFrontOfficeBackup,
+  '/r/review-analyzer/settings': IconGuide,
 };
 
 export const SUPERVISOR_NAV_ICONS: Record<string, NavIcon> = {

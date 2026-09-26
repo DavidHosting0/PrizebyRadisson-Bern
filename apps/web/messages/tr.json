@@ -77,13 +77,22 @@
       "operations": "Operasyonlar",
       "tools": "Ekip ve araçlar",
       "roomManagement": "Oda yönetimi",
-      "frontOffice": "Ön büro"
+      "frontOffice": "Ön büro",
+      "reviewAnalyzer": "Review Analyzer"
     },
     "teamChat": "Ekip sohbeti",
     "puzzleTickets": "Puzzle biletleri",
     "collapse": "Daralt",
     "expandSidebar": "Kenar çubuğunu genişlet",
-    "collapseSidebar": "Kenar çubuğunu daralt"
+    "collapseSidebar": "Kenar çubuğunu daralt",
+    "reviewAnalyzer": "Review Analyzer",
+    "reviewAnalyzerReviews": "Yorumlar",
+    "reviewAnalyzerProblems": "Sorunlar",
+    "reviewAnalyzerStrengths": "Güçlü yönler",
+    "reviewAnalyzerTrends": "Trendler",
+    "reviewAnalyzerReports": "Raporlar",
+    "reviewAnalyzerAlerts": "Uyarılar",
+    "reviewAnalyzerSettings": "Ayarlar"
   },
   "frontOfficeBackup": {
     "title": "EMMA yedek — ön büro",
@@ -541,7 +550,7 @@
     "reservationsPage": {
       "description": "Yerel olarak kaydedilmiş tüm EMMA rezervasyonlarını arayın ve detayları görün",
       "loadingStored": "Kayıtlı rezervasyonlar yükleniyor…",
-      "searchResults": "\"{query}\" için {count} sonuç",
+      "searchResults": "\"{query}\" için {count} sonuç (tüm tarihler, maks. 500)",
       "storedCount": "{count} kayıtlı rezervasyon (en yeniler önce, maks. 500)",
       "emptySearch": "Bu arama için rezervasyon bulunamadı.",
       "emptyNone": "Henüz kayıtlı rezervasyon yok. Gelişler veya Admin → EMMA altından senkronizasyonu başlatın.",

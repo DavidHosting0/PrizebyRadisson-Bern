@@ -233,6 +233,18 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
       },
     ],
   },
+  {
+    id: 'review-analyzer',
+    label: 'Review Analyzer',
+    entries: [
+      {
+        code: PermissionCode.REVIEW_ANALYZER_READ,
+        title: 'Review Analyzer',
+        description:
+          'Access Hotel Review Intelligence (Booking reviews, AI analysis, trends, alerts). Not included in Reception Full — grant explicitly.',
+      },
+    ],
+  },
 ];
 
 const LABELS: Record<PermissionCode, string> = Object.fromEntries(

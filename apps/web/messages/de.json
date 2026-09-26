@@ -77,13 +77,22 @@
       "operations": "Betrieb",
       "tools": "Team & Tools",
       "roomManagement": "Room Management",
-      "frontOffice": "Front Office"
+      "frontOffice": "Front Office",
+      "reviewAnalyzer": "Review Analyzer"
     },
     "teamChat": "Team-Chat",
     "puzzleTickets": "Puzzle-Tickets",
     "collapse": "Einklappen",
     "expandSidebar": "Seitenleiste erweitern",
-    "collapseSidebar": "Seitenleiste einklappen"
+    "collapseSidebar": "Seitenleiste einklappen",
+    "reviewAnalyzer": "Review Analyzer",
+    "reviewAnalyzerReviews": "Bewertungen",
+    "reviewAnalyzerProblems": "Probleme",
+    "reviewAnalyzerStrengths": "Stärken",
+    "reviewAnalyzerTrends": "Trends",
+    "reviewAnalyzerReports": "Berichte",
+    "reviewAnalyzerAlerts": "Warnungen",
+    "reviewAnalyzerSettings": "Einstellungen"
   },
   "frontOfficeBackup": {
     "title": "EMMA Backup — Front Office",
@@ -541,7 +550,7 @@
     "reservationsPage": {
       "description": "Alle lokal gespeicherten EMMA-Reservierungen durchsuchen und Details ansehen",
       "loadingStored": "Lädt gespeicherte Reservierungen…",
-      "searchResults": "{count} Treffer für „{query}“",
+      "searchResults": "{count} Treffer für „{query}“ (gesamter Zeitraum, max. 500)",
       "storedCount": "{count} gespeicherte Reservierungen (neueste zuerst, max. 500)",
       "emptySearch": "Keine Reservierungen für diese Suche gefunden.",
       "emptyNone": "Noch keine gespeicherten Reservierungen. Synchronisation unter Anreisen oder Admin → EMMA auslösen.",

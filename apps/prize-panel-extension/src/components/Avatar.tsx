@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import clsx from 'clsx';
 
 type Props = {
@@ -15,6 +16,17 @@ function initialsFor(name: string): string {
 }
 
 export function Avatar({ name, url, size = 32, className }: Props) {
+  const stableRef = useRef(url || '');
+  if (url) {
+    const base = url.split('?')[0];
+    if (!stableRef.current || stableRef.current.split('?')[0] !== base) {
+      stableRef.current = url;
+    }
+  } else {
+    stableRef.current = '';
+  }
+  const src = url ? stableRef.current : null;
+
   return (
     <span
       className={clsx(
@@ -24,8 +36,8 @@ export function Avatar({ name, url, size = 32, className }: Props) {
       style={{ width: size, height: size, fontSize: Math.max(10, Math.round(size * 0.36)) }}
       aria-label={name}
     >
-      {url ? (
-        <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
+      {src ? (
+        <img src={src} alt="" className="h-full w-full object-cover" draggable={false} />
       ) : (
         <span>{initialsFor(name)}</span>
       )}

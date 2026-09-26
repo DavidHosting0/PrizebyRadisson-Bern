@@ -1,3 +1,6 @@
+'use client';
+
+import { useRef } from 'react';
 import clsx from 'clsx';
 
 /**
@@ -41,12 +44,22 @@ export function Avatar({ name, url, size = 36, className, ring }: Props) {
   const dim = { width: size, height: size } as const;
   const initials = initialsFor(name);
   const color = colorFor(name);
+  const stableRef = useRef(url || '');
+  if (url) {
+    const base = url.split('?')[0];
+    if (!stableRef.current || stableRef.current.split('?')[0] !== base) {
+      stableRef.current = url;
+    }
+  } else {
+    stableRef.current = '';
+  }
+  const src = url ? stableRef.current : null;
 
   return (
     <span
       className={clsx(
         'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold select-none',
-        !url && color,
+        !src && color,
         ring && 'ring-2 ring-white shadow-card',
         className,
       )}
@@ -56,8 +69,8 @@ export function Avatar({ name, url, size = 36, className, ring }: Props) {
       }}
       aria-label={name}
     >
-      {url ? (
-        <img src={url} alt={name} className="h-full w-full object-cover" draggable={false} />
+      {src ? (
+        <img src={src} alt={name} className="h-full w-full object-cover" draggable={false} />
       ) : (
         <span>{initials}</span>
       )}

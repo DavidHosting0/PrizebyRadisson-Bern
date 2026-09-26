@@ -78,6 +78,15 @@ export const RECEPTION_NAV: NavItem[] = [
 
   { href: '/r/front-office/backup', labelKey: 'frontOfficeBackup', permission: 'RESERVATIONS_READ' },
 
+  { href: '/r/review-analyzer', labelKey: 'reviewAnalyzer', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/reviews', labelKey: 'reviewAnalyzerReviews', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/problems', labelKey: 'reviewAnalyzerProblems', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/strengths', labelKey: 'reviewAnalyzerStrengths', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/trends', labelKey: 'reviewAnalyzerTrends', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/reports', labelKey: 'reviewAnalyzerReports', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/alerts', labelKey: 'reviewAnalyzerAlerts', permission: 'REVIEW_ANALYZER_READ' },
+  { href: '/r/review-analyzer/settings', labelKey: 'reviewAnalyzerSettings', permission: 'REVIEW_ANALYZER_READ' },
+
 ];
 
 
@@ -169,6 +178,8 @@ const RECEPTION_ROUTE_PERMISSIONS: Array<{ prefix: string; permission: Permissio
   { prefix: '/r/room-management/', permission: 'ROOM_MANAGEMENT_READ' },
 
   { prefix: '/r/front-office/', permission: 'RESERVATIONS_READ' },
+
+  { prefix: '/r/review-analyzer', permission: 'REVIEW_ANALYZER_READ' },
 
   { prefix: '/r/m/', permission: '' },
 

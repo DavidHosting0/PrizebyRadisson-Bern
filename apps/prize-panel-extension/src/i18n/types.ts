@@ -223,6 +223,25 @@ export type ExtensionMessages = {
     applied: string;
     appliedNoField: string;
     previewNote: string;
+    arrivingNow: string;
+    dirty: string;
+    ready: string;
+    assignFailed: string;
+    noSuggestion: string;
+    loading: string;
+    reasonVip: string;
+    reasonPremium: string;
+    reasonRepeat: string;
+    reasonOneNight: string;
+    reasonLongStay: string;
+    reasonThreePax: string;
+    reasonNoBasement: string;
+    reasonNotReady: string;
+    reasonCategoryNotReady: string;
+    reasonOverbookView: string;
+    reasonOverbookCorner: string;
+    reasonOverbookStandard: string;
+    reasonWheelchair: string;
   };
   inject: {
     openPanel: string;

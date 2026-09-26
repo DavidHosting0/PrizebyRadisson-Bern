@@ -7,12 +7,14 @@ import { RequirePermissions } from '../common/decorators/require-permissions.dec
 import { MoveFolioChargeDto } from './dto/move-folio-charge.dto';
 import { ReservationsAnalyticsService } from './reservations-analytics.service';
 import { ReservationsService } from './reservations.service';
+import { parseHeldRooms, RoomSuggestionService } from './room-suggestion.service';
 
 @Controller('reservations')
 export class ReservationsController {
   constructor(
     private readonly reservations: ReservationsService,
     private readonly analytics: ReservationsAnalyticsService,
+    private readonly roomSuggestions: RoomSuggestionService,
   ) {}
 
   @Get('analytics/timeline')
@@ -54,12 +56,20 @@ export class ReservationsController {
     @Query('date') date?: string,
     @Query('q') q?: string,
     @Query('hotelId') hotelId?: string,
+    @Query('limit') limit?: string,
   ) {
     const normalized =
       tab === 'queue' || tab === 'inhouse' || tab === 'arrivals' || tab === 'checkInsDone' || tab === 'all'
         ? tab
         : 'arrivals';
-    return this.reservations.list({ tab: normalized, date, q, hotelId });
+    const parsedLimit = limit != null && limit !== '' ? parseInt(limit, 10) : undefined;
+    return this.reservations.list({
+      tab: normalized,
+      date,
+      q,
+      hotelId,
+      limit: parsedLimit != null && Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    });
   }
 
   @Get('overview')
@@ -103,6 +113,22 @@ export class ReservationsController {
     @Body() dto: MoveFolioChargeDto,
   ) {
     return this.reservations.moveFolioChargeFromEmma(reservationId, dto);
+  }
+
+  @Get(':reservationId/room-suggestion')
+  @RequirePermissions(PermissionCode.RESERVATIONS_READ)
+  roomSuggestion(
+    @Param('reservationId') reservationId: string,
+    @Query('mode') mode?: string,
+    @Query('held') held?: string,
+    @Query('hotelId') hotelId?: string,
+  ) {
+    return this.roomSuggestions.suggest(
+      reservationId,
+      mode === 'now' ? 'now' : 'plan',
+      hotelId,
+      parseHeldRooms(held),
+    );
   }
 
   @Get(':reservationId')

@@ -4,20 +4,23 @@
  * chip at the bottom so the activation code is always visible for a booking.
  */
 import {
+  clearBtCodeCache,
+  peekCachedCode,
+  putCachedCode,
+  resolveActivationCode,
+} from '../lib/bt-code-cache';
+import {
   BERN_TICKET_2FA_REQUIRED,
   BtApiError,
   btCreateTicket,
   btComplete2fa,
-  btSearchTickets,
   getActivationCode,
   getBtTokens,
-  pickTicketForBooking,
   toDateInputValue,
 } from '../lib/bernticket-api';
 import { localTodayIso, localTomorrowIso, parseEmmaDate } from '../lib/emma-dates';
 import {
   getMessages,
-  interpolate,
   loadExtensionLocale,
   watchExtensionLocale,
   type ExtensionMessages,
@@ -691,6 +694,35 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, _compa
       host,
       shellToolbar(`<span class="pb-bt-muted">${escapeHtml(msgs.emmaBt.loginHint)}</span>`),
     );
+    host.dataset.fetched = '1';
+    return;
+  }
+
+  const copyTitle = msgs.bernticket.copyCode;
+  const paintCode = (code: string) => {
+    setHostHtml(
+      host,
+      shellToolbar(
+        `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(code)}</button>`,
+      ),
+    );
+    bindCodeCopy(host, code);
+    host.dataset.fetched = '1';
+  };
+
+  // Instant paint from cache — never re-hit the API while TTL is warm
+  const cached = peekCachedCode(bookingNumber);
+  if (cached?.code) {
+    paintCode(cached.code);
+    return;
+  }
+
+  // Already rendered UI for this booking (create / muted) — skip reload flash + search
+  if (
+    host.dataset.bound === bookingNumber &&
+    host.dataset.fetched === '1' &&
+    host.querySelector('.pb-bt-code, .pb-bt-open-create, .pb-bt-muted')
+  ) {
     return;
   }
 
@@ -700,26 +732,11 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, _compa
   );
 
   try {
-    const tickets = await btSearchTickets(bookingNumber);
+    const code = await resolveActivationCode(bookingNumber);
     if (gen !== renderGen) return;
-    const ticket = pickTicketForBooking(tickets, bookingNumber);
-    const code = getActivationCode(ticket);
-    const copyTitle = msgs.bernticket.copyCode;
 
-    if (ticket && code) {
-      setHostHtml(
-        host,
-        shellToolbar(
-          `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(code)}</button>`,
-        ),
-      );
-      bindCodeCopy(host, code);
-      return;
-    }
-
-    if (ticket && !code) {
-      const noCode = interpolate(msgs.emmaBt.noCode, { status: ticket.status });
-      setHostHtml(host, shellToolbar(`<span class="pb-bt-muted">${escapeHtml(noCode)}</span>`));
+    if (code) {
+      paintCode(code);
       return;
     }
 
@@ -730,17 +747,14 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, _compa
         `<button type="button" class="pb-bt-btn pb-bt-open-create">${escapeHtml(msgs.emmaBt.openCreate)}</button>`,
       ),
     );
+    host.dataset.fetched = '1';
     host.querySelector('.pb-bt-open-create')?.addEventListener('click', () => {
       openCreateDialog(host, bookingNumber, defaults, (newCode) => {
         if (newCode) {
-          setHostHtml(
-            host,
-            shellToolbar(
-              `<button type="button" class="pb-bt-code" title="${escapeAttr(copyTitle)}">${escapeHtml(newCode)}</button>`,
-            ),
-          );
-          bindCodeCopy(host, newCode);
+          putCachedCode(bookingNumber, newCode);
+          paintCode(newCode);
         } else {
+          host.dataset.fetched = '';
           lastBooking = null;
           void renderForBooking(host, bookingNumber, true);
         }
@@ -755,7 +769,10 @@ async function renderForBooking(host: HTMLElement, bookingNumber: string, _compa
           `<button type="button" class="pb-bt-btn pb-bt-retry">${escapeHtml(msgs.emmaBt.retry)}</button>`,
       ),
     );
+    host.dataset.fetched = '1';
     host.querySelector('.pb-bt-retry')?.addEventListener('click', () => {
+      clearBtCodeCache();
+      host.dataset.fetched = '';
       lastBooking = null;
       void renderForBooking(host, bookingNumber, true);
     });
@@ -778,7 +795,7 @@ function scheduleRefresh() {
   if (refreshTimer) window.clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
     void tick();
-  }, 350);
+  }, 700);
 }
 
 function hostStillMounted(host: HTMLElement): boolean {
@@ -803,20 +820,13 @@ async function tick() {
   else if (!busy && !getBookingFromUrl()) stickyBooking = null;
 
   // Pure list/room-status boards: per-row chips only — no center FALLBACK
-  // (except while busy, when we keep sticky booking at bottom center)
-  if (
-    !busy &&
-    isListSurfaceWithoutSingleBooking() &&
-    !getBookingFromUrl()
-  ) {
+  if (!busy && isListSurfaceWithoutSingleBooking() && !getBookingFromUrl()) {
     document.getElementById(HOST_ID)?.remove();
     document.getElementById(FALLBACK_ID)?.remove();
     lastBooking = null;
     return;
   }
 
-  // Always show the code for a reservation — in the check-in leiste when present,
-  // otherwise as a small fixed chip at the bottom (reservation overview / loading).
   if (!booking) {
     document.getElementById(HOST_ID)?.remove();
     document.getElementById(FALLBACK_ID)?.remove();
@@ -824,27 +834,37 @@ async function tick() {
     return;
   }
 
-  // During loading overlays prefer the bottom-center chip (toolbar not ready yet)
-  const toolbar = busy ? null : findCheckinToolbar();
-  const compact = Boolean(toolbar);
-  const expectedHostId = toolbar ? HOST_ID : FALLBACK_ID;
-  const host = toolbar ? mountInToolbar(toolbar) : mountFallbackBar();
-
+  // Prefer keeping the current host for this booking (avoids FALLBACK↔toolbar thrash + re-fetch)
+  const existing =
+    (document.getElementById(HOST_ID) as HTMLElement | null) ||
+    (document.getElementById(FALLBACK_ID) as HTMLElement | null);
   if (
     booking === lastBooking &&
-    host.dataset.bound === booking &&
-    host.id === expectedHostId &&
-    hostStillMounted(host)
+    existing &&
+    hostStillMounted(existing) &&
+    existing.dataset.bound === booking &&
+    existing.dataset.fetched === '1'
   ) {
-    if (toolbar && !toolbar.contains(host)) {
-      lastBooking = null;
-    } else {
-      return;
+    // Optionally migrate FALLBACK → toolbar once when toolbar is ready (no API)
+    const toolbar = busy ? null : findCheckinToolbar();
+    if (toolbar && existing.id === FALLBACK_ID && !busy) {
+      const migrated = mountInToolbar(toolbar);
+      if (migrated !== existing) {
+        migrated.dataset.bound = booking;
+        migrated.dataset.fetched = '';
+        existing.remove();
+        lastBooking = booking;
+        await renderForBooking(migrated, booking, true);
+      }
     }
+    return;
   }
+
+  const toolbar = busy ? null : findCheckinToolbar();
+  const host = toolbar ? mountInToolbar(toolbar) : mountFallbackBar();
   lastBooking = booking;
   host.dataset.bound = booking;
-  await renderForBooking(host, booking, compact);
+  await renderForBooking(host, booking, Boolean(toolbar));
 }
 
 export function startEmmaBernTicketWatcher() {
@@ -863,8 +883,9 @@ export function startEmmaBernTicketWatcher() {
 
   window.addEventListener('hashchange', () => {
     lastBooking = null;
-    // Keep sticky through navigation busy; clear if URL no longer has a reservation
     if (!getBookingFromUrl()) stickyBooking = null;
+    const host = document.getElementById(HOST_ID) || document.getElementById(FALLBACK_ID);
+    if (host instanceof HTMLElement) host.dataset.fetched = '';
     scheduleRefresh();
   });
 
@@ -872,13 +893,28 @@ export function startEmmaBernTicketWatcher() {
     let relevant = false;
     for (const m of mutations) {
       const t = m.target;
+      if (!(t instanceof Element)) continue;
       if (
-        t instanceof Element &&
-        (t.id === HOST_ID ||
-          t.id === FALLBACK_ID ||
-          t.id === STYLE_ID ||
-          t.id === DIALOG_ID ||
-          t.closest(`[data-prize-bernticket]`))
+        t.id === HOST_ID ||
+        t.id === FALLBACK_ID ||
+        t.id === STYLE_ID ||
+        t.id === DIALOG_ID ||
+        t.closest(`[data-prize-bernticket]`) ||
+        t.closest(`#${HOST_ID}, #${FALLBACK_ID}, #${DIALOG_ID}`)
+      ) {
+        continue;
+      }
+      if (
+        m.type === 'childList' &&
+        [...m.addedNodes, ...m.removedNodes].length > 0 &&
+        [...m.addedNodes, ...m.removedNodes].every(
+          (n) =>
+            n instanceof Element &&
+            (n.id === HOST_ID ||
+              n.id === FALLBACK_ID ||
+              n.id === DIALOG_ID ||
+              n.closest(`[data-prize-bernticket], #${HOST_ID}, #${FALLBACK_ID}`)),
+        )
       ) {
         continue;
       }
@@ -886,14 +922,7 @@ export function startEmmaBernTicketWatcher() {
       break;
     }
     if (!relevant) return;
-
-    const toolbar = findCheckinToolbar();
-    const host = document.getElementById(HOST_ID) || document.getElementById(FALLBACK_ID);
-    if (host && !hostStillMounted(host)) lastBooking = null;
-    if (toolbar && host?.id === HOST_ID && !toolbar.contains(host)) lastBooking = null;
-    if (toolbar && host?.id === FALLBACK_ID) lastBooking = null;
-    if (!toolbar && host?.id === HOST_ID) lastBooking = null;
-    if (toolbar && !host) lastBooking = null;
+    // Do NOT clear lastBooking here — that caused API search spam on every SAP DOM tick
     scheduleRefresh();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
@@ -903,6 +932,9 @@ export function startEmmaBernTicketWatcher() {
       if (area !== 'local') return;
       if (changes.btAccessToken || changes.btRefreshToken) {
         lastBooking = null;
+        clearBtCodeCache();
+        const host = document.getElementById(HOST_ID) || document.getElementById(FALLBACK_ID);
+        if (host instanceof HTMLElement) host.dataset.fetched = '';
         scheduleRefresh();
       }
     });

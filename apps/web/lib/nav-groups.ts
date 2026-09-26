@@ -113,6 +113,21 @@ export const RECEPTION_NAV_GROUPS: NavGroupDef[] = [
 
   },
 
+  {
+    id: 'reviewAnalyzer',
+    labelKey: 'reviewAnalyzer',
+    hrefs: [
+      '/r/review-analyzer',
+      '/r/review-analyzer/reviews',
+      '/r/review-analyzer/problems',
+      '/r/review-analyzer/strengths',
+      '/r/review-analyzer/trends',
+      '/r/review-analyzer/reports',
+      '/r/review-analyzer/alerts',
+      '/r/review-analyzer/settings',
+    ],
+  },
+
 ];
 
 

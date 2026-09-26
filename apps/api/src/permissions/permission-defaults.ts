@@ -59,6 +59,7 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.LOANS_CATALOG_WRITE,
   PermissionCode.ACTIVITY_LOG_READ,
   PermissionCode.PUBLIC_AREA_MANAGE,
+  PermissionCode.REVIEW_ANALYZER_READ,
 ];
 
 export function addCleanerBase(s: Set<PermissionCode>) {

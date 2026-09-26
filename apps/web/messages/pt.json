@@ -77,13 +77,22 @@
       "operations": "Operações",
       "tools": "Equipa e ferramentas",
       "roomManagement": "Gestão de quartos",
-      "frontOffice": "Front office"
+      "frontOffice": "Front office",
+      "reviewAnalyzer": "Review Analyzer"
     },
     "teamChat": "Chat da equipa",
     "puzzleTickets": "Tickets Puzzle",
     "collapse": "Recolher",
     "expandSidebar": "Expandir barra lateral",
-    "collapseSidebar": "Recolher barra lateral"
+    "collapseSidebar": "Recolher barra lateral",
+    "reviewAnalyzer": "Review Analyzer",
+    "reviewAnalyzerReviews": "Avaliações",
+    "reviewAnalyzerProblems": "Problemas",
+    "reviewAnalyzerStrengths": "Pontos fortes",
+    "reviewAnalyzerTrends": "Tendências",
+    "reviewAnalyzerReports": "Relatórios",
+    "reviewAnalyzerAlerts": "Alertas",
+    "reviewAnalyzerSettings": "Definições"
   },
   "frontOfficeBackup": {
     "title": "Backup EMMA — front office",
@@ -541,7 +550,7 @@
     "reservationsPage": {
       "description": "Pesquisar todas as reservas EMMA guardadas localmente e ver detalhes",
       "loadingStored": "A carregar reservas guardadas…",
-      "searchResults": "{count} resultados para \"{query}\"",
+      "searchResults": "{count} resultados para \"{query}\" (qualquer data, máx. 500)",
       "storedCount": "{count} reservas guardadas (mais recentes primeiro, máx. 500)",
       "emptySearch": "Nenhuma reserva encontrada para esta pesquisa.",
       "emptyNone": "Ainda sem reservas guardadas. Sincronize em Chegadas ou Admin → EMMA.",

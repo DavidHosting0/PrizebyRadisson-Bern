@@ -54,9 +54,10 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
   const { backupModeActive } = useEmmaIntegrationStatus(!!user);
   const visibleNav = allowedNav.filter(
     (item) =>
-      item.href !== '/r/front-office/backup' ||
-      user?.role === 'ADMIN' ||
-      backupModeActive,
+      (item.href !== '/r/front-office/backup' ||
+        user?.role === 'ADMIN' ||
+        backupModeActive) &&
+      (item.href !== '/r/review-analyzer/settings' || user?.role === 'ADMIN'),
   );
   const sidebarGroups = useSidebarGroups(RECEPTION_NAV_GROUPS, visibleNav, RECEPTION_NAV_ICONS);
   const router = useRouter();
@@ -93,6 +94,13 @@ function ReceptionShell({ children }: { children: React.ReactNode }) {
       router.replace(getFirstAllowedPath(user, RECEPTION_NAV) ?? '/r');
     }
   }, [loading, user, path, router, backupModeActive]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    if (path.startsWith('/r/review-analyzer/settings') && user.role !== 'ADMIN') {
+      router.replace('/r/review-analyzer');
+    }
+  }, [loading, user, path, router]);
 
   useEffect(() => {
     if (loading || !user || user.role === 'ADMIN') return;
