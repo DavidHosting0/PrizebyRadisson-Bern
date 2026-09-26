@@ -67,9 +67,30 @@ const DELAY_BETWEEN_PAGES_MS = 2000;
 const DELAY_AFTER_LOAD_MS = 1500;
 const MAX_LOAD_RETRIES = 2;
 const GOTO_TIMEOUT_MS = 45_000;
+/** Optional field reads must be fast — missing nodes used to wait 30s each and freeze the import. */
+const QUICK_MS = 800;
 
 function safeText(s: string | null | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** Read text without Playwright's default 30s wait when the node is missing. */
+async function quickText(loc: Locator, timeoutMs = QUICK_MS): Promise<string> {
+  try {
+    if ((await loc.count()) === 0) return '';
+    return safeText(await loc.first().textContent({ timeout: timeoutMs }));
+  } catch {
+    return '';
+  }
+}
+
+async function quickAttr(loc: Locator, name: string, timeoutMs = QUICK_MS): Promise<string> {
+  try {
+    if ((await loc.count()) === 0) return '';
+    return safeText(await loc.first().getAttribute(name, { timeout: timeoutMs })) || '';
+  } catch {
+    return '';
+  }
 }
 
 /** Drop exact duplicate lines (Booking often nests the same string in parent + span). */
