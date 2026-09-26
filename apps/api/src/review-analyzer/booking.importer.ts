@@ -122,7 +122,7 @@ export function buildReviewExternalId(parts: {
   negativeText?: string | null;
 }): string {
   const day = parts.reviewedAt.toISOString().slice(0, 10);
-  const score = (Math.round(parts.score * 10) / 10).toFixed(1);
+  const score = String(Math.round(parts.score));
   const payload = [
     normalizeForId(parts.guestName),
     day,
@@ -143,22 +143,18 @@ export function buildReviewSoftKey(parts: {
   return [
     normalizeForId(parts.guestName),
     parts.reviewedAt.toISOString().slice(0, 10),
-    (Math.round(parts.score * 10) / 10).toFixed(1),
+    String(Math.round(parts.score)),
   ].join('|');
 }
 
 /**
- * Booking often renders the score twice in one node ("10"+"10" → "1010", or "Scored 10.0 10.0").
- * Only accept values in 1..10.
+ * Booking individual guest scores are whole numbers 1–10 only.
+ * DOM often duplicates the digit ("10"+"10" → "1010", "9"+"9" → "99") or inserts a spurious
+ * decimal ("910"/100 → 9.1 from older repair). Always return an integer in 1..10.
  */
 export function parseBookingScore(raw: string | null | undefined): number | null {
   if (!raw) return null;
   const s = raw.replace(/,/g, '.').trim();
-
-  for (const m of s.matchAll(/(\d{1,2}(?:\.\d)?)/g)) {
-    const n = parseFloat(m[1]!);
-    if (Number.isFinite(n) && n >= 1 && n <= 10) return n;
-  }
 
   const digits = s.replace(/[^\d]/g, '');
   // "1010" → 10
@@ -171,12 +167,36 @@ export function parseBookingScore(raw: string | null | undefined): number | null
     const n = parseInt(digits[0]!, 10);
     if (n >= 1 && n <= 9) return n;
   }
+  // "910" / "810" → leading digit (score) + trailing "10" from max scale text
+  if (digits.length === 3 && digits.endsWith('10')) {
+    const n = parseInt(digits[0]!, 10);
+    if (n >= 1 && n <= 9) return n;
+  }
+
+  // Prefer whole numbers first (e.g. "9", "10", "9.0")
+  for (const m of s.matchAll(/(\d{1,2})(?:\.0+)?(?!\d)/g)) {
+    const n = parseInt(m[1]!, 10);
+    if (n >= 1 && n <= 10) return n;
+  }
+
+  // Last resort: any 1..10 float, then round (Booking never stores .1 guest scores)
+  for (const m of s.matchAll(/(\d{1,2}(?:\.\d+)?)/g)) {
+    const n = parseFloat(m[1]!);
+    if (Number.isFinite(n) && n >= 1 && n <= 10) {
+      const rounded = Math.round(n);
+      if (rounded >= 1 && rounded <= 10) return rounded;
+    }
+  }
   return null;
 }
 
-/** Fix already-stored bogus scores (e.g. 1010). */
+/** Fix already-stored bogus scores (e.g. 1010, 9.1 from bad /100 repair). */
 export function repairStoredScore(score: number): number | null {
-  if (score >= 1 && score <= 10) return score;
+  if (!Number.isFinite(score)) return null;
+  if (score >= 1 && score <= 10) {
+    const rounded = Math.round(score);
+    return rounded >= 1 && rounded <= 10 ? rounded : null;
+  }
   return parseBookingScore(String(Math.round(score)));
 }
 

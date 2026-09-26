@@ -70,14 +70,28 @@ export class ReviewAnalyzerService {
     return { failed: result.count };
   }
 
-  /** Fix scores like 1010 that came from duplicated Booking DOM text. */
+  /** Fix scores like 1010 / 9.1 that came from duplicated Booking DOM text or bad repair. */
   async repairBogusScores() {
     const bad = await this.prisma.guestReview.findMany({
-      where: { score: { gt: 10 } },
+      where: {
+        OR: [{ score: { gt: 10 } }, { score: { lt: 1 } }],
+      },
       select: { id: true, score: true },
     });
+    // Also fix non-integers in range (Booking guest scores are whole numbers only)
+    const maybeFrac = await this.prisma.guestReview.findMany({
+      where: { score: { gte: 1, lte: 10 } },
+      select: { id: true, score: true },
+    });
+    const rows = [
+      ...bad,
+      ...maybeFrac.filter((r) => !Number.isInteger(r.score)),
+    ];
+    const seen = new Set<string>();
     let fixed = 0;
-    for (const row of bad) {
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
       const next = repairStoredScore(row.score);
       if (next != null && next !== row.score) {
         await this.prisma.guestReview.update({ where: { id: row.id }, data: { score: next } });
@@ -88,7 +102,7 @@ export class ReviewAnalyzerService {
       const s = await this.settingsSvc.get();
       await this.analytics.recomputeMetrics(s.hotelKey).catch(() => undefined);
     }
-    return { scanned: bad.length, fixed };
+    return { scanned: rows.length, fixed };
   }
 
   /** Collapse duplicated positive/negative/full text lines from parent+span scrape. */
@@ -237,7 +251,7 @@ export class ReviewAnalyzerService {
           positiveText: bestPos,
           negativeText: bestNeg,
           fullText: bestFull || keep.fullText,
-          score: keep.score > 10 ? keep.score / 100 || 10 : keep.score,
+          score: repairStoredScore(keep.score) ?? keep.score,
         },
       });
 
