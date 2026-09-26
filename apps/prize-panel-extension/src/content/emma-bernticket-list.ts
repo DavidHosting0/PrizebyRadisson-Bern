@@ -74,6 +74,8 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
+  if (style.dataset.v === '5') return;
+  style.dataset.v = '5';
   style.textContent = `
     [${CHIP_ATTR}]{
       display:block !important;
@@ -84,14 +86,34 @@ function ensureStyles() {
       z-index:5;
       position:relative;
     }
-    /* Keep chip visible inside clipped SAP table cells */
+    /* Check-in list: inline next to reservation number (cell max-height clips below) */
+    [${CHIP_ATTR}][data-surface="list"]{
+      display:inline-flex !important;
+      align-items:center;
+      margin:0 0 0 0.25rem !important;
+      vertical-align:middle;
+      max-width:none;
+      flex-shrink:0;
+    }
     .sapUiTableCellInner:has([${CHIP_ATTR}]),
-    .sapMVBox:has(> [${CHIP_ATTR}]){
+    .sapMVBox:has([${CHIP_ATTR}]),
+    .sapMHBox:has([${CHIP_ATTR}]){
+      overflow:visible !important;
+    }
+    /* Room Status: chip on tile root so SAP content re-renders do not wipe it */
+    .sapMGT.roomTiles,
+    .sapMGT.roomTiles2,
+    .sapMGT[id*="roomsHBox"]{
+      position:relative !important;
       overflow:visible !important;
     }
     [${CHIP_ATTR}][data-surface="room"]{
-      margin-top:0.15rem;
-      margin-bottom:0;
+      position:absolute !important;
+      left:0.35rem;
+      bottom:0.3rem;
+      margin:0 !important;
+      z-index:30;
+      max-width:calc(100% - 0.7rem);
     }
     [${CHIP_ATTR}] .pb-bt-list-code{
       appearance:none;cursor:pointer;
@@ -144,43 +166,118 @@ function bookingFromRoomTile(tile: HTMLElement): string | null {
 }
 
 /**
- * Mount next to the reservation number in the tile body (stable).
- * Do NOT use the empty GenericTile title — SAP clears / hides it.
+ * Mount on the tile root (.sapMGT), not inside .sapMGTContent.
+ * SAP frequently re-renders tile body and would wipe chips mounted there.
  */
-function mountAnchorForRoomTile(tile: HTMLElement): {
-  parent: HTMLElement;
-  after: HTMLElement | null;
-} | null {
-  const content =
-    tile.querySelector<HTMLElement>('.sapMTileCntContent') ||
-    tile.querySelector<HTMLElement>('.sapMGTContent') ||
-    tile;
+function ensureRoomTileChip(tile: HTMLElement, booking: string): HTMLElement {
+  // Prefer direct child of tile root (survives content refresh)
+  let host = tile.querySelector<HTMLElement>(`:scope > [${CHIP_ATTR}]`);
+  if (!host) {
+    // Migrate old chips that were injected into content
+    const nested = tile.querySelector<HTMLElement>(`[${CHIP_ATTR}]`);
+    if (nested) {
+      host = nested;
+      tile.appendChild(host);
+    }
+  }
+  if (host) {
+    if (host.dataset.booking !== booking) {
+      host.dataset.booking = booking;
+      host.dataset.state = '';
+      host.innerHTML = '';
+    }
+    host.dataset.surface = 'room';
+    if (host.parentElement !== tile) tile.appendChild(host);
+    return host;
+  }
 
+  host = document.createElement('div');
+  host.setAttribute(CHIP_ATTR, '1');
+  host.dataset.booking = booking;
+  host.dataset.surface = 'room';
+  tile.appendChild(host);
+  return host;
+}
+
+function tileLooksOccupied(tile: HTMLElement): boolean {
+  return Boolean(
+    tile.querySelector(
+      '.sapFAvatar, .sapMAvatar, [class*="Avatar"], .roomTitle, .sapMObjStatus',
+    ),
+  );
+}
+
+function reservationCellFromRow(row: HTMLElement): HTMLElement | null {
+  // Exact -col0 (avoid matching -col10 via loose selectors)
+  const re = /-col0$/;
+  for (const el of row.querySelectorAll<HTMLElement>('[id*="-col"]')) {
+    if (re.test(el.id)) return el;
+  }
+  return (
+    row.querySelector<HTMLElement>('td.sapUiTableCellFirst') ||
+    row.querySelector<HTMLElement>('td.sapUiTableDataCell')
+  );
+}
+
+/**
+ * Mount inline next to the reservation number so the chip stays inside the
+ * clipped sapUiTableCellInner (max-height ~65px).
+ */
+function ensureListRowChip(cell: HTMLElement, booking: string): HTMLElement {
   let bookingEl: HTMLElement | null = null;
-  for (const el of content.querySelectorAll<HTMLElement>('.sapMText')) {
+  for (const el of cell.querySelectorAll<HTMLElement>('.sapMText, a.sapMLnk')) {
     if (el.closest(`[${CHIP_ATTR}]`)) continue;
     if (/^\d{6,}$/.test((el.textContent || '').trim())) {
       bookingEl = el;
       break;
     }
   }
-  if (!bookingEl) return null;
 
-  const hbox = bookingEl.closest('.sapMHBox');
-  if (hbox?.parentElement) {
-    return { parent: hbox.parentElement, after: hbox as HTMLElement };
-  }
-  if (bookingEl.parentElement) {
-    return { parent: bookingEl.parentElement, after: bookingEl };
-  }
-  return null;
-}
-
-function mountParentForCell(cell: HTMLElement): HTMLElement {
-  return (
+  const mountParent =
+    (bookingEl?.closest('.sapMHBox') as HTMLElement | null) ||
+    bookingEl?.parentElement ||
     cell.querySelector<HTMLElement>('.sapMVBox') ||
     cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
-    cell
+    cell;
+
+  let host = cell.querySelector<HTMLElement>(`[${CHIP_ATTR}]`);
+  if (host) {
+    if (host.dataset.booking !== booking) {
+      host.dataset.booking = booking;
+      host.dataset.state = '';
+      host.innerHTML = '';
+    }
+    host.dataset.surface = 'list';
+    if (host.parentElement !== mountParent) {
+      // Prefer after the booking text node/element
+      if (bookingEl && bookingEl.parentElement === mountParent) {
+        bookingEl.insertAdjacentElement('afterend', host);
+      } else {
+        mountParent.appendChild(host);
+      }
+    }
+    return host;
+  }
+
+  host = document.createElement('span');
+  host.setAttribute(CHIP_ATTR, '1');
+  host.dataset.booking = booking;
+  host.dataset.surface = 'list';
+  if (bookingEl && bookingEl.parentElement === mountParent) {
+    bookingEl.insertAdjacentElement('afterend', host);
+  } else if (bookingEl?.parentElement) {
+    bookingEl.parentElement.appendChild(host);
+  } else {
+    mountParent.appendChild(host);
+  }
+  return host;
+}
+
+function isCheckInListPage(): boolean {
+  return Boolean(
+    document.querySelector(
+      '[id*="CheckInList"], [id*="checkInList.table"], [id*="tms.checkInList"]',
+    ),
   );
 }
 
@@ -303,7 +400,9 @@ async function hydrateChip(host: HTMLElement, booking: string) {
 function scanCheckInList() {
   const table = findCheckInListTable();
   if (!table) {
-    document.querySelectorAll(`[${CHIP_ATTR}][data-surface="list"]`).forEach((el) => el.remove());
+    if (!isCheckInListPage()) {
+      document.querySelectorAll(`[${CHIP_ATTR}][data-surface="list"]`).forEach((el) => el.remove());
+    }
     return;
   }
 
@@ -311,34 +410,58 @@ function scanCheckInList() {
     'tbody tr.sapUiTableContentRow, tbody tr.sapUiTableTr',
   );
   const keep = new Set<HTMLElement>();
+  const rowSet = new Set(rows);
 
   for (const row of rows) {
-    const cell =
-      row.querySelector<HTMLElement>('[id$="-col0"]') ||
-      row.querySelector<HTMLElement>('td.sapUiTableCellFirst') ||
-      row.querySelector<HTMLElement>('td.sapUiTableDataCell');
+    const cell = reservationCellFromRow(row);
     if (!cell) continue;
 
     const booking = bookingFromCell(cell);
-    if (!booking) continue;
+    const existing = cell.querySelector<HTMLElement>(`[${CHIP_ATTR}]`);
 
-    const parent = mountParentForCell(cell);
-    // Insert directly under the reservation-number hbox
-    const after =
-      parent.querySelector<HTMLElement>(':scope > .sapMHBox') ||
-      cell.querySelector<HTMLElement>('.sapMHBox');
-    const host = ensureChipHost(parent, booking, 'list', after);
+    if (!booking) {
+      if (existing?.dataset.state === 'ok') keep.add(existing);
+      continue;
+    }
+
+    const host = ensureListRowChip(cell, booking);
     keep.add(host);
     void hydrateChip(host, booking);
   }
 
   document.querySelectorAll<HTMLElement>(`[${CHIP_ATTR}][data-surface="list"]`).forEach((el) => {
-    if (!keep.has(el)) el.remove();
+    if (keep.has(el)) return;
+    const row = el.closest('tr.sapUiTableContentRow, tr.sapUiTableTr');
+    if (!row || !rowSet.has(row as HTMLElement)) el.remove();
   });
+}
+
+function isRoomStatusPage(): boolean {
+  return Boolean(
+    document.querySelector(
+      [
+        '[id*="RoomStatus"]',
+        '[id*="zey_rs_room_status"]',
+        '[id*="roomstatus.roomsHBox"]',
+        '.sapMGT.roomTiles',
+        '.sapMGT.roomTiles2',
+      ].join(', '),
+    ),
+  );
 }
 
 function scanRoomStatusTiles() {
   const tiles = findRoomStatusTiles();
+  const tileSet = new Set(tiles);
+
+  // Do not wipe chips when tile query briefly returns empty mid-render
+  if (tiles.length === 0) {
+    if (!isRoomStatusPage()) {
+      document.querySelectorAll(`[${CHIP_ATTR}][data-surface="room"]`).forEach((el) => el.remove());
+    }
+    return;
+  }
+
   const keep = new Set<HTMLElement>();
 
   for (const tile of tiles) {
@@ -346,27 +469,25 @@ function scanRoomStatusTiles() {
     const existing = tile.querySelector<HTMLElement>(`[${CHIP_ATTR}]`);
 
     if (!booking) {
+      // Mid-render: keep an already-resolved chip on occupied-looking tiles
+      if (existing?.dataset.state === 'ok' && tileLooksOccupied(tile)) {
+        keep.add(existing);
+        continue;
+      }
       existing?.remove();
       continue;
     }
 
-    const anchor = mountAnchorForRoomTile(tile);
-    if (!anchor) {
-      existing?.remove();
-      continue;
-    }
-
-    // Drop stale chip if it ended up elsewhere in the tile
-    if (existing && !anchor.parent.contains(existing)) existing.remove();
-
-    const host = ensureChipHost(anchor.parent, booking, 'room', anchor.after);
+    const host = ensureRoomTileChip(tile, booking);
     keep.add(host);
     void hydrateChip(host, booking);
   }
 
-  // Remove orphan room chips not in current tile set
   document.querySelectorAll<HTMLElement>(`[${CHIP_ATTR}][data-surface="room"]`).forEach((el) => {
-    if (!keep.has(el)) el.remove();
+    if (keep.has(el)) return;
+    const tile = el.closest('.sapMGT');
+    // Only drop orphans that are not on a live room tile
+    if (!tile || !tileSet.has(tile as HTMLElement)) el.remove();
   });
 }
 
@@ -408,9 +529,16 @@ export function startEmmaBernTicketListWatcher() {
   const obs = new MutationObserver((mutations) => {
     for (const m of mutations) {
       const t = m.target;
+      if (!(t instanceof Element)) continue;
+      // Ignore our chips / style, and ignore mutations that only touch our chip subtrees
+      if (t.id === STYLE_ID || t.closest(`[${CHIP_ATTR}]`)) continue;
       if (
-        t instanceof Element &&
-        (t.id === STYLE_ID || t.closest(`[${CHIP_ATTR}]`))
+        m.type === 'childList' &&
+        [...m.addedNodes, ...m.removedNodes].every(
+          (n) =>
+            n instanceof Element &&
+            (n.matches(`[${CHIP_ATTR}]`) || n.closest(`[${CHIP_ATTR}]`)),
+        )
       ) {
         continue;
       }
