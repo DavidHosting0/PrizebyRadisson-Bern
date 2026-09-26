@@ -14,6 +14,7 @@ import {
 import { getMessages, loadExtensionLocale, watchExtensionLocale, type ExtensionMessages } from '../i18n';
 import { startChatAlertWatcher } from './chat-alert';
 import { startEmmaBernTicketWatcher } from './emma-bernticket';
+import { startEmmaBernTicketListWatcher } from './emma-bernticket-list';
 import { startEmmaRoomSuggestWatcher } from './emma-room-suggest';
 
 const HOST_ID = 'prize-panel-host';
@@ -187,6 +188,7 @@ function injectPanel() {
 
   startChatAlertWatcher(chatFocused);
   startEmmaBernTicketWatcher();
+  startEmmaBernTicketListWatcher();
   startEmmaRoomSuggestWatcher();
 
   void loadExtensionLocale().then((locale) => {

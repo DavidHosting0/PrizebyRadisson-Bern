@@ -1,6 +1,8 @@
 /**
- * Room-assignment suggestion chip in EMMA reservation info headers.
- * UI + local mock suggestions for now; server suggestions come later.
+ * Room-assignment suggestion chip in EMMA:
+ * - Inline in the empty Room field (Reservation / Check-in detail) — not in the header
+ * - Compact chip in Check-in list Room column
+ * Only when arrival is today and no fixed room is assigned.
  */
 import {
   allHotelRoomNumbers,
@@ -8,6 +10,7 @@ import {
   floorFromRoomNumber,
   formatFloorLabel,
 } from '@housekeeping/shared';
+import { isDateToday, parseEmmaDate } from '../lib/emma-dates';
 import {
   getMessages,
   interpolate,
@@ -20,6 +23,7 @@ let msgs: ExtensionMessages = getMessages('de');
 
 const HOST_ID = 'prize-ra-host';
 const STYLE_ID = 'prize-ra-style';
+const ROW_ATTR = 'data-prize-room-assign';
 
 type SuggestKind = 'default' | 'higher' | 'lower' | 'extra_bed';
 
@@ -31,6 +35,7 @@ type RoomSuggestion = {
 };
 
 const HOTEL_ROOMS = allHotelRoomNumbers().sort(compareRoomNumbers);
+const HOTEL_ROOM_SET = new Set(HOTEL_ROOMS);
 
 function isLikelyEmmaPage(): boolean {
   if (/ReservationId=/i.test(window.location.hash)) return true;
@@ -50,10 +55,10 @@ function getBookingNumber(): string | null {
     if (m) return m[1].replace(/^0+/, '') || m[1];
   }
 
-  // Reservation / check-in titles often show the id
   for (const el of document.querySelectorAll(
     '.sapMTitle, a.sapMLnk, [id*="ReservationDetail"] .sapMText, [id*="CheckInDetail"] .sapMText',
   )) {
+    if (el.closest(`[${ROW_ATTR}]`)) continue;
     const t = (el.textContent || '').trim();
     if (/^\d{6,}$/.test(t)) return t.replace(/^0+/, '') || t;
   }
@@ -66,66 +71,15 @@ function isVisibleEl(el: HTMLElement): boolean {
   return r.width > 2 && r.height > 2;
 }
 
-/**
- * Mount root: check-in header, reservation header, or reservation-detail room block.
- */
-function findReservationInfoBar(): HTMLElement | null {
-  const headerSelectors = [
-    '[id$="tms.checkinheaderContent"]',
-    '[id*="tms.checkinheaderContent"]',
-    '[id*="checkinheaderContent"]',
-    '[id$="tms.reservationheaderContent"]',
-    '[id*="reservationheaderContent"]',
-    '[id*="HeaderContent"][id*="tms."]',
-    '[id*="CheckInDetail"][id*="headerContent"]',
-    '[id*="ReservationDetail"][id*="headerContent"]',
-    '[id*="zey_tms_rs"][id*="headerContent"]',
-  ];
-  for (const sel of headerSelectors) {
-    const el = document.querySelector<HTMLElement>(sel);
-    if (el && isVisibleEl(el)) return el;
-  }
-
-  // Reservation overview (ReservationDetail): room / nights block
-  const roomField =
-    document.querySelector<HTMLElement>(
-      '[id*="ReservationDetail"][id*="tms.roomid.valuehelp"]:not([id*="message"])',
-    ) ||
-    document.querySelector<HTMLElement>(
-      '[id*="zey_tms_rs"][id*="tms.roomid.valuehelp"]:not([id*="message"])',
-    ) ||
-    document.querySelector<HTMLElement>('[id$="tms.roomid.valuehelp"]');
-  if (!roomField || !isVisibleEl(roomField)) return null;
-
-  const gridWrap = roomField.closest<HTMLElement>('[id*="Grid-wrapperfor"]');
-  if (gridWrap) {
-    const inner = gridWrap.querySelector<HTMLElement>(':scope > .sapMVBox, :scope > .sapMFlexBox');
-    if (inner && isVisibleEl(inner)) return inner;
-  }
-
-  // Climb to the vbox that contains both Room + Nights
-  let el: HTMLElement | null = roomField;
-  for (let i = 0; i < 10 && el; i++) {
-    const text = (el.innerText || '').replace(/\s+/g, ' ');
-    if (
-      el.classList.contains('sapMVBox') &&
-      /Room/i.test(text) &&
-      /Nights/i.test(text)
-    ) {
-      return el;
-    }
-    el = el.parentElement;
-  }
-
-  const hboxParent = roomField.closest('.sapMHBox')?.parentElement;
-  if (hboxParent instanceof HTMLElement) return hboxParent;
-  return null;
-}
-
 function normalizeRoomNumber(raw: string): string {
   const digits = raw.replace(/[^\d]/g, '');
   if (!digits) return '';
   return String(parseInt(digits, 10));
+}
+
+function isKnownHotelRoom(raw: string): boolean {
+  const n = normalizeRoomNumber(raw);
+  return Boolean(n && HOTEL_ROOM_SET.has(n));
 }
 
 function scrapeAssignedRoom(): string | null {
@@ -170,7 +124,114 @@ function findRoomInput(): HTMLInputElement | null {
   return null;
 }
 
-/** Pad for EMMA display (e.g. 12 → 0012) when the field already uses leading zeros. */
+/** Locate the EMMA Room smart-field control (where assigned room is shown). */
+function findRoomFieldControl(): HTMLElement | null {
+  const selectors = [
+    '[id*="ReservationDetail"][id*="tms.roomid.valuehelp"]:not([id*="message"]):not([id*="-inner"])',
+    '[id*="CheckInDetail"][id*="tms.checkin.roomid.valuehelp"]:not([id*="message"]):not([id*="-inner"])',
+    '[id*="CheckInDetail"][id*="tms.roomid.valuehelp"]:not([id*="message"]):not([id*="-inner"])',
+    '[id*="zey_tms_rs"][id*="tms.roomid.valuehelp"]:not([id*="message"]):not([id*="-inner"])',
+    '[id$="tms.roomid.valuehelp"]',
+    '[id$="tms.checkin.roomid.valuehelp"]',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (el && isVisibleEl(el)) return el;
+  }
+  const input = findRoomInput();
+  if (!input) return null;
+  return (
+    input.closest<HTMLElement>('[id*="roomid.valuehelp"]') ||
+    input.closest<HTMLElement>('.sapUiCompSmartField') ||
+    input.parentElement
+  );
+}
+
+/**
+ * Mount parent: wrap next to / inside the room value area so it sits where
+ * EMMA would show the assigned room — never in the page header.
+ */
+function findRoomFieldMountParent(): HTMLElement | null {
+  const field = findRoomFieldControl();
+  if (!field) return null;
+
+  // Prefer the flex/content cell that holds the input value
+  const content =
+    field.querySelector<HTMLElement>('.sapUiCompSmartFieldValue') ||
+    field.querySelector<HTMLElement>('.sapMInputBaseContentWrapper') ||
+    field.querySelector<HTMLElement>('.sapMInput') ||
+    field;
+
+  // Climb to a stable VBox cell that contains Room label + value if possible
+  let el: HTMLElement | null = content;
+  for (let i = 0; i < 6 && el; i++) {
+    if (
+      el.classList.contains('sapUiVltCell') ||
+      el.classList.contains('sapMVBox') ||
+      el.classList.contains('sapMHBox')
+    ) {
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return content;
+}
+
+function fieldTextNearLabel(root: ParentNode, labelRe: RegExp): string | null {
+  const labels = root.querySelectorAll('.sapMLabel, label, .sapMLabelTextWrapper, bdi');
+  for (const lab of labels) {
+    const labText = (lab.textContent || '').trim().replace(/:\s*$/, '');
+    if (!labelRe.test(labText)) continue;
+    let scope: Element | null = lab instanceof Element ? lab : null;
+    for (let i = 0; i < 6 && scope; i++) {
+      const candidates = scope.querySelectorAll(
+        '.sapUiCompSmartFieldValue, .sapMText, input.sapMInputBaseInner, input[type="text"]',
+      );
+      for (const c of candidates) {
+        if (lab.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) {
+          const v =
+            c instanceof HTMLInputElement ? c.value : (c.textContent || '');
+          const cleaned = v.trim();
+          if (cleaned && !labelRe.test(cleaned)) return cleaned;
+        }
+      }
+      scope = scope.parentElement;
+    }
+  }
+  return null;
+}
+
+function scrapeDetailArrivalIso(): string | null {
+  const roots: ParentNode[] = [
+    document.querySelector('[id*="CheckInDetail"]') ||
+      document.querySelector('[id*="ReservationDetail"]') ||
+      document.body,
+  ];
+  const header =
+    document.querySelector('[id*="checkinheaderContent"]') ||
+    document.querySelector('[id*="reservationheaderContent"]');
+  if (header) roots.unshift(header);
+
+  for (const root of roots) {
+    const raw =
+      fieldTextNearLabel(root, /^Arrival\s*Date$/i) ||
+      fieldTextNearLabel(root, /^Arrival$/i) ||
+      fieldTextNearLabel(root, /^Anreise(datum)?$/i);
+    if (!raw) continue;
+    const iso = parseEmmaDate(raw);
+    if (iso) return iso;
+  }
+  return null;
+}
+
+function detailEligible(): boolean {
+  if (scrapeAssignedRoom()) return false;
+  const arrival = scrapeDetailArrivalIso();
+  // If we cannot read arrival on this view, still allow when room empty + booking known
+  // only when arrival parses as today; unknown arrival → hide (strict per plan)
+  return isDateToday(arrival);
+}
+
 function formatRoomForEmma(roomNumber: string, sample?: string | null): string {
   const n = normalizeRoomNumber(roomNumber);
   if (!n) return roomNumber;
@@ -183,11 +244,11 @@ function roomIndex(roomNumber: string): number {
   return HOTEL_ROOMS.findIndex((r) => r === n);
 }
 
-/**
- * Local mock until the API returns per-reservation suggestions.
- * Uses booking id as a stable seed so the same reservation keeps the same default.
- */
-function mockSuggest(bookingNumber: string | null, kind: SuggestKind, current?: string | null): RoomSuggestion {
+function mockSuggest(
+  bookingNumber: string | null,
+  kind: SuggestKind,
+  current?: string | null,
+): RoomSuggestion {
   const assigned = current ? normalizeRoomNumber(current) : null;
   let idx = 0;
   if (assigned) {
@@ -203,7 +264,6 @@ function mockSuggest(bookingNumber: string | null, kind: SuggestKind, current?: 
   } else if (kind === 'lower') {
     idx = Math.max(0, idx - 1);
   } else if (kind === 'extra_bed') {
-    // Prefer a nearby room that isn't the current pick (mock stand-in for "extra bed").
     idx = Math.min(HOTEL_ROOMS.length - 1, idx + 2);
   }
 
@@ -224,107 +284,129 @@ function ensureStyles() {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
+    /* Detail: compact chip inline at the Room field */
     #${HOST_ID}{
       box-sizing:border-box;
-      flex:0 0 auto;
-      order:-1;
-      margin:0 10px 8px 0;
-      width:min(220px,100%);
+      display:inline-flex;
+      flex-direction:column;
+      gap:4px;
+      margin:2px 0 0 0;
+      max-width:min(200px,100%);
       font-family:var(--sapFontFamily,"72",system-ui,-apple-system,sans-serif);
       color:#0f172a;
-      background:linear-gradient(180deg,#ffffff,#f8fafc);
-      border:1px solid rgba(45,58,79,.14);
-      border-radius:14px;
-      box-shadow:0 6px 20px rgba(15,23,42,.1);
-      padding:8px 10px;
+      background:#fff;
+      border:1px solid rgba(45,58,79,.16);
+      border-radius:8px;
+      box-shadow:0 1px 4px rgba(15,23,42,.08);
+      padding:6px 8px;
       z-index:5;
       pointer-events:auto;
-      align-self:flex-start;
+      vertical-align:middle;
     }
     #${HOST_ID} *{box-sizing:border-box;}
     #${HOST_ID} .pb-ra-top{
-      display:flex;align-items:center;justify-content:space-between;gap:6px;
-      margin-bottom:6px;
+      display:flex;align-items:center;justify-content:space-between;gap:4px;
     }
     #${HOST_ID} .pb-ra-title{
-      font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
-      color:#475569;display:inline-flex;align-items:center;gap:6px;
+      font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+      color:#475569;display:inline-flex;align-items:center;gap:4px;
     }
     #${HOST_ID} .pb-ra-dot{
-      width:7px;height:7px;border-radius:999px;background:#3b6fa0;
-      box-shadow:0 0 0 3px rgba(59,111,160,.16);
+      width:6px;height:6px;border-radius:999px;background:#3b6fa0;
     }
     #${HOST_ID} .pb-ra-badge{
-      font-size:9px;font-weight:600;color:#64748b;background:#eef2f7;
-      border-radius:999px;padding:2px 7px;white-space:nowrap;
+      font-size:8px;font-weight:600;color:#64748b;background:#eef2f7;
+      border-radius:999px;padding:1px 5px;white-space:nowrap;
     }
     #${HOST_ID} .pb-ra-main{
-      display:flex;align-items:center;gap:8px;
+      display:flex;align-items:center;gap:6px;
     }
     #${HOST_ID} .pb-ra-room{
-      flex:1;min-width:0;
       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:20px;font-weight:800;letter-spacing:.04em;line-height:1.1;
+      font-size:16px;font-weight:800;letter-spacing:.03em;line-height:1.1;
       color:#1a2332;
     }
     #${HOST_ID} .pb-ra-meta{
-      font-size:10px;color:#64748b;margin-top:2px;font-weight:500;
-      font-family:var(--sapFontFamily,"72",system-ui,sans-serif);
-      letter-spacing:0;
+      font-size:9px;color:#64748b;margin-top:1px;font-weight:500;
     }
     #${HOST_ID} .pb-ra-actions{
-      display:flex;align-items:center;gap:4px;flex-shrink:0;
+      display:flex;align-items:center;gap:3px;flex-shrink:0;margin-left:auto;
     }
     #${HOST_ID} .pb-ra-btn{
       appearance:none;cursor:pointer;border:1px solid #cbd5e1;background:#fff;
-      width:30px;height:30px;border-radius:9px;display:inline-flex;
+      width:26px;height:26px;border-radius:7px;display:inline-flex;
       align-items:center;justify-content:center;color:#1a2332;padding:0;
-      transition:background .12s ease,border-color .12s ease,transform .12s ease;
     }
-    #${HOST_ID} .pb-ra-btn:hover{background:#f1f5f9;border-color:#94a3b8;}
-    #${HOST_ID} .pb-ra-btn:active{transform:scale(.96);}
+    #${HOST_ID} .pb-ra-btn:hover{background:#f1f5f9;}
     #${HOST_ID} .pb-ra-btn.pb-ra-accept{
       background:#15803d;border-color:#15803d;color:#fff;
     }
-    #${HOST_ID} .pb-ra-btn.pb-ra-accept:hover{background:#166534;border-color:#166534;}
-    #${HOST_ID} .pb-ra-btn svg{width:15px;height:15px;display:block;}
+    #${HOST_ID} .pb-ra-btn svg{width:13px;height:13px;display:block;}
     #${HOST_ID} .pb-ra-menu{
-      margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;
-      display:flex;flex-direction:column;gap:4px;
+      padding-top:4px;border-top:1px solid #e2e8f0;
+      display:flex;flex-direction:column;gap:3px;
     }
     #${HOST_ID} .pb-ra-menu.pb-ra-hidden{display:none;}
     #${HOST_ID} .pb-ra-opt{
       appearance:none;cursor:pointer;border:1px solid #e2e8f0;background:#fff;
-      border-radius:8px;padding:6px 8px;text-align:left;font-size:11px;font-weight:600;
+      border-radius:6px;padding:4px 6px;text-align:left;font-size:10px;font-weight:600;
       color:#1a2332;width:100%;
     }
-    #${HOST_ID} .pb-ra-opt:hover{background:#f8fafc;border-color:#cbd5e1;}
     #${HOST_ID} .pb-ra-status{
-      margin-top:6px;font-size:10px;font-weight:600;color:#15803d;
+      font-size:9px;font-weight:600;color:#15803d;
     }
     #${HOST_ID} .pb-ra-status.pb-ra-warn{color:#b45309;}
     #${HOST_ID} .pb-ra-note{
-      margin-top:4px;font-size:9px;color:#94a3b8;line-height:1.3;
+      font-size:8px;color:#94a3b8;line-height:1.25;
+    }
+
+    /* Check-in list Room column */
+    [${ROW_ATTR}="row"]{
+      display:block;
+      margin-top:0.1rem;
+      line-height:1.15;
+      max-width:100%;
+    }
+    [${ROW_ATTR}="row"] .pb-ra-row-code{
+      appearance:none;cursor:pointer;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:0.72rem;font-weight:700;letter-spacing:.03em;
+      color:#1a2332;
+      background:#eef2f7;
+      border:1px solid #cbd5e1;
+      border-radius:0.2rem;
+      padding:0.08rem 0.35rem;
+      white-space:nowrap;
+    }
+    [${ROW_ATTR}="row"] .pb-ra-row-code:hover{filter:brightness(0.97);}
+    [${ROW_ATTR}="row"] .pb-ra-row-muted{
+      font-size:0.65rem;color:#94a3b8;
     }
   `;
   document.documentElement.appendChild(style);
 }
 
-function mountInHeader(bar: HTMLElement): HTMLElement {
+function mountInRoomField(parent: HTMLElement): HTMLElement {
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
-  if (host && bar.contains(host)) return host;
+  if (host && parent.contains(host)) return host;
   host?.remove();
   host = document.createElement('div');
   host.id = HOST_ID;
-  host.setAttribute('data-prize-room-assign', '1');
+  host.setAttribute(ROW_ATTR, 'detail');
   host.setAttribute('role', 'region');
   host.setAttribute('aria-label', msgs.emmaRoom.title);
 
-  // Prefer first flex slot so it sits at the start of the info bar.
-  if (bar.classList.contains('sapMFlexBox') || bar.querySelector(':scope > .sapMFlexItem')) {
-    bar.insertBefore(host, bar.firstChild);
+  // Place after the input / value control so it sits where the room number is
+  const inputWrap =
+    parent.querySelector('.sapMInputBaseContentWrapper') ||
+    parent.querySelector('.sapUiCompSmartFieldValue') ||
+    parent.querySelector('input.sapMInputBaseInner')?.parentElement;
+  if (inputWrap?.parentElement === parent) {
+    inputWrap.insertAdjacentElement('afterend', host);
+  } else if (inputWrap) {
+    inputWrap.insertAdjacentElement('afterend', host);
   } else {
-    bar.prepend(host);
+    parent.appendChild(host);
   }
   return host;
 }
@@ -352,7 +434,6 @@ function applyRoomToEmma(roomNumber: string): boolean {
   input.value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.dispatchEvent(new Event('change', { bubbles: true }));
-  // SAP UI5 often listens to these:
   input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   input.blur();
   return true;
@@ -388,7 +469,9 @@ function renderHost(host: HTMLElement) {
     statusHtml +
     `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.previewNote)}</div>`;
 
-  host.querySelector('.pb-ra-accept')?.addEventListener('click', () => {
+  host.querySelector('.pb-ra-accept')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (!suggestion) return;
     const ok = applyRoomToEmma(suggestion.roomNumber);
     statusText = ok
@@ -397,19 +480,23 @@ function renderHost(host: HTMLElement) {
     statusWarn = !ok;
     menuOpen = false;
     renderHost(host);
+    scheduleRefresh();
   });
 
-  host.querySelector('.pb-ra-edit')?.addEventListener('click', () => {
+  host.querySelector('.pb-ra-edit')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     menuOpen = !menuOpen;
     renderHost(host);
   });
 
   host.querySelectorAll<HTMLButtonElement>('.pb-ra-opt').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const kind = (btn.dataset.kind || 'default') as SuggestKind;
       const booking = getBookingNumber();
-      const assigned = scrapeAssignedRoom();
-      suggestion = mockSuggest(booking, kind, suggestion?.roomNumber || assigned);
+      suggestion = mockSuggest(booking, kind, suggestion?.roomNumber || null);
       statusText = '';
       statusWarn = false;
       menuOpen = false;
@@ -430,39 +517,210 @@ function escapeAttr(s: string) {
   return escapeHtml(s).replace(/'/g, '&#39;');
 }
 
-function scheduleRefresh() {
-  if (refreshTimer) window.clearTimeout(refreshTimer);
-  refreshTimer = window.setTimeout(() => {
-    void tick();
-  }, 350);
+/* ---------- Check-in list ---------- */
+
+function findCheckInListTable(): HTMLTableElement | null {
+  const selectors = [
+    'table[id*="CheckInList"][id*="checkInList.table-table"]',
+    'table[id*="tms.checkInList.table-table"]',
+    'table[id*="checkInList.table-table"]',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector<HTMLTableElement>(sel);
+    if (el) return el;
+  }
+  return null;
 }
 
-async function tick() {
-  if (!isLikelyEmmaPage()) {
-    document.getElementById(HOST_ID)?.remove();
-    lastKey = null;
+type ColMap = { room: number; arrival: number };
+
+function resolveListColumns(table: HTMLTableElement): ColMap {
+  // Defaults from EMMA CheckInList layout (Reservation, Room, …, Arrival ≈ col7)
+  let room = 1;
+  let arrival = 7;
+
+  const hdrTable = table
+    .closest('.sapUiTableCnt')
+    ?.querySelector('table.sapUiTableCHT, table[id*="-header"]');
+  if (hdrTable) {
+    const cells = [
+      ...hdrTable.querySelectorAll('td[role="columnheader"], .sapUiTableHeaderDataCell'),
+    ];
+    cells.forEach((cell, i) => {
+      const t = (cell.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (t === 'room' || t === 'zimmer') room = i;
+      if (t === 'arrival' || t.startsWith('anreise')) arrival = i;
+    });
+  }
+
+  return { room, arrival };
+}
+
+function cellByColIndex(row: HTMLElement, colIndex: number): HTMLElement | null {
+  const byId = row.querySelector<HTMLElement>(`[id$="-col${colIndex}"]`);
+  if (byId) return byId;
+  const cells = row.querySelectorAll<HTMLElement>('td.sapUiTableDataCell');
+  return cells[colIndex] || null;
+}
+
+function bookingFromListRow(row: HTMLElement): string | null {
+  const cell =
+    row.querySelector<HTMLElement>('[id$="-col0"]') ||
+    row.querySelector<HTMLElement>('td.sapUiTableCellFirst');
+  if (!cell) return null;
+  for (const el of cell.querySelectorAll('.sapMText, a.sapMLnk')) {
+    const t = (el.textContent || '').trim();
+    if (/^\d{6,}$/.test(t)) return t.replace(/^0+/, '') || t;
+  }
+  return null;
+}
+
+function roomFromListCell(cell: HTMLElement): string | null {
+  for (const el of cell.querySelectorAll('.sapMText, a.sapMLnk, .sapMObjStatusText')) {
+    if (el.closest(`[${ROW_ATTR}]`)) continue;
+    const t = (el.textContent || '').trim();
+    if (!t) continue;
+    if (isKnownHotelRoom(t)) return normalizeRoomNumber(t);
+    // EMMA often shows padded room like 0410
+    if (/^\d{3,4}$/.test(t) && isKnownHotelRoom(t)) return normalizeRoomNumber(t);
+  }
+  // Also check raw text of cell (excluding our chip)
+  const clone = cell.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(`[${ROW_ATTR}]`).forEach((n) => n.remove());
+  const raw = (clone.textContent || '').trim();
+  if (/^\d{3,4}$/.test(raw) && isKnownHotelRoom(raw)) return normalizeRoomNumber(raw);
+  return null;
+}
+
+function arrivalFromListCell(cell: HTMLElement): string | null {
+  // Prefer the date line (e.g. "Sep 26, 2026"), not the time ObjStatus
+  for (const el of cell.querySelectorAll('.sapMText')) {
+    const t = (el.textContent || '').trim();
+    const iso = parseEmmaDate(t);
+    if (iso) return iso;
+  }
+  const iso = parseEmmaDate((cell.textContent || '').trim());
+  return iso;
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+}
+
+function ensureRowChip(cell: HTMLElement, booking: string, roomNumber: string): HTMLElement {
+  let host = cell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
+  if (host && host.dataset.booking === booking && host.dataset.room === roomNumber) {
+    return host;
+  }
+  if (host) {
+    host.dataset.booking = booking;
+    host.dataset.room = roomNumber;
+  } else {
+    host = document.createElement('div');
+    host.setAttribute(ROW_ATTR, 'row');
+    host.dataset.booking = booking;
+    host.dataset.room = roomNumber;
+    const inner =
+      cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
+      cell.querySelector<HTMLElement>('.sapMVBox') ||
+      cell;
+    inner.appendChild(host);
+  }
+
+  host.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pb-ra-row-code';
+  btn.textContent = roomNumber;
+  btn.title = `${msgs.emmaRoom.title}: ${roomNumber}`;
+  btn.setAttribute('aria-label', `${msgs.emmaRoom.title} ${roomNumber}`);
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void copyText(roomNumber);
+  });
+  host.appendChild(btn);
+  return host;
+}
+
+function scanCheckInList() {
+  const table = findCheckInListTable();
+  if (!table) {
+    document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
     return;
   }
 
-  const bar = findReservationInfoBar();
+  const cols = resolveListColumns(table);
+  const rows = table.querySelectorAll<HTMLElement>(
+    'tbody tr.sapUiTableContentRow, tbody tr.sapUiTableTr',
+  );
+
+  const seen = new Set<HTMLElement>();
+
+  for (const row of rows) {
+    const booking = bookingFromListRow(row);
+    if (!booking) continue;
+
+    const roomCell = cellByColIndex(row, cols.room);
+    const arrivalCell = cellByColIndex(row, cols.arrival);
+    if (!roomCell) continue;
+
+    const fixed = roomFromListCell(roomCell);
+    const arrivalIso = arrivalCell ? arrivalFromListCell(arrivalCell) : null;
+
+    if (fixed || !isDateToday(arrivalIso)) {
+      roomCell.querySelector(`[${ROW_ATTR}="row"]`)?.remove();
+      continue;
+    }
+
+    const sug = mockSuggest(booking, 'default', null);
+    const host = ensureRowChip(roomCell, booking, sug.roomNumber);
+    seen.add(host);
+  }
+
+  // Clean orphaned chips in this table
+  table.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => {
+    if (el instanceof HTMLElement && !seen.has(el)) el.remove();
+  });
+}
+
+function clearDetailHost() {
+  document.getElementById(HOST_ID)?.remove();
+  lastKey = null;
+  suggestion = null;
+  menuOpen = false;
+  statusText = '';
+  statusWarn = false;
+}
+
+async function tickDetail() {
   const booking = getBookingNumber();
+  const mountParent = findRoomFieldMountParent();
 
-  if (!bar || !booking) {
-    document.getElementById(HOST_ID)?.remove();
-    lastKey = null;
-    suggestion = null;
+  // On list-only pages there is no room field — fine
+  if (!mountParent || !booking) {
+    clearDetailHost();
     return;
   }
 
-  ensureStyles();
-  const host = mountInHeader(bar);
-  if (!bar.contains(host)) {
-    lastKey = null;
-    scheduleRefresh();
+  if (!detailEligible()) {
+    clearDetailHost();
     return;
   }
 
-  const key = `${booking}:${scrapeAssignedRoom() || ''}`;
+  const host = mountInRoomField(mountParent);
+  const key = `${booking}:empty`;
   if (key !== lastKey || !suggestion || !host.querySelector('.pb-ra-room')) {
     const bookingChanged = !lastKey || !lastKey.startsWith(`${booking}:`);
     lastKey = key;
@@ -470,10 +728,29 @@ async function tick() {
       menuOpen = false;
       statusText = '';
       statusWarn = false;
-      suggestion = mockSuggest(booking, 'default', scrapeAssignedRoom());
+      suggestion = mockSuggest(booking, 'default', null);
     }
     renderHost(host);
   }
+}
+
+async function tick() {
+  if (!isLikelyEmmaPage()) {
+    clearDetailHost();
+    document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
+    return;
+  }
+
+  ensureStyles();
+  scanCheckInList();
+  await tickDetail();
+}
+
+function scheduleRefresh() {
+  if (refreshTimer) window.clearTimeout(refreshTimer);
+  refreshTimer = window.setTimeout(() => {
+    void tick();
+  }, 350);
 }
 
 export function startEmmaRoomSuggestWatcher() {
@@ -497,32 +774,25 @@ export function startEmmaRoomSuggestWatcher() {
   });
 
   const obs = new MutationObserver((mutations) => {
-    let relevant = false;
     for (const m of mutations) {
       const t = m.target;
       if (
         t instanceof Element &&
-        (t.id === HOST_ID || t.id === STYLE_ID || t.closest('[data-prize-room-assign]'))
+        (t.id === HOST_ID || t.id === STYLE_ID || t.closest(`[${ROW_ATTR}]`))
       ) {
         continue;
       }
-      relevant = true;
-      break;
+      scheduleRefresh();
+      return;
     }
-    if (!relevant) return;
-
-    const bar = findReservationInfoBar();
-    const host = document.getElementById(HOST_ID);
-    if (host && bar && !bar.contains(host)) lastKey = null;
-    if (bar && !host) lastKey = null;
-    scheduleRefresh();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
 
   return () => {
     obs.disconnect();
     if (refreshTimer) window.clearTimeout(refreshTimer);
-    document.getElementById(HOST_ID)?.remove();
+    clearDetailHost();
+    document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
     document.getElementById(STYLE_ID)?.remove();
   };
 }
