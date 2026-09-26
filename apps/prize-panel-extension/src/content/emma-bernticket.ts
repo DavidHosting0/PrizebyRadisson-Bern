@@ -54,7 +54,7 @@ function isListSurfaceWithoutSingleBooking(): boolean {
   );
 }
 
-function getBookingNumber(): string | null {
+function getBookingFromUrl(): string | null {
   const haystack = `${window.location.hash}\n${window.location.href}\n${document.title}`;
   const patterns = [
     /ReservationId='(\d+)'/i,
@@ -65,6 +65,12 @@ function getBookingNumber(): string | null {
     const m = haystack.match(re);
     if (m) return m[1].replace(/^0+/, '') || m[1];
   }
+  return null;
+}
+
+function getBookingNumber(): string | null {
+  const fromUrl = getBookingFromUrl();
+  if (fromUrl) return fromUrl;
 
   // Check-in list / room status: many reservation numbers — per-row/tile injectors handle those.
   if (isListSurfaceWithoutSingleBooking()) return null;
@@ -83,6 +89,23 @@ function getBookingNumber(): string | null {
   if (tm) return tm[1].replace(/^0+/, '') || tm[1];
 
   return null;
+}
+
+/** SAP busy / loading overlay — keep bottom chip visible during transitions. */
+function isEmmaBusy(): boolean {
+  return Boolean(
+    document.querySelector(
+      [
+        '.sapUiLocalBusyIndicator:not([style*="display: none"])',
+        '.sapUiBusy',
+        '.sapMBusyDialog',
+        '.sapUiBlockLayer',
+        '.sapUiBLy',
+        '.sapUiLocalBusyIndicatorAnimation',
+        '[class*="BusyIndicator"]:not([style*="display: none"])',
+      ].join(', '),
+    ),
+  );
 }
 
 /** Only the real check-in footer — not generic ObjectPage footers on reservation detail. */
@@ -653,6 +676,8 @@ function openCreateDialog(
 }
 
 let lastBooking: string | null = null;
+/** Keep showing code during SAP busy/loading when booking briefly disappears from DOM. */
+let stickyBooking: string | null = null;
 let refreshTimer: number | null = null;
 let renderGen = 0;
 
@@ -766,15 +791,32 @@ async function tick() {
     document.getElementById(FALLBACK_ID)?.remove();
     closeCreateDialog();
     lastBooking = null;
+    stickyBooking = null;
     return;
   }
 
   ensureStyles();
-  const booking = getBookingNumber();
-  const toolbar = findCheckinToolbar();
+  const busy = isEmmaBusy();
+  let booking = getBookingNumber();
+  if (booking) stickyBooking = booking;
+  else if (busy && stickyBooking) booking = stickyBooking;
+  else if (!busy && !getBookingFromUrl()) stickyBooking = null;
+
+  // Pure list/room-status boards: per-row chips only — no center FALLBACK
+  // (except while busy, when we keep sticky booking at bottom center)
+  if (
+    !busy &&
+    isListSurfaceWithoutSingleBooking() &&
+    !getBookingFromUrl()
+  ) {
+    document.getElementById(HOST_ID)?.remove();
+    document.getElementById(FALLBACK_ID)?.remove();
+    lastBooking = null;
+    return;
+  }
 
   // Always show the code for a reservation — in the check-in leiste when present,
-  // otherwise as a small fixed chip at the bottom (reservation overview etc.).
+  // otherwise as a small fixed chip at the bottom (reservation overview / loading).
   if (!booking) {
     document.getElementById(HOST_ID)?.remove();
     document.getElementById(FALLBACK_ID)?.remove();
@@ -782,6 +824,8 @@ async function tick() {
     return;
   }
 
+  // During loading overlays prefer the bottom-center chip (toolbar not ready yet)
+  const toolbar = busy ? null : findCheckinToolbar();
   const compact = Boolean(toolbar);
   const expectedHostId = toolbar ? HOST_ID : FALLBACK_ID;
   const host = toolbar ? mountInToolbar(toolbar) : mountFallbackBar();
@@ -819,6 +863,8 @@ export function startEmmaBernTicketWatcher() {
 
   window.addEventListener('hashchange', () => {
     lastBooking = null;
+    // Keep sticky through navigation busy; clear if URL no longer has a reservation
+    if (!getBookingFromUrl()) stickyBooking = null;
     scheduleRefresh();
   });
 

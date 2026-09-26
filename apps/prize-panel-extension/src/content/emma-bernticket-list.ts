@@ -1,7 +1,8 @@
 /**
  * BernTicket activation codes in EMMA list surfaces:
- * - Check-in list: under each reservation number
- * - Room status tiles: in the tile header title field when a guest is present
+ * - Check-in list: next to each reservation number
+ * - Room status tiles: chip on occupied room tiles
+ * - Room status detail panel (click room): large code display
  */
 import {
   clearBtCodeCache,
@@ -74,8 +75,8 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
-  if (style.dataset.v === '5') return;
-  style.dataset.v = '5';
+  if (style.dataset.v === '7') return;
+  style.dataset.v = '7';
   style.textContent = `
     [${CHIP_ATTR}]{
       display:block !important;
@@ -86,19 +87,21 @@ function ensureStyles() {
       z-index:5;
       position:relative;
     }
-    /* Check-in list: inline next to reservation number (cell max-height clips below) */
+    /* Check-in list: BELOW reservation number — do not sit in the number hbox */
     [${CHIP_ATTR}][data-surface="list"]{
-      display:inline-flex !important;
-      align-items:center;
-      margin:0 0 0 0.25rem !important;
-      vertical-align:middle;
-      max-width:none;
+      display:block !important;
+      margin:0.15rem 0 0 0 !important;
+      max-width:100%;
       flex-shrink:0;
     }
     .sapUiTableCellInner:has([${CHIP_ATTR}]),
+    .sapUiTableDataCell:has([${CHIP_ATTR}]),
     .sapMVBox:has([${CHIP_ATTR}]),
     .sapMHBox:has([${CHIP_ATTR}]){
       overflow:visible !important;
+    }
+    .sapUiTableCellInner:has([${CHIP_ATTR}[data-surface="list"]]){
+      max-height:none !important;
     }
     /* Room Status: chip on tile root so SAP content re-renders do not wipe it */
     .sapMGT.roomTiles,
@@ -114,6 +117,43 @@ function ensureStyles() {
       margin:0 !important;
       z-index:30;
       max-width:calc(100% - 0.7rem);
+    }
+    /* Room Status detail panel (click a room): large code */
+    [${CHIP_ATTR}][data-surface="room-detail"]{
+      display:flex !important;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:0.4rem;
+      margin:0.65rem 0.75rem 0.35rem !important;
+      padding:0.7rem 0.9rem;
+      background:linear-gradient(180deg,#fff 0%,#fff8f8 100%);
+      border:1px solid rgba(170,8,8,.28);
+      border-radius:0.5rem;
+      box-shadow:0 2px 10px rgba(15,23,42,.08);
+      position:relative !important;
+      left:auto !important;
+      bottom:auto !important;
+      max-width:min(100%, 20rem);
+      z-index:10;
+    }
+    [${CHIP_ATTR}][data-surface="room-detail"] .pb-bt-detail-label{
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:0.68rem;
+      font-weight:700;
+      letter-spacing:.07em;
+      text-transform:uppercase;
+      color:#6a6d70;
+    }
+    [${CHIP_ATTR}][data-surface="room-detail"] .pb-bt-list-code{
+      font-size:1.55rem !important;
+      font-weight:800;
+      letter-spacing:.08em;
+      padding:0.4rem 0.85rem;
+      border-radius:0.35rem;
+      line-height:1.15;
+    }
+    [${CHIP_ATTR}][data-surface="room-detail"] .pb-bt-list-muted{
+      font-size:0.85rem;
     }
     [${CHIP_ATTR}] .pb-bt-list-code{
       appearance:none;cursor:pointer;
@@ -220,8 +260,7 @@ function reservationCellFromRow(row: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Mount inline next to the reservation number so the chip stays inside the
- * clipped sapUiTableCellInner (max-height ~65px).
+ * Mount under the reservation number (not inside the number hbox — that shifts/wraps the id).
  */
 function ensureListRowChip(cell: HTMLElement, booking: string): HTMLElement {
   let bookingEl: HTMLElement | null = null;
@@ -233,12 +272,17 @@ function ensureListRowChip(cell: HTMLElement, booking: string): HTMLElement {
     }
   }
 
-  const mountParent =
-    (bookingEl?.closest('.sapMHBox') as HTMLElement | null) ||
-    bookingEl?.parentElement ||
+  // Vertical stack: the VBox that holds the reservation row
+  const vbox =
+    (bookingEl?.closest('.sapMVBox') as HTMLElement | null) ||
     cell.querySelector<HTMLElement>('.sapMVBox') ||
     cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
     cell;
+
+  // Insert after the hbox that contains the reservation number
+  const after =
+    (bookingEl?.closest('.sapMHBox') as HTMLElement | null) ||
+    vbox.querySelector<HTMLElement>(':scope > .sapMHBox');
 
   let host = cell.querySelector<HTMLElement>(`[${CHIP_ATTR}]`);
   if (host) {
@@ -248,27 +292,26 @@ function ensureListRowChip(cell: HTMLElement, booking: string): HTMLElement {
       host.innerHTML = '';
     }
     host.dataset.surface = 'list';
-    if (host.parentElement !== mountParent) {
-      // Prefer after the booking text node/element
-      if (bookingEl && bookingEl.parentElement === mountParent) {
-        bookingEl.insertAdjacentElement('afterend', host);
+    if (host.parentElement !== vbox) {
+      if (after && after.parentElement === vbox) {
+        after.insertAdjacentElement('afterend', host);
       } else {
-        mountParent.appendChild(host);
+        vbox.appendChild(host);
       }
+    } else if (after && host.previousElementSibling !== after) {
+      after.insertAdjacentElement('afterend', host);
     }
     return host;
   }
 
-  host = document.createElement('span');
+  host = document.createElement('div');
   host.setAttribute(CHIP_ATTR, '1');
   host.dataset.booking = booking;
   host.dataset.surface = 'list';
-  if (bookingEl && bookingEl.parentElement === mountParent) {
-    bookingEl.insertAdjacentElement('afterend', host);
-  } else if (bookingEl?.parentElement) {
-    bookingEl.parentElement.appendChild(host);
+  if (after && after.parentElement === vbox) {
+    after.insertAdjacentElement('afterend', host);
   } else {
-    mountParent.appendChild(host);
+    vbox.appendChild(host);
   }
   return host;
 }
@@ -301,6 +344,10 @@ function setChipLoading(host: HTMLElement, booking: string) {
   host.setAttribute(CHIP_ATTR, '1');
   host.dataset.booking = booking;
   host.dataset.state = 'loading';
+  if (host.dataset.surface === 'room-detail') {
+    host.innerHTML = `<div class="pb-bt-detail-label">${escapeHtml(msgs.emmaBt.brand)}</div><span class="pb-bt-list-muted">${escapeHtml(msgs.emmaBt.loading)}</span>`;
+    return;
+  }
   host.innerHTML = `<span class="pb-bt-list-muted">…</span>`;
 }
 
@@ -309,6 +356,12 @@ function setChipCode(host: HTMLElement, booking: string, code: string) {
   host.dataset.booking = booking;
   host.dataset.state = 'ok';
   host.innerHTML = '';
+  if (host.dataset.surface === 'room-detail') {
+    const label = document.createElement('div');
+    label.className = 'pb-bt-detail-label';
+    label.textContent = msgs.emmaBt.brand;
+    host.appendChild(label);
+  }
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'pb-bt-list-code';
@@ -323,7 +376,19 @@ function setChipEmpty(host: HTMLElement, booking: string) {
   host.setAttribute(CHIP_ATTR, '1');
   host.dataset.booking = booking;
   host.dataset.state = 'none';
+  if (host.dataset.surface === 'room-detail') {
+    host.innerHTML = `<div class="pb-bt-detail-label">${escapeHtml(msgs.emmaBt.brand)}</div><span class="pb-bt-list-muted">—</span>`;
+    return;
+  }
   host.innerHTML = '';
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function ensureChipHost(
@@ -491,6 +556,107 @@ function scanRoomStatusTiles() {
   });
 }
 
+/** Room detail side/panel that opens when clicking a room tile ("Room 0024", Reservation link). */
+function findRoomDetailPanel(): HTMLElement | null {
+  const candidates = document.querySelectorAll<HTMLElement>(
+    '.sapMPageEnableScrolling, section.sapMPageEnableScrolling, [id$="-cont"].sapUiScrollDelegate',
+  );
+  for (const panel of candidates) {
+    // Skip main room-grid pages that are only the tile board
+    if (panel.querySelector('.sapMGT.roomTiles, .sapMGT.roomTiles2')) continue;
+
+    const titleEl = panel.querySelector('.sapMTitle, .sapMTitle-inner, [class*="sapMTitle"]');
+    const title = (titleEl?.textContent || '').replace(/\s+/g, ' ').trim();
+    const looksLikeRoom =
+      /^room\s+\d+/i.test(title) ||
+      /^zimmer\s+\d+/i.test(title) ||
+      Boolean(
+        [...panel.querySelectorAll('bdi, .sapMBtnContent')].some((el) =>
+          /check\s*out|change\s*room\s*status/i.test((el.textContent || '').trim()),
+        ),
+      );
+    if (!looksLikeRoom) continue;
+
+    // Must have a reservation number (occupied) — vacant rooms get no chip
+    if (bookingFromRoomDetail(panel)) return panel;
+  }
+  return null;
+}
+
+function bookingFromRoomDetail(root: HTMLElement): string | null {
+  // Prefer the value next to the "Reservation" label
+  for (const lab of root.querySelectorAll('.sapMLabel, .sapMLabel bdi')) {
+    const t = (lab.textContent || '').replace(/\s+/g, ' ').trim().replace(/:$/, '');
+    if (!/^(reservation|reservierung)$/i.test(t)) continue;
+    const row =
+      lab.closest('[class*="wrapperfor"]')?.parentElement ||
+      lab.closest('.sapUiFormResGridCont') ||
+      lab.closest('.sapUiRespGrid') ||
+      root;
+    for (const a of row.querySelectorAll('a.sapMLnk')) {
+      const n = (a.textContent || '').trim();
+      if (/^\d{6,}$/.test(n)) return normalizeBooking(n);
+    }
+  }
+  for (const a of root.querySelectorAll('a.sapMLnk')) {
+    const n = (a.textContent || '').trim();
+    if (/^\d{6,}$/.test(n)) return normalizeBooking(n);
+  }
+  return null;
+}
+
+function ensureRoomDetailChip(panel: HTMLElement, booking: string): HTMLElement {
+  let host = panel.querySelector<HTMLElement>(`[${CHIP_ATTR}][data-surface="room-detail"]`);
+  if (host) {
+    if (host.dataset.booking !== booking) {
+      host.dataset.booking = booking;
+      host.dataset.state = '';
+      host.innerHTML = '';
+    }
+    return host;
+  }
+
+  host = document.createElement('div');
+  host.setAttribute(CHIP_ATTR, '1');
+  host.dataset.booking = booking;
+  host.dataset.surface = 'room-detail';
+  host.setAttribute('role', 'region');
+  host.setAttribute('aria-label', msgs.emmaBt.brand);
+
+  // Place under the header (Room title + Check Out) and above the form
+  const header = panel.querySelector<HTMLElement>(':scope > .sapMHBox');
+  const form = panel.querySelector<HTMLElement>('.sapUiForm, [role="form"]');
+  if (header?.parentElement === panel) {
+    header.insertAdjacentElement('afterend', host);
+  } else if (form) {
+    form.insertAdjacentElement('beforebegin', host);
+  } else {
+    panel.insertBefore(host, panel.firstChild);
+  }
+  return host;
+}
+
+function scanRoomDetailPanel() {
+  const panel = findRoomDetailPanel();
+  if (!panel) {
+    document
+      .querySelectorAll(`[${CHIP_ATTR}][data-surface="room-detail"]`)
+      .forEach((el) => el.remove());
+    return;
+  }
+
+  const booking = bookingFromRoomDetail(panel);
+  if (!booking) {
+    document
+      .querySelectorAll(`[${CHIP_ATTR}][data-surface="room-detail"]`)
+      .forEach((el) => el.remove());
+    return;
+  }
+
+  const host = ensureRoomDetailChip(panel, booking);
+  void hydrateChip(host, booking);
+}
+
 function scanAndMount() {
   if (!isLikelyEmmaPage()) {
     document.querySelectorAll(`[${CHIP_ATTR}]`).forEach((el) => el.remove());
@@ -500,6 +666,7 @@ function scanAndMount() {
   ensureStyles();
   scanCheckInList();
   scanRoomStatusTiles();
+  scanRoomDetailPanel();
 }
 
 function scheduleRefresh() {
