@@ -186,6 +186,11 @@ export class ReviewAnalyzerController {
     return this.service.failStaleImportJobs(5);
   }
 
+  @Post('repair-duplicates')
+  repairDuplicates() {
+    return this.service.repairDuplicateReviews();
+  }
+
   @Get('settings')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)

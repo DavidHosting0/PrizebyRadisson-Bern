@@ -13,7 +13,7 @@ import { ReviewImportService } from './review-import.service';
 import { ReviewAnalyticsService } from './review-analytics.service';
 import { ReviewExportService } from './review-export.service';
 import { ReviewAiService } from './review-ai.service';
-import { repairStoredScore, dedupeReviewBlob } from './booking.importer';
+import { repairStoredScore, dedupeReviewBlob, buildReviewExternalId, buildReviewSoftKey } from './booking.importer';
 
 export type ReviewListQuery = {
   q?: string;
@@ -50,6 +50,7 @@ export class ReviewAnalyzerService {
     await this.failStaleImportJobs();
     await this.repairBogusScores();
     await this.repairDuplicatedReviewTexts();
+    await this.repairDuplicateReviews();
   }
 
   /** Mark orphaned RUNNING jobs (e.g. after PM2 restart / crash) as FAILED. */
@@ -132,6 +133,126 @@ export class ReviewAnalyzerService {
       }
     }
     return { scanned: rows.length, fixed };
+  }
+
+  /**
+   * Merge/delete near-duplicate GuestReviews (same guest + day + score, or same stable id).
+   * Keeps the oldest row; deletes newer copies (cascades analysis/mentions).
+   */
+  async repairDuplicateReviews() {
+    const rows = await this.prisma.guestReview.findMany({
+      where: { source: ReviewSource.BOOKING },
+      orderBy: { importedAt: 'asc' },
+      select: {
+        id: true,
+        externalId: true,
+        guestName: true,
+        reviewedAt: true,
+        score: true,
+        positiveText: true,
+        negativeText: true,
+        fullText: true,
+        importedAt: true,
+      },
+    });
+
+    const bySoft = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const key = buildReviewSoftKey(r);
+      if (!bySoft.has(key)) bySoft.set(key, []);
+      bySoft.get(key)!.push(r);
+    }
+
+    let deleted = 0;
+    let rekeyed = 0;
+
+    for (const group of bySoft.values()) {
+      if (group.length < 2) {
+        // Still migrate single rows to stable externalId when possible
+        const r = group[0]!;
+        const title =
+          (r.fullText || '').split(/\n+/)[0]?.trim() &&
+          (r.fullText || '').split(/\n+/)[0]!.trim() !== (dedupeReviewBlob(r.positiveText) ?? '')
+            ? (r.fullText || '').split(/\n+/)[0]!.trim()
+            : '';
+        const stable = buildReviewExternalId({
+          guestName: r.guestName,
+          reviewedAt: r.reviewedAt,
+          score: r.score,
+          title,
+          positiveText: r.positiveText,
+          negativeText: r.negativeText,
+        });
+        if (stable !== r.externalId) {
+          const clash = await this.prisma.guestReview.findUnique({
+            where: { source_externalId: { source: ReviewSource.BOOKING, externalId: stable } },
+          });
+          if (!clash) {
+            await this.prisma.guestReview.update({
+              where: { id: r.id },
+              data: { externalId: stable },
+            });
+            rekeyed++;
+          }
+        }
+        continue;
+      }
+
+      // Prefer keep: best deduped text, earliest import
+      const keep = group[0]!;
+      const title =
+        (keep.fullText || '').split(/\n+/)[0]?.trim() &&
+        (keep.fullText || '').split(/\n+/)[0]!.trim() !== (dedupeReviewBlob(keep.positiveText) ?? '')
+          ? (keep.fullText || '').split(/\n+/)[0]!.trim()
+          : '';
+      const stable = buildReviewExternalId({
+        guestName: keep.guestName,
+        reviewedAt: keep.reviewedAt,
+        score: keep.score,
+        title,
+        positiveText: keep.positiveText,
+        negativeText: keep.negativeText,
+      });
+
+      // Merge best text fields onto keep
+      let bestPos = dedupeReviewBlob(keep.positiveText);
+      let bestNeg = dedupeReviewBlob(keep.negativeText);
+      let bestFull: string = dedupeReviewBlob(keep.fullText) ?? keep.fullText;
+      for (const g of group) {
+        const p = dedupeReviewBlob(g.positiveText);
+        const n = dedupeReviewBlob(g.negativeText);
+        const f = dedupeReviewBlob(g.fullText);
+        if ((p?.length ?? 0) > (bestPos?.length ?? 0)) bestPos = p;
+        if ((n?.length ?? 0) > (bestNeg?.length ?? 0)) bestNeg = n;
+        if (f && f.length > bestFull.length) bestFull = f;
+      }
+
+      const clash = await this.prisma.guestReview.findUnique({
+        where: { source_externalId: { source: ReviewSource.BOOKING, externalId: stable } },
+      });
+      await this.prisma.guestReview.update({
+        where: { id: keep.id },
+        data: {
+          externalId: clash && clash.id !== keep.id ? keep.externalId : stable,
+          positiveText: bestPos,
+          negativeText: bestNeg,
+          fullText: bestFull || keep.fullText,
+          score: keep.score > 10 ? keep.score / 100 || 10 : keep.score,
+        },
+      });
+
+      for (const g of group.slice(1)) {
+        await this.prisma.guestReview.delete({ where: { id: g.id } });
+        deleted++;
+      }
+      rekeyed++;
+    }
+
+    if (deleted > 0) {
+      const s = await this.settingsSvc.get();
+      await this.analytics.recomputeMetrics(s.hotelKey).catch(() => undefined);
+    }
+    return { groups: bySoft.size, deleted, rekeyed };
   }
 
   async listReviews(query: ReviewListQuery) {

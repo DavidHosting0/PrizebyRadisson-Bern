@@ -103,6 +103,50 @@ function buildFullText(
   return dedupeTextParts([title, positive ?? '', negative ?? ''].filter(Boolean)).join('\n\n') || '—';
 }
 
+/** Normalize text for stable hashing (whitespace + lowercase + dedupe lines). */
+export function normalizeForId(text: string | null | undefined): string {
+  const d = dedupeReviewBlob(text) ?? '';
+  return d.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Stable Booking review fingerprint — must NOT change when scrape slightly alters
+ * duplicated DOM text. Used as unique externalId.
+ */
+export function buildReviewExternalId(parts: {
+  guestName?: string | null;
+  reviewedAt: Date;
+  score: number;
+  title?: string | null;
+  positiveText?: string | null;
+  negativeText?: string | null;
+}): string {
+  const day = parts.reviewedAt.toISOString().slice(0, 10);
+  const score = (Math.round(parts.score * 10) / 10).toFixed(1);
+  const payload = [
+    normalizeForId(parts.guestName),
+    day,
+    score,
+    normalizeForId(parts.title).slice(0, 120),
+    normalizeForId(parts.positiveText).slice(0, 200),
+    normalizeForId(parts.negativeText).slice(0, 200),
+  ].join('|');
+  return createHash('sha256').update(payload).digest('hex').slice(0, 32);
+}
+
+/** Soft key for near-duplicate search (same guest + day + score). */
+export function buildReviewSoftKey(parts: {
+  guestName?: string | null;
+  reviewedAt: Date;
+  score: number;
+}): string {
+  return [
+    normalizeForId(parts.guestName),
+    parts.reviewedAt.toISOString().slice(0, 10),
+    (Math.round(parts.score * 10) / 10).toFixed(1),
+  ].join('|');
+}
+
 /**
  * Booking often renders the score twice in one node ("10"+"10" → "1010", or "Scored 10.0 10.0").
  * Only accept values in 1..10.
@@ -381,18 +425,22 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
         .catch(() => ''),
     ) || null;
 
-    // Analyzer ensure_id: hash(content|author|date)
-    const externalId = createHash('sha256')
-      .update(`${fullText}|${guestName ?? ''}|${reviewDateRaw}`)
-      .digest('hex')
-      .slice(0, 32);
+    // Analyzer-style stable id (normalized) — survives text-dedupe / score-repair rescapes
+    const externalId = buildReviewExternalId({
+      guestName,
+      reviewedAt,
+      score,
+      title,
+      positiveText,
+      negativeText,
+    });
 
     const contentHash = hashReviewContent({
       score,
       positiveText,
       negativeText,
       fullText,
-      reviewedAt: reviewedAt.toISOString(),
+      reviewedAt: reviewedAt.toISOString().slice(0, 10),
     });
 
     return {
