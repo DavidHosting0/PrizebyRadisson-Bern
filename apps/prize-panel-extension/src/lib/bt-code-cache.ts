@@ -41,7 +41,7 @@ export async function resolveActivationCode(booking: string): Promise<string | n
     pending = (async () => {
       try {
         const tokens = await getBtTokens();
-        if (!tokens?.accessToken) {
+        if (!tokens?.access) {
           codeCache.set(key, { code: null, at: Date.now() });
           return null;
         }

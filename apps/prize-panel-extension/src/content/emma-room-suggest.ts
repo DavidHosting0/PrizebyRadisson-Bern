@@ -279,10 +279,14 @@ function mockSuggest(
 }
 
 function ensureStyles() {
-  const existing = document.getElementById(STYLE_ID);
-  if (existing) existing.remove();
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = STYLE_ID;
+    document.documentElement.appendChild(style);
+  }
+  if (style.dataset.v === '3') return;
+  style.dataset.v = '3';
   style.textContent = `
     /* Detail: compact chip inline at the Room field */
     #${HOST_ID}{
@@ -360,30 +364,34 @@ function ensureStyles() {
       font-size:8px;color:#94a3b8;line-height:1.25;
     }
 
-    /* Check-in list Room column */
+    /* Check-in list Room column — inline next to room number (cell max-height clips siblings) */
     [${ROW_ATTR}="row"]{
-      display:block;
-      margin-top:0.1rem;
+      display:inline-flex;
+      align-items:center;
+      gap:0.2rem;
+      margin:0;
       line-height:1.15;
       max-width:100%;
+      vertical-align:middle;
+      flex-shrink:0;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code{
       appearance:none;cursor:pointer;
       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:0.72rem;font-weight:700;letter-spacing:.03em;
-      color:#1a2332;
-      background:#eef2f7;
-      border:1px solid #cbd5e1;
-      border-radius:0.2rem;
-      padding:0.08rem 0.35rem;
+      font-size:0.75rem;font-weight:700;letter-spacing:.03em;
+      color:#0f172a;
+      background:#dbeafe;
+      border:1px solid #3b82f6;
+      border-radius:0.25rem;
+      padding:0.12rem 0.4rem;
       white-space:nowrap;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code:hover{filter:brightness(0.97);}
-    [${ROW_ATTR}="row"] .pb-ra-row-muted{
-      font-size:0.65rem;color:#94a3b8;
+    [${ROW_ATTR}="row"] .pb-ra-row-hint{
+      font-size:0.6rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+      color:#3b82f6;
     }
   `;
-  document.documentElement.appendChild(style);
 }
 
 function mountInRoomField(parent: HTMLElement): HTMLElement {
@@ -548,8 +556,16 @@ function resolveListColumns(table: HTMLTableElement): ColMap {
     ];
     cells.forEach((cell, i) => {
       const t = (cell.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-      if (t === 'room' || t === 'zimmer') room = i;
-      if (t === 'arrival' || t.startsWith('anreise')) arrival = i;
+      if (t === 'room' || t === 'zimmer' || t.startsWith('room ') || t.startsWith('zimmer')) {
+        room = i;
+      }
+      if (
+        t === 'arrival' ||
+        t.startsWith('anreise') ||
+        t.startsWith('arrival')
+      ) {
+        arrival = i;
+      }
     });
   }
 
@@ -557,8 +573,11 @@ function resolveListColumns(table: HTMLTableElement): ColMap {
 }
 
 function cellByColIndex(row: HTMLElement, colIndex: number): HTMLElement | null {
-  const byId = row.querySelector<HTMLElement>(`[id$="-col${colIndex}"]`);
-  if (byId) return byId;
+  // Prefer exact col id suffix (avoid matching -col10 when looking for -col1)
+  const re = new RegExp(`-col${colIndex}$`);
+  for (const el of row.querySelectorAll<HTMLElement>('[id*="-col"]')) {
+    if (re.test(el.id)) return el;
+  }
   const cells = row.querySelectorAll<HTMLElement>('td.sapUiTableDataCell');
   return cells[colIndex] || null;
 }
@@ -576,20 +595,29 @@ function bookingFromListRow(row: HTMLElement): string | null {
 }
 
 function roomFromListCell(cell: HTMLElement): string | null {
-  for (const el of cell.querySelectorAll('.sapMText, a.sapMLnk, .sapMObjStatusText')) {
+  // Only pure room numbers (e.g. 0028 / 410). Never scrape digits from codes like BSTD----1K.
+  for (const el of cell.querySelectorAll('.sapMText, a.sapMLnk')) {
     if (el.closest(`[${ROW_ATTR}]`)) continue;
     const t = (el.textContent || '').trim();
-    if (!t) continue;
+    if (!/^\d{1,4}$/.test(t)) continue;
     if (isKnownHotelRoom(t)) return normalizeRoomNumber(t);
-    // EMMA often shows padded room like 0410
-    if (/^\d{3,4}$/.test(t) && isKnownHotelRoom(t)) return normalizeRoomNumber(t);
   }
-  // Also check raw text of cell (excluding our chip)
-  const clone = cell.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll(`[${ROW_ATTR}]`).forEach((n) => n.remove());
-  const raw = (clone.textContent || '').trim();
-  if (/^\d{3,4}$/.test(raw) && isKnownHotelRoom(raw)) return normalizeRoomNumber(raw);
   return null;
+}
+
+/** Mount inside the room-number line so chips are not clipped by cell max-height. */
+function findListRoomChipMount(cell: HTMLElement): HTMLElement {
+  for (const el of cell.querySelectorAll('.sapMText')) {
+    if (el.closest(`[${ROW_ATTR}]`)) continue;
+    if (el.parentElement) return el.parentElement;
+  }
+  const hbox = cell.querySelector('.sapMHBox') as HTMLElement | null;
+  if (hbox) return hbox;
+  const vbox = cell.querySelector('.sapMVBox') as HTMLElement | null;
+  if (vbox) return vbox;
+  return (
+    (cell.querySelector('.sapUiTableCellInner') as HTMLElement | null) || cell
+  );
 }
 
 function arrivalFromListCell(cell: HTMLElement): string | null {
@@ -619,37 +647,43 @@ async function copyText(text: string) {
 }
 
 function ensureRowChip(cell: HTMLElement, booking: string, roomNumber: string): HTMLElement {
+  const mount = findListRoomChipMount(cell);
   let host = cell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
   if (host && host.dataset.booking === booking && host.dataset.room === roomNumber) {
+    if (host.parentElement !== mount) mount.appendChild(host);
     return host;
   }
   if (host) {
     host.dataset.booking = booking;
     host.dataset.room = roomNumber;
+    if (host.parentElement !== mount) mount.appendChild(host);
   } else {
-    host = document.createElement('div');
+    host = document.createElement('span');
     host.setAttribute(ROW_ATTR, 'row');
     host.dataset.booking = booking;
     host.dataset.room = roomNumber;
-    const inner =
-      cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
-      cell.querySelector<HTMLElement>('.sapMVBox') ||
-      cell;
-    inner.appendChild(host);
+    mount.appendChild(host);
   }
 
   host.innerHTML = '';
+  const hint = document.createElement('span');
+  hint.className = 'pb-ra-row-hint';
+  hint.textContent = '→';
+  hint.setAttribute('aria-hidden', 'true');
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'pb-ra-row-code';
-  btn.textContent = roomNumber;
-  btn.title = `${msgs.emmaRoom.title}: ${roomNumber}`;
-  btn.setAttribute('aria-label', `${msgs.emmaRoom.title} ${roomNumber}`);
+  // Show padded like EMMA (4 digits) for familiar look
+  const display = roomNumber.padStart(4, '0');
+  btn.textContent = display;
+  btn.title = `${msgs.emmaRoom.title}: ${display}`;
+  btn.setAttribute('aria-label', `${msgs.emmaRoom.title} ${display}`);
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    void copyText(roomNumber);
+    void copyText(display);
   });
+  host.appendChild(hint);
   host.appendChild(btn);
   return host;
 }

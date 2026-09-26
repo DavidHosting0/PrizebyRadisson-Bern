@@ -43,8 +43,12 @@ function isListSurfaceWithoutSingleBooking(): boolean {
       [
         '[id*="CheckInList"][id*="checkInList.table"]',
         '[id*="tms.checkInList.table"]',
-        '[id*="RoomStatus"][id*="roomstatus.roomsHBox"]',
-        '.sapMGT.roomTiles[id*="RoomStatus"]',
+        '[id*="RoomStatus"]',
+        '[id*="room_status"]',
+        '[id*="roomstatus.roomsHBox"]',
+        '.sapMGT.roomTiles',
+        '.sapMGT.roomTiles2',
+        '[id*="zey_rs_room_status"]',
       ].join(', '),
     ),
   );
