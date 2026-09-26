@@ -171,6 +171,16 @@ export class ReviewAnalyzerController {
     return this.service.recompute();
   }
 
+  @Post('repair-scores')
+  repairScores() {
+    return this.service.repairBogusScores();
+  }
+
+  @Post('repair-texts')
+  repairTexts() {
+    return this.service.repairDuplicatedReviewTexts();
+  }
+
   @Get('settings')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)

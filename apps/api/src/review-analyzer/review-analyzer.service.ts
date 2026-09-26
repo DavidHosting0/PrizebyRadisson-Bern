@@ -12,6 +12,7 @@ import { ReviewImportService } from './review-import.service';
 import { ReviewAnalyticsService } from './review-analytics.service';
 import { ReviewExportService } from './review-export.service';
 import { ReviewAiService } from './review-ai.service';
+import { repairStoredScore, dedupeReviewBlob } from './booking.importer';
 
 export type ReviewListQuery = {
   q?: string;
@@ -45,6 +46,73 @@ export class ReviewAnalyzerService {
 
   async onBootstrap() {
     await this.ai.ensureTaxonomy();
+    await this.repairBogusScores();
+    await this.repairDuplicatedReviewTexts();
+  }
+
+  /** Fix scores like 1010 that came from duplicated Booking DOM text. */
+  async repairBogusScores() {
+    const bad = await this.prisma.guestReview.findMany({
+      where: { score: { gt: 10 } },
+      select: { id: true, score: true },
+    });
+    let fixed = 0;
+    for (const row of bad) {
+      const next = repairStoredScore(row.score);
+      if (next != null && next !== row.score) {
+        await this.prisma.guestReview.update({ where: { id: row.id }, data: { score: next } });
+        fixed++;
+      }
+    }
+    if (fixed > 0) {
+      const s = await this.settingsSvc.get();
+      await this.analytics.recomputeMetrics(s.hotelKey).catch(() => undefined);
+    }
+    return { scanned: bad.length, fixed };
+  }
+
+  /** Collapse duplicated positive/negative/full text lines from parent+span scrape. */
+  async repairDuplicatedReviewTexts() {
+    const rows = await this.prisma.guestReview.findMany({
+      select: { id: true, positiveText: true, negativeText: true, fullText: true },
+    });
+    let fixed = 0;
+    for (const row of rows) {
+      const positiveText = dedupeReviewBlob(row.positiveText);
+      const negativeText = dedupeReviewBlob(row.negativeText);
+      const fullDeduped = dedupeReviewBlob(row.fullText);
+      // Keep a title line if fullText had one that isn't just the pos/neg blob
+      const origLines = (row.fullText || '')
+        .split(/\n+/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const uniqueOrig = [...new Set(origLines)];
+      const titleGuess =
+        uniqueOrig.find(
+          (l) => l !== positiveText && l !== negativeText && !positiveText?.includes(l) && !negativeText?.includes(l),
+        ) ?? null;
+      const fullText =
+        [titleGuess, positiveText, negativeText].filter(Boolean).join('\n\n') ||
+        fullDeduped ||
+        row.fullText;
+
+      if (
+        positiveText !== row.positiveText ||
+        negativeText !== row.negativeText ||
+        fullText !== row.fullText
+      ) {
+        await this.prisma.guestReview.update({
+          where: { id: row.id },
+          data: {
+            positiveText,
+            negativeText,
+            fullText,
+          },
+        });
+        fixed++;
+      }
+    }
+    return { scanned: rows.length, fixed };
   }
 
   async listReviews(query: ReviewListQuery) {

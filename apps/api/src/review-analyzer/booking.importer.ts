@@ -71,12 +71,68 @@ function safeText(s: string | null | undefined): string {
   return (s ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function safeFloat(s: string | null | undefined): number | null {
-  if (!s) return null;
-  const m = s.replace(',', '.').match(/(\d+(?:\.\d+)?)/);
-  if (!m) return null;
-  const n = parseFloat(m[1]!);
-  return Number.isFinite(n) ? n : null;
+/** Drop exact duplicate lines (Booking often nests the same string in parent + span). */
+export function dedupeTextParts(parts: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const t = safeText(p);
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Collapse duplicated paragraphs/lines inside an already-stored blob. */
+export function dedupeReviewBlob(text: string | null | undefined): string | null {
+  if (text == null) return null;
+  const raw = text.replace(/\r\n/g, '\n').trim();
+  if (!raw) return null;
+  const parts = raw.split(/\n+/).map((l) => safeText(l)).filter(Boolean);
+  const unique = dedupeTextParts(parts);
+  return unique.length ? unique.join('\n') : null;
+}
+
+function buildFullText(
+  title: string,
+  positive: string | null,
+  negative: string | null,
+): string {
+  return dedupeTextParts([title, positive ?? '', negative ?? ''].filter(Boolean)).join('\n\n') || '—';
+}
+
+/**
+ * Booking often renders the score twice in one node ("10"+"10" → "1010", or "Scored 10.0 10.0").
+ * Only accept values in 1..10.
+ */
+export function parseBookingScore(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const s = raw.replace(/,/g, '.').trim();
+
+  for (const m of s.matchAll(/(\d{1,2}(?:\.\d)?)/g)) {
+    const n = parseFloat(m[1]!);
+    if (Number.isFinite(n) && n >= 1 && n <= 10) return n;
+  }
+
+  const digits = s.replace(/[^\d]/g, '');
+  // "1010" → 10
+  if (digits.length === 4 && digits.slice(0, 2) === digits.slice(2)) {
+    const n = parseInt(digits.slice(0, 2), 10);
+    if (n >= 1 && n <= 10) return n;
+  }
+  // "99" → 9
+  if (digits.length === 2 && digits[0] === digits[1]) {
+    const n = parseInt(digits[0]!, 10);
+    if (n >= 1 && n <= 9) return n;
+  }
+  return null;
+}
+
+/** Fix already-stored bogus scores (e.g. 1010). */
+export function repairStoredScore(score: number): number | null {
+  if (score >= 1 && score <= 10) return score;
+  return parseBookingScore(String(Math.round(score)));
 }
 
 /** Port of Analyzer parse_review_date — DE/EN review date strings. */
@@ -219,13 +275,18 @@ async function openReviewsSection(page: Page, logger: Logger) {
  */
 async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview | null> {
   try {
-    const scoreEl = card
-      .locator(
-        "[data-testid='review-score'] div[aria-hidden='true'], [data-testid='review-score']",
-      )
-      .first();
-    const score =
-      (await scoreEl.count()) > 0 ? safeFloat(await scoreEl.textContent()) : null;
+    // Prefer the first aria-hidden digit node (Analyzer) — avoids "1010" from duplicated text
+    let score: number | null = null;
+    const scoreHidden = card.locator("[data-testid='review-score'] div[aria-hidden='true']").first();
+    if ((await scoreHidden.count()) > 0) {
+      score = parseBookingScore(await scoreHidden.textContent());
+    }
+    if (score == null) {
+      const scoreEl = card.locator("[data-testid='review-score']").first();
+      if ((await scoreEl.count()) > 0) {
+        score = parseBookingScore(await scoreEl.textContent());
+      }
+    }
     if (score == null) return null;
 
     let guestName: string | null = null;
@@ -278,26 +339,29 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
       await card.locator("[data-testid='review-title']").first().textContent().catch(() => ''),
     );
 
-    async function collectTexts(sel: string): Promise<string | null> {
-      const loc = card.locator(sel);
-      const n = await loc.count();
-      if (n === 0) return null;
+    async function collectTexts(containerTestId: string): Promise<string | null> {
+      // Prefer inner spans only — matching parent+span duplicates the same text.
+      const spans = card.locator(`[data-testid='${containerTestId}'] span`);
+      const spanCount = await spans.count();
       const parts: string[] = [];
-      for (let i = 0; i < n; i++) {
-        const t = safeText(await loc.nth(i).textContent());
+      if (spanCount > 0) {
+        for (let i = 0; i < spanCount; i++) {
+          const t = safeText(await spans.nth(i).textContent());
+          if (t) parts.push(t);
+        }
+      } else {
+        const t = safeText(
+          await card.locator(`[data-testid='${containerTestId}']`).first().textContent().catch(() => ''),
+        );
         if (t) parts.push(t);
       }
-      return parts.length ? parts.join('\n') : null;
+      const unique = dedupeTextParts(parts);
+      return unique.length ? unique.join('\n') : null;
     }
 
-    const positiveText = await collectTexts(
-      "[data-testid='review-positive-text'] span, [data-testid='review-positive-text']",
-    );
-    const negativeText = await collectTexts(
-      "[data-testid='review-negative-text'] span, [data-testid='review-negative-text']",
-    );
-    const fullText =
-      [title, positiveText, negativeText].filter(Boolean).join('\n\n').trim() || '—';
+    const positiveText = await collectTexts('review-positive-text');
+    const negativeText = await collectTexts('review-negative-text');
+    const fullText = buildFullText(title, positiveText, negativeText);
 
     const roomCategory = safeText(
       await card.locator("[data-testid='review-room-name']").first().textContent().catch(() => ''),
