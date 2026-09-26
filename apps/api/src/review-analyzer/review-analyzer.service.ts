@@ -54,7 +54,7 @@ export class ReviewAnalyzerService {
   }
 
   /** Mark orphaned RUNNING jobs (e.g. after PM2 restart / crash) as FAILED. */
-  async failStaleImportJobs(maxAgeMinutes = 20) {
+  async failStaleImportJobs(maxAgeMinutes = 8) {
     const cutoff = new Date(Date.now() - maxAgeMinutes * 60_000);
     const result = await this.prisma.reviewImportJob.updateMany({
       where: {

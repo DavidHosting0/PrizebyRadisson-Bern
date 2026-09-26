@@ -365,42 +365,28 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
     let score: number | null = null;
     const scoreHidden = card.locator("[data-testid='review-score'] div[aria-hidden='true']").first();
     if ((await scoreHidden.count()) > 0) {
-      score = parseBookingScore(await scoreHidden.textContent());
+      score = parseBookingScore(await quickText(scoreHidden));
     }
     if (score == null) {
-      const scoreEl = card.locator("[data-testid='review-score']").first();
-      if ((await scoreEl.count()) > 0) {
-        score = parseBookingScore(await scoreEl.textContent());
-      }
+      score = parseBookingScore(await quickText(card.locator("[data-testid='review-score']")));
     }
     if (score == null) return null;
 
     let guestName: string | null = null;
-    const authorEl = card
-      .locator(
-        "[data-testid='review-avatar'] .aa225776f2 > div:first-child, [data-testid='review-avatar'] div.aa225776f2 > div",
-      )
-      .first();
-    if ((await authorEl.count()) > 0) {
-      guestName = safeText(await authorEl.textContent()) || null;
-    }
+    const authorEl = card.locator(
+      "[data-testid='review-avatar'] .aa225776f2 > div:first-child, [data-testid='review-avatar'] div.aa225776f2 > div",
+    );
+    guestName = (await quickText(authorEl)) || null;
 
-    let guestCountry: string | null = null;
-    const imgCountry = card.locator("[data-testid='review-avatar'] img[alt]").first();
-    if ((await imgCountry.count()) > 0) {
-      guestCountry = safeText(await imgCountry.getAttribute('alt')) || null;
-    }
+    let guestCountry: string | null =
+      (await quickAttr(card.locator("[data-testid='review-avatar'] img[alt]"), 'alt')) || null;
     if (!guestCountry) {
-      const spanCountry = card.locator("[data-testid='review-avatar'] .fff1944c52 span").first();
-      if ((await spanCountry.count()) > 0) {
-        guestCountry = safeText(await spanCountry.textContent()) || null;
-      }
+      guestCountry =
+        (await quickText(card.locator("[data-testid='review-avatar'] .fff1944c52 span"))) || null;
     }
     // Fallback: avatar block "Name Country"
     if (!guestName || !guestCountry) {
-      const avatar = safeText(
-        await card.locator("[data-testid='review-avatar']").first().textContent().catch(() => ''),
-      );
+      const avatar = await quickText(card.locator("[data-testid='review-avatar']"));
       if (avatar && !guestName) {
         const parts = avatar.split(/\s+/);
         if (parts.length >= 2) {
@@ -412,18 +398,12 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
       }
     }
 
-    const dateEl = card.locator("[data-testid='review-date']").first();
+    const dateEl = card.locator("[data-testid='review-date']");
     const reviewDateRaw =
-      (await dateEl.count()) > 0
-        ? safeText(await dateEl.textContent()) ||
-          (await dateEl.getAttribute('datetime')) ||
-          ''
-        : '';
+      (await quickText(dateEl)) || (await quickAttr(dateEl, 'datetime')) || '';
     const reviewedAt = parseReviewedDate(reviewDateRaw) ?? new Date();
 
-    const title = safeText(
-      await card.locator("[data-testid='review-title']").first().textContent().catch(() => ''),
-    );
+    const title = await quickText(card.locator("[data-testid='review-title']"));
 
     async function collectTexts(containerTestId: string): Promise<string | null> {
       // Prefer inner spans only — matching parent+span duplicates the same text.
@@ -431,14 +411,12 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
       const spanCount = await spans.count();
       const parts: string[] = [];
       if (spanCount > 0) {
-        for (let i = 0; i < spanCount; i++) {
-          const t = safeText(await spans.nth(i).textContent());
+        for (let i = 0; i < Math.min(spanCount, 8); i++) {
+          const t = await quickText(spans.nth(i));
           if (t) parts.push(t);
         }
       } else {
-        const t = safeText(
-          await card.locator(`[data-testid='${containerTestId}']`).first().textContent().catch(() => ''),
-        );
+        const t = await quickText(card.locator(`[data-testid='${containerTestId}']`));
         if (t) parts.push(t);
       }
       const unique = dedupeTextParts(parts);
@@ -449,22 +427,11 @@ async function parseReviewFromCard(card: Locator): Promise<ScrapedBookingReview 
     const negativeText = await collectTexts('review-negative-text');
     const fullText = buildFullText(title, positiveText, negativeText);
 
-    const roomCategory = safeText(
-      await card.locator("[data-testid='review-room-name']").first().textContent().catch(() => ''),
-    ) || null;
-    const nightsRaw = safeText(
-      await card.locator("[data-testid='review-num-nights']").first().textContent().catch(() => ''),
-    );
-    const stayRaw = safeText(
-      await card.locator("[data-testid='review-stay-date']").first().textContent().catch(() => ''),
-    );
-    const travelType = safeText(
-      await card
-        .locator("[data-testid='review-traveler-type']")
-        .first()
-        .textContent()
-        .catch(() => ''),
-    ) || null;
+    const roomCategory = (await quickText(card.locator("[data-testid='review-room-name']"))) || null;
+    const nightsRaw = await quickText(card.locator("[data-testid='review-num-nights']"));
+    const stayRaw = await quickText(card.locator("[data-testid='review-stay-date']"));
+    const travelType =
+      (await quickText(card.locator("[data-testid='review-traveler-type']"))) || null;
 
     // Analyzer-style stable id (normalized) — survives text-dedupe / score-repair rescapes
     const externalId = buildReviewExternalId({
@@ -542,30 +509,18 @@ async function extractReviewsOnPage(page: Page): Promise<ScrapedBookingReview[]>
 async function firstReviewFingerprint(page: Page): Promise<string> {
   const card = page.locator("[data-testid='review-card']").first();
   if ((await card.count()) === 0) return '';
-  const score = safeText(
-    await card.locator("[data-testid='review-score']").first().textContent().catch(() => ''),
-  );
-  const name = safeText(
-    await card
-      .locator("[data-testid='review-avatar']")
-      .first()
-      .textContent()
-      .catch(() => ''),
-  );
-  const date = safeText(
-    await card
-      .locator("[data-testid='review-date'], [data-testid='review-stay-date']")
-      .first()
-      .textContent()
-      .catch(() => ''),
+  const score = await quickText(card.locator("[data-testid='review-score']"));
+  const name = await quickText(card.locator("[data-testid='review-avatar']"));
+  const date = await quickText(
+    card.locator("[data-testid='review-date'], [data-testid='review-stay-date']"),
   );
   return `${score}|${name}|${date}`.slice(0, 200);
 }
 
-async function waitForReviewsChanged(page: Page, before: string, timeoutMs = 12_000): Promise<boolean> {
+async function waitForReviewsChanged(page: Page, before: string, timeoutMs = 5_000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(300);
     const now = await firstReviewFingerprint(page);
     if (now && now !== before) return true;
   }
@@ -632,140 +587,58 @@ async function tryClickLocator(loc: Locator): Promise<boolean> {
 }
 
 /**
- * Advance Booking review pagination. Booking rotates hashed class names often,
- * so we try several strategies and verify the first review card actually changed.
+ * Advance Booking review pagination.
+ * de-DE uses aria-label="Seite N"; verify the first card fingerprint actually changes.
  */
 async function clickNextPageNumber(page: Page, logger?: Logger): Promise<boolean> {
-  // Ensure pager is in view (often below the fold)
-  const pager = page
-    .locator(
-      "[data-testid='pagination'], nav[aria-label*='agination' i], nav[aria-label*='Seiten' i], ol:has(button[aria-current='page']), ol:has(button[aria-label])",
-    )
-    .first();
+  const pager = page.locator("ol:has(button[aria-current='page'])").first();
   if ((await pager.count()) > 0) {
-    await pager.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => undefined);
-    await page.waitForTimeout(300);
+    await pager.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => undefined);
   }
 
   const before = await firstReviewFingerprint(page);
   const currentNum = await readCurrentPageNumber(page);
   const nextNum = currentNum != null ? currentNum + 1 : null;
 
-  const numberSelectors =
-    nextNum == null
-      ? []
-      : [
-          // de-DE: aria-label="Seite 2"  |  en: "Page 2" / " 2"
-          `ol button[aria-label='Seite ${nextNum}']`,
-          `ol button[aria-label='Page ${nextNum}']`,
-          `ol button[aria-label=' ${nextNum}']`,
-          `ol button[aria-label='${nextNum}']`,
-          `button[aria-label='Seite ${nextNum}']`,
-          `button[aria-label='Page ${nextNum}']`,
-          `button[aria-label=' ${nextNum}']`,
-          `button[aria-label='${nextNum}']`,
-          `[data-testid='pagination'] button[aria-label='Seite ${nextNum}']`,
-          `[data-testid='pagination'] button[aria-label='Page ${nextNum}']`,
-          `a[data-page-number='${nextNum}']`,
-          `button[data-page-number='${nextNum}']`,
-          `li[data-page-number='${nextNum}'] button`,
-          `li[data-page-number='${nextNum}'] a`,
-          `ol button:text-is("${nextNum}")`,
-          `[data-testid='pagination'] button:text-is("${nextNum}")`,
-          `nav button:text-is("${nextNum}")`,
-        ];
-
-  const nextLabelSelectors = [
-    "button[aria-label='Next page']",
-    "button[aria-label='Nächste Seite']",
-    "button[aria-label='Next']",
-    "a[aria-label='Next page']",
-    "a[aria-label='Nächste Seite']",
-    "button[aria-label*='Next page' i]",
-    "button[aria-label*='Nächste Seite' i]",
-    "button[aria-label*='Go to next' i]",
-    "a.pagenext",
-    "button.pagenext",
-    "[data-testid='pagination'] button[aria-label*='ext' i]",
-    "[data-testid='pagination'] button[aria-label*='ächste' i]",
-  ];
-
-  const strategies: Array<{ name: string; run: () => Promise<boolean> }> = [];
-
-  if (nextNum != null) {
-    strategies.push({
-      name: `role:button:Seite ${nextNum}`,
-      run: async () =>
-        tryClickLocator(page.getByRole('button', { name: new RegExp(`Seite\\s+${nextNum}\\b`, 'i') })),
-    });
-    strategies.push({
-      name: `role:button:Page ${nextNum}`,
-      run: async () =>
-        tryClickLocator(page.getByRole('button', { name: new RegExp(`Page\\s+${nextNum}\\b`, 'i') })),
-    });
-    strategies.push({
-      name: `role:button:${nextNum}`,
-      run: async () =>
-        tryClickLocator(page.getByRole('button', { name: new RegExp(`^\\s*${nextNum}\\s*$`) })),
-    });
-    strategies.push({
-      name: `role:link:${nextNum}`,
-      run: async () =>
-        tryClickLocator(page.getByRole('link', { name: new RegExp(`^\\s*${nextNum}\\s*$`) })),
-    });
-  }
-
-  for (const sel of numberSelectors) {
-    strategies.push({
-      name: `num:${sel.slice(0, 60)}`,
-      run: async () => tryClickLocator(page.locator(sel)),
-    });
-  }
-
-  strategies.push({
-    name: 'role:next-de',
-    run: async () => tryClickLocator(page.getByRole('button', { name: /nächste/i }).last()),
-  });
-  strategies.push({
-    name: 'role:next-en',
-    run: async () => tryClickLocator(page.getByRole('button', { name: /next/i }).last()),
-  });
-
-  for (const sel of nextLabelSelectors) {
-    strategies.push({
-      name: `next:${sel.slice(0, 60)}`,
-      run: async () => tryClickLocator(page.locator(sel).last()),
-    });
-  }
-
-  // Chevron / arrow icon buttons near pagination (last enabled control)
-  strategies.push({
-    name: 'pagination-last-enabled',
-    run: async () => {
-      const root = page
-        .locator(
-          "[data-testid='pagination'], nav[aria-label*='agination' i], nav[aria-label*='Seiten' i], ol",
-        )
-        .last();
-      if ((await root.count()) === 0) return false;
-      const buttons = root.locator('button:not([disabled]):not([aria-disabled="true"])');
-      const n = await buttons.count();
-      if (n < 2) return false;
-      return tryClickLocator(buttons.nth(n - 1));
-    },
-  });
-
-  for (const s of strategies) {
-    const clicked = await s.run();
-    if (!clicked) continue;
-    await page.waitForTimeout(800);
-    const changed = await waitForReviewsChanged(page, before);
+  const tryAndVerify = async (name: string, loc: Locator): Promise<boolean> => {
+    const clicked = await tryClickLocator(loc);
+    if (!clicked) return false;
+    await page.waitForTimeout(600);
+    const changed = await waitForReviewsChanged(page, before, 4_000);
     if (changed) {
-      logger?.log(`Pagination OK via ${s.name} (page ${currentNum ?? '?'} → ${nextNum ?? '?'})`);
+      logger?.log(`Pagination OK via ${name} (page ${currentNum ?? '?'} → ${nextNum ?? '?'})`);
       await page.waitForTimeout(DELAY_BETWEEN_PAGES_MS);
       return true;
     }
-    logger?.warn(`Pagination click (${s.name}) did not change reviews — trying next strategy`);
+    logger?.warn(`Pagination click (${name}) did not change reviews`);
+    return false;
+  };
+
+  if (nextNum != null) {
+    const preferred = [
+      { name: `Seite ${nextNum}`, loc: page.locator(`ol button[aria-label='Seite ${nextNum}']`) },
+      { name: `Page ${nextNum}`, loc: page.locator(`ol button[aria-label='Page ${nextNum}']`) },
+      { name: `aria ${nextNum}`, loc: page.locator(`ol button[aria-label='${nextNum}']`) },
+      { name: `text ${nextNum}`, loc: page.locator(`ol button:text-is("${nextNum}")`) },
+      {
+        name: `role Seite ${nextNum}`,
+        loc: page.getByRole('button', { name: new RegExp(`Seite\\s+${nextNum}\\b`, 'i') }),
+      },
+    ];
+    for (const p of preferred) {
+      if (await tryAndVerify(p.name, p.loc)) return true;
+    }
+  }
+
+  // Fallback: next chevron / next page (only inside the review pager ol)
+  const fallbacks = [
+    {
+      name: 'Nächste Seite',
+      loc: page.locator("ol button[aria-label='Nächste Seite'], ol button[aria-label='Next page']"),
+    },
+  ];
+  for (const f of fallbacks) {
+    if (await tryAndVerify(f.name, f.loc)) return true;
   }
 
   logger?.warn(
@@ -818,6 +691,7 @@ export async function scrapeBookingReviews(opts: {
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       });
       const page = await context.newPage();
+      page.setDefaultTimeout(8_000);
       const collected = new Map<string, ScrapedBookingReview>();
       let pagesFetched = 0;
       let stoppedReason = 'completed';
@@ -863,6 +737,7 @@ export async function scrapeBookingReviews(opts: {
 
         for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
           pagesFetched++;
+          await progress(`parsing page ${pagesFetched}…`, pagesFetched, collected.size);
           const pageReviews = await extractReviewsOnPage(page);
           let newOnPage = 0;
           for (const r of pageReviews) {
