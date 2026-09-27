@@ -8,6 +8,7 @@ import { MoveFolioChargeDto } from './dto/move-folio-charge.dto';
 import { ReservationsAnalyticsService } from './reservations-analytics.service';
 import { ReservationsService } from './reservations.service';
 import { AcceptRoomSuggestionDto } from './dto/accept-room-suggestion.dto';
+import { ShiftRoomSuggestionDto } from './dto/shift-room-suggestion.dto';
 import { RoomSuggestionService } from './room-suggestion.service';
 
 @Controller('reservations')
@@ -131,6 +132,17 @@ export class ReservationsController {
     @Query('hotelId') hotelId?: string,
   ) {
     return this.roomSuggestions.accept(reservationId, dto.roomNumber, hotelId);
+  }
+
+  @Post(':reservationId/room-suggestion/shift')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_READ)
+  shiftRoomSuggestion(
+    @Param('reservationId') reservationId: string,
+    @Body() dto: ShiftRoomSuggestionDto,
+    @Query('hotelId') hotelId?: string,
+  ) {
+    return this.roomSuggestions.shift(reservationId, dto.direction, hotelId);
   }
 
   @Post(':reservationId/room-suggestion/arriving-now')

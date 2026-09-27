@@ -213,6 +213,8 @@ const uk: ExtensionMessages = {
     edit: 'Інша пропозиція',
     higher: 'Вище',
     lower: 'Нижче',
+    noHigher: 'Немає номера вище',
+    noLower: 'Немає номера нижче',
     extraBed: 'З додатковим ліжком',
     applied: 'Номер {{room}} застосовано',
     appliedNoField: 'Пропозиція {{room}} (поле не знайдено)',

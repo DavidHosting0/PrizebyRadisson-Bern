@@ -213,6 +213,8 @@ const de: ExtensionMessages = {
     edit: 'Anderen Vorschlag',
     higher: 'Weiter oben',
     lower: 'Weiter unten',
+    noHigher: 'Kein Zimmer weiter oben',
+    noLower: 'Kein Zimmer weiter unten',
     extraBed: 'Mit Extra-Bett',
     applied: 'Zimmer {{room}} in EMMA zugewiesen',
     appliedNoField: 'Zimmer {{room}} zugewiesen',

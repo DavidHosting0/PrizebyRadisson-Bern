@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ReviewJobStatus, ReviewSource, ReviewAlertType, ReviewPriority } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { scrapeBookingReviews, buildReviewSoftKey, dedupeReviewBlob } from './booking.importer';
+import { scrapeBookingReviews, buildReviewSoftKey, dedupeReviewBlob, type ScrapedBookingReview } from './booking.importer';
 import { ReviewAnalyzerSettingsService } from './review-analyzer-settings.service';
 import { ReviewAiService } from './review-ai.service';
 import { ReviewQueueService } from './review-queue.service';
@@ -152,6 +152,7 @@ export class ReviewImportService {
     let skippedCount = 0;
     const settings = await this.settingsSvc.get();
     const cutoff = monthsAgoUtc(settings.historicalMonths);
+    const seenInBatch = new Set<string>();
 
     try {
       await this.prisma.reviewImportJob.update({
@@ -179,149 +180,33 @@ export class ReviewImportService {
         onProgress: async (p) => {
           await this.prisma.reviewImportJob.update({
             where: { id: jobId },
-            data: { errorMessage: p.message },
+            data: {
+              errorMessage: p.message,
+              importedCount,
+              skippedCount,
+            },
+          });
+        },
+        onPageReviews: async (reviews, meta) => {
+          for (const r of reviews) {
+            const result = await this.upsertScrapedReview(r, settings.hotelKey, seenInBatch);
+            if (result === 'skipped') skippedCount++;
+            else {
+              importedCount++;
+              knownIds.add(r.externalId);
+              await this.queue.enqueueAnalyze(result);
+            }
+          }
+          await this.prisma.reviewImportJob.update({
+            where: { id: jobId },
+            data: {
+              importedCount,
+              skippedCount,
+              errorMessage: `page ${meta.page}: saved so far +${importedCount} / skipped ${skippedCount} (scraped ${meta.totalCollected})`,
+            },
           });
         },
       });
-
-      await this.prisma.reviewImportJob.update({
-        where: { id: jobId },
-        data: {
-          errorMessage: `saving ${scraped.reviews.length} reviews (stopped: ${scraped.stoppedReason})…`,
-        },
-      });
-
-      const seenInBatch = new Set<string>();
-      for (const r of scraped.reviews) {
-        const soft = buildReviewSoftKey(r);
-        if (seenInBatch.has(r.externalId) || seenInBatch.has(`soft:${soft}`)) {
-          skippedCount++;
-          continue;
-        }
-        seenInBatch.add(r.externalId);
-        seenInBatch.add(`soft:${soft}`);
-
-        const byExternal = await this.prisma.guestReview.findUnique({
-          where: {
-            source_externalId: { source: ReviewSource.BOOKING, externalId: r.externalId },
-          },
-        });
-
-        // Near-duplicate: same guest + day + score (old unstable externalIds)
-        let existing = byExternal;
-        if (!existing) {
-          const dayStart = new Date(r.reviewedAt);
-          dayStart.setUTCHours(0, 0, 0, 0);
-          const dayEnd = new Date(dayStart);
-          dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-          const candidates = await this.prisma.guestReview.findMany({
-            where: {
-              source: ReviewSource.BOOKING,
-              hotelKey: settings.hotelKey,
-              reviewedAt: { gte: dayStart, lt: dayEnd },
-              score: { gte: r.score - 0.05, lte: r.score + 0.05 },
-              ...(r.guestName
-                ? { guestName: { equals: r.guestName, mode: 'insensitive' } }
-                : {}),
-            },
-            take: 10,
-          });
-          existing =
-            candidates.find((c) => buildReviewSoftKey(c) === soft) ??
-            candidates.find((c) => {
-              const a = dedupeReviewBlob(c.positiveText) ?? '';
-              const b = dedupeReviewBlob(r.positiveText) ?? '';
-              const cNeg = dedupeReviewBlob(c.negativeText) ?? '';
-              const rNeg = dedupeReviewBlob(r.negativeText) ?? '';
-              return (a && a === b) || (cNeg && cNeg === rNeg) || c.fullText === r.fullText;
-            }) ??
-            null;
-        }
-
-        if (existing && existing.contentHash === r.contentHash) {
-          skippedCount++;
-          continue;
-        }
-
-        let reviewId: string;
-        if (existing) {
-          let nextExternalId = existing.externalId;
-          if (existing.externalId !== r.externalId) {
-            const taken = await this.prisma.guestReview.findUnique({
-              where: {
-                source_externalId: {
-                  source: ReviewSource.BOOKING,
-                  externalId: r.externalId,
-                },
-              },
-            });
-            if (!taken) nextExternalId = r.externalId;
-          }
-          const updated = await this.prisma.guestReview.update({
-            where: { id: existing.id },
-            data: {
-              externalId: nextExternalId,
-              reviewedAt: r.reviewedAt,
-              stayDate: r.stayDate,
-              score: r.score,
-              positiveText: r.positiveText,
-              negativeText: r.negativeText,
-              fullText: r.fullText,
-              language: r.language,
-              guestName: r.guestName,
-              guestCountry: r.guestCountry,
-              travelType: r.travelType,
-              stayNights: r.stayNights,
-              roomCategory: r.roomCategory,
-              contentHash: r.contentHash,
-              rawPayload: r.rawPayload as object,
-            },
-          });
-          reviewId = updated.id;
-          await this.prisma.guestReviewCategoryScore.deleteMany({ where: { reviewId } });
-          if (r.categoryScores.length) {
-            await this.prisma.guestReviewCategoryScore.createMany({
-              data: r.categoryScores.map((c) => ({
-                reviewId,
-                category: c.category,
-                score: c.score,
-              })),
-            });
-          }
-        } else {
-          const created = await this.prisma.guestReview.create({
-            data: {
-              source: ReviewSource.BOOKING,
-              externalId: r.externalId,
-              hotelKey: settings.hotelKey,
-              reviewedAt: r.reviewedAt,
-              stayDate: r.stayDate,
-              score: r.score,
-              positiveText: r.positiveText,
-              negativeText: r.negativeText,
-              fullText: r.fullText,
-              language: r.language,
-              guestName: r.guestName,
-              guestCountry: r.guestCountry,
-              travelType: r.travelType,
-              stayNights: r.stayNights,
-              roomCategory: r.roomCategory,
-              contentHash: r.contentHash,
-              rawPayload: r.rawPayload as object,
-              categoryScores: {
-                create: r.categoryScores.map((c) => ({
-                  category: c.category,
-                  score: c.score,
-                })),
-              },
-            },
-          });
-          reviewId = created.id;
-        }
-
-        importedCount++;
-        await this.queue.enqueueAnalyze(reviewId);
-      }
 
       const status =
         importedCount === 0 && skippedCount === 0
@@ -335,7 +220,7 @@ export class ReviewImportService {
           finishedAt: new Date(),
           importedCount,
           skippedCount,
-          errorMessage: `done: ${scraped.stoppedReason}; pages=${scraped.pagesFetched}; scraped=${scraped.reviews.length}`,
+          errorMessage: `done: ${scraped.stoppedReason}; pages=${scraped.pagesFetched}; scraped=${scraped.reviews.length}; saved=+${importedCount}/skip ${skippedCount}`,
         },
       });
 
@@ -343,7 +228,6 @@ export class ReviewImportService {
         `Import ${mode}: imported=${importedCount} skipped=${skippedCount} status=${status}`,
       );
 
-      // Recompute metrics after successful import (best-effort)
       if (status !== ReviewJobStatus.EMPTY) {
         await this.analytics.recomputeMetrics(settings.hotelKey).catch((e) => {
           this.logger.warn(`Post-import recompute failed: ${(e as Error).message}`);
@@ -359,10 +243,13 @@ export class ReviewImportService {
           finishedAt: new Date(),
           importedCount,
           skippedCount,
-          errorMessage: message,
+          errorMessage: `${message} (partial save +${importedCount}/skip ${skippedCount})`,
           retryCount: { increment: 1 },
         },
       });
+      if (importedCount > 0) {
+        await this.analytics.recomputeMetrics(settings.hotelKey).catch(() => undefined);
+      }
       if (settings.alertEnabled) {
         await this.prisma.reviewAlert.create({
           data: {
@@ -371,7 +258,7 @@ export class ReviewImportService {
             severity: ReviewPriority.HIGH,
             title: 'Review import failed',
             message,
-            payload: { jobId },
+            payload: { jobId, importedCount, skippedCount },
           },
         });
       }
@@ -379,6 +266,135 @@ export class ReviewImportService {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * Upsert one scraped review. Returns review id if created/updated, or 'skipped'.
+   */
+  private async upsertScrapedReview(
+    r: ScrapedBookingReview,
+    hotelKey: string,
+    seenInBatch: Set<string>,
+  ): Promise<string | 'skipped'> {
+    const soft = buildReviewSoftKey(r);
+    if (seenInBatch.has(r.externalId) || seenInBatch.has(`soft:${soft}`)) {
+      return 'skipped';
+    }
+    seenInBatch.add(r.externalId);
+    seenInBatch.add(`soft:${soft}`);
+
+    const byExternal = await this.prisma.guestReview.findUnique({
+      where: {
+        source_externalId: { source: ReviewSource.BOOKING, externalId: r.externalId },
+      },
+    });
+
+    let existing = byExternal;
+    if (!existing) {
+      const dayStart = new Date(r.reviewedAt);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+      const candidates = await this.prisma.guestReview.findMany({
+        where: {
+          source: ReviewSource.BOOKING,
+          hotelKey,
+          reviewedAt: { gte: dayStart, lt: dayEnd },
+          score: { gte: r.score - 0.05, lte: r.score + 0.05 },
+          ...(r.guestName ? { guestName: { equals: r.guestName, mode: 'insensitive' as const } } : {}),
+        },
+        take: 10,
+      });
+      existing =
+        candidates.find((c) => buildReviewSoftKey(c) === soft) ??
+        candidates.find((c) => {
+          const a = dedupeReviewBlob(c.positiveText) ?? '';
+          const b = dedupeReviewBlob(r.positiveText) ?? '';
+          const cNeg = dedupeReviewBlob(c.negativeText) ?? '';
+          const rNeg = dedupeReviewBlob(r.negativeText) ?? '';
+          return (a && a === b) || (cNeg && cNeg === rNeg) || c.fullText === r.fullText;
+        }) ??
+        null;
+    }
+
+    if (existing && existing.contentHash === r.contentHash) {
+      return 'skipped';
+    }
+
+    if (existing) {
+      let nextExternalId = existing.externalId;
+      if (existing.externalId !== r.externalId) {
+        const taken = await this.prisma.guestReview.findUnique({
+          where: {
+            source_externalId: {
+              source: ReviewSource.BOOKING,
+              externalId: r.externalId,
+            },
+          },
+        });
+        if (!taken) nextExternalId = r.externalId;
+      }
+      const updated = await this.prisma.guestReview.update({
+        where: { id: existing.id },
+        data: {
+          externalId: nextExternalId,
+          reviewedAt: r.reviewedAt,
+          stayDate: r.stayDate,
+          score: r.score,
+          positiveText: r.positiveText,
+          negativeText: r.negativeText,
+          fullText: r.fullText,
+          language: r.language,
+          guestName: r.guestName,
+          guestCountry: r.guestCountry,
+          travelType: r.travelType,
+          stayNights: r.stayNights,
+          roomCategory: r.roomCategory,
+          contentHash: r.contentHash,
+          rawPayload: r.rawPayload as object,
+        },
+      });
+      await this.prisma.guestReviewCategoryScore.deleteMany({ where: { reviewId: updated.id } });
+      if (r.categoryScores.length) {
+        await this.prisma.guestReviewCategoryScore.createMany({
+          data: r.categoryScores.map((c) => ({
+            reviewId: updated.id,
+            category: c.category,
+            score: c.score,
+          })),
+        });
+      }
+      return updated.id;
+    }
+
+    const created = await this.prisma.guestReview.create({
+      data: {
+        source: ReviewSource.BOOKING,
+        externalId: r.externalId,
+        hotelKey,
+        reviewedAt: r.reviewedAt,
+        stayDate: r.stayDate,
+        score: r.score,
+        positiveText: r.positiveText,
+        negativeText: r.negativeText,
+        fullText: r.fullText,
+        language: r.language,
+        guestName: r.guestName,
+        guestCountry: r.guestCountry,
+        travelType: r.travelType,
+        stayNights: r.stayNights,
+        roomCategory: r.roomCategory,
+        contentHash: r.contentHash,
+        rawPayload: r.rawPayload as object,
+        categoryScores: {
+          create: r.categoryScores.map((c) => ({
+            category: c.category,
+            score: c.score,
+          })),
+        },
+      },
+    });
+    return created.id;
   }
 
   async analyzeOne(reviewId: string) {

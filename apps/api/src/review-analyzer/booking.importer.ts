@@ -654,6 +654,11 @@ export async function scrapeBookingReviews(opts: {
   headless?: boolean;
   incrementalStopIds?: Set<string>;
   onProgress?: (p: BookingScrapeProgress) => void | Promise<void>;
+  /** Called after each page with newly seen reviews (already filtered to cutoff window). */
+  onPageReviews?: (
+    reviews: ScrapedBookingReview[],
+    meta: { page: number; totalCollected: number },
+  ) => void | Promise<void>;
 }): Promise<BookingImportResult> {
   const logger = new Logger('BookingImporter');
   const progress = async (message: string, page = 0, collected = 0) => {
@@ -740,14 +745,28 @@ export async function scrapeBookingReviews(opts: {
           await progress(`parsing page ${pagesFetched}…`, pagesFetched, collected.size);
           const pageReviews = await extractReviewsOnPage(page);
           let newOnPage = 0;
+          const freshOnPage: ScrapedBookingReview[] = [];
           for (const r of pageReviews) {
             if (!collected.has(r.externalId)) {
               collected.set(r.externalId, r);
               newOnPage++;
+              if (r.reviewedAt >= opts.cutoffDate) freshOnPage.push(r);
             }
           }
           const msg = `page ${pagesFetched}: +${newOnPage} new / ${pageReviews.length} on page (total ${collected.size})`;
           await progress(msg, pagesFetched, collected.size);
+
+          if (freshOnPage.length && opts.onPageReviews) {
+            await progress(
+              `saving ${freshOnPage.length} reviews from page ${pagesFetched}…`,
+              pagesFetched,
+              collected.size,
+            );
+            await opts.onPageReviews(freshOnPage, {
+              page: pagesFetched,
+              totalCollected: collected.size,
+            });
+          }
 
           const list = [...collected.values()].sort(
             (a, b) => b.reviewedAt.getTime() - a.reviewedAt.getTime(),

@@ -1,4 +1,7 @@
 import { floorFromRoomNumber } from './room-layout';
+import { isEastAsianName } from './east-asian-name';
+
+export { isEastAsianName };
 
 export const CORNER_ROOM_NUMBERS = [
   '29',
@@ -129,15 +132,28 @@ export function isThreePersonRoom(roomNumber: string): boolean {
 export function isChinaJapanOrKorea(value: string | null | undefined): boolean {
   if (!value) return false;
   const n = value.trim().toUpperCase().replace(/\s+/g, ' ');
-  if (['CN', 'CHN', 'JP', 'JPN', 'KR', 'KOR', 'CHINA', 'JAPAN', 'KOREA', 'SOUTH KOREA', 'SÜDKOREA'].includes(n)) {
+  if (
+    [
+      'CN', 'CHN', 'PRC', 'JP', 'JPN', 'KR', 'KOR', 'TW', 'TWN', 'HK', 'HKG', 'MO', 'MAC',
+      'CHINA', 'JAPAN', 'KOREA', 'SOUTH KOREA', 'NORTH KOREA', 'SÜDKOREA', 'TAIWAN',
+      'HONG KONG', 'HONGKONG', 'MACAU', 'MACAO', 'CHINESE', 'JAPANESE', 'KOREAN',
+    ].includes(n)
+  ) {
     return true;
   }
   return (
-    n.includes('SOUTH KOREA') ||
-    n.includes('REPUBLIC OF KOREA') ||
+    n.includes('KOREA') ||
     n.includes('SÜDKOREA') ||
-    n.includes('KOREA, REPUBLIC')
+    n.includes('HONG KONG') ||
+    n.includes('HONGKONG') ||
+    n.includes('TAIWAN') ||
+    n.includes('CHINA') ||
+    n.includes('JAPAN')
   );
+}
+
+export function guestAvoidsBasement(guest: Pick<RoomSuggestGuest, 'country' | 'guestName'>): boolean {
+  return isChinaJapanOrKorea(guest.country) || isEastAsianName(guest.guestName);
 }
 
 export function guestIsVip(guest: Pick<RoomSuggestGuest, 'vipDesc' | 'tier'>): boolean {
@@ -212,8 +228,12 @@ function usable(guestId: string, room: Candidate, input: RoomSuggestInput, taken
   return true;
 }
 
+function wheelchairEligible(guest: RoomSuggestGuest): boolean {
+  return (guest.numPax ?? 0) === 1 && (guest.nights ?? 1) <= 3;
+}
+
 function excludeBasement(guest: RoomSuggestGuest): boolean {
-  if (isChinaJapanOrKorea(guest.country)) return true;
+  if (guestAvoidsBasement(guest)) return true;
   const nights = guest.nights ?? 1;
   if (nights !== 1) return true;
   if (!guestIsVip(guest) && (guestIsPremium(guest) || guestIsRepeat(guest))) return true;
@@ -222,7 +242,7 @@ function excludeBasement(guest: RoomSuggestGuest): boolean {
 
 function applyGuestFilters(guest: RoomSuggestGuest, rooms: Candidate[]): Candidate[] {
   let next = rooms;
-  if ((guest.numPax ?? 0) !== 1) {
+  if (!wheelchairEligible(guest)) {
     next = next.filter((r) => !isWheelchairRoom(r.roomNumber));
   }
   if (excludeBasement(guest)) {
@@ -232,7 +252,7 @@ function applyGuestFilters(guest: RoomSuggestGuest, rooms: Candidate[]): Candida
     const larger = next.filter((r) => isThreePersonRoom(r.roomNumber));
     if (larger.length) next = larger;
   }
-  if ((guest.numPax ?? 0) === 1) {
+  if (wheelchairEligible(guest)) {
     const normal = next.filter((r) => !isWheelchairRoom(r.roomNumber));
     if (normal.length) next = normal;
   }
@@ -273,8 +293,8 @@ function viewNumberScore(guest: RoomSuggestGuest, roomNumber: string): number {
   return n;
 }
 
-function pickFromPool(guest: RoomSuggestGuest, pool: Candidate[]): Candidate | null {
-  const filtered = applyGuestFilters(guest, pool);
+function pickFromPool(guest: RoomSuggestGuest, pool: Candidate[], taken: Set<string>): Candidate | null {
+  const filtered = applyGuestFilters(guest, pool).filter((room) => !taken.has(room.roomNumber));
   if (!filtered.length) return null;
   const ranked = [...filtered].sort((a, b) => {
     const orderA = floorPreference(guest, a.category);
@@ -315,7 +335,7 @@ function profileReasons(guest: RoomSuggestGuest): RoomSuggestReason[] {
   else reasons.push('long_stay');
   if (guestIsRepeat(guest) && guestIsVip(guest)) reasons.push('repeat');
   if (guestIsRepeat(guest) && guestIsPremium(guest) && !guestIsVip(guest)) reasons.push('repeat');
-  if (isChinaJapanOrKorea(guest.country)) reasons.push('no_basement');
+  if (guestAvoidsBasement(guest)) reasons.push('no_basement');
   return reasons;
 }
 
@@ -403,7 +423,7 @@ function chooseForGuest(
         merged.push(...poolForCategory('view', guest, rooms, input, taken, readyOnly));
       }
       pool = merged;
-      if (!pool.length && (guest.numPax ?? 0) === 1) {
+      if (!pool.length && wheelchairEligible(guest)) {
         pool = poolForCategory('standard', guest, rooms, input, taken, readyOnly).filter((room) =>
           isWheelchairRoom(room.roomNumber),
         );
@@ -415,7 +435,7 @@ function chooseForGuest(
     pool = input.mode === 'now' ? readyBooked : inBooked;
   }
 
-  const room = pickFromPool(guest, pool);
+  const room = pickFromPool(guest, pool, taken);
   if (!room) return null;
   if ((guest.numPax ?? 0) === 3 && isThreePersonRoom(room.roomNumber)) reasons.push('three_pax');
   if (!room.readyNow) reasons.push('not_ready');
@@ -450,17 +470,22 @@ function runAssignments(input: RoomSuggestInput): RoomSuggestion[] {
 
   const placed = new Set<string>();
   const taken = new Set<string>();
+  for (const room of Object.values(input.heldRooms ?? {})) {
+    taken.add(canonicalRoom(room));
+  }
   for (const guest of guests) {
     if (!guest.assignedRoom) continue;
     placed.add(guest.reservationId);
     taken.add(guest.assignedRoom);
   }
   const results: RoomSuggestion[] = [];
+  const usedRooms = new Set<string>();
   for (const guest of queue) {
     const choice = chooseForGuest(guest, guests, rooms, input, placed, taken);
-    if (!choice) continue;
+    if (!choice || taken.has(choice.room.roomNumber) || usedRooms.has(choice.room.roomNumber)) continue;
     placed.add(guest.reservationId);
     taken.add(choice.room.roomNumber);
+    usedRooms.add(choice.room.roomNumber);
     results.push({
       reservationId: guest.reservationId,
       roomNumber: choice.room.roomNumber,
@@ -472,4 +497,64 @@ function runAssignments(input: RoomSuggestInput): RoomSuggestion[] {
     });
   }
   return results;
+}
+
+export function suggestAdjacentRoom(
+  input: RoomSuggestInput,
+  direction: 'up' | 'down',
+): RoomSuggestion | null {
+  const guest = input.guests.find((row) => row.reservationId === input.reservationId);
+  if (!guest) return null;
+  const plan = runAssignments(input);
+  const ownHeld = input.heldRooms?.[input.reservationId];
+  const mine = plan.find((row) => row.reservationId === input.reservationId);
+  const currentNumber = canonicalRoom(ownHeld || mine?.roomNumber || '');
+  if (!currentNumber) return null;
+
+  const taken = new Set<string>();
+  for (const row of plan) {
+    if (row.reservationId !== input.reservationId) taken.add(row.roomNumber);
+  }
+  for (const other of input.guests) {
+    if (other.reservationId === input.reservationId || !other.assignedRoom) continue;
+    taken.add(canonicalRoom(other.assignedRoom));
+  }
+  for (const [id, room] of Object.entries(input.heldRooms ?? {})) {
+    if (id === input.reservationId) continue;
+    taken.add(canonicalRoom(room));
+  }
+
+  const decorated = input.rooms.map(decorate).filter((room): room is Candidate => room != null);
+  const current = decorated.find((room) => room.roomNumber === currentNumber);
+  const pool = applyGuestFilters(
+    guest,
+    decorated.filter(
+      (room) => room.roomNumber !== currentNumber && stayAvailable(guest.reservationId, room, input, taken),
+    ),
+  );
+  if (!pool.length || !current) return null;
+
+  const rank = (room: Candidate) => room.floor * 1000 + parseInt(room.roomNumber, 10);
+  const currentRank = rank(current);
+  const side = [...pool]
+    .filter((room) => (direction === 'up' ? rank(room) > currentRank : rank(room) < currentRank))
+    .sort((a, b) => rank(a) - rank(b));
+  const sameCategory = side.filter((room) => room.category === current.category);
+  const pickFrom = sameCategory.length ? sameCategory : side;
+  const room = direction === 'up' ? pickFrom[0] : pickFrom[pickFrom.length - 1];
+  if (!room) return null;
+
+  const reasons = profileReasons(guest);
+  if ((guest.numPax ?? 0) === 3 && isThreePersonRoom(room.roomNumber)) reasons.push('three_pax');
+  if (!room.readyNow) reasons.push('not_ready');
+  if (isWheelchairRoom(room.roomNumber)) reasons.push('wheelchair');
+  return {
+    reservationId: guest.reservationId,
+    roomNumber: room.roomNumber,
+    floor: room.floor,
+    category: room.category,
+    bookedCategory: bookedRoomCategory(guest.roomType),
+    readyNow: room.readyNow,
+    reasons,
+  };
 }

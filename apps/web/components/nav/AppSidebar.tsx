@@ -7,9 +7,18 @@ import { useTranslations } from 'next-intl';
 import type { SidebarNavGroup } from '@/lib/nav-groups';
 import { IconChevronLeft, IconChevronRight } from '@/components/nav/nav-icons';
 
-function isNavActive(path: string, href: string) {
+function isNavActive(path: string, href: string, allHrefs: string[]) {
   if (href === '/r' || href === '/s' || href === '/a') return path === href;
-  return path === href || path.startsWith(`${href}/`);
+
+  // Prefer the most specific matching item so a parent like /r/review-analyzer
+  // is not highlighted when a child (e.g. /r/review-analyzer/trends) is open.
+  const matches = allHrefs.filter((h) => {
+    if (h === '/r' || h === '/s' || h === '/a') return path === h;
+    return path === h || path.startsWith(`${h}/`);
+  });
+  if (matches.length === 0) return false;
+  const best = matches.reduce((a, b) => (b.length > a.length ? b : a));
+  return best === href;
 }
 
 export function AppSidebar({
@@ -41,7 +50,9 @@ export function AppSidebar({
       </div>
 
       <nav className="sidebar-scroll flex flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden px-2 py-4">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          const groupHrefs = group.items.map((i) => i.href);
+          return (
           <section key={group.id}>
             {!collapsed && (
               <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-muted">
@@ -50,7 +61,7 @@ export function AppSidebar({
             )}
             <ul className="flex flex-col gap-0.5">
               {group.items.map((item) => {
-                const active = isNavActive(path, item.href);
+                const active = isNavActive(path, item.href, groupHrefs);
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>
@@ -89,7 +100,8 @@ export function AppSidebar({
               })}
             </ul>
           </section>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="shrink-0 border-t border-sidebar-border">

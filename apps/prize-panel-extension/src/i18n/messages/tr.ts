@@ -213,6 +213,8 @@ const tr: ExtensionMessages = {
     edit: 'Başka öneri',
     higher: 'Daha yukarı',
     lower: 'Daha aşağı',
+    noHigher: 'Daha yukarı oda yok',
+    noLower: 'Daha aşağı oda yok',
     extraBed: 'Ekstra yataklı',
     applied: 'Oda {{room}} uygulandı',
     appliedNoField: 'Öneri {{room}} (alan bulunamadı)',

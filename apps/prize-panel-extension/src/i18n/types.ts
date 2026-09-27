@@ -219,6 +219,8 @@ export type ExtensionMessages = {
     edit: string;
     higher: string;
     lower: string;
+    noHigher: string;
+    noLower: string;
     extraBed: string;
     applied: string;
     appliedNoField: string;

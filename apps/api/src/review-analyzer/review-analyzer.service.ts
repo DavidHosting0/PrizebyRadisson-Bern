@@ -14,6 +14,11 @@ import { ReviewAnalyticsService } from './review-analytics.service';
 import { ReviewExportService } from './review-export.service';
 import { ReviewAiService } from './review-ai.service';
 import { repairStoredScore, dedupeReviewBlob, buildReviewExternalId, buildReviewSoftKey } from './booking.importer';
+import {
+  resolveReviewPeriod,
+  REVIEW_PERIOD_KEYS,
+  type ReviewPeriodKey,
+} from './review-utils';
 
 export type ReviewListQuery = {
   q?: string;
@@ -355,42 +360,244 @@ export class ReviewAnalyzerService {
     return this.analytics.overview(s.hotelKey);
   }
 
-  async daily(limit = 60) {
+  async daily(opts?: { limit?: number; from?: string; to?: string }) {
     const s = await this.settingsSvc.get();
+    const from = opts?.from ? new Date(`${opts.from.slice(0, 10)}T00:00:00.000Z`) : undefined;
+    const to = opts?.to ? new Date(`${opts.to.slice(0, 10)}T23:59:59.999Z`) : undefined;
+    const hasRange = Boolean(from || to);
     return this.prisma.dailyReviewMetric.findMany({
-      where: { hotelKey: s.hotelKey },
-      orderBy: { date: 'desc' },
-      take: limit,
+      where: {
+        hotelKey: s.hotelKey,
+        ...(hasRange
+          ? {
+              date: {
+                ...(from ? { gte: from } : {}),
+                ...(to ? { lte: to } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { date: hasRange ? 'asc' : 'desc' },
+      take: hasRange ? Math.min(opts?.limit ?? 800, 800) : (opts?.limit ?? 60),
     });
   }
 
-  async weekly(limit = 26) {
+  async weekly(opts?: { limit?: number; from?: string; to?: string }) {
     const s = await this.settingsSvc.get();
+    const from = opts?.from ? new Date(`${opts.from.slice(0, 10)}T00:00:00.000Z`) : undefined;
+    const to = opts?.to ? new Date(`${opts.to.slice(0, 10)}T23:59:59.999Z`) : undefined;
+    const hasRange = Boolean(from || to);
     return this.prisma.weeklyReviewMetric.findMany({
-      where: { hotelKey: s.hotelKey },
-      orderBy: { weekStart: 'desc' },
-      take: limit,
+      where: {
+        hotelKey: s.hotelKey,
+        ...(hasRange
+          ? {
+              weekStart: {
+                ...(from ? { gte: from } : {}),
+                ...(to ? { lte: to } : {}),
+              },
+            }
+          : {}),
+      },
+      orderBy: { weekStart: hasRange ? 'asc' : 'desc' },
+      take: hasRange ? Math.min(opts?.limit ?? 120, 120) : (opts?.limit ?? 26),
     });
   }
 
-  async monthly(limit = 24) {
+  async monthly(opts?: { limit?: number; from?: string; to?: string }) {
     const s = await this.settingsSvc.get();
-    return this.prisma.monthlyReviewMetric.findMany({
+    const hasRange = Boolean(opts?.from || opts?.to);
+    if (!hasRange) {
+      return this.prisma.monthlyReviewMetric.findMany({
+        where: { hotelKey: s.hotelKey },
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        take: opts?.limit ?? 24,
+      });
+    }
+    const rows = await this.prisma.monthlyReviewMetric.findMany({
       where: { hotelKey: s.hotelKey },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-      take: limit,
+      orderBy: [{ year: 'asc' }, { month: 'asc' }],
+      take: 120,
+    });
+    const fromY = opts?.from ? Number(opts.from.slice(0, 4)) : 0;
+    const fromM = opts?.from ? Number(opts.from.slice(5, 7)) : 1;
+    const toY = opts?.to ? Number(opts.to.slice(0, 4)) : 9999;
+    const toM = opts?.to ? Number(opts.to.slice(5, 7)) : 12;
+    return rows.filter((r) => {
+      const key = r.year * 100 + r.month;
+      return key >= fromY * 100 + fromM && key <= toY * 100 + toM;
     });
   }
 
-  async problems() {
-    return this.prisma.reviewProblemCluster.findMany({
-      orderBy: [{ mentionCount: 'desc' }],
-      include: { topics: { include: { topic: true } } },
+  async problems(periodKey: string = 'month') {
+    const key = (REVIEW_PERIOD_KEYS.includes(periodKey as ReviewPeriodKey)
+      ? periodKey
+      : 'month') as ReviewPeriodKey;
+    const range = resolveReviewPeriod(key);
+    const s = await this.settingsSvc.get();
+
+    const reviewDateFilter = (from: Date | null, to: Date) => ({
+      hotelKey: s.hotelKey,
+      ...(from ? { reviewedAt: { gte: from, lte: to } } : { reviewedAt: { lte: to } }),
     });
+
+    const loadNegativeMentions = async (from: Date | null, to: Date) =>
+      this.prisma.reviewMention.findMany({
+        where: {
+          polarity: ReviewMentionPolarity.NEGATIVE,
+          clusterId: { not: null },
+          review: reviewDateFilter(from, to),
+        },
+        select: {
+          id: true,
+          clusterId: true,
+          reviewId: true,
+          topicId: true,
+        },
+      });
+
+    // Negative reviews = sentiment NEGATIVE, or score ≤ 5, or has ≥1 negative mention
+    const loadNegativeReviewIds = async (from: Date | null, to: Date) => {
+      const rows = await this.prisma.guestReview.findMany({
+        where: {
+          ...reviewDateFilter(from, to),
+          OR: [
+            { analysis: { sentiment: ReviewSentiment.NEGATIVE } },
+            { score: { lte: 5 } },
+            { mentions: { some: { polarity: ReviewMentionPolarity.NEGATIVE } } },
+          ],
+        },
+        select: { id: true },
+      });
+      return new Set(rows.map((r) => r.id));
+    };
+
+    const [clusters, curMentions, prevMentions, negReviewIds, prevNegReviewIds] =
+      await Promise.all([
+        this.prisma.reviewProblemCluster.findMany({
+          include: { topics: { include: { topic: true } } },
+        }),
+        loadNegativeMentions(range.from, range.to),
+        range.prevFrom && range.prevTo
+          ? loadNegativeMentions(range.prevFrom, range.prevTo)
+          : Promise.resolve([] as Array<{ id: string; clusterId: string | null; reviewId: string; topicId: string }>),
+        loadNegativeReviewIds(range.from, range.to),
+        range.prevFrom && range.prevTo
+          ? loadNegativeReviewIds(range.prevFrom, range.prevTo)
+          : Promise.resolve(new Set<string>()),
+      ]);
+
+    const negTotal = negReviewIds.size || 1;
+    const prevNegTotal = prevNegReviewIds.size || 1;
+
+    const byCluster = (mentions: typeof curMentions) => {
+      const map = new Map<string, { mentionCount: number; reviewIds: Set<string> }>();
+      for (const m of mentions) {
+        if (!m.clusterId) continue;
+        if (!map.has(m.clusterId)) map.set(m.clusterId, { mentionCount: 0, reviewIds: new Set() });
+        const row = map.get(m.clusterId)!;
+        row.mentionCount++;
+        row.reviewIds.add(m.reviewId);
+      }
+      return map;
+    };
+
+    const cur = byCluster(curMentions);
+    const prev = byCluster(prevMentions);
+
+    const items = clusters
+      .map((c) => {
+        const stats = cur.get(c.id) ?? { mentionCount: 0, reviewIds: new Set<string>() };
+        const prevStats = prev.get(c.id) ?? { mentionCount: 0, reviewIds: new Set<string>() };
+        const reviewCount = stats.reviewIds.size;
+        const prevReviewCount = prevStats.reviewIds.size;
+        const shareOfNegativePct = (reviewCount / negTotal) * 100;
+        const prevShare = (prevReviewCount / prevNegTotal) * 100;
+        const trendPct =
+          range.prevFrom == null
+            ? null
+            : prevReviewCount === 0
+              ? reviewCount > 0
+                ? 100
+                : 0
+              : ((reviewCount - prevReviewCount) / prevReviewCount) * 100;
+
+        return {
+          id: c.id,
+          slug: c.slug,
+          title: c.title,
+          priority: c.priority,
+          rootCauseHypothesis: c.rootCauseHypothesis,
+          suggestedAction: c.suggestedAction,
+          topics: c.topics,
+          mentionCount: stats.mentionCount,
+          reviewCount,
+          /** % of negative reviews in the period that mention this problem */
+          shareOfNegativePct: Math.round(shareOfNegativePct * 10) / 10,
+          prevReviewCount,
+          prevShareOfNegativePct: Math.round(prevShare * 10) / 10,
+          /** % change in linked negative-review count vs previous period */
+          trendPct: trendPct == null ? null : Math.round(trendPct * 10) / 10,
+          // legacy aliases so old clients don't break
+          negativePct: Math.round(shareOfNegativePct * 10) / 10,
+        };
+      })
+      .filter((c) => c.mentionCount > 0 || key === 'all')
+      .sort((a, b) => b.reviewCount - a.reviewCount || b.mentionCount - a.mentionCount);
+
+    // When "all", include empty clusters too (already filtered only by mention when not all)
+    const allItems =
+      key === 'all'
+        ? clusters
+            .map((c) => {
+              const existing = items.find((i) => i.id === c.id);
+              if (existing) return existing;
+              return {
+                id: c.id,
+                slug: c.slug,
+                title: c.title,
+                priority: c.priority,
+                rootCauseHypothesis: c.rootCauseHypothesis,
+                suggestedAction: c.suggestedAction,
+                topics: c.topics,
+                mentionCount: 0,
+                reviewCount: 0,
+                shareOfNegativePct: 0,
+                prevReviewCount: 0,
+                prevShareOfNegativePct: 0,
+                trendPct: null as number | null,
+                negativePct: 0,
+              };
+            })
+            .sort((a, b) => b.reviewCount - a.reviewCount)
+        : items;
+
+    return {
+      period: {
+        key: range.key,
+        label: range.label,
+        from: range.from?.toISOString() ?? null,
+        to: range.to.toISOString(),
+        prevFrom: range.prevFrom?.toISOString() ?? null,
+        prevTo: range.prevTo?.toISOString() ?? null,
+      },
+      negativeReviewCount: negReviewIds.size,
+      items: allItems,
+    };
   }
 
-  async problemReviews(clusterId: string) {
-    return this.listReviews({ clusterId, take: 100 });
+  async problemReviews(clusterId: string, periodKey: string = 'month') {
+    const key = (REVIEW_PERIOD_KEYS.includes(periodKey as ReviewPeriodKey)
+      ? periodKey
+      : 'month') as ReviewPeriodKey;
+    const range = resolveReviewPeriod(key);
+    return this.listReviews({
+      clusterId,
+      polarity: ReviewMentionPolarity.NEGATIVE,
+      take: 100,
+      from: range.from?.toISOString(),
+      to: range.to.toISOString(),
+    });
   }
 
   async strengths() {
@@ -423,13 +630,14 @@ export class ReviewAnalyzerService {
     return this.listReviews({ topicId, polarity: ReviewMentionPolarity.POSITIVE, take: 100 });
   }
 
-  async trends() {
+  async trends(from?: string, to?: string) {
+    const range = from || to ? { from, to } : undefined;
     const [daily, weekly, monthly] = await Promise.all([
-      this.daily(90),
-      this.weekly(52),
-      this.monthly(36),
+      range ? this.daily({ ...range, limit: 800 }) : this.daily({ limit: 90 }).then((r) => r.reverse()),
+      range ? this.weekly({ ...range, limit: 120 }) : this.weekly({ limit: 52 }).then((r) => r.reverse()),
+      range ? this.monthly({ ...range, limit: 60 }) : this.monthly({ limit: 36 }).then((r) => [...r].reverse()),
     ]);
-    return { daily: daily.reverse(), weekly: weekly.reverse(), monthly: monthly.reverse() };
+    return { daily, weekly, monthly };
   }
 
   async categoryScoreTrends() {

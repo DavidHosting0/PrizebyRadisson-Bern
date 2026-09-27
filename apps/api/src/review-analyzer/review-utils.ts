@@ -90,3 +90,95 @@ export function isoWeekParts(d: Date): { year: number; week: number; weekStart: 
   weekStart.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
   return { year: date.getUTCFullYear(), week, weekStart: startOfUtcDay(weekStart) };
 }
+
+export type ReviewPeriodKey = 'week' | 'month' | 'year' | '30d' | '90d' | 'all';
+
+export const REVIEW_PERIOD_KEYS: ReviewPeriodKey[] = ['week', 'month', 'year', '30d', '90d', 'all'];
+
+/** Resolve a named period + matching previous window for trend comparison. */
+export function resolveReviewPeriod(
+  period: ReviewPeriodKey = 'month',
+  now = new Date(),
+): {
+  key: ReviewPeriodKey;
+  from: Date | null;
+  to: Date;
+  prevFrom: Date | null;
+  prevTo: Date | null;
+  label: string;
+} {
+  const to = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999),
+  );
+
+  if (period === 'all') {
+    return {
+      key: 'all',
+      from: null,
+      to,
+      prevFrom: null,
+      prevTo: null,
+      label: 'All time',
+    };
+  }
+
+  if (period === 'week') {
+    const { weekStart } = isoWeekParts(now);
+    const from = weekStart;
+    const prevTo = new Date(from.getTime() - 1);
+    const prevFrom = new Date(from);
+    prevFrom.setUTCDate(prevFrom.getUTCDate() - 7);
+    return {
+      key: 'week',
+      from,
+      to,
+      prevFrom,
+      prevTo,
+      label: 'This week',
+    };
+  }
+
+  if (period === 'month') {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const prevTo = new Date(from.getTime() - 1);
+    const prevFrom = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    return {
+      key: 'month',
+      from,
+      to,
+      prevFrom,
+      prevTo,
+      label: 'This month',
+    };
+  }
+
+  if (period === 'year') {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const prevTo = new Date(from.getTime() - 1);
+    const prevFrom = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1));
+    return {
+      key: 'year',
+      from,
+      to,
+      prevFrom,
+      prevTo,
+      label: 'This year',
+    };
+  }
+
+  const days = period === '90d' ? 90 : 30;
+  const from = new Date(to);
+  from.setUTCDate(from.getUTCDate() - (days - 1));
+  from.setUTCHours(0, 0, 0, 0);
+  const prevTo = new Date(from.getTime() - 1);
+  const prevFrom = new Date(from);
+  prevFrom.setUTCDate(prevFrom.getUTCDate() - days);
+  return {
+    key: period,
+    from,
+    to,
+    prevFrom,
+    prevTo,
+    label: period === '90d' ? 'Last 90 days' : 'Last 30 days',
+  };
+}

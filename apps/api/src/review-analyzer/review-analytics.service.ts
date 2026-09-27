@@ -253,6 +253,8 @@ export class ReviewAnalyticsService {
       const hotelMentions = c.mentions.filter((m) => m.review.hotelKey === hotelKey);
       const mentionCount = hotelMentions.length;
       const neg = hotelMentions.filter((m) => m.polarity === ReviewMentionPolarity.NEGATIVE).length;
+      // Keep stored negativePct as share of THIS cluster's mentions that are negative
+      // (UI now uses period-based shareOfNegativePct instead — this field is for alerts/legacy).
       const negativePct = mentionCount ? (neg / mentionCount) * 100 : 0;
       const recent = hotelMentions.filter((m) => now - m.review.reviewedAt.getTime() < monthMs).length;
       const prev = hotelMentions.filter((m) => {

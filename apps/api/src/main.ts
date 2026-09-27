@@ -3,6 +3,16 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
+function isRadissonPageOrigin(origin: string): boolean {
+  if (!origin.startsWith('https://')) return false;
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return host === 'emma.rhg.radissonhotels.com' || host.endsWith('.radissonhotels.com');
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api/v1');
@@ -19,6 +29,8 @@ async function bootstrap() {
       if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://') || origin.startsWith('safari-web-extension://')) {
         return cb(null, true);
       }
+      // EMMA content script sends the page origin, not chrome-extension://.
+      if (isRadissonPageOrigin(origin)) return cb(null, true);
       // Deny without throwing — `cb(Error)` becomes a logged HTTP 500 for every
       // stray browser / extension probe (Google, ImmoScout, …).
       return cb(null, false);

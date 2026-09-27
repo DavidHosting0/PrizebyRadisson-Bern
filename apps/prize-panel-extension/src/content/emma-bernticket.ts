@@ -349,13 +349,13 @@ function ensureStyles() {
     #${HOST_ID} .pb-bt-code{
       appearance:none;cursor:pointer;
       font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
-      font-size:var(--sapFontSize,0.875rem);font-weight:700;
-      letter-spacing:.04em;line-height:1.2;
+      font-size:1.35rem;font-weight:700;
+      letter-spacing:.05em;line-height:1.15;
       color:var(--sapIndicationColor_3,#aa0808);
       background:var(--sapIndicationColor_3_Background,#ffebeb);
       border:1px solid var(--sapIndicationColor_3_BorderColor,#f5c1c1);
-      border-radius:0.25rem;
-      padding:0.35rem 0.6rem;
+      border-radius:0.3rem;
+      padding:0.45rem 0.85rem;
       min-width:0;text-align:center;
     }
     #${HOST_ID} .pb-bt-code:hover{
@@ -388,15 +388,15 @@ function ensureStyles() {
     #${FALLBACK_ID}{
       position:fixed;left:50%;bottom:0.65rem;transform:translateX(-50%);
       z-index:2147483000;
-      display:inline-flex;align-items:center;gap:0.35rem;
-      padding:0.2rem 0.45rem;
+      display:inline-flex;align-items:center;gap:0.45rem;
+      padding:0.35rem 0.6rem;
       font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
-      font-size:0.75rem;
+      font-size:0.875rem;
       line-height:1.2;
       color:#6a6d70;
       background:rgba(255,255,255,.96);
       border:1px solid #d9d9d9;
-      border-radius:0.25rem;
+      border-radius:0.3rem;
       box-shadow:0 0.1rem 0.35rem rgba(0,0,0,.1);
       pointer-events:auto;
       white-space:nowrap;
@@ -404,10 +404,10 @@ function ensureStyles() {
     #${FALLBACK_ID} .pb-bt-label{font-size:inherit;color:#6a6d70;}
     #${FALLBACK_ID} .pb-bt-muted{font-size:inherit;color:#6a6d70;}
     #${FALLBACK_ID} .pb-bt-code{
-      appearance:none;cursor:pointer;font-weight:700;letter-spacing:.04em;
-      font-size:0.75rem;line-height:1.2;
+      appearance:none;cursor:pointer;font-weight:700;letter-spacing:.05em;
+      font-size:1.25rem;line-height:1.15;
       color:#aa0808;background:#ffebeb;border:1px solid #f5c1c1;
-      border-radius:0.2rem;padding:0.15rem 0.4rem;
+      border-radius:0.3rem;padding:0.35rem 0.7rem;
     }
     #${FALLBACK_ID} .pb-bt-code.pb-bt-copied-flash{
       color:#256f3a;background:#f5fae5;border-color:#99cc33;

@@ -7,6 +7,7 @@ import {
   floorFromRoomNumber,
   normalizeGuestName,
   physicalRoomCategory,
+  suggestAdjacentRoom,
   suggestAllRooms,
   suggestRoomForReservation,
   type RoomSuggestGuest,
@@ -20,9 +21,16 @@ import { RoomStatusService } from '../rooms/room-status.service';
 import { decryptDetailBundle } from './reservation-detail-bundle';
 import { decryptSensitivePayload, dateOnlyFromIso, todayIsoDate } from './reservation-sensitive';
 
-const NAME_CACHE_MS = 60_000;
+const NAME_CACHE_DAY = 'name-counts';
 
-type NameCache = { at: number; hotelId: string; counts: Map<string, number> };
+type NameCache = { day: string; hotelId: string; counts: Map<string, number> };
+
+type PlanCache = {
+  hotelId: string;
+  day: string;
+  fingerprint: string;
+  items: RoomSuggestionListItem[];
+};
 
 export type RoomSuggestionResponse = {
   suggestion: RoomSuggestion | null;
@@ -42,6 +50,9 @@ export type RoomSuggestionListItem = {
 @Injectable()
 export class RoomSuggestionService {
   private nameCache: NameCache | null = null;
+  private nameInflight: { key: string; promise: Promise<Map<string, number>> } | null = null;
+  private planCache: PlanCache | null = null;
+  private planInflight: { key: string; promise: Promise<RoomSuggestionListItem[]> } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,9 +77,7 @@ export class RoomSuggestionService {
     if (!target) throw new NotFoundException('Reservation not found');
     const room = String(parseInt(roomNumber, 10));
     if (!Number.isFinite(Number(room))) throw new NotFoundException('Room not found');
-    await this.prisma.roomSuggestionLock.deleteMany({
-      where: { hotelId: hid, roomNumber: room, reservationId: { not: target.reservationId } },
-    });
+    await this.releaseRoom(hid, room, target.reservationId);
     const suggestion = lockSuggestion(target.reservationId, room);
     await this.upsertLock(hid, suggestion, 'accepted');
     return { suggestion };
@@ -79,7 +88,7 @@ export class RoomSuggestionService {
     const target = await this.findSnapshot(hid, reservationId);
     if (!target) throw new NotFoundException('Reservation not found');
     await this.prisma.roomSuggestionLock.deleteMany({
-      where: { hotelId: hid, reservationId: target.reservationId, kind: 'now' },
+      where: { hotelId: hid, reservationId: target.reservationId, kind: { in: ['now', 'shift'] } },
     });
     const board = await this.loadBoard(hid);
     const suggestion = suggestRoomForReservation({
@@ -90,12 +99,68 @@ export class RoomSuggestionService {
       blockedRoomsByGuest: board.blocked,
       heldRooms: board.held,
     });
-    if (suggestion) await this.upsertLock(hid, suggestion, 'now');
+    if (suggestion) {
+      await this.releaseRoom(hid, suggestion.roomNumber, target.reservationId);
+      await this.upsertLock(hid, suggestion, 'now');
+    }
+    return { suggestion };
+  }
+
+  async shift(
+    reservationId: string,
+    direction: 'up' | 'down',
+    hotelId?: string,
+  ): Promise<RoomSuggestionResponse> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const target = await this.findSnapshot(hid, reservationId);
+    if (!target) throw new NotFoundException('Reservation not found');
+    const board = await this.loadBoard(hid);
+    const reservationKey = canonicalReservationId(board.guests, target.reservationId);
+    const suggestion = suggestAdjacentRoom(
+      {
+        mode: 'plan',
+        reservationId: reservationKey,
+        guests: board.guests,
+        rooms: board.inventory,
+        blockedRoomsByGuest: board.blocked,
+        heldRooms: board.held,
+      },
+      direction,
+    );
+    if (!suggestion) return { suggestion: null };
+    await this.releaseRoom(hid, suggestion.roomNumber, reservationKey);
+    await this.upsertLock(hid, suggestion, 'shift');
+    this.planCache = null;
     return { suggestion };
   }
 
   async list(hotelId?: string): Promise<{ items: RoomSuggestionListItem[] }> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const day = todayIsoDate();
+    const fingerprint = await this.planFingerprint(hid, dateOnlyFromIso(day));
+    if (
+      this.planCache &&
+      this.planCache.hotelId === hid &&
+      this.planCache.day === day &&
+      this.planCache.fingerprint === fingerprint
+    ) {
+      return { items: this.planCache.items };
+    }
+    const key = `${hid}|${day}|${fingerprint}`;
+    if (this.planInflight?.key === key) return { items: await this.planInflight.promise };
+    const promise = this.computeList(hid)
+      .then((items) => {
+        this.planCache = { hotelId: hid, day, fingerprint, items };
+        return items;
+      })
+      .finally(() => {
+        if (this.planInflight?.key === key) this.planInflight = null;
+      });
+    this.planInflight = { key, promise };
+    return { items: await promise };
+  }
+
+  private async computeList(hid: string): Promise<RoomSuggestionListItem[]> {
     const board = await this.loadBoard(hid);
     const suggestions = suggestAllRooms({
       mode: 'plan',
@@ -104,7 +169,25 @@ export class RoomSuggestionService {
       blockedRoomsByGuest: board.blocked,
       heldRooms: board.held,
     });
-    const byId = new Map(suggestions.map((row) => [row.reservationId, row]));
+    const used = new Set<string>();
+    for (const guest of board.guests) {
+      if (guest.assignedRoom) used.add(canonicalRoomNumber(guest.assignedRoom));
+    }
+    const lockByGuest = new Map<string, RoomSuggestion>();
+    for (const [reservationId, lock] of board.locks) {
+      const roomNumber = canonicalRoomNumber(lock.roomNumber);
+      if (used.has(roomNumber)) continue;
+      used.add(roomNumber);
+      lockByGuest.set(reservationId, { ...lock, roomNumber });
+    }
+    const computedByGuest = new Map<string, RoomSuggestion>();
+    for (const suggestion of suggestions) {
+      if (lockByGuest.has(suggestion.reservationId)) continue;
+      const roomNumber = canonicalRoomNumber(suggestion.roomNumber);
+      if (used.has(roomNumber)) continue;
+      used.add(roomNumber);
+      computedByGuest.set(suggestion.reservationId, { ...suggestion, roomNumber });
+    }
     const items = board.guests
       .filter((guest) => !guest.assignedRoom)
       .map((guest) => ({
@@ -115,9 +198,38 @@ export class RoomSuggestionService {
         numPax: guest.numPax,
         vipDesc: guest.vipDesc,
         tier: guest.tier,
-        suggestion: board.locks.get(guest.reservationId) ?? byId.get(guest.reservationId) ?? null,
+        suggestion: lockByGuest.get(guest.reservationId) ?? computedByGuest.get(guest.reservationId) ?? null,
       }));
-    return { items };
+    return items;
+  }
+
+  private planFingerprint(hotelId: string, today: Date): Promise<string> {
+    return Promise.all([
+      this.prisma.reservationSnapshot.aggregate({
+        where: { hotelId, arrivalDate: today, checkOut: false },
+        _count: true,
+        _max: { updatedAt: true },
+      }),
+      this.prisma.room.aggregate({
+        _count: true,
+        _max: { updatedAt: true, cleaningDeclaredAt: true },
+      }),
+      this.prisma.roomSuggestionLock.aggregate({
+        where: { hotelId },
+        _count: true,
+        _max: { updatedAt: true },
+      }),
+    ]).then(([arrivals, rooms, locks]) =>
+      [
+        arrivals._count,
+        arrivals._max.updatedAt?.toISOString() ?? '',
+        rooms._count,
+        rooms._max.updatedAt?.toISOString() ?? '',
+        rooms._max.cleaningDeclaredAt?.toISOString() ?? '',
+        locks._count,
+        locks._max.updatedAt?.toISOString() ?? '',
+      ].join('|'),
+    );
   }
 
   private async loadBoard(hid: string) {
@@ -171,12 +283,24 @@ export class RoomSuggestionService {
       });
     }
     const lockRows = await this.prisma.roomSuggestionLock.findMany({ where: { hotelId: hid } });
+    lockRows.sort((a, b) => Number(a.kind !== 'accepted') - Number(b.kind !== 'accepted'));
     const locks = new Map<string, RoomSuggestion>();
     const heldInput: Record<string, string> = {};
+    const heldRooms = new Set<string>();
+    const dropLockIds: string[] = [];
     for (const row of lockRows) {
-      const suggestion = suggestionFromLock(row);
+      const roomNumber = canonicalRoomNumber(row.roomNumber);
+      if (heldRooms.has(roomNumber)) {
+        dropLockIds.push(row.id);
+        continue;
+      }
+      heldRooms.add(roomNumber);
+      const suggestion = { ...suggestionFromLock(row), roomNumber };
       locks.set(row.reservationId, suggestion);
-      heldInput[row.reservationId] = suggestion.roomNumber;
+      heldInput[row.reservationId] = roomNumber;
+    }
+    if (dropLockIds.length) {
+      await this.prisma.roomSuggestionLock.deleteMany({ where: { id: { in: dropLockIds } } });
     }
 
     const counts = await this.previousStayCounts(hid, todayDate);
@@ -206,7 +330,20 @@ export class RoomSuggestionService {
     };
   }
 
-  private upsertLock(hotelId: string, suggestion: RoomSuggestion, kind: 'accepted' | 'now') {
+  private async releaseRoom(hotelId: string, roomNumber: string, exceptReservationId: string) {
+    const room = parseInt(roomNumber, 10);
+    if (!Number.isFinite(room)) return;
+    const rows = await this.prisma.roomSuggestionLock.findMany({
+      where: { hotelId },
+      select: { id: true, reservationId: true, roomNumber: true },
+    });
+    const ids = rows
+      .filter((row) => row.reservationId !== exceptReservationId && parseInt(row.roomNumber, 10) === room)
+      .map((row) => row.id);
+    if (ids.length) await this.prisma.roomSuggestionLock.deleteMany({ where: { id: { in: ids } } });
+  }
+
+  private upsertLock(hotelId: string, suggestion: RoomSuggestion, kind: 'accepted' | 'now' | 'shift') {
     const data = {
       roomNumber: suggestion.roomNumber,
       kind,
@@ -270,24 +407,34 @@ export class RoomSuggestionService {
   }
 
   private async previousStayCounts(hotelId: string, today: Date): Promise<Map<string, number>> {
-    const now = Date.now();
-    if (this.nameCache && this.nameCache.hotelId === hotelId && now - this.nameCache.at < NAME_CACHE_MS) {
+    const day = formatHotelDateOnly(today);
+    if (this.nameCache && this.nameCache.hotelId === hotelId && this.nameCache.day === day) {
       return this.nameCache.counts;
     }
-    const past = await this.prisma.reservationSnapshot.findMany({
-      where: { hotelId, departureDate: { lt: today } },
-      select: { sensitiveEnc: true },
-    });
-    const counts = new Map<string, number>();
-    for (const row of past) {
-      const name = decryptSensitivePayload(this.cipher, row.sensitiveEnc)?.mainGuestName;
-      if (!name) continue;
-      const key = normalizeGuestName(name);
-      if (!key) continue;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    this.nameCache = { at: now, hotelId, counts };
-    return counts;
+    const key = `${hotelId}|${day}|${NAME_CACHE_DAY}`;
+    if (this.nameInflight?.key === key) return this.nameInflight.promise;
+    const promise = this.prisma.reservationSnapshot
+      .findMany({
+        where: { hotelId, departureDate: { lt: today } },
+        select: { sensitiveEnc: true },
+      })
+      .then((past) => {
+        const counts = new Map<string, number>();
+        for (const row of past) {
+          const name = decryptSensitivePayload(this.cipher, row.sensitiveEnc)?.mainGuestName;
+          if (!name) continue;
+          const normalized = normalizeGuestName(name);
+          if (!normalized) continue;
+          counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+        }
+        this.nameCache = { day, hotelId, counts };
+        return counts;
+      })
+      .finally(() => {
+        if (this.nameInflight?.key === key) this.nameInflight = null;
+      });
+    this.nameInflight = { key, promise };
+    return promise;
   }
 
   private async inventory(
@@ -361,6 +508,11 @@ function countryFromDetail(guests: Record<string, unknown>[] | undefined): strin
   if (value == null) return null;
   const text = String(value).trim();
   return text.length ? text : null;
+}
+
+function canonicalRoomNumber(roomNumber: string): string {
+  const n = parseInt(roomNumber, 10);
+  return Number.isFinite(n) ? String(n) : roomNumber.trim();
 }
 
 function guestDate(

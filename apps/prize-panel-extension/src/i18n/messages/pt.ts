@@ -213,6 +213,8 @@ const pt: ExtensionMessages = {
     edit: 'Outra sugestão',
     higher: 'Mais acima',
     lower: 'Mais abaixo',
+    noHigher: 'Sem quarto mais acima',
+    noLower: 'Sem quarto mais abaixo',
     extraBed: 'Com cama extra',
     applied: 'Quarto {{room}} aplicado',
     appliedNoField: 'Sugestão {{room}} (campo não encontrado)',

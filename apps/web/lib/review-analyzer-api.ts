@@ -43,22 +43,39 @@ export const reviewApi = {
   daily: () => api<Array<Record<string, unknown>>>('/review-analyzer/analytics/daily'),
   weekly: () => api<Array<Record<string, unknown>>>('/review-analyzer/analytics/weekly'),
   monthly: () => api<Array<Record<string, unknown>>>('/review-analyzer/analytics/monthly'),
-  problems: () => api<Array<Record<string, unknown>>>('/review-analyzer/analytics/problems'),
-  problemReviews: (id: string) =>
+  problems: (period = 'month') =>
+    api<{
+      period: {
+        key: string;
+        label: string;
+        from: string | null;
+        to: string;
+        prevFrom: string | null;
+        prevTo: string | null;
+      };
+      negativeReviewCount: number;
+      items: Array<Record<string, unknown>>;
+    }>(`/review-analyzer/analytics/problems?period=${encodeURIComponent(period)}`),
+  problemReviews: (id: string, period = 'month') =>
     api<{ items: GuestReviewRow[]; total: number }>(
-      `/review-analyzer/analytics/problems/${id}/reviews`,
+      `/review-analyzer/analytics/problems/${id}/reviews?period=${encodeURIComponent(period)}`,
     ),
   strengths: () => api<Array<Record<string, unknown>>>('/review-analyzer/analytics/strengths'),
   strengthReviews: (id: string) =>
     api<{ items: GuestReviewRow[]; total: number }>(
       `/review-analyzer/analytics/strengths/${id}/reviews`,
     ),
-  trends: () =>
-    api<{
+  trends: (from?: string, to?: string) => {
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    const q = qs.toString();
+    return api<{
       daily: Array<Record<string, unknown>>;
       weekly: Array<Record<string, unknown>>;
       monthly: Array<Record<string, unknown>>;
-    }>('/review-analyzer/analytics/trends'),
+    }>(`/review-analyzer/analytics/trends${q ? `?${q}` : ''}`);
+  },
   scores: () => api<Array<Record<string, unknown>>>('/review-analyzer/analytics/scores'),
   alerts: (includeAcked = false) =>
     api<Array<Record<string, unknown>>>(

@@ -211,6 +211,8 @@ const en: ExtensionMessages = {
     edit: 'Other suggestion',
     higher: 'Higher up',
     lower: 'Lower down',
+    noHigher: 'No room further up',
+    noLower: 'No room further down',
     extraBed: 'With extra bed',
     applied: 'Room {{room}} assigned in EMMA',
     appliedNoField: 'Room {{room}} assigned',

@@ -1,17 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
 import { AppChromeTools } from '@/components/nav/AppChromeTools';
 import { useReceptionMobileMode } from '@/lib/reception-mobile-context';
 import { Button } from '@/components/ui/Button';
 import { reviewApi, type GuestReviewRow } from '@/lib/review-analyzer-api';
-import { RaBadge, RaSection, sentimentTone, priorityTone } from './RaUi';
+import { RaBadge, RaSection, sentimentTone } from './RaUi';
+import { ReviewDetail } from './ReviewDetail';
 
 export function ReviewExplorer() {
   const tNav = useTranslations('nav');
   const { enterMobile } = useReceptionMobileMode();
+  const searchParams = useSearchParams();
+  const deepId = searchParams.get('id');
   const [q, setQ] = useState('');
   const [sentiment, setSentiment] = useState('');
   const [from, setFrom] = useState('');
@@ -45,6 +49,27 @@ export function ReviewExplorer() {
   useEffect(() => {
     void load();
   }, [qs]);
+
+  useEffect(() => {
+    if (!deepId) return;
+    void (async () => {
+      try {
+        const full = await reviewApi.review(deepId);
+        setSelected(full);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [deepId]);
+
+  const selectReview = async (r: GuestReviewRow) => {
+    try {
+      const full = await reviewApi.review(r.id);
+      setSelected(full);
+    } catch {
+      setSelected(r);
+    }
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -93,16 +118,21 @@ export function ReviewExplorer() {
                 <li key={r.id}>
                   <button
                     type="button"
-                    onClick={() => setSelected(r)}
-                    className="flex w-full flex-col gap-1 px-3 py-3 text-left hover:bg-white/5"
+                    onClick={() => void selectReview(r)}
+                    className={`flex w-full flex-col gap-1 px-3 py-3 text-left hover:bg-white/5 ${
+                      selected?.id === r.id ? 'bg-white/10' : ''
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-white">{r.score.toFixed(1)}</span>
-                      <RaBadge tone={sentimentTone(r.analysis?.sentiment)}>{r.analysis?.sentiment ?? '—'}</RaBadge>
+                      <RaBadge tone={sentimentTone(r.analysis?.sentiment)}>
+                        {r.analysis?.sentiment ?? '—'}
+                      </RaBadge>
                     </div>
                     <p className="line-clamp-2 text-xs text-sidebar-muted">{r.fullText}</p>
                     <p className="text-[11px] text-sidebar-muted">
-                      {new Date(r.reviewedAt).toLocaleDateString()} · {r.guestCountry ?? '—'} · {r.language ?? '—'}
+                      {new Date(r.reviewedAt).toLocaleDateString()} · {r.guestCountry ?? '—'} ·{' '}
+                      {r.language ?? '—'}
                     </p>
                   </button>
                 </li>
@@ -115,57 +145,7 @@ export function ReviewExplorer() {
             {!selected ? (
               <p className="text-sm text-sidebar-muted">Select a review</p>
             ) : (
-              <div className="space-y-3 text-sm text-white">
-                <div className="flex flex-wrap gap-2">
-                  <RaBadge>{selected.score}/10</RaBadge>
-                  <RaBadge tone={sentimentTone(selected.analysis?.sentiment)}>
-                    {selected.analysis?.sentiment ?? '—'}
-                  </RaBadge>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase text-sidebar-muted">Original</p>
-                  <p className="mt-1 whitespace-pre-wrap text-sidebar-muted">{selected.fullText}</p>
-                </div>
-                {selected.analysis ? (
-                  <>
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-sidebar-muted">AI summary</p>
-                      <p className="mt-1">{selected.analysis.summaryEn}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-sidebar-muted">Positives</p>
-                      <ul className="mt-1 list-disc pl-4 text-emerald-300">
-                        {(selected.analysis.positives as Array<{ text: string }>).map((p, i) => (
-                          <li key={i}>{p.text}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase text-sidebar-muted">Negatives</p>
-                      <ul className="mt-1 list-disc pl-4 text-rose-300">
-                        {(selected.analysis.negatives as Array<{ text: string }>).map((p, i) => (
-                          <li key={i}>{p.text}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sidebar-muted">Not analyzed yet</p>
-                )}
-                <div>
-                  <p className="text-xs font-semibold uppercase text-sidebar-muted">Topics</p>
-                  <ul className="mt-1 space-y-1">
-                    {selected.mentions.map((m) => (
-                      <li key={m.id} className="flex items-center justify-between gap-2">
-                        <span>
-                          {m.topic.name} · {m.polarity}
-                        </span>
-                        {m.priority ? <RaBadge tone={priorityTone(m.priority)}>{m.priority}</RaBadge> : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
+              <ReviewDetail review={selected} />
             )}
           </RaSection>
         </div>

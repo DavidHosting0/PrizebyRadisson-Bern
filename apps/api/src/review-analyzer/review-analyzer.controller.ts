@@ -92,28 +92,40 @@ export class ReviewAnalyzerController {
   }
 
   @Get('analytics/daily')
-  daily(@Query('limit') limit?: string) {
-    return this.service.daily(limit ? Number(limit) : 60);
+  daily(@Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.daily({
+      limit: limit ? Number(limit) : undefined,
+      from,
+      to,
+    });
   }
 
   @Get('analytics/weekly')
-  weekly(@Query('limit') limit?: string) {
-    return this.service.weekly(limit ? Number(limit) : 26);
+  weekly(@Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.weekly({
+      limit: limit ? Number(limit) : undefined,
+      from,
+      to,
+    });
   }
 
   @Get('analytics/monthly')
-  monthly(@Query('limit') limit?: string) {
-    return this.service.monthly(limit ? Number(limit) : 24);
+  monthly(@Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.monthly({
+      limit: limit ? Number(limit) : undefined,
+      from,
+      to,
+    });
   }
 
   @Get('analytics/problems')
-  problems() {
-    return this.service.problems();
+  problems(@Query('period') period?: string) {
+    return this.service.problems(period ?? 'month');
   }
 
   @Get('analytics/problems/:clusterId/reviews')
-  problemReviews(@Param('clusterId') clusterId: string) {
-    return this.service.problemReviews(clusterId);
+  problemReviews(@Param('clusterId') clusterId: string, @Query('period') period?: string) {
+    return this.service.problemReviews(clusterId, period ?? 'month');
   }
 
   @Get('analytics/strengths')
@@ -127,8 +139,8 @@ export class ReviewAnalyzerController {
   }
 
   @Get('analytics/trends')
-  trends() {
-    return this.service.trends();
+  trends(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.service.trends(from, to);
   }
 
   @Get('analytics/scores')

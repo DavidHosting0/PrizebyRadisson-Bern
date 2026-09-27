@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   isChinaJapanOrKorea,
+  isEastAsianName,
   isThreePersonRoom,
   normalizeGuestName,
+  suggestAdjacentRoom,
+  suggestAllRooms,
   suggestRoomForReservation,
   type RoomSuggestGuest,
   type RoomSuggestInput,
@@ -58,6 +61,20 @@ describe('room suggestion helpers', () => {
     assert.equal(isChinaJapanOrKorea('Südkorea'), true);
     assert.equal(isChinaJapanOrKorea('CH'), false);
     assert.equal(isChinaJapanOrKorea(null), false);
+  });
+
+  it('recognizes romanized East Asian names', () => {
+    assert.equal(isEastAsianName('Yao Niu'), true);
+    assert.equal(isEastAsianName('NIU, YAO'), true);
+    assert.equal(isEastAsianName('Li Xiaoming'), true);
+    assert.equal(isEastAsianName('Zhangxiaoming'), true);
+    assert.equal(isEastAsianName('Hsiao Ming'), true);
+    assert.equal(isEastAsianName('Chiang Kai'), true);
+    assert.equal(isEastAsianName('Taro Suzuki'), true);
+    assert.equal(isEastAsianName('Minjun Kim'), true);
+    assert.equal(isEastAsianName('Hans Müller'), false);
+    assert.equal(isEastAsianName('Anna Berger'), false);
+    assert.equal(isEastAsianName('John Smith'), false);
   });
 });
 
@@ -169,26 +186,93 @@ describe('suggestRoomForReservation', () => {
     assert.equal(result?.reasons.includes('overbook_corner'), true);
   });
 
-  it('assigns wheelchair rooms only to a single guest and only after normal rooms', () => {
+  it('keeps a romanized Chinese name off floor -1 without a country', () => {
+    const result = suggest({
+      reservationId: 'a',
+      guests: [guest({ reservationId: 'a', guestName: 'Yao Niu', nights: 1, numPax: 1, country: null })],
+      rooms: [room('5'), room('22')],
+    });
+    assert.equal(result?.roomNumber, '22');
+    assert.equal(result?.reasons.includes('no_basement'), true);
+  });
+
+  it('assigns wheelchair rooms only to one guest staying at most three nights', () => {
     const onlyChair = [room('601')];
     const pair = suggest({
       reservationId: 'a',
       guests: [guest({ reservationId: 'a', numPax: 2, nights: 4 })],
       rooms: onlyChair,
     });
-    const solo = suggest({
+    const longStay = suggest({
       reservationId: 'a',
       guests: [guest({ reservationId: 'a', numPax: 1, nights: 4 })],
       rooms: onlyChair,
     });
+    const shortStay = suggest({
+      reservationId: 'a',
+      guests: [guest({ reservationId: 'a', numPax: 1, nights: 3 })],
+      rooms: onlyChair,
+    });
     const withNormal = suggest({
       reservationId: 'a',
-      guests: [guest({ reservationId: 'a', numPax: 1, nights: 4 })],
+      guests: [guest({ reservationId: 'a', numPax: 1, nights: 3 })],
       rooms: [room('601'), room('602')],
     });
     assert.equal(pair, null);
-    assert.equal(solo?.roomNumber, '601');
+    assert.equal(longStay, null);
+    assert.equal(shortStay?.roomNumber, '601');
     assert.equal(withNormal?.roomNumber, '602');
+  });
+
+  it('never gives the same room to two reservations', () => {
+    const guests = [
+      guest({ reservationId: 'a', guestName: 'Ada', nights: 1 }),
+      guest({ reservationId: 'b', guestName: 'Ben', nights: 1 }),
+      guest({ reservationId: 'c', guestName: 'Cara', nights: 4, numPax: 2 }),
+    ];
+    const rooms = [room('5'), room('22'), room('410')];
+    const all = suggestAllRooms({ mode: 'plan', guests, rooms });
+    const numbers = all.map((row) => row.roomNumber);
+    assert.equal(new Set(numbers).size, numbers.length);
+    assert.equal(all.length, 3);
+
+    const crowded = suggestAllRooms({
+      mode: 'plan',
+      guests: [
+        guest({ reservationId: 'a', guestName: 'Ada', nights: 1 }),
+        guest({ reservationId: 'b', guestName: 'Ben', nights: 1 }),
+      ],
+      rooms: [room('22')],
+    });
+    assert.equal(crowded.length, 1);
+    assert.equal(crowded[0]?.roomNumber, '22');
+  });
+
+  it('steps to the next free room up or down without taking another reservation', () => {
+    const guestA = guest({ reservationId: 'a', guestName: 'Ada', nights: 1 });
+    const guestC = guest({ reservationId: 'c', guestName: 'Cara', nights: 4, numPax: 2 });
+    const rooms = [room('22'), room('202'), room('402')];
+    const up = suggestAdjacentRoom(
+      { mode: 'plan', reservationId: 'a', guests: [guestA, guestC], rooms },
+      'up',
+    );
+    const down = suggestAdjacentRoom(
+      {
+        mode: 'plan',
+        reservationId: 'a',
+        guests: [guestA],
+        rooms: [room('22'), room('202')],
+        heldRooms: { a: '202' },
+      },
+      'down',
+    );
+    const blocked = suggestAdjacentRoom(
+      { mode: 'plan', reservationId: 'a', guests: [guestA, guestC], rooms: [room('22'), room('402')] },
+      'up',
+    );
+    assert.equal(up?.roomNumber, '202');
+    assert.equal(down?.roomNumber, '22');
+    assert.equal(blocked, null);
   });
 
   it('does not suggest a room that was already accepted', () => {

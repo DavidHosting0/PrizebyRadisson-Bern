@@ -104,6 +104,7 @@ export function ReviewAnalyzerDashboard() {
   const trend = (data?.scoreTrend ?? []).map((d) => ({
     ...d,
     label: String(d.date).slice(5, 10),
+    averageScore: Math.round(Number(d.averageScore) * 10) / 10,
   }));
 
   return (
@@ -168,9 +169,18 @@ export function ReviewAnalyzerDashboard() {
                     <LineChart data={trend}>
                       <CartesianGrid stroke="rgba(255,255,255,0.08)" />
                       <XAxis dataKey="label" stroke="#94a3b8" fontSize={11} />
-                      <YAxis domain={[0, 10]} stroke="#94a3b8" fontSize={11} />
+                      <YAxis
+                        domain={[0, 10]}
+                        stroke="#94a3b8"
+                        fontSize={11}
+                        tickFormatter={(v: number) => Number(v).toFixed(1)}
+                      />
                       <Tooltip
                         contentStyle={{ background: '#0f172a', border: '1px solid #334155' }}
+                        formatter={(value: number | string) => [
+                          Number(value).toFixed(1),
+                          'Average score',
+                        ]}
                       />
                       <Line type="monotone" dataKey="averageScore" stroke="#38bdf8" strokeWidth={2} dot={false} />
                     </LineChart>

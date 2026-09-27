@@ -142,34 +142,11 @@ function findRoomFieldControl(): HTMLElement | null {
   );
 }
 
-/**
- * Mount parent: wrap next to / inside the room value area so it sits where
- * EMMA would show the assigned room — never in the page header.
- */
-function findRoomFieldMountParent(): HTMLElement | null {
+/** Flex item that wraps the Room input, so the chip sits beside it, not inside the 6rem control. */
+function roomControlSlot(): HTMLElement | null {
   const field = findRoomFieldControl();
   if (!field) return null;
-
-  // Prefer the flex/content cell that holds the input value
-  const content =
-    field.querySelector<HTMLElement>('.sapUiCompSmartFieldValue') ||
-    field.querySelector<HTMLElement>('.sapMInputBaseContentWrapper') ||
-    field.querySelector<HTMLElement>('.sapMInput') ||
-    field;
-
-  // Climb to a stable VBox cell that contains Room label + value if possible
-  let el: HTMLElement | null = content;
-  for (let i = 0; i < 6 && el; i++) {
-    if (
-      el.classList.contains('sapUiVltCell') ||
-      el.classList.contains('sapMVBox') ||
-      el.classList.contains('sapMHBox')
-    ) {
-      return el;
-    }
-    el = el.parentElement;
-  }
-  return content;
+  return field.closest<HTMLElement>('.sapMFlexItem') ?? field.parentElement;
 }
 
 function fieldTextNearLabel(root: ParentNode, labelRe: RegExp): string | null {
@@ -241,6 +218,7 @@ type PlanList = {
   error: string | null;
 };
 let planList: PlanList | null = null;
+let planInflight: Promise<PlanList> | null = null;
 const detailInflight = new Set<string>();
 let suggestion: ApiRoomSuggestion | null = null;
 let suggestionLoading = false;
@@ -283,30 +261,60 @@ function suggestionErrorText(err: unknown): string {
 async function loadPlanList(): Promise<PlanList> {
   const freshFor = planList?.error ? 5_000 : CACHE_MS;
   if (planList && Date.now() - planList.at < freshFor) return planList;
-  try {
-    const res = await api<{ items: PlanList['items'] }>('/reservations/room-suggestions');
-    planList = { at: Date.now(), items: res.items ?? [], error: null };
-  } catch (err) {
-    planList = { at: Date.now(), items: [], error: suggestionErrorText(err) };
-  }
-  return planList;
+  if (planInflight) return planInflight;
+  planInflight = (async () => {
+    let next: PlanList;
+    try {
+      const res = await api<{ items: PlanList['items'] }>('/reservations/room-suggestions');
+      next = { at: Date.now(), items: res.items ?? [], error: null };
+    } catch (err) {
+      next = { at: Date.now(), items: [], error: suggestionErrorText(err) };
+    }
+    planList = next;
+    return next;
+  })().finally(() => {
+    planInflight = null;
+  });
+  return planInflight;
 }
 
 function suggestionForReservation(items: PlanList['items'], reservationId: string): ApiRoomSuggestion | null {
   return items.find((item) => sameReservation(item.reservationId, reservationId))?.suggestion ?? null;
 }
 
+function roomNumberText(cell: HTMLElement): HTMLElement | null {
+  for (const el of cell.querySelectorAll<HTMLElement>('.sapMText, a.sapMLnk')) {
+    if (el.closest(`[${ROW_ATTR}]`)) continue;
+    return el;
+  }
+  return null;
+}
+
+function placeRowHost(cell: HTMLElement, host: HTMLElement) {
+  const text = roomNumberText(cell);
+  if (text) {
+    if (text.nextElementSibling !== host) text.insertAdjacentElement('afterend', host);
+    return;
+  }
+  const inner = cell.querySelector<HTMLElement>('.sapUiTableCellInner') || cell;
+  if (host.parentElement !== inner) inner.appendChild(host);
+}
+
 function ensureRowNote(cell: HTMLElement, text: string, isError: boolean): HTMLElement {
-  const vbox =
-    cell.querySelector<HTMLElement>('.sapMVBox') ||
-    cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
-    cell;
+  const textEl = roomNumberText(cell);
   let host = cell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
+  const placed = textEl
+    ? textEl.nextElementSibling === host
+    : host?.parentElement === (cell.querySelector('.sapUiTableCellInner') || cell);
+  if (host && placed && host.dataset.note === text && host.dataset.error === (isError ? '1' : '0')) {
+    return host;
+  }
   if (!host) {
     host = document.createElement('div');
     host.setAttribute(ROW_ATTR, 'row');
-    vbox.appendChild(host);
   }
+  placeRowHost(cell, host);
+  host.dataset.error = isError ? '1' : '0';
   host.dataset.booking = '';
   host.dataset.room = '';
   host.dataset.note = text;
@@ -340,6 +348,16 @@ async function requestArrivingNow(reservationId: string): Promise<ApiRoomSuggest
   return res.suggestion;
 }
 
+async function requestShift(reservationId: string, direction: 'up' | 'down'): Promise<ApiRoomSuggestion | null> {
+  planList = null;
+  const res = await api<{ suggestion: ApiRoomSuggestion | null }>(
+    `/reservations/${encodeURIComponent(reservationId)}/room-suggestion/shift`,
+    { method: 'POST', body: JSON.stringify({ direction }) },
+  );
+  planList = null;
+  return res.suggestion;
+}
+
 function ensureStyles() {
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!style) {
@@ -347,24 +365,25 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
-  if (style.dataset.v === '6') return;
-  style.dataset.v = '6';
+  if (style.dataset.v === '8') return;
+  style.dataset.v = '8';
   style.textContent = `
-    /* Detail: compact chip inline at the Room field */
+    /* Detail: inline beside the Room input, never inside the 6rem control */
     #${HOST_ID}{
       box-sizing:border-box;
       display:inline-flex;
-      flex-direction:column;
-      gap:4px;
-      margin:2px 0 0 0;
-      max-width:min(200px,100%);
+      flex-direction:row;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:6px;
+      margin:0 0 0 8px;
+      max-width:none;
       font-family:var(--sapFontFamily,"72",system-ui,-apple-system,sans-serif);
       color:#0f172a;
-      background:#fff;
-      border:1px solid rgba(45,58,79,.16);
-      border-radius:8px;
-      box-shadow:0 1px 4px rgba(15,23,42,.08);
-      padding:6px 8px;
+      background:transparent;
+      border:0;
+      box-shadow:none;
+      padding:0;
       z-index:5;
       pointer-events:auto;
       vertical-align:middle;
@@ -408,6 +427,10 @@ function ensureStyles() {
       background:#15803d;border-color:#15803d;color:#fff;
     }
     #${HOST_ID} .pb-ra-btn svg{width:13px;height:13px;display:block;}
+    #${HOST_ID} .pb-ra-nudge{display:flex;flex-direction:column;gap:2px;}
+    #${HOST_ID} .pb-ra-nudge .pb-ra-btn{width:22px;height:16px;border-radius:5px;}
+    #${HOST_ID} .pb-ra-nudge .pb-ra-btn svg{width:11px;height:11px;}
+    #${HOST_ID} .pb-ra-actions{display:flex;align-items:center;gap:4px;}
     #${HOST_ID} .pb-ra-menu{
       padding-top:4px;border-top:1px solid #e2e8f0;
       display:flex;flex-direction:column;gap:3px;
@@ -423,26 +446,27 @@ function ensureStyles() {
     }
     #${HOST_ID} .pb-ra-status.pb-ra-warn{color:#b45309;}
     #${HOST_ID} .pb-ra-note{
-      font-size:8px;color:#94a3b8;line-height:1.25;
+      font-size:12px;font-weight:650;color:#9a3412;line-height:1.25;
     }
 
-    /* Check-in list Room column — under empty room slot, survive cell clipping */
+    /* Check-in list Room column — same line as the empty room number */
     .sapUiTableDataCell:has([${ROW_ATTR}="row"]) .sapUiTableCellInner,
     .sapUiTableDataCell:has([${ROW_ATTR}="row"]) .sapMVBox{
       overflow:visible !important;
       max-height:none !important;
     }
     [${ROW_ATTR}="row"]{
-      display:flex !important;
+      display:inline-flex !important;
       align-items:center;
       gap:0.25rem;
-      margin:0.2rem 0 0 0;
+      margin:0;
       line-height:1.15;
       max-width:100%;
       flex-shrink:0;
       position:relative;
       z-index:20;
       pointer-events:auto;
+      vertical-align:middle;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code{
       appearance:none;cursor:pointer;
@@ -475,28 +499,19 @@ function ensureStyles() {
   `;
 }
 
-function mountInRoomField(parent: HTMLElement): HTMLElement {
+function mountInRoomField(slot: HTMLElement): HTMLElement {
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
-  if (host && parent.contains(host)) return host;
+  const trapped = Boolean(host?.closest('.sapMInputBase'));
+  if (host && !trapped && host.previousElementSibling === slot) return host;
+  const key = host?.dataset.key;
   host?.remove();
   host = document.createElement('div');
   host.id = HOST_ID;
   host.setAttribute(ROW_ATTR, 'detail');
   host.setAttribute('role', 'region');
   host.setAttribute('aria-label', msgs.emmaRoom.title);
-
-  // Place after the input / value control so it sits where the room number is
-  const inputWrap =
-    parent.querySelector('.sapMInputBaseContentWrapper') ||
-    parent.querySelector('.sapUiCompSmartFieldValue') ||
-    parent.querySelector('input.sapMInputBaseInner')?.parentElement;
-  if (inputWrap?.parentElement === parent) {
-    inputWrap.insertAdjacentElement('afterend', host);
-  } else if (inputWrap) {
-    inputWrap.insertAdjacentElement('afterend', host);
-  } else {
-    parent.appendChild(host);
-  }
+  if (key) host.dataset.key = key;
+  slot.insertAdjacentElement('afterend', host);
   return host;
 }
 
@@ -504,10 +519,18 @@ function iconCheck() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>`;
 }
 
+function iconArrow(direction: 'up' | 'down') {
+  const path = direction === 'up' ? 'M6 14l6-6 6 6' : 'M6 10l6 6 6-6';
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="${path}"/></svg>`;
+}
+
 let lastKey: string | null = null;
 let refreshTimer: number | null = null;
 let statusText = '';
 let statusWarn = false;
+let painting = false;
+let tickRunning = false;
+let tickQueued = false;
 
 function applyRoomToEmma(roomNumber: string): boolean {
   const input = findRoomInput();
@@ -542,6 +565,8 @@ function renderHost(host: HTMLElement) {
     ? `<div class="pb-ra-status${statusWarn ? ' pb-ra-warn' : ''}">${escapeHtml(statusText)}</div>`
     : '';
   const accept = msgs.emmaRoom.accept;
+  const higher = msgs.emmaRoom.higher;
+  const lower = msgs.emmaRoom.lower;
   const arriving = msgs.emmaRoom.arrivingNow;
   host.innerHTML =
     `<div class="pb-ra-top">` +
@@ -552,11 +577,52 @@ function renderHost(host: HTMLElement) {
     `<div><div class="pb-ra-room">${escapeHtml(suggestion.roomNumber)}</div>` +
     `<div class="pb-ra-meta">${escapeHtml(meta)}</div></div>` +
     `<div class="pb-ra-actions">` +
+    `<div class="pb-ra-nudge">` +
+    `<button type="button" class="pb-ra-btn pb-ra-up" title="${escapeAttr(higher)}" aria-label="${escapeAttr(higher)}">${iconArrow('up')}</button>` +
+    `<button type="button" class="pb-ra-btn pb-ra-down" title="${escapeAttr(lower)}" aria-label="${escapeAttr(lower)}">${iconArrow('down')}</button>` +
+    `</div>` +
     `<button type="button" class="pb-ra-btn pb-ra-accept" title="${escapeAttr(accept)}" aria-label="${escapeAttr(accept)}">${iconCheck()}</button>` +
     `</div></div>` +
     `<button type="button" class="pb-ra-now">${escapeHtml(arriving)}</button>` +
     statusHtml +
     `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.previewNote)}</div>`;
+
+  const nudge = (direction: 'up' | 'down') => {
+    const booking = getBookingNumber();
+    if (!booking || !suggestion || assigning) return;
+    const previous = suggestion;
+    assigning = true;
+    suggestionLoading = true;
+    renderHost(host);
+    void requestShift(booking, direction)
+      .then((next) => {
+        suggestion = next ?? previous;
+        lastKey = null;
+        statusText = next ? '' : direction === 'up' ? msgs.emmaRoom.noHigher : msgs.emmaRoom.noLower;
+        statusWarn = !next;
+      })
+      .catch((err: unknown) => {
+        suggestion = previous;
+        statusText = suggestionErrorText(err);
+        statusWarn = true;
+      })
+      .finally(() => {
+        assigning = false;
+        suggestionLoading = false;
+        renderHost(host);
+        scheduleRefresh();
+      });
+  };
+  host.querySelector('.pb-ra-up')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    nudge('up');
+  });
+  host.querySelector('.pb-ra-down')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    nudge('down');
+  });
 
   host.querySelector('.pb-ra-accept')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -655,17 +721,9 @@ function resolveListColumns(table: HTMLTableElement): ColMap {
       ...hdrTable.querySelectorAll('td[role="columnheader"], .sapUiTableHeaderDataCell'),
     ];
     cells.forEach((cell, i) => {
-      const t = (cell.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-      if (t === 'room' || t === 'zimmer' || t.startsWith('room ') || t.startsWith('zimmer')) {
-        room = i;
-      }
-      if (
-        t === 'arrival' ||
-        t.startsWith('anreise') ||
-        t.startsWith('arrival')
-      ) {
-        arrival = i;
-      }
+      const t = (cell.textContent || '').replace(/:/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (t === 'room' || t === 'zimmer') room = i;
+      if (t === 'arrival' || t === 'anreise') arrival = i;
     });
   }
 
@@ -743,35 +801,23 @@ function arrivalIsoFromRow(row: HTMLElement, arrivalCell: HTMLElement | null): s
 function ensureRowChip(cell: HTMLElement, rowSuggestion: ApiRoomSuggestion): HTMLElement {
   const booking = rowSuggestion.reservationId;
   const roomNumber = rowSuggestion.roomNumber;
-  const vbox =
-    cell.querySelector<HTMLElement>('.sapMVBox') ||
-    cell.querySelector<HTMLElement>('.sapUiTableCellInner') ||
-    cell;
-  const after =
-    vbox.querySelector<HTMLElement>(':scope > .sapMHBox') ||
-    vbox.querySelector<HTMLElement>(':scope > .sapMFlexItem');
 
   let host = cell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
-  if (host && host.dataset.booking === booking && host.dataset.room === roomNumber && host.dataset.ready === String(rowSuggestion.readyNow)) {
-    if (host.parentElement !== vbox) {
-      if (after && after.parentElement === vbox) after.insertAdjacentElement('afterend', host);
-      else vbox.appendChild(host);
-    }
+  const text = roomNumberText(cell);
+  if (
+    host &&
+    host.dataset.booking === booking &&
+    host.dataset.room === roomNumber &&
+    host.dataset.ready === String(rowSuggestion.readyNow) &&
+    text?.nextElementSibling === host
+  ) {
     return host;
   }
-  if (host) {
-    host.dataset.booking = booking;
-    host.dataset.room = roomNumber;
-    if (host.parentElement !== vbox) {
-      if (after && after.parentElement === vbox) after.insertAdjacentElement('afterend', host);
-      else vbox.appendChild(host);
-    }
-  } else {
+  if (!host) {
     host = document.createElement('div');
     host.setAttribute(ROW_ATTR, 'row');
-    if (after && after.parentElement === vbox) after.insertAdjacentElement('afterend', host);
-    else vbox.appendChild(host);
   }
+  placeRowHost(cell, host);
   host.dataset.booking = booking;
   host.dataset.room = roomNumber;
   host.dataset.ready = String(rowSuggestion.readyNow);
@@ -839,6 +885,7 @@ async function scanCheckInList() {
   );
   const rowSet = new Set(rows);
   const seen = new Set<HTMLElement>();
+  const usedRooms = new Set<string>();
   const plan = await loadPlanList();
 
   for (const row of rows) {
@@ -869,11 +916,13 @@ async function scanCheckInList() {
     }
 
     const item = plan.items.find((rowItem) => sameReservation(rowItem.reservationId, booking));
-    if (!item?.suggestion) {
+    const roomKey = item?.suggestion ? item.suggestion.roomNumber.replace(/^0+/, '') : '';
+    if (!item?.suggestion || (roomKey && usedRooms.has(roomKey))) {
       if (item) seen.add(ensureRowNote(roomCell, msgs.emmaRoom.noSuggestion, false));
       else existing?.remove();
       continue;
     }
+    usedRooms.add(roomKey);
 
     seen.add(ensureRowChip(roomCell, item.suggestion));
   }
@@ -896,9 +945,9 @@ function clearDetailHost() {
 
 async function tickDetail() {
   const booking = getBookingNumber();
-  const mountParent = findRoomFieldMountParent();
+  const slot = roomControlSlot();
 
-  if (!mountParent || !booking) {
+  if (!slot || !booking) {
     clearDetailHost();
     return;
   }
@@ -908,8 +957,12 @@ async function tickDetail() {
     return;
   }
 
-  const host = mountInRoomField(mountParent);
+  const alreadyPlaced =
+    document.getElementById(HOST_ID)?.previousElementSibling === slot &&
+    !document.getElementById(HOST_ID)?.closest('.sapMInputBase');
+  const host = mountInRoomField(slot);
   const key = booking;
+  if (!alreadyPlaced && host.dataset.key === key) renderHost(host);
   if (host.dataset.key === key || detailInflight.has(key)) return;
   detailInflight.add(key);
   const bookingChanged = lastKey !== key;
@@ -949,15 +1002,32 @@ async function tickDetail() {
 }
 
 async function tick() {
-  if (!isLikelyEmmaPage()) {
-    clearDetailHost();
-    document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
+  if (tickRunning) {
+    tickQueued = true;
     return;
   }
+  tickRunning = true;
+  painting = true;
+  try {
+    if (!isLikelyEmmaPage()) {
+      clearDetailHost();
+      document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
+      return;
+    }
 
-  ensureStyles();
-  await scanCheckInList();
-  await tickDetail();
+    ensureStyles();
+    await scanCheckInList();
+    await tickDetail();
+  } finally {
+    tickRunning = false;
+    window.setTimeout(() => {
+      painting = false;
+      if (tickQueued) {
+        tickQueued = false;
+        scheduleRefresh();
+      }
+    }, 0);
+  }
 }
 
 function scheduleRefresh() {
@@ -989,11 +1059,23 @@ export function startEmmaRoomSuggestWatcher() {
   });
 
   const obs = new MutationObserver((mutations) => {
+    if (painting) return;
     for (const m of mutations) {
       const t = m.target;
       if (
         t instanceof Element &&
         (t.id === HOST_ID || t.id === STYLE_ID || t.closest(`[${ROW_ATTR}]`))
+      ) {
+        continue;
+      }
+      const added = [...m.addedNodes];
+      if (
+        added.length > 0 &&
+        added.every(
+          (node) =>
+            node instanceof Element &&
+            (node.id === HOST_ID || node.id === STYLE_ID || node.hasAttribute(ROW_ATTR)),
+        )
       ) {
         continue;
       }
