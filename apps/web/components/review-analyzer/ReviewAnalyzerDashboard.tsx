@@ -173,12 +173,12 @@ export function ReviewAnalyzerDashboard() {
                         domain={[0, 10]}
                         stroke="#94a3b8"
                         fontSize={11}
-                        tickFormatter={(v: number) => Number(v).toFixed(1)}
+                        tickFormatter={(v) => Number(v).toFixed(1)}
                       />
                       <Tooltip
                         contentStyle={{ background: '#0f172a', border: '1px solid #334155' }}
-                        formatter={(value: number | string) => [
-                          Number(value).toFixed(1),
+                        formatter={(value) => [
+                          Number(value ?? 0).toFixed(1),
                           'Average score',
                         ]}
                       />

@@ -92,14 +92,14 @@ function MetricChart({
                 fontSize={11}
                 width={44}
                 tick={{ fill: '#94a3b8' }}
-                tickFormatter={(v: number) => fmtTick(Number(v), yDigits)}
+                tickFormatter={(v) => fmtTick(Number(v), yDigits)}
               />
               <Tooltip
                 contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}
                 labelStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number | string) => {
+                formatter={(value) => {
                   const n = Number(value);
-                  const text = Number.isFinite(n) ? fmtTick(n, yDigits) : String(value);
+                  const text = Number.isFinite(n) ? fmtTick(n, yDigits) : String(value ?? '');
                   return [`${text}${unit ?? ''}`, title];
                 }}
                 labelFormatter={(_, payload) => {
