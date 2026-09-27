@@ -652,7 +652,15 @@ export async function scrapeBookingReviews(opts: {
   cutoffDate: Date;
   maxPages?: number;
   headless?: boolean;
+  /** Legacy: stop when many collected IDs overlap (prefer isKnownReview). */
   incrementalStopIds?: Set<string>;
+  /**
+   * Smart incremental: reviews are newest-first. Stop as soon as we hit a review
+   * that already exists in the DB (do not walk older pages).
+   */
+  isKnownReview?: (r: ScrapedBookingReview) => boolean;
+  /** How many consecutive known reviews before stopping (default 1). */
+  stopAfterKnownConsecutive?: number;
   onProgress?: (p: BookingScrapeProgress) => void | Promise<void>;
   /** Called after each page with newly seen reviews (already filtered to cutoff window). */
   onPageReviews?: (
@@ -740,20 +748,45 @@ export async function scrapeBookingReviews(opts: {
           };
         }
 
+        const stopAfterKnown = Math.max(1, opts.stopAfterKnownConsecutive ?? 1);
+        let consecutiveKnown = 0;
+        let caughtUp = false;
+
         for (let pageIdx = 0; pageIdx < maxPages; pageIdx++) {
           pagesFetched++;
           await progress(`parsing page ${pagesFetched}…`, pagesFetched, collected.size);
           const pageReviews = await extractReviewsOnPage(page);
           let newOnPage = 0;
           const freshOnPage: ScrapedBookingReview[] = [];
+
           for (const r of pageReviews) {
+            const known =
+              opts.isKnownReview?.(r) === true ||
+              (opts.incrementalStopIds?.has(r.externalId) ?? false);
+
+            if (known) {
+              consecutiveKnown++;
+              // Newest-first: once we hit enough already-stored reviews, stop walking older pages
+              if (opts.isKnownReview || opts.incrementalStopIds?.size) {
+                if (consecutiveKnown >= stopAfterKnown) {
+                  caughtUp = true;
+                  break;
+                }
+              }
+              continue;
+            }
+
+            consecutiveKnown = 0;
             if (!collected.has(r.externalId)) {
               collected.set(r.externalId, r);
               newOnPage++;
               if (r.reviewedAt >= opts.cutoffDate) freshOnPage.push(r);
             }
           }
-          const msg = `page ${pagesFetched}: +${newOnPage} new / ${pageReviews.length} on page (total ${collected.size})`;
+
+          const msg = caughtUp
+            ? `page ${pagesFetched}: +${newOnPage} new — caught up (hit known review), stopping`
+            : `page ${pagesFetched}: +${newOnPage} new / ${pageReviews.length} on page (total ${collected.size})`;
           await progress(msg, pagesFetched, collected.size);
 
           if (freshOnPage.length && opts.onPageReviews) {
@@ -768,6 +801,11 @@ export async function scrapeBookingReviews(opts: {
             });
           }
 
+          if (caughtUp) {
+            stoppedReason = 'incremental_caught_up';
+            break;
+          }
+
           const list = [...collected.values()].sort(
             (a, b) => b.reviewedAt.getTime() - a.reviewedAt.getTime(),
           );
@@ -777,17 +815,21 @@ export async function scrapeBookingReviews(opts: {
               stoppedReason = 'reached_cutoff';
               break;
             }
-            if (opts.incrementalStopIds?.size && pageIdx > 0) {
-              const known = list.filter((r) => opts.incrementalStopIds!.has(r.externalId)).length;
-              if (known >= Math.min(8, list.length) && newOnPage === 0) {
-                stoppedReason = 'incremental_overlap';
-                break;
-              }
-            }
           }
 
           if (pageReviews.length === 0 && pageIdx === 0) {
             stoppedReason = 'no_cards';
+            break;
+          }
+
+          // Incremental without any new reviews on first page and all known → done
+          if (
+            (opts.isKnownReview || opts.incrementalStopIds?.size) &&
+            pageIdx === 0 &&
+            newOnPage === 0 &&
+            pageReviews.length > 0
+          ) {
+            stoppedReason = 'incremental_caught_up';
             break;
           }
 

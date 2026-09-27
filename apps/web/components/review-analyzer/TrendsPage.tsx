@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceLine,
 } from 'recharts';
 import { useTranslations } from 'next-intl';
 import { AppPageChrome, AppPageBody } from '@/components/nav/AppPageChrome';
@@ -44,6 +47,26 @@ function fmtTick(n: number, digits: number) {
   return digits === 0 ? String(Math.round(n)) : n.toFixed(digits);
 }
 
+/** Tight Y-range around values so small score swings are visible (still within 1–10). */
+function fittedScoreDomain(values: number[]): [number, number] {
+  const nums = values.filter((v) => Number.isFinite(v) && v > 0);
+  if (!nums.length) return [6, 10];
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const span = Math.max(max - min, 0.6);
+  const pad = Math.max(span * 0.35, 0.25);
+  let lo = Math.floor((min - pad) * 10) / 10;
+  let hi = Math.ceil((max + pad) * 10) / 10;
+  if (hi - lo < 1) {
+    const mid = (lo + hi) / 2;
+    lo = mid - 0.5;
+    hi = mid + 0.5;
+  }
+  lo = Math.max(1, Math.min(lo, 9));
+  hi = Math.min(10, Math.max(hi, lo + 0.5));
+  return [lo, hi];
+}
+
 type ChartRow = {
   label: string;
   fullDate: string;
@@ -61,6 +84,10 @@ function MetricChart({
   yDomain,
   yDigits,
   unit,
+  heightClass = 'h-64',
+  showDots = false,
+  area = false,
+  referenceY,
 }: {
   title: string;
   data: ChartRow[];
@@ -69,31 +96,65 @@ function MetricChart({
   yDomain: [number, number] | ['auto', 'auto'];
   yDigits: number;
   unit?: string;
+  heightClass?: string;
+  showDots?: boolean;
+  area?: boolean;
+  referenceY?: number;
 }) {
+  const Chart = area ? AreaChart : LineChart;
+  const gradientId = `fill-${String(dataKey)}`;
+
   return (
     <RaSection title={title}>
-      <div className="h-64">
+      <div className={heightClass}>
         {data.length === 0 ? (
           <p className="text-sm text-sidebar-muted">No data in this period.</p>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="rgba(255,255,255,0.08)" />
+            <Chart data={data} margin={{ top: 12, right: 16, left: 4, bottom: 4 }}>
+              {area ? (
+                <defs>
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+              ) : null}
+              <CartesianGrid stroke="rgba(255,255,255,0.1)" strokeDasharray="3 6" vertical={false} />
               <XAxis
                 dataKey="label"
                 stroke="#94a3b8"
                 fontSize={11}
-                minTickGap={28}
+                minTickGap={24}
                 tick={{ fill: '#94a3b8' }}
+                tickLine={false}
+                axisLine={{ stroke: 'rgba(148,163,184,0.35)' }}
               />
               <YAxis
                 domain={yDomain}
                 stroke="#94a3b8"
                 fontSize={11}
-                width={44}
+                width={48}
                 tick={{ fill: '#94a3b8' }}
+                tickLine={false}
+                axisLine={false}
+                tickCount={6}
                 tickFormatter={(v) => fmtTick(Number(v), yDigits)}
+                allowDecimals={yDigits > 0}
               />
+              {referenceY != null ? (
+                <ReferenceLine
+                  y={referenceY}
+                  stroke="rgba(148,163,184,0.45)"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: `avg ${fmtTick(referenceY, yDigits)}`,
+                    position: 'insideTopRight',
+                    fill: '#94a3b8',
+                    fontSize: 10,
+                  }}
+                />
+              ) : null}
               <Tooltip
                 contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}
                 labelStyle={{ color: '#e2e8f0' }}
@@ -107,15 +168,36 @@ function MetricChart({
                   return row?.fullDate ?? '';
                 }}
               />
-              <Line
-                type="monotone"
-                dataKey={dataKey}
-                stroke={color}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
+              {area ? (
+                <Area
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  strokeWidth={2.5}
+                  fill={`url(#${gradientId})`}
+                  dot={
+                    showDots
+                      ? { r: 3, fill: color, strokeWidth: 0 }
+                      : data.length <= 40
+                        ? { r: 2.5, fill: color, strokeWidth: 0 }
+                        : false
+                  }
+                  activeDot={{ r: 5, strokeWidth: 0, fill: '#fff' }}
+                  isAnimationActive={false}
+                  connectNulls={false}
+                />
+              ) : (
+                <Line
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={showDots ? { r: 3, fill: color, strokeWidth: 0 } : false}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
+                  isAnimationActive={false}
+                />
+              )}
+            </Chart>
           </ResponsiveContainer>
         )}
       </div>
@@ -174,6 +256,23 @@ export function TrendsPage() {
       }),
     [daily],
   );
+
+  // Days without reviews (score 0) flatten the curve — keep only scored days for average score
+  const scoreChart = useMemo(
+    () => dailyChart.filter((d) => d.reviewCount > 0 && d.averageScore > 0),
+    [dailyChart],
+  );
+
+  const scoreDomain = useMemo(
+    () => fittedScoreDomain(scoreChart.map((d) => d.averageScore)),
+    [scoreChart],
+  );
+
+  const scorePeriodAvg = useMemo(() => {
+    if (!scoreChart.length) return undefined;
+    const sum = scoreChart.reduce((s, d) => s + d.averageScore, 0);
+    return round1(sum / scoreChart.length);
+  }, [scoreChart]);
 
   const applyRange = () => {
     if (!from || !to) return;
@@ -261,11 +360,14 @@ export function TrendsPage() {
 
           <MetricChart
             title="Average score"
-            data={dailyChart}
+            data={scoreChart}
             dataKey="averageScore"
             color="#38bdf8"
-            yDomain={[0, 10]}
+            yDomain={scoreDomain}
             yDigits={1}
+            heightClass="h-80"
+            area
+            referenceY={scorePeriodAvg}
           />
           <MetricChart
             title="Positive %"

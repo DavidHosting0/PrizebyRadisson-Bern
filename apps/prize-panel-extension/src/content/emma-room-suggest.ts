@@ -29,6 +29,7 @@ type ApiRoomSuggestion = {
   category: string;
   bookedCategory: string;
   readyNow: boolean;
+  roomStatus?: string;
   reasons: string[];
 };
 
@@ -278,6 +279,31 @@ async function loadPlanList(): Promise<PlanList> {
   return planInflight;
 }
 
+function reservationKey(id: string): string {
+  return id.replace(/^0+/, '') || id;
+}
+
+/** EMMA shows no room, but the server may still have the last assignment. Ask once, then retry slowly. */
+async function reportUnassigned(ids: string[]): Promise<boolean> {
+  const now = Date.now();
+  const fresh = [...new Set(ids.map(reservationKey))].filter(
+    (id) => now - (unassignedReportedAt.get(id) ?? 0) > 15_000,
+  );
+  if (!fresh.length) return false;
+  for (const id of fresh) unassignedReportedAt.set(id, now);
+  try {
+    const res = await api<{ items: PlanList['items'] }>('/reservations/room-suggestions/unassigned', {
+      method: 'POST',
+      body: JSON.stringify({ reservationIds: fresh }),
+    });
+    planList = { at: Date.now(), items: res.items ?? [], error: null };
+    return true;
+  } catch {
+    for (const id of fresh) unassignedReportedAt.delete(id);
+    return false;
+  }
+}
+
 function suggestionForReservation(items: PlanList['items'], reservationId: string): ApiRoomSuggestion | null {
   return items.find((item) => sameReservation(item.reservationId, reservationId))?.suggestion ?? null;
 }
@@ -327,8 +353,7 @@ function ensureRowNote(cell: HTMLElement, text: string, isError: boolean): HTMLE
   return host;
 }
 
-async function acceptSuggestion(row: ApiRoomSuggestion): Promise<string> {
-  await assignEmmaRoom(row.reservationId, row.roomNumber);
+async function rememberAcceptedRoom(row: ApiRoomSuggestion): Promise<string> {
   planList = null;
   await api(`/reservations/${encodeURIComponent(row.reservationId)}/room-suggestion/accept`, {
     method: 'POST',
@@ -336,6 +361,21 @@ async function acceptSuggestion(row: ApiRoomSuggestion): Promise<string> {
   });
   planList = null;
   return row.roomNumber;
+}
+
+/** Check-in list: the reservation is not open, so the OData assignment can take the lock. */
+async function acceptSuggestion(row: ApiRoomSuggestion): Promise<string> {
+  await assignEmmaRoom(row.reservationId, row.roomNumber);
+  return rememberAcceptedRoom(row);
+}
+
+/** Open reservation already holds the EMMA lock. Write the room into that screen. */
+async function acceptOpenReservation(row: ApiRoomSuggestion): Promise<string> {
+  const room = formatRoomForEmma(row.roomNumber, findRoomInput()?.value);
+  await fillOpenReservationRoom(room);
+  const shown = normalizeRoomNumber(findRoomInput()?.value ?? '');
+  if (shown !== normalizeRoomNumber(room)) throw new Error('room field');
+  return rememberAcceptedRoom(row);
 }
 
 async function requestArrivingNow(reservationId: string): Promise<ApiRoomSuggestion | null> {
@@ -365,28 +405,27 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
-  if (style.dataset.v === '8') return;
-  style.dataset.v = '8';
+  if (style.dataset.v === '9') return;
+  style.dataset.v = '9';
   style.textContent = `
-    /* Detail: inline beside the Room input, never inside the 6rem control */
+    /* Detail: fixed overlay beside the Room input, outside the SAP flex row */
     #${HOST_ID}{
       box-sizing:border-box;
-      display:inline-flex;
-      flex-direction:row;
-      flex-wrap:wrap;
-      align-items:center;
-      gap:6px;
-      margin:0 0 0 8px;
-      max-width:none;
+      position:fixed;
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      gap:2px;
+      margin:0;
+      max-width:240px;
       font-family:var(--sapFontFamily,"72",system-ui,-apple-system,sans-serif);
       color:#0f172a;
       background:transparent;
       border:0;
       box-shadow:none;
       padding:0;
-      z-index:5;
+      z-index:30;
       pointer-events:auto;
-      vertical-align:middle;
     }
     #${HOST_ID} *{box-sizing:border-box;}
     #${HOST_ID} .pb-ra-top{
@@ -404,7 +443,9 @@ function ensureStyles() {
       border-radius:999px;padding:1px 5px;white-space:nowrap;
     }
     #${HOST_ID} .pb-ra-main{
-      display:flex;align-items:center;gap:6px;
+      display:flex;align-items:center;gap:6px;flex-wrap:nowrap;
+      background:#fff;border:1px solid rgba(45,58,79,.16);border-radius:8px;
+      padding:3px 6px;box-shadow:0 1px 4px rgba(15,23,42,.12);
     }
     #${HOST_ID} .pb-ra-room{
       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -499,10 +540,10 @@ function ensureStyles() {
   `;
 }
 
-function mountInRoomField(slot: HTMLElement): HTMLElement {
+function mountDetailHost(): HTMLElement {
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
-  const trapped = Boolean(host?.closest('.sapMInputBase'));
-  if (host && !trapped && host.previousElementSibling === slot) return host;
+  const trapped = Boolean(host?.closest('.sapMHBox, .sapMInputBase, .sapMFlexItem'));
+  if (host && !trapped && host.parentElement === document.body) return host;
   const key = host?.dataset.key;
   host?.remove();
   host = document.createElement('div');
@@ -511,8 +552,46 @@ function mountInRoomField(slot: HTMLElement): HTMLElement {
   host.setAttribute('role', 'region');
   host.setAttribute('aria-label', msgs.emmaRoom.title);
   if (key) host.dataset.key = key;
-  slot.insertAdjacentElement('afterend', host);
+  document.body.appendChild(host);
   return host;
+}
+
+function placeDetailChip() {
+  const host = document.getElementById(HOST_ID);
+  const input = findRoomInput();
+  if (!host || !input) return;
+  const rect = input.getBoundingClientRect();
+  const width = host.offsetWidth || 220;
+  let left = rect.right + 8;
+  if (left + width > window.innerWidth - 8) left = Math.max(8, rect.left);
+  host.style.top = `${Math.max(8, rect.top)}px`;
+  host.style.left = `${left}px`;
+}
+
+function arrivingNowVisible(row: ApiRoomSuggestion): boolean {
+  if (row.roomStatus === 'DIRTY' || row.roomStatus === 'CLEAN' || row.roomStatus === 'IN_PROGRESS') return true;
+  if (row.roomStatus === 'INSPECTED' || row.roomStatus === 'OUT_OF_ORDER') return false;
+  return !row.readyNow;
+}
+
+function fillOpenReservationRoom(room: string): Promise<void> {
+  const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      document.removeEventListener('prize-ra-fill-room-done', onDone);
+      reject(new Error('room field'));
+    }, 2500);
+    const onDone = (event: Event) => {
+      const detail = (event as CustomEvent<{ requestId: string; error: string | null }>).detail;
+      if (!detail || detail.requestId !== requestId) return;
+      window.clearTimeout(timer);
+      document.removeEventListener('prize-ra-fill-room-done', onDone);
+      if (detail.error) reject(new Error(detail.error));
+      else resolve();
+    };
+    document.addEventListener('prize-ra-fill-room-done', onDone);
+    document.dispatchEvent(new CustomEvent('prize-ra-fill-room', { detail: { room, requestId } }));
+  });
 }
 
 function iconCheck() {
@@ -531,6 +610,8 @@ let statusWarn = false;
 let painting = false;
 let tickRunning = false;
 let tickQueued = false;
+let awaitingUnassigned = false;
+const unassignedReportedAt = new Map<string, number>();
 
 function applyRoomToEmma(roomNumber: string): boolean {
   const input = findRoomInput();
@@ -550,11 +631,18 @@ function renderHost(host: HTMLElement) {
   host.setAttribute('aria-label', msgs.emmaRoom.title);
   if (suggestionLoading && !suggestion) {
     host.innerHTML = `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.loading)}</div>`;
+    placeDetailChip();
     return;
   }
   if (!suggestion) {
+    if (awaitingUnassigned && !statusText) {
+      host.innerHTML = `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.loading)}</div>`;
+      placeDetailChip();
+      return;
+    }
     host.innerHTML =
       `<div class="pb-ra-note">${escapeHtml(statusText || msgs.emmaRoom.noSuggestion)}</div>`;
+    placeDetailChip();
     return;
   }
   const floorLabel = formatFloorLabel(suggestion.floor ?? floorFromRoomNumber(suggestion.roomNumber));
@@ -568,11 +656,10 @@ function renderHost(host: HTMLElement) {
   const higher = msgs.emmaRoom.higher;
   const lower = msgs.emmaRoom.lower;
   const arriving = msgs.emmaRoom.arrivingNow;
+  const nowButton = arrivingNowVisible(suggestion)
+    ? `<button type="button" class="pb-ra-now">${escapeHtml(arriving)}</button>`
+    : '';
   host.innerHTML =
-    `<div class="pb-ra-top">` +
-    `<span class="pb-ra-title"><span class="pb-ra-dot" aria-hidden="true"></span>${escapeHtml(msgs.emmaRoom.title)}</span>` +
-    `<span class="pb-ra-badge">${escapeHtml(readyLabel)}</span>` +
-    `</div>` +
     `<div class="pb-ra-main">` +
     `<div><div class="pb-ra-room">${escapeHtml(suggestion.roomNumber)}</div>` +
     `<div class="pb-ra-meta">${escapeHtml(meta)}</div></div>` +
@@ -583,9 +670,10 @@ function renderHost(host: HTMLElement) {
     `</div>` +
     `<button type="button" class="pb-ra-btn pb-ra-accept" title="${escapeAttr(accept)}" aria-label="${escapeAttr(accept)}">${iconCheck()}</button>` +
     `</div></div>` +
-    `<button type="button" class="pb-ra-now">${escapeHtml(arriving)}</button>` +
+    nowButton +
     statusHtml +
     `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.previewNote)}</div>`;
+  placeDetailChip();
 
   const nudge = (direction: 'up' | 'down') => {
     const booking = getBookingNumber();
@@ -630,7 +718,7 @@ function renderHost(host: HTMLElement) {
     if (!suggestion || assigning) return;
     const current = suggestion;
     assigning = true;
-    void acceptSuggestion(current)
+    void acceptOpenReservation(current)
       .then((room) => {
         applyRoomToEmma(room);
         statusText = interpolate(msgs.emmaRoom.applied, { room });
@@ -870,7 +958,7 @@ function isCheckInListPage(): boolean {
   );
 }
 
-async function scanCheckInList() {
+async function scanCheckInList(missing?: Set<string>) {
   const table = findCheckInListTable();
   if (!table) {
     if (!isCheckInListPage()) {
@@ -900,6 +988,7 @@ async function scanCheckInList() {
     const existing = roomCell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
 
     if (fixed) {
+      unassignedReportedAt.delete(reservationKey(booking));
       existing?.remove();
       continue;
     }
@@ -918,8 +1007,9 @@ async function scanCheckInList() {
     const item = plan.items.find((rowItem) => sameReservation(rowItem.reservationId, booking));
     const roomKey = item?.suggestion ? item.suggestion.roomNumber.replace(/^0+/, '') : '';
     if (!item?.suggestion || (roomKey && usedRooms.has(roomKey))) {
+      if (!item) missing?.add(booking);
       if (item) seen.add(ensureRowNote(roomCell, msgs.emmaRoom.noSuggestion, false));
-      else existing?.remove();
+      else if (!awaitingUnassigned) existing?.remove();
       continue;
     }
     usedRooms.add(roomKey);
@@ -943,7 +1033,7 @@ function clearDetailHost() {
   statusWarn = false;
 }
 
-async function tickDetail() {
+async function tickDetail(missing?: Set<string>) {
   const booking = getBookingNumber();
   const slot = roomControlSlot();
 
@@ -957,10 +1047,9 @@ async function tickDetail() {
     return;
   }
 
-  const alreadyPlaced =
-    document.getElementById(HOST_ID)?.previousElementSibling === slot &&
-    !document.getElementById(HOST_ID)?.closest('.sapMInputBase');
-  const host = mountInRoomField(slot);
+  const alreadyPlaced = document.getElementById(HOST_ID)?.parentElement === document.body;
+  const host = mountDetailHost();
+  placeDetailChip();
   const key = booking;
   if (!alreadyPlaced && host.dataset.key === key) renderHost(host);
   if (host.dataset.key === key || detailInflight.has(key)) return;
@@ -983,8 +1072,15 @@ async function tickDetail() {
     } else {
       suggestion = suggestionForReservation(plan.items, booking);
       if (!suggestion) {
-        statusText = msgs.emmaRoom.noSuggestion;
-        statusWarn = true;
+        const inPlan = plan.items.some((rowItem) => sameReservation(rowItem.reservationId, booking));
+        if (!inPlan) {
+          missing?.add(booking);
+          statusText = '';
+          statusWarn = false;
+        } else {
+          statusText = msgs.emmaRoom.noSuggestion;
+          statusWarn = true;
+        }
       }
     }
     host.dataset.key = key;
@@ -1016,8 +1112,24 @@ async function tick() {
     }
 
     ensureStyles();
-    await scanCheckInList();
-    await tickDetail();
+    const missing = new Set<string>();
+    awaitingUnassigned = false;
+    await scanCheckInList(missing);
+    await tickDetail(missing);
+    if (missing.size) {
+      awaitingUnassigned = true;
+      const host = document.getElementById(HOST_ID);
+      if (host) renderHost(host);
+      const updated = await reportUnassigned([...missing]);
+      awaitingUnassigned = false;
+      if (updated) {
+        if (host) delete host.dataset.key;
+        await scanCheckInList();
+        await tickDetail();
+      } else if (host) {
+        renderHost(host);
+      }
+    }
   } finally {
     tickRunning = false;
     window.setTimeout(() => {
@@ -1050,6 +1162,10 @@ export function startEmmaRoomSuggestWatcher() {
   });
 
   void tick();
+
+  const place = () => placeDetailChip();
+  window.addEventListener('scroll', place, true);
+  window.addEventListener('resize', place);
 
   window.addEventListener('hashchange', () => {
     lastKey = null;

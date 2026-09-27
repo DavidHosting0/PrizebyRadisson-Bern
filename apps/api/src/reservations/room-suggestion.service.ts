@@ -5,7 +5,7 @@ import {
   allHotelRoomNumbers,
   formatHotelDateOnly,
   floorFromRoomNumber,
-  normalizeGuestName,
+  repeatGuestNameKey,
   physicalRoomCategory,
   suggestAdjacentRoom,
   suggestAllRooms,
@@ -134,10 +134,42 @@ export class RoomSuggestionService {
     return { suggestion };
   }
 
+  /**
+   * EMMA already shows no room, but the last sync can still have the old number.
+   * Drop that assignment so the shared plan suggests a room again.
+   */
+  async noteEmmaUnassigned(
+    reservationIds: string[],
+    hotelId?: string,
+  ): Promise<{ items: RoomSuggestionListItem[] }> {
+    const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
+    const today = todayIsoDate();
+    let cleared = false;
+    const seen = new Set<string>();
+    for (const rawId of reservationIds) {
+      const id = rawId.trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const row = await this.findSnapshot(hid, id);
+      if (!row?.roomId || row.checkOut) continue;
+      if (formatHotelDateOnly(row.arrivalDate) !== today) continue;
+      await this.prisma.reservationSnapshot.update({
+        where: { hotelId_reservationId: { hotelId: hid, reservationId: row.reservationId } },
+        data: { roomId: null },
+      });
+      await this.prisma.roomSuggestionLock.deleteMany({
+        where: { hotelId: hid, reservationId: row.reservationId },
+      });
+      cleared = true;
+    }
+    if (cleared) this.planCache = null;
+    return this.list(hid);
+  }
+
   async list(hotelId?: string): Promise<{ items: RoomSuggestionListItem[] }> {
     const hid = hotelId?.trim() || process.env.EMMA_HOTEL_ID?.trim() || 'CHBRNPR';
     const day = todayIsoDate();
-    const fingerprint = await this.planFingerprint(hid, dateOnlyFromIso(day));
+    const fingerprint = await this.planFingerprint(hid);
     if (
       this.planCache &&
       this.planCache.hotelId === hid &&
@@ -178,7 +210,7 @@ export class RoomSuggestionService {
       const roomNumber = canonicalRoomNumber(lock.roomNumber);
       if (used.has(roomNumber)) continue;
       used.add(roomNumber);
-      lockByGuest.set(reservationId, { ...lock, roomNumber });
+      lockByGuest.set(reservationId, withRoomStatus({ ...lock, roomNumber }, board.inventory));
     }
     const computedByGuest = new Map<string, RoomSuggestion>();
     for (const suggestion of suggestions) {
@@ -186,7 +218,10 @@ export class RoomSuggestionService {
       const roomNumber = canonicalRoomNumber(suggestion.roomNumber);
       if (used.has(roomNumber)) continue;
       used.add(roomNumber);
-      computedByGuest.set(suggestion.reservationId, { ...suggestion, roomNumber });
+      computedByGuest.set(
+        suggestion.reservationId,
+        withRoomStatus({ ...suggestion, roomNumber }, board.inventory),
+      );
     }
     const items = board.guests
       .filter((guest) => !guest.assignedRoom)
@@ -203,10 +238,19 @@ export class RoomSuggestionService {
     return items;
   }
 
-  private planFingerprint(hotelId: string, today: Date): Promise<string> {
+  /** EMMA check-in list: arrivals still due, plus the queue. Checked-in and cancelled stays are out. */
+  private checkInListWhere(hotelId: string) {
+    return {
+      hotelId,
+      checkOut: false,
+      OR: [{ inTodayArrivals: true }, { checkInQueue: true, inCheckInDone: false }],
+    };
+  }
+
+  private planFingerprint(hotelId: string): Promise<string> {
     return Promise.all([
       this.prisma.reservationSnapshot.aggregate({
-        where: { hotelId, arrivalDate: today, checkOut: false },
+        where: this.checkInListWhere(hotelId),
         _count: true,
         _max: { updatedAt: true },
       }),
@@ -236,7 +280,7 @@ export class RoomSuggestionService {
     const today = todayIsoDate();
     const todayDate = dateOnlyFromIso(today);
     const arrivals = await this.prisma.reservationSnapshot.findMany({
-      where: { hotelId: hid, arrivalDate: todayDate, checkOut: false },
+      where: this.checkInListWhere(hid),
       select: {
         reservationId: true,
         roomId: true,
@@ -274,6 +318,13 @@ export class RoomSuggestionService {
         checkIn: true,
         checkOut: true,
       },
+    });
+
+    const activeIds = arrivals.map((row) => row.reservationId);
+    await this.prisma.roomSuggestionLock.deleteMany({
+      where: activeIds.length
+        ? { hotelId: hid, reservationId: { notIn: activeIds } }
+        : { hotelId: hid },
     });
 
     const assignedIds = arrivals.filter((row) => row.roomId).map((row) => row.reservationId);
@@ -368,7 +419,7 @@ export class RoomSuggestionService {
     for (const id of [...new Set(candidates)]) {
       const row = await this.prisma.reservationSnapshot.findUnique({
         where: { hotelId_reservationId: { hotelId, reservationId: id } },
-        select: { reservationId: true },
+        select: { reservationId: true, roomId: true, arrivalDate: true, checkOut: true },
       });
       if (row) return row;
     }
@@ -391,7 +442,7 @@ export class RoomSuggestionService {
     const sensitive = decryptSensitivePayload(this.cipher, row.sensitiveEnc);
     const name = sensitive?.mainGuestName ?? null;
     const detail = row.detailEnc ? decryptDetailBundle(this.cipher, row.detailEnc) : null;
-    const key = name ? normalizeGuestName(name) : '';
+    const key = repeatGuestNameKey(name);
     return {
       reservationId: row.reservationId,
       guestName: name,
@@ -423,7 +474,7 @@ export class RoomSuggestionService {
         for (const row of past) {
           const name = decryptSensitivePayload(this.cipher, row.sensitiveEnc)?.mainGuestName;
           if (!name) continue;
-          const normalized = normalizeGuestName(name);
+          const normalized = repeatGuestNameKey(name);
           if (!normalized) continue;
           counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
         }
@@ -508,6 +559,13 @@ function countryFromDetail(guests: Record<string, unknown>[] | undefined): strin
   if (value == null) return null;
   const text = String(value).trim();
   return text.length ? text : null;
+}
+
+function withRoomStatus(suggestion: RoomSuggestion, rooms: RoomSuggestRoom[]): RoomSuggestion {
+  const n = canonicalRoomNumber(suggestion.roomNumber);
+  const room = rooms.find((item) => canonicalRoomNumber(item.roomNumber) === n);
+  if (!room) return suggestion;
+  return { ...suggestion, roomStatus: room.status };
 }
 
 function canonicalRoomNumber(roomNumber: string): string {

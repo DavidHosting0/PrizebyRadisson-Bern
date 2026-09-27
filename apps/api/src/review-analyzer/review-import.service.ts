@@ -157,26 +157,48 @@ export class ReviewImportService {
     try {
       await this.prisma.reviewImportJob.update({
         where: { id: jobId },
-        data: { errorMessage: `scraping Booking (${mode}, last ${settings.historicalMonths} months)…` },
+        data: {
+          errorMessage:
+            mode === 'incremental'
+              ? 'incremental sync — newest reviews until known match…'
+              : `historical scrape (last ${settings.historicalMonths} months)…`,
+        },
       });
 
-      const knownIds = new Set(
-        (
-          await this.prisma.guestReview.findMany({
-            where: { source: ReviewSource.BOOKING },
-            select: { externalId: true },
-            take: 5000,
-            orderBy: { reviewedAt: 'desc' },
-          })
-        ).map((r) => r.externalId),
-      );
+      const existingRows = await this.prisma.guestReview.findMany({
+        where: { source: ReviewSource.BOOKING, hotelKey: settings.hotelKey },
+        select: {
+          externalId: true,
+          guestName: true,
+          reviewedAt: true,
+          score: true,
+        },
+        take: 8000,
+        orderBy: { reviewedAt: 'desc' },
+      });
+      const knownIds = new Set(existingRows.map((r) => r.externalId));
+      const knownSoftKeys = new Set(existingRows.map((r) => buildReviewSoftKey(r)));
+
+      const isKnownReview = (r: {
+        externalId: string;
+        guestName?: string | null;
+        reviewedAt: Date;
+        score: number;
+      }) => knownIds.has(r.externalId) || knownSoftKeys.has(buildReviewSoftKey(r));
+
+      // Incremental: few pages max; historical: full settings window
+      const maxPages =
+        mode === 'incremental'
+          ? Math.min(settings.maxPagesPerRun, 30)
+          : settings.maxPagesPerRun;
 
       const scraped = await scrapeBookingReviews({
         url: settings.bookingUrl,
         cutoffDate: cutoff,
-        maxPages: settings.maxPagesPerRun,
+        maxPages,
         headless: process.env.REVIEW_ANALYZER_HEADLESS !== 'false',
-        incrementalStopIds: mode === 'incremental' ? knownIds : undefined,
+        isKnownReview: mode === 'incremental' ? isKnownReview : undefined,
+        stopAfterKnownConsecutive: 1,
         onProgress: async (p) => {
           await this.prisma.reviewImportJob.update({
             where: { id: jobId },
@@ -194,6 +216,7 @@ export class ReviewImportService {
             else {
               importedCount++;
               knownIds.add(r.externalId);
+              knownSoftKeys.add(buildReviewSoftKey(r));
               await this.queue.enqueueAnalyze(result);
             }
           }

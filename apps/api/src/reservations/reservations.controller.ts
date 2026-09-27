@@ -8,6 +8,7 @@ import { MoveFolioChargeDto } from './dto/move-folio-charge.dto';
 import { ReservationsAnalyticsService } from './reservations-analytics.service';
 import { ReservationsService } from './reservations.service';
 import { AcceptRoomSuggestionDto } from './dto/accept-room-suggestion.dto';
+import { ReleaseRoomAssignmentsDto } from './dto/release-room-assignments.dto';
 import { ShiftRoomSuggestionDto } from './dto/shift-room-suggestion.dto';
 import { RoomSuggestionService } from './room-suggestion.service';
 
@@ -121,6 +122,13 @@ export class ReservationsController {
   @RequirePermissions(PermissionCode.RESERVATIONS_READ)
   listRoomSuggestions(@Query('hotelId') hotelId?: string) {
     return this.roomSuggestions.list(hotelId);
+  }
+
+  @Post('room-suggestions/unassigned')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PermissionCode.RESERVATIONS_READ)
+  noteRoomsUnassigned(@Body() dto: ReleaseRoomAssignmentsDto, @Query('hotelId') hotelId?: string) {
+    return this.roomSuggestions.noteEmmaUnassigned(dto.reservationIds, hotelId);
   }
 
   @Post(':reservationId/room-suggestion/accept')

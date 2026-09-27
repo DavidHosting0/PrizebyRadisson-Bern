@@ -4,7 +4,9 @@ import {
   isChinaJapanOrKorea,
   isEastAsianName,
   isThreePersonRoom,
+  isPlaceholderGuestName,
   normalizeGuestName,
+  repeatGuestNameKey,
   suggestAdjacentRoom,
   suggestAllRooms,
   suggestRoomForReservation,
@@ -46,6 +48,13 @@ function suggest(partial: Omit<RoomSuggestInput, 'mode' | 'reservationId'> & { m
 describe('room suggestion helpers', () => {
   it('normalizes guest names', () => {
     assert.equal(normalizeGuestName('  Müller   Hans '), 'muller hans');
+  });
+
+  it('does not treat the WEB GUEST placeholder as a repeat-guest name', () => {
+    assert.equal(isPlaceholderGuestName('WEB GUEST'), true);
+    assert.equal(isPlaceholderGuestName('  Web   Guest '), true);
+    assert.equal(repeatGuestNameKey('WEB GUEST'), '');
+    assert.equal(repeatGuestNameKey('Ada Berger'), 'ada berger');
   });
 
   it('treats basement 8 and 12 as not larger', () => {

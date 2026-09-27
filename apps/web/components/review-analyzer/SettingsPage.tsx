@@ -51,6 +51,12 @@ export function SettingsPage() {
               onChange={(e) => set('enabled', e.target.checked)}
             />
           </label>
+          <p className="text-xs leading-relaxed text-sidebar-muted">
+            When enabled, the server runs an automatic import every hour. Incremental sync only
+            fetches the newest Booking reviews and stops at the first review already in the database
+            (it does not re-walk the full history each time). Manual &quot;Run import&quot; uses the same
+            smart mode once reviews exist.
+          </p>
           <label className="block text-sm text-white">
             <span className="text-xs text-sidebar-muted">Booking URL</span>
             <input

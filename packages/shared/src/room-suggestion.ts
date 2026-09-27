@@ -81,6 +81,8 @@ export type RoomSuggestion = {
   category: RoomCategory;
   bookedCategory: RoomCategory;
   readyNow: boolean;
+  /** Housekeeping state of the suggested room. Anreise jetzt is for everything except inspected. */
+  roomStatus?: RoomSuggestRoomStatus;
   reasons: RoomSuggestReason[];
 };
 
@@ -98,6 +100,20 @@ export function normalizeGuestName(name: string): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** EMMA placeholder until the booking has a real guest name. */
+const PLACEHOLDER_GUEST_NAMES = new Set(['web guest']);
+
+export function isPlaceholderGuestName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  return PLACEHOLDER_GUEST_NAMES.has(normalizeGuestName(name));
+}
+
+/** Name key for repeat-guest matching. Placeholders match nobody. */
+export function repeatGuestNameKey(name: string | null | undefined): string {
+  if (!name || isPlaceholderGuestName(name)) return '';
+  return normalizeGuestName(name);
 }
 
 export function bookedRoomCategory(roomType: string | null | undefined): RoomCategory {
@@ -493,6 +509,7 @@ function runAssignments(input: RoomSuggestInput): RoomSuggestion[] {
       category: choice.room.category,
       bookedCategory: bookedRoomCategory(guest.roomType),
       readyNow: choice.room.readyNow,
+      roomStatus: choice.room.status,
       reasons: choice.reasons,
     });
   }
@@ -555,6 +572,7 @@ export function suggestAdjacentRoom(
     category: room.category,
     bookedCategory: bookedRoomCategory(guest.roomType),
     readyNow: room.readyNow,
+    roomStatus: room.status,
     reasons,
   };
 }
