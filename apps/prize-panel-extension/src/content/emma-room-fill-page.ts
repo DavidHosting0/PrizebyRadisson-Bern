@@ -67,6 +67,58 @@ function writeRoom(control: RoomControl, value: string) {
   control.fireChange?.({ value, newValue: value });
 }
 
+type ListRow = { id: string; room: string };
+
+function textProp(obj: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = obj[key];
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function checkInListRows(): ListRow[] {
+  const core = ui5Core();
+  const tableEl = document.querySelector('table[id*="checkInList.table-table"]');
+  if (!core || !tableEl) return [];
+  const control = core.byId(tableEl.id.replace(/-table$/, '')) as {
+    getBinding?: (name: string) => {
+      getLength?: () => number;
+      getContexts?: (start: number, length: number) => Array<{ getObject?: () => Record<string, unknown> | null }>;
+    };
+  };
+  const binding = control?.getBinding?.('rows');
+  const length = binding?.getLength?.() ?? 0;
+  const contexts = binding?.getContexts?.(0, length) ?? [];
+  const rows: ListRow[] = [];
+  for (const ctx of contexts) {
+    const obj = ctx?.getObject?.();
+    if (!obj) continue;
+    const id = textProp(obj, ['ReservationId', 'reservationId']);
+    if (!id) continue;
+    rows.push({ id, room: textProp(obj, ['RoomId', 'roomId', 'Room']) });
+  }
+  return rows.length === length && length > 0 ? rows : [];
+}
+
+document.addEventListener('prize-ra-checkin-rows', (event) => {
+  const detail = (event as CustomEvent<{ requestId: string }>).detail;
+  if (!detail?.requestId) return;
+  let rows: ListRow[] = [];
+  try {
+    rows = checkInListRows();
+  } catch {
+    rows = [];
+  }
+  document.dispatchEvent(
+    new CustomEvent('prize-ra-checkin-rows-done', {
+      detail: { requestId: detail.requestId, rows },
+    }),
+  );
+});
+
 document.addEventListener('prize-ra-fill-room', (event) => {
   const detail = (event as CustomEvent<FillRequest>).detail;
   if (!detail?.requestId) return;

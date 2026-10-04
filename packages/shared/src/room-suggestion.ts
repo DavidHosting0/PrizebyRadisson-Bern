@@ -249,11 +249,19 @@ function wheelchairEligible(guest: RoomSuggestGuest): boolean {
 }
 
 function excludeBasement(guest: RoomSuggestGuest): boolean {
-  if (guestAvoidsBasement(guest)) return true;
-  const nights = guest.nights ?? 1;
-  if (nights !== 1) return true;
-  if (!guestIsVip(guest) && (guestIsPremium(guest) || guestIsRepeat(guest))) return true;
-  return false;
+  return guestAvoidsBasement(guest);
+}
+
+function isLastResortRoom(room: Candidate): boolean {
+  return room.floor === -1;
+}
+
+function normalStandardRooms(list: Candidate[]): Candidate[] {
+  return list.filter((room) => room.floor !== -1 && !isWheelchairRoom(room.roomNumber));
+}
+
+function wheelchairStandardRooms(list: Candidate[]): Candidate[] {
+  return list.filter((room) => room.floor !== -1 && isWheelchairRoom(room.roomNumber));
 }
 
 function applyGuestFilters(guest: RoomSuggestGuest, rooms: Candidate[]): Candidate[] {
@@ -281,17 +289,13 @@ function floorPreference(guest: RoomSuggestGuest, category: RoomCategory): numbe
   const nights = guest.nights ?? 1;
   if (category === 'view') return [7];
   if (vip) {
-    return category === 'corner' ? [6, 5, 4, 3, 2, 1, 0] : [6, 5, 4, 3, 2, 1, 0, -1];
+    return category === 'corner' ? [6, 5, 4, 3, 2, 1, 0] : [6, 5, 4, 3, 2, 1, 0];
   }
   if (mid) {
     return category === 'corner' ? [3, 4, 2, 5, 1, 6, 0] : [3, 4, 2, 5, 1, 6, 0];
   }
   if (nights <= 1) {
-    if (category === 'corner') return [0, 1, 2, 3, 4, 5, 6];
-    const low: number[] = [];
-    if (!excludeBasement(guest)) low.push(-1);
-    low.push(0, 1, 2, 3, 4, 5, 6);
-    return low;
+    return [0, 1, 2, 3, 4, 5, 6];
   }
   return category === 'corner' ? [6, 5, 4, 3, 2, 1, 0] : [6, 5, 4, 3, 2, 1, 0];
 }
@@ -415,41 +419,52 @@ function chooseForGuest(
   const inBooked = poolForCategory(booked, guest, rooms, input, taken, false);
   const readyBooked = inBooked.filter((room) => room.readyNow);
   const reasons = profileReasons(guest);
+  const readyOnly = input.mode === 'now';
+  const primary = readyOnly ? readyBooked : inBooked;
+  const ordinary = (list: Candidate[]) => list.filter((room) => !isLastResortRoom(room));
+  const reserve = (list: Candidate[]) => list.filter((room) => isLastResortRoom(room));
+  const standardFit = (list: Candidate[]) => {
+    const normal = normalStandardRooms(list);
+    if (normal.length) return normal;
+    if (wheelchairEligible(guest)) return wheelchairStandardRooms(list);
+    return [];
+  };
 
   let pool: Candidate[] = [];
   if (input.mode === 'now' && inBooked.length > 0 && readyBooked.length === 0) {
     reasons.push('category_not_ready');
-    pool = poolForCategory('standard', guest, rooms, input, taken, true);
-  } else if ((input.mode === 'now' ? readyBooked : inBooked).length === 0) {
+    pool = standardFit(poolForCategory('standard', guest, rooms, input, taken, true));
+  } else if (booked === 'standard') {
+    pool = standardFit(primary);
+  } else if (ordinary(primary).length > 0) {
+    pool = ordinary(primary);
+  }
+
+  if (!pool.length && !(input.mode === 'now' && inBooked.length > 0 && readyBooked.length === 0)) {
     if (booked === 'view') reasons.push('overbook_view');
     else if (booked === 'corner') reasons.push('overbook_corner');
-    else reasons.push('overbook_standard');
+    else if (booked === 'standard') reasons.push('overbook_standard');
 
-    const readyOnly = input.mode === 'now';
     if (booked === 'view' && spare('corner', guest, guests, placed, rooms, input, taken)) {
-      pool = poolForCategory('corner', guest, rooms, input, taken, readyOnly);
+      pool = ordinary(poolForCategory('corner', guest, rooms, input, taken, readyOnly));
     } else if (booked === 'corner' && spare('view', guest, guests, placed, rooms, input, taken)) {
-      pool = poolForCategory('view', guest, rooms, input, taken, readyOnly);
+      pool = ordinary(poolForCategory('view', guest, rooms, input, taken, readyOnly));
     } else if (booked === 'standard') {
       const merged: Candidate[] = [];
       if (spare('corner', guest, guests, placed, rooms, input, taken)) {
-        merged.push(...poolForCategory('corner', guest, rooms, input, taken, readyOnly));
+        merged.push(...ordinary(poolForCategory('corner', guest, rooms, input, taken, readyOnly)));
       }
       if (spare('view', guest, guests, placed, rooms, input, taken)) {
-        merged.push(...poolForCategory('view', guest, rooms, input, taken, readyOnly));
+        merged.push(...ordinary(poolForCategory('view', guest, rooms, input, taken, readyOnly)));
       }
       pool = merged;
-      if (!pool.length && wheelchairEligible(guest)) {
-        pool = poolForCategory('standard', guest, rooms, input, taken, readyOnly).filter((room) =>
-          isWheelchairRoom(room.roomNumber),
-        );
-      }
     } else {
-      pool = poolForCategory('standard', guest, rooms, input, taken, readyOnly);
+      pool = standardFit(poolForCategory('standard', guest, rooms, input, taken, readyOnly));
     }
-  } else {
-    pool = input.mode === 'now' ? readyBooked : inBooked;
   }
+
+  if (!pool.length) pool = reserve(primary);
+  if (!pool.length) pool = reserve(poolForCategory('standard', guest, rooms, input, taken, readyOnly));
 
   const room = pickFromPool(guest, pool, taken);
   if (!room) return null;
@@ -551,13 +566,21 @@ export function suggestAdjacentRoom(
   );
   if (!pool.length || !current) return null;
 
-  const rank = (room: Candidate) => room.floor * 1000 + parseInt(room.roomNumber, 10);
-  const currentRank = rank(current);
-  const side = [...pool]
-    .filter((room) => (direction === 'up' ? rank(room) > currentRank : rank(room) < currentRank))
-    .sort((a, b) => rank(a) - rank(b));
-  const sameCategory = side.filter((room) => room.category === current.category);
-  const pickFrom = sameCategory.length ? sameCategory : side;
+  const onAnotherFloor = pool.filter((room) =>
+    direction === 'up' ? room.floor > current.floor : room.floor < current.floor,
+  );
+  const ordinaryFloors = onAnotherFloor.filter((room) => !isLastResortRoom(room));
+  const floorPool = ordinaryFloors.length ? ordinaryFloors : onAnotherFloor;
+  if (!floorPool.length) return null;
+  const nearestFloor =
+    direction === 'up'
+      ? Math.min(...floorPool.map((room) => room.floor))
+      : Math.max(...floorPool.map((room) => room.floor));
+  const onFloor = floorPool.filter((room) => room.floor === nearestFloor);
+  const sameCategory = onFloor.filter((room) => room.category === current.category);
+  const pickFrom = (sameCategory.length ? sameCategory : onFloor).slice().sort(
+    (a, b) => parseInt(a.roomNumber, 10) - parseInt(b.roomNumber, 10),
+  );
   const room = direction === 'up' ? pickFrom[0] : pickFrom[pickFrom.length - 1];
   if (!room) return null;
 

@@ -20,6 +20,8 @@ let msgs: ExtensionMessages = getMessages('de');
 
 const HOST_ID = 'prize-ra-host';
 const STYLE_ID = 'prize-ra-style';
+const ASSIGN_ALL_ID = 'prize-ra-assign-all';
+const ASSIGN_COUNT_ID = 'prize-ra-assign-count';
 const ROW_ATTR = 'data-prize-room-assign';
 
 type ApiRoomSuggestion = {
@@ -143,11 +145,17 @@ function findRoomFieldControl(): HTMLElement | null {
   );
 }
 
-/** Flex item that wraps the Room input, so the chip sits beside it, not inside the 6rem control. */
-function roomControlSlot(): HTMLElement | null {
+/** Column that holds only the Room field, so a line under it does not cover the assign button. */
+function roomFieldColumn(): HTMLElement | null {
   const field = findRoomFieldControl();
   if (!field) return null;
-  return field.closest<HTMLElement>('.sapMFlexItem') ?? field.parentElement;
+  return (
+    field.closest<HTMLElement>('.sapUiRFLContainer') ||
+    field.closest<HTMLElement>('.sapUiFormCLContainer') ||
+    field.closest<HTMLElement>('.sapUiFormElementFields') ||
+    field.closest<HTMLElement>('.sapMFlexItem') ||
+    field.parentElement
+  );
 }
 
 function fieldTextNearLabel(root: ParentNode, labelRe: RegExp): string | null {
@@ -405,26 +413,30 @@ function ensureStyles() {
     style.id = STYLE_ID;
     document.documentElement.appendChild(style);
   }
-  if (style.dataset.v === '9') return;
-  style.dataset.v = '9';
+  if (style.dataset.v === '12') return;
+  style.dataset.v = '12';
   style.textContent = `
-    /* Detail: fixed overlay beside the Room input, outside the SAP flex row */
+    /* Detail: one SAP-like line under the Room field, in the document flow */
     #${HOST_ID}{
       box-sizing:border-box;
-      position:fixed;
+      position:static;
       display:flex;
-      flex-direction:column;
-      align-items:flex-start;
-      gap:2px;
-      margin:0;
-      max-width:240px;
-      font-family:var(--sapFontFamily,"72",system-ui,-apple-system,sans-serif);
-      color:#0f172a;
+      flex-flow:row wrap;
+      align-items:center;
+      gap:0.25rem 0.5rem;
+      flex:1 0 100%;
+      width:100%;
+      max-width:100%;
+      margin:0.25rem 0 0 0;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:0.875rem;
+      line-height:1.25;
+      color:var(--sapTextColor,#1d2d3e);
       background:transparent;
       border:0;
       box-shadow:none;
       padding:0;
-      z-index:30;
+      z-index:auto;
       pointer-events:auto;
     }
     #${HOST_ID} *{box-sizing:border-box;}
@@ -443,29 +455,32 @@ function ensureStyles() {
       border-radius:999px;padding:1px 5px;white-space:nowrap;
     }
     #${HOST_ID} .pb-ra-main{
-      display:flex;align-items:center;gap:6px;flex-wrap:nowrap;
-      background:#fff;border:1px solid rgba(45,58,79,.16);border-radius:8px;
-      padding:3px 6px;box-shadow:0 1px 4px rgba(15,23,42,.12);
+      display:inline-flex;align-items:center;gap:0.35rem;flex-wrap:wrap;
+      background:transparent;border:0;box-shadow:none;padding:0;
     }
     #${HOST_ID} .pb-ra-room{
-      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:16px;font-weight:800;letter-spacing:.03em;line-height:1.1;
-      color:#1a2332;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:0.875rem;font-weight:700;letter-spacing:0;line-height:1.2;
+      color:var(--sapTextColor,#1d2d3e);
     }
     #${HOST_ID} .pb-ra-meta{
-      font-size:9px;color:#64748b;margin-top:1px;font-weight:500;
+      font-size:0.75rem;color:var(--sapContent_LabelColor,#556b82);margin:0;font-weight:400;
     }
     #${HOST_ID} .pb-ra-actions{
       display:flex;align-items:center;gap:3px;flex-shrink:0;margin-left:auto;
     }
     #${HOST_ID} .pb-ra-btn{
-      appearance:none;cursor:pointer;border:1px solid #cbd5e1;background:#fff;
-      width:26px;height:26px;border-radius:7px;display:inline-flex;
-      align-items:center;justify-content:center;color:#1a2332;padding:0;
+      appearance:none;cursor:pointer;
+      border:1px solid var(--sapButton_BorderColor,#bcc3ca);
+      background:var(--sapButton_Background,#fff);
+      width:1.5rem;height:1.5rem;border-radius:0.25rem;display:inline-flex;
+      align-items:center;justify-content:center;color:var(--sapButton_TextColor,#1d2d3e);padding:0;
     }
-    #${HOST_ID} .pb-ra-btn:hover{background:#f1f5f9;}
+    #${HOST_ID} .pb-ra-btn:hover{background:var(--sapButton_Hover_Background,#f5f6f7);}
     #${HOST_ID} .pb-ra-btn.pb-ra-accept{
-      background:#15803d;border-color:#15803d;color:#fff;
+      background:var(--sapButton_Emphasized_Background,#0070f2);
+      border-color:var(--sapButton_Emphasized_BorderColor,#0070f2);
+      color:var(--sapButton_Emphasized_TextColor,#fff);
     }
     #${HOST_ID} .pb-ra-btn svg{width:13px;height:13px;display:block;}
     #${HOST_ID} .pb-ra-nudge{display:flex;flex-direction:column;gap:2px;}
@@ -487,10 +502,10 @@ function ensureStyles() {
     }
     #${HOST_ID} .pb-ra-status.pb-ra-warn{color:#b45309;}
     #${HOST_ID} .pb-ra-note{
-      font-size:12px;font-weight:650;color:#9a3412;line-height:1.25;
+      font-size:0.75rem;font-weight:400;color:var(--sapContent_LabelColor,#556b82);line-height:1.25;
     }
 
-    /* Check-in list Room column — same line as the empty room number */
+    /* Check-in list Room column — one line, same height as an EMMA room number */
     .sapUiTableDataCell:has([${ROW_ATTR}="row"]) .sapUiTableCellInner,
     .sapUiTableDataCell:has([${ROW_ATTR}="row"]) .sapMVBox{
       overflow:visible !important;
@@ -499,9 +514,10 @@ function ensureStyles() {
     [${ROW_ATTR}="row"]{
       display:inline-flex !important;
       align-items:center;
-      gap:0.25rem;
+      gap:0.3rem;
       margin:0;
-      line-height:1.15;
+      height:1.5rem;
+      line-height:1;
       max-width:100%;
       flex-shrink:0;
       position:relative;
@@ -510,40 +526,82 @@ function ensureStyles() {
       vertical-align:middle;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-code{
-      appearance:none;cursor:pointer;
-      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-      font-size:0.78rem;font-weight:800;letter-spacing:.03em;
-      color:#0f172a;
-      background:#dbeafe;
-      border:1px solid #2563eb;
-      border-radius:0.25rem;
-      padding:0.15rem 0.45rem;
+      display:inline-flex;
+      align-items:center;
+      gap:0.3rem;
+      height:1.35rem;
+      padding:0 0.45rem 0 0.35rem;
+      border-radius:999px;
+      border:1px solid #8eb4d4;
+      background:#f3f8fc;
+      color:#0b3a5b;
+      font-family:var(--sapFontFamily,"72",system-ui,sans-serif);
+      font-size:0.75rem;
+      font-weight:700;
+      letter-spacing:.04em;
       white-space:nowrap;
     }
-    [${ROW_ATTR}="row"] .pb-ra-row-code:hover{filter:brightness(0.97);}
+    [${ROW_ATTR}="row"] .pb-ra-row-code::before{
+      content:"";
+      width:0.4rem;
+      height:0.4rem;
+      border-radius:999px;
+      background:#1b7a3a;
+      flex:0 0 auto;
+    }
+    [${ROW_ATTR}="row"] .pb-ra-row-code.pb-ra-dirty{
+      background:#fff8f0;
+      border-color:#e0b07a;
+      color:#7a3e00;
+    }
+    [${ROW_ATTR}="row"] .pb-ra-row-code.pb-ra-dirty::before{background:#c2410c;}
     [${ROW_ATTR}="row"] .pb-ra-row-note{
-      display:inline-block;max-width:9.5rem;margin-left:4px;
-      font-size:10px;font-weight:650;line-height:1.2;color:#9a3412;
+      display:inline-block;
+      max-width:8.5rem;
+      font-size:0.68rem;
+      font-weight:600;
+      line-height:1.2;
+      color:#9a3412;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
     [${ROW_ATTR}="row"] .pb-ra-row-note.is-error{color:#9b1c1c;}
     #${HOST_ID} .pb-ra-now{
-      appearance:none;cursor:pointer;border:1px solid #cbd5e1;background:#fff;
-      border-radius:6px;padding:3px 6px;font-size:10px;font-weight:700;color:#1a2332;
+      appearance:none;cursor:pointer;
+      border:1px solid var(--sapButton_BorderColor,#bcc3ca);
+      background:var(--sapButton_Background,#fff);
+      border-radius:0.25rem;padding:0.15rem 0.4rem;
+      font:inherit;font-size:0.75rem;font-weight:600;
+      color:var(--sapButton_TextColor,#1d2d3e);
     }
-    #${HOST_ID} .pb-ra-now:hover{background:#f1f5f9;}
-    [${ROW_ATTR}="row"] .pb-ra-row-code.pb-ra-dirty{background:#ffedd5;border-color:#c2410c;color:#9a3412;}
+    #${HOST_ID} .pb-ra-now:hover{background:var(--sapButton_Hover_Background,#f5f6f7);}
     [${ROW_ATTR}="row"] .pb-ra-row-accept{
-      appearance:none;cursor:pointer;border:1px solid #15803d;background:#15803d;color:#fff;
-      border-radius:0.25rem;width:1.35rem;height:1.35rem;font-size:0.75rem;font-weight:800;
-      line-height:1;
+      appearance:none;cursor:pointer;
+      display:inline-flex;align-items:center;justify-content:center;
+      width:1.35rem;height:1.35rem;padding:0;
+      border:1px solid #1b7a3a;background:#1b7a3a;color:#fff;
+      border-radius:999px;
+    }
+    [${ROW_ATTR}="row"] .pb-ra-row-accept:hover{background:#14632f;}
+    [${ROW_ATTR}="row"] .pb-ra-row-accept svg{width:0.8rem;height:0.8rem;display:block;}
+    #${ASSIGN_ALL_ID}{margin-inline-end:0.25rem;}
+    #${ASSIGN_COUNT_ID}{
+      display:inline-flex;align-items:center;
+      margin-inline-end:0.5rem;
+      font-family:var(--sapFontFamily,"72",Arial,Helvetica,sans-serif);
+      font-size:0.875rem;font-weight:600;
+      color:var(--sapTextColor,#1d2d3e);
+      white-space:nowrap;
     }
   `;
 }
 
-function mountDetailHost(): HTMLElement {
+function mountDetailHost(column: HTMLElement): HTMLElement {
+  const field = findRoomFieldControl();
   let host = document.getElementById(HOST_ID) as HTMLElement | null;
-  const trapped = Boolean(host?.closest('.sapMHBox, .sapMInputBase, .sapMFlexItem'));
-  if (host && !trapped && host.parentElement === document.body) return host;
+  const placed = host?.parentElement === column && (!field || host.previousElementSibling === field || host.parentElement === column);
+  if (host && placed && !host.closest('.sapMInputBase')) return host;
   const key = host?.dataset.key;
   host?.remove();
   host = document.createElement('div');
@@ -552,20 +610,19 @@ function mountDetailHost(): HTMLElement {
   host.setAttribute('role', 'region');
   host.setAttribute('aria-label', msgs.emmaRoom.title);
   if (key) host.dataset.key = key;
-  document.body.appendChild(host);
+  if (column.style.display.includes('flex') || column.classList.contains('sapUiRFLContainer')) {
+    column.style.flexWrap = 'wrap';
+  }
+  if (field && field.parentElement === column) field.insertAdjacentElement('afterend', host);
+  else column.appendChild(host);
   return host;
 }
 
 function placeDetailChip() {
   const host = document.getElementById(HOST_ID);
-  const input = findRoomInput();
-  if (!host || !input) return;
-  const rect = input.getBoundingClientRect();
-  const width = host.offsetWidth || 220;
-  let left = rect.right + 8;
-  if (left + width > window.innerWidth - 8) left = Math.max(8, rect.left);
-  host.style.top = `${Math.max(8, rect.top)}px`;
-  host.style.left = `${left}px`;
+  if (!host) return;
+  host.style.top = '';
+  host.style.left = '';
 }
 
 function arrivingNowVisible(row: ApiRoomSuggestion): boolean {
@@ -661,7 +718,7 @@ function renderHost(host: HTMLElement) {
     : '';
   host.innerHTML =
     `<div class="pb-ra-main">` +
-    `<div><div class="pb-ra-room">${escapeHtml(suggestion.roomNumber)}</div>` +
+    `<div><div class="pb-ra-room" title="${escapeAttr(msgs.emmaRoom.previewNote)}">${escapeHtml(suggestion.roomNumber.padStart(4, '0'))}</div>` +
     `<div class="pb-ra-meta">${escapeHtml(meta)}</div></div>` +
     `<div class="pb-ra-actions">` +
     `<div class="pb-ra-nudge">` +
@@ -671,8 +728,7 @@ function renderHost(host: HTMLElement) {
     `<button type="button" class="pb-ra-btn pb-ra-accept" title="${escapeAttr(accept)}" aria-label="${escapeAttr(accept)}">${iconCheck()}</button>` +
     `</div></div>` +
     nowButton +
-    statusHtml +
-    `<div class="pb-ra-note">${escapeHtml(msgs.emmaRoom.previewNote)}</div>`;
+    statusHtml;
   placeDetailChip();
 
   const nudge = (direction: 'up' | 'down') => {
@@ -911,20 +967,18 @@ function ensureRowChip(cell: HTMLElement, rowSuggestion: ApiRoomSuggestion): HTM
   host.dataset.ready = String(rowSuggestion.readyNow);
 
   host.innerHTML = '';
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = `pb-ra-row-code${rowSuggestion.readyNow ? '' : ' pb-ra-dirty'}`;
+  const pill = document.createElement('span');
+  pill.className = `pb-ra-row-code${rowSuggestion.readyNow ? '' : ' pb-ra-dirty'}`;
   const display = roomNumber.padStart(4, '0');
-  btn.textContent = display;
+  pill.textContent = display;
   const reason = reasonLine(rowSuggestion.reasons);
-  btn.title = [msgs.emmaRoom.title, display, rowSuggestion.readyNow ? msgs.emmaRoom.ready : msgs.emmaRoom.dirty, reason]
+  pill.title = [msgs.emmaRoom.title, display, rowSuggestion.readyNow ? msgs.emmaRoom.ready : msgs.emmaRoom.dirty, reason]
     .filter(Boolean)
     .join(' · ');
-  btn.setAttribute('aria-label', btn.title);
   const accept = document.createElement('button');
   accept.type = 'button';
   accept.className = 'pb-ra-row-accept';
-  accept.textContent = '✓';
+  accept.innerHTML = iconCheck();
   accept.title = msgs.emmaRoom.accept;
   accept.setAttribute('aria-label', msgs.emmaRoom.accept);
   accept.addEventListener('click', (e) => {
@@ -939,15 +993,198 @@ function ensureRowChip(cell: HTMLElement, rowSuggestion: ApiRoomSuggestion): HTM
         host?.remove();
       })
       .catch(() => {
-        btn.title = msgs.emmaRoom.assignFailed;
+        pill.title = msgs.emmaRoom.assignFailed;
       })
       .finally(() => {
         assigning = false;
       });
   });
-  host.appendChild(btn);
+  host.appendChild(pill);
   host.appendChild(accept);
   return host;
+}
+
+function findExpressCheckIn(): HTMLElement | null {
+  const toolbar = document.querySelector<HTMLElement>('[id*="CheckInList"][id*="stickyToolbar"]');
+  if (!toolbar) return null;
+  for (const btn of toolbar.querySelectorAll<HTMLElement>('button')) {
+    if (btn.id === ASSIGN_ALL_ID) continue;
+    const label = `${btn.getAttribute('aria-label') || ''} ${btn.getAttribute('title') || ''}`.toLowerCase();
+    if (/express\s*check/.test(label)) return btn;
+  }
+  return null;
+}
+
+function setAssignAllText(text: string) {
+  const btn = document.getElementById(ASSIGN_ALL_ID);
+  if (!btn) return;
+  btn.title = text;
+  btn.setAttribute('aria-label', text);
+  const label = btn.querySelector('bdi');
+  if (label) label.textContent = text;
+}
+
+function readCheckInRows(): Promise<Array<{ id: string; room: string }> | null> {
+  const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => {
+      document.removeEventListener('prize-ra-checkin-rows-done', onDone);
+      resolve(null);
+    }, 400);
+    const onDone = (event: Event) => {
+      const detail = (event as CustomEvent<{ requestId: string; rows: Array<{ id: string; room: string }> }>).detail;
+      if (!detail || detail.requestId !== requestId) return;
+      window.clearTimeout(timer);
+      document.removeEventListener('prize-ra-checkin-rows-done', onDone);
+      resolve(detail.rows ?? null);
+    };
+    document.addEventListener('prize-ra-checkin-rows-done', onDone);
+    document.dispatchEvent(new CustomEvent('prize-ra-checkin-rows', { detail: { requestId } }));
+  });
+}
+
+function listedRoomIsEmpty(room: string): boolean {
+  const trimmed = room.trim();
+  if (!trimmed || trimmed === '0000') return true;
+  return !isKnownHotelRoom(trimmed);
+}
+
+function availableOnCheckInList(
+  plan: PlanList,
+  listed: Array<{ id: string; room: string }> | null,
+): number {
+  if (listed?.length) {
+    const seen = new Set<string>();
+    let count = 0;
+    for (const row of listed) {
+      const key = reservationKey(row.id);
+      if (seen.has(key) || !listedRoomIsEmpty(row.room)) continue;
+      seen.add(key);
+      const item = plan.items.find((entry) => sameReservation(entry.reservationId, row.id));
+      if (item?.suggestion) count += 1;
+    }
+    return count;
+  }
+  return plan.items.filter((item) => item.suggestion).length;
+}
+
+function ensureAssignCount(count: number, before: HTMLElement) {
+  let label = document.getElementById(ASSIGN_COUNT_ID);
+  if (!label || label.nextElementSibling !== before) {
+    label?.remove();
+    label = document.createElement('span');
+    label.id = ASSIGN_COUNT_ID;
+    label.className = 'sapMBarChild';
+    before.insertAdjacentElement('beforebegin', label);
+  }
+  label.textContent = interpolate(msgs.emmaRoom.assignAllAvailable, { count });
+}
+
+function ensureAssignAllButton(count = 0) {
+  const express = findExpressCheckIn();
+  if (!express) {
+    document.getElementById(ASSIGN_ALL_ID)?.remove();
+    document.getElementById(ASSIGN_COUNT_ID)?.remove();
+    return;
+  }
+  let btn = document.getElementById(ASSIGN_ALL_ID) as HTMLButtonElement | null;
+  if (btn?.nextElementSibling === express) {
+    if (btn.dataset.busy !== '1' && btn.dataset.hold !== '1') setAssignAllText(msgs.emmaRoom.assignAll);
+    ensureAssignCount(count, btn);
+    return;
+  }
+  btn?.remove();
+  btn = document.createElement('button');
+  btn.id = ASSIGN_ALL_ID;
+  btn.type = 'button';
+  btn.className = 'sapMBtnBase sapMBtn sapMBarChild';
+  btn.innerHTML =
+    `<span class="sapMBtnInner sapMBtnHoverable sapMFocusable sapMBtnEmphasized">` +
+    `<span class="sapMBtnContent"><bdi></bdi></span></span>`;
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void assignAllSuggestions();
+  });
+  express.insertAdjacentElement('beforebegin', btn);
+  setAssignAllText(msgs.emmaRoom.assignAll);
+  ensureAssignCount(count, btn);
+}
+
+function listRowForBooking(booking: string): HTMLElement | null {
+  const table = findCheckInListTable();
+  if (!table) return null;
+  for (const row of table.querySelectorAll<HTMLElement>('tbody tr.sapUiTableContentRow, tbody tr.sapUiTableTr')) {
+    const id = bookingFromListRow(row);
+    if (id && sameReservation(id, booking)) return row;
+  }
+  return null;
+}
+
+function mirrorAssignedRoom(rowSuggestion: ApiRoomSuggestion) {
+  const row = listRowForBooking(rowSuggestion.reservationId);
+  const table = row?.closest('table');
+  if (!row || !table) return;
+  const cols = resolveListColumns(table);
+  const cell = cellByColIndex(row, cols.room);
+  if (!cell) return;
+  const display = rowSuggestion.roomNumber.padStart(4, '0');
+  const text = cell.querySelector<HTMLElement>('.sapMText, a.sapMLnk');
+  if (text && !text.closest(`[${ROW_ATTR}]`)) text.textContent = display;
+  cell.querySelector(`[${ROW_ATTR}]`)?.remove();
+}
+
+async function assignAllSuggestions() {
+  const btn = document.getElementById(ASSIGN_ALL_ID) as HTMLButtonElement | null;
+  if (!btn || assigning || btn.dataset.busy === '1') return;
+  const plan = await loadPlanList();
+  const todo = plan.items.filter((item) => {
+    if (!item.suggestion) return false;
+    const row = listRowForBooking(item.reservationId);
+    const table = row?.closest('table');
+    if (!row || !table) return true;
+    const cols = resolveListColumns(table);
+    const cell = cellByColIndex(row, cols.room);
+    return !cell || !roomFromListCell(cell);
+  });
+  if (!todo.length) return;
+  assigning = true;
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  btn.classList.add('sapMBtnDisabled');
+  let done = 0;
+  let failed = 0;
+  try {
+    for (const item of todo) {
+      const suggestion = item.suggestion;
+      if (!suggestion) continue;
+      setAssignAllText(interpolate(msgs.emmaRoom.assignAllBusy, { done: done + failed, total: todo.length }));
+      try {
+        await acceptSuggestion(suggestion);
+        done += 1;
+        mirrorAssignedRoom(suggestion);
+      } catch {
+        failed += 1;
+      }
+    }
+  } finally {
+    assigning = false;
+    btn.dataset.busy = '0';
+    btn.disabled = false;
+    btn.classList.remove('sapMBtnDisabled');
+    btn.dataset.hold = '1';
+    setAssignAllText(
+      failed
+        ? interpolate(msgs.emmaRoom.assignAllPartial, { done, failed })
+        : interpolate(msgs.emmaRoom.assignAllDone, { count: done }),
+    );
+    window.setTimeout(() => {
+      btn.dataset.hold = '0';
+      setAssignAllText(msgs.emmaRoom.assignAll);
+    }, 4000);
+    planList = null;
+    scheduleRefresh();
+  }
 }
 
 function isCheckInListPage(): boolean {
@@ -963,6 +1200,10 @@ async function scanCheckInList(missing?: Set<string>) {
   if (!table) {
     if (!isCheckInListPage()) {
       document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => el.remove());
+      document.getElementById(ASSIGN_ALL_ID)?.remove();
+      document.getElementById(ASSIGN_COUNT_ID)?.remove();
+    } else {
+      ensureAssignAllButton(0);
     }
     return;
   }
@@ -975,6 +1216,8 @@ async function scanCheckInList(missing?: Set<string>) {
   const seen = new Set<HTMLElement>();
   const usedRooms = new Set<string>();
   const plan = await loadPlanList();
+  const listed = await readCheckInRows();
+  const available = availableOnCheckInList(plan, listed);
 
   for (const row of rows) {
     const booking = bookingFromListRow(row);
@@ -1022,6 +1265,7 @@ async function scanCheckInList(missing?: Set<string>) {
     const row = el.closest('tr.sapUiTableContentRow, tr.sapUiTableTr');
     if (!row || !rowSet.has(row as HTMLElement)) el.remove();
   });
+  ensureAssignAllButton(available);
 }
 
 function clearDetailHost() {
@@ -1035,9 +1279,9 @@ function clearDetailHost() {
 
 async function tickDetail(missing?: Set<string>) {
   const booking = getBookingNumber();
-  const slot = roomControlSlot();
+  const column = roomFieldColumn();
 
-  if (!slot || !booking) {
+  if (!column || !booking) {
     clearDetailHost();
     return;
   }
@@ -1047,8 +1291,8 @@ async function tickDetail(missing?: Set<string>) {
     return;
   }
 
-  const alreadyPlaced = document.getElementById(HOST_ID)?.parentElement === document.body;
-  const host = mountDetailHost();
+  const alreadyPlaced = document.getElementById(HOST_ID)?.parentElement === column;
+  const host = mountDetailHost(column);
   placeDetailChip();
   const key = booking;
   if (!alreadyPlaced && host.dataset.key === key) renderHost(host);
@@ -1180,7 +1424,13 @@ export function startEmmaRoomSuggestWatcher() {
       const t = m.target;
       if (
         t instanceof Element &&
-        (t.id === HOST_ID || t.id === STYLE_ID || t.closest(`[${ROW_ATTR}]`))
+        (t.id === HOST_ID ||
+          t.id === STYLE_ID ||
+          t.id === ASSIGN_ALL_ID ||
+          t.id === ASSIGN_COUNT_ID ||
+          t.closest(`[${ROW_ATTR}]`) ||
+          t.closest(`#${ASSIGN_ALL_ID}`) ||
+          t.closest(`#${ASSIGN_COUNT_ID}`))
       ) {
         continue;
       }
@@ -1190,7 +1440,11 @@ export function startEmmaRoomSuggestWatcher() {
         added.every(
           (node) =>
             node instanceof Element &&
-            (node.id === HOST_ID || node.id === STYLE_ID || node.hasAttribute(ROW_ATTR)),
+            (node.id === HOST_ID ||
+              node.id === STYLE_ID ||
+              node.id === ASSIGN_ALL_ID ||
+              node.id === ASSIGN_COUNT_ID ||
+              node.hasAttribute(ROW_ATTR)),
         )
       ) {
         continue;

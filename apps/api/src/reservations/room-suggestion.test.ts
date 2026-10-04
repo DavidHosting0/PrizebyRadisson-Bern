@@ -88,19 +88,25 @@ describe('room suggestion helpers', () => {
 });
 
 describe('suggestRoomForReservation', () => {
-  it('puts a one-night stay downstairs and a VIP on the highest room', () => {
-    const rooms = [room('5'), room('624')];
+  it('keeps a one-night stay off the basement until no other room is free', () => {
+    const rooms = [room('5'), room('22'), room('624')];
     const low = suggest({
       reservationId: 'a',
       guests: [guest({ reservationId: 'a', nights: 1 })],
       rooms,
+    });
+    const onlyBasement = suggest({
+      reservationId: 'a',
+      guests: [guest({ reservationId: 'a', nights: 1 })],
+      rooms: [room('5')],
     });
     const vip = suggest({
       reservationId: 'v',
       guests: [guest({ reservationId: 'v', nights: 1, vipDesc: 'VIP' })],
       rooms,
     });
-    assert.equal(low?.roomNumber, '5');
+    assert.equal(low?.roomNumber, '22');
+    assert.equal(onlyBasement?.roomNumber, '5');
     assert.equal(vip?.roomNumber, '624');
     assert.equal(vip?.reasons.includes('vip'), true);
   });
@@ -227,10 +233,23 @@ describe('suggestRoomForReservation', () => {
       guests: [guest({ reservationId: 'a', numPax: 1, nights: 3 })],
       rooms: [room('601'), room('602')],
     });
+    const withCorner = suggest({
+      reservationId: 'a',
+      guests: [guest({ reservationId: 'a', numPax: 1, nights: 2 })],
+      rooms: [room('601'), room('209')],
+    });
+    const shared = [
+      guest({ reservationId: 'long', nights: 4, numPax: 2 }),
+      guest({ reservationId: 'short', nights: 1, numPax: 1 }),
+    ];
+    const rooms = [room('602'), room('601')];
     assert.equal(pair, null);
     assert.equal(longStay, null);
     assert.equal(shortStay?.roomNumber, '601');
     assert.equal(withNormal?.roomNumber, '602');
+    assert.equal(withCorner?.roomNumber, '601');
+    assert.equal(suggest({ reservationId: 'long', guests: shared, rooms })?.roomNumber, '602');
+    assert.equal(suggest({ reservationId: 'short', guests: shared, rooms })?.roomNumber, '601');
   });
 
   it('never gives the same room to two reservations', () => {
@@ -257,12 +276,16 @@ describe('suggestRoomForReservation', () => {
     assert.equal(crowded[0]?.roomNumber, '22');
   });
 
-  it('steps to the next free room up or down without taking another reservation', () => {
+  it('steps to the next floor up or down and ignores a higher number on the same floor', () => {
     const guestA = guest({ reservationId: 'a', guestName: 'Ada', nights: 1 });
     const guestC = guest({ reservationId: 'c', guestName: 'Cara', nights: 4, numPax: 2 });
-    const rooms = [room('22'), room('202'), room('402')];
+    const rooms = [room('22'), room('28'), room('202'), room('402')];
     const up = suggestAdjacentRoom(
       { mode: 'plan', reservationId: 'a', guests: [guestA, guestC], rooms },
+      'up',
+    );
+    const sameFloorOnly = suggestAdjacentRoom(
+      { mode: 'plan', reservationId: 'a', guests: [guestA], rooms: [room('22'), room('28')] },
       'up',
     );
     const down = suggestAdjacentRoom(
@@ -270,7 +293,7 @@ describe('suggestRoomForReservation', () => {
         mode: 'plan',
         reservationId: 'a',
         guests: [guestA],
-        rooms: [room('22'), room('202')],
+        rooms: [room('22'), room('28'), room('202')],
         heldRooms: { a: '202' },
       },
       'down',
@@ -280,7 +303,8 @@ describe('suggestRoomForReservation', () => {
       'up',
     );
     assert.equal(up?.roomNumber, '202');
-    assert.equal(down?.roomNumber, '22');
+    assert.equal(sameFloorOnly, null);
+    assert.equal(down?.roomNumber, '28');
     assert.equal(blocked, null);
   });
 

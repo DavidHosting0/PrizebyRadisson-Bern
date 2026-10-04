@@ -246,6 +246,11 @@ export type ExtensionMessages = {
     reasonOverbookCorner: string;
     reasonOverbookStandard: string;
     reasonWheelchair: string;
+    assignAll: string;
+    assignAllAvailable: string;
+    assignAllBusy: string;
+    assignAllDone: string;
+    assignAllPartial: string;
   };
   inject: {
     openPanel: string;
