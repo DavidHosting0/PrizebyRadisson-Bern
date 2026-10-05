@@ -241,7 +241,7 @@ const uk: ExtensionMessages = {
     reasonOverbookStandard: 'Standard переброньовано',
     reasonWheelchair: 'Інвалідний візок',
     assignAll: 'Призначити всі',
-    assignAllAvailable: 'Для {{count}} гостей',
+    assignAllAvailable: '{{ready}}/{{total}} заїздів мають готовий номер',
     assignAllBusy: '{{done}} / {{total}}',
     assignAllDone: '{{count}} номерів призначено',
     assignAllPartial: '{{done}} призначено, {{failed}} не вдалося',

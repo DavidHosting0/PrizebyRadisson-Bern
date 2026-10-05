@@ -239,7 +239,7 @@ const en: ExtensionMessages = {
     reasonOverbookStandard: 'Standard overbooked',
     reasonWheelchair: 'Wheelchair',
     assignAll: 'Assign all',
-    assignAllAvailable: 'For {{count}} guests',
+    assignAllAvailable: '{{ready}}/{{total}} arrivals have a ready room',
     assignAllBusy: '{{done}} / {{total}}',
     assignAllDone: '{{count}} rooms assigned',
     assignAllPartial: '{{done}} assigned, {{failed}} failed',

@@ -105,7 +105,7 @@ describe('suggestRoomForReservation', () => {
       guests: [guest({ reservationId: 'v', nights: 1, vipDesc: 'VIP' })],
       rooms,
     });
-    assert.equal(low?.roomNumber, '22');
+    assert.equal(low?.roomNumber, '624');
     assert.equal(onlyBasement?.roomNumber, '5');
     assert.equal(vip?.roomNumber, '624');
     assert.equal(vip?.reasons.includes('vip'), true);
@@ -161,6 +161,22 @@ describe('suggestRoomForReservation', () => {
     const rooms = [room('624'), room('524'), room('5')];
     assert.equal(suggest({ reservationId: 'vip', guests, rooms })?.roomNumber, '624');
     assert.equal(suggest({ reservationId: 'long', guests, rooms })?.roomNumber, '524');
+  });
+
+  it('gives a one-night stay the highest free room unless a longer stay fits it better', () => {
+    const rooms = [room('22'), room('624'), room('524')];
+    const alone = suggest({
+      reservationId: 'short',
+      guests: [guest({ reservationId: 'short', nights: 1 })],
+      rooms,
+    });
+    const shared = [
+      guest({ reservationId: 'long', nights: 4, numPax: 2 }),
+      guest({ reservationId: 'short', nights: 1 }),
+    ];
+    assert.equal(alone?.roomNumber, '624');
+    assert.equal(suggest({ reservationId: 'long', guests: shared, rooms })?.roomNumber, '624');
+    assert.equal(suggest({ reservationId: 'short', guests: shared, rooms })?.roomNumber, '524');
   });
 
   it('suggests a dirty category room in the day plan and a ready standard room when the guest is here', () => {
@@ -281,7 +297,13 @@ describe('suggestRoomForReservation', () => {
     const guestC = guest({ reservationId: 'c', guestName: 'Cara', nights: 4, numPax: 2 });
     const rooms = [room('22'), room('28'), room('202'), room('402')];
     const up = suggestAdjacentRoom(
-      { mode: 'plan', reservationId: 'a', guests: [guestA, guestC], rooms },
+      {
+        mode: 'plan',
+        reservationId: 'a',
+        guests: [guestA, guestC],
+        rooms,
+        heldRooms: { a: '22' },
+      },
       'up',
     );
     const sameFloorOnly = suggestAdjacentRoom(

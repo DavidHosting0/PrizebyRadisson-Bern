@@ -286,31 +286,19 @@ function applyGuestFilters(guest: RoomSuggestGuest, rooms: Candidate[]): Candida
 function floorPreference(guest: RoomSuggestGuest, category: RoomCategory): number[] {
   const vip = guestIsVip(guest);
   const mid = !vip && (guestIsPremium(guest) || guestIsRepeat(guest));
-  const nights = guest.nights ?? 1;
   if (category === 'view') return [7];
-  if (vip) {
-    return category === 'corner' ? [6, 5, 4, 3, 2, 1, 0] : [6, 5, 4, 3, 2, 1, 0];
-  }
-  if (mid) {
-    return category === 'corner' ? [3, 4, 2, 5, 1, 6, 0] : [3, 4, 2, 5, 1, 6, 0];
-  }
-  if (nights <= 1) {
-    return [0, 1, 2, 3, 4, 5, 6];
-  }
-  return category === 'corner' ? [6, 5, 4, 3, 2, 1, 0] : [6, 5, 4, 3, 2, 1, 0];
+  if (mid) return [3, 4, 2, 5, 1, 6, 0];
+  return [6, 5, 4, 3, 2, 1, 0];
 }
 
 function viewNumberScore(guest: RoomSuggestGuest, roomNumber: string): number {
   const n = parseInt(roomNumber, 10);
-  const vip = guestIsVip(guest);
-  const mid = !vip && (guestIsPremium(guest) || guestIsRepeat(guest));
-  const nights = guest.nights ?? 1;
-  if (vip || (!mid && nights >= 2)) return -n;
+  const mid = !guestIsVip(guest) && (guestIsPremium(guest) || guestIsRepeat(guest));
   if (mid) {
     const preferred = n >= 708 && n <= 712 ? 0 : 1;
     return preferred * 1000 + Math.abs(n - 710);
   }
-  return n;
+  return -n;
 }
 
 function pickFromPool(guest: RoomSuggestGuest, pool: Candidate[], taken: Set<string>): Candidate | null {
@@ -332,12 +320,7 @@ function pickFromPool(guest: RoomSuggestGuest, pool: Candidate[], taken: Set<str
 
 function roomNumberScore(guest: RoomSuggestGuest, room: Candidate): number {
   if (room.category === 'view') return viewNumberScore(guest, room.roomNumber);
-  const vip = guestIsVip(guest);
-  const nights = guest.nights ?? 1;
-  const mid = !vip && (guestIsPremium(guest) || guestIsRepeat(guest));
-  const n = parseInt(room.roomNumber, 10);
-  if (vip || (!mid && nights >= 2)) return -n;
-  return n;
+  return -parseInt(room.roomNumber, 10);
 }
 
 function claimTier(guest: RoomSuggestGuest): number {

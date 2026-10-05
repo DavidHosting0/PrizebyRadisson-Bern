@@ -241,7 +241,7 @@ const de: ExtensionMessages = {
     reasonOverbookStandard: 'Standard überbucht',
     reasonWheelchair: 'Rollstuhl',
     assignAll: 'Alle zuteilen',
-    assignAllAvailable: 'Für {{count}} Gäste',
+    assignAllAvailable: '{{ready}}/{{total}} Anreisen haben fertige Zimmer',
     assignAllBusy: '{{done}} / {{total}}',
     assignAllDone: '{{count}} Zimmer zugeteilt',
     assignAllPartial: '{{done}} zugeteilt, {{failed}} fehlgeschlagen',

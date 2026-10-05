@@ -241,7 +241,7 @@ const tr: ExtensionMessages = {
     reasonOverbookStandard: 'Standard dolu',
     reasonWheelchair: 'Tekerlekli sandalye',
     assignAll: 'Tümünü ata',
-    assignAllAvailable: '{{count}} misafir için',
+    assignAllAvailable: '{{ready}}/{{total}} varışın hazır odası var',
     assignAllBusy: '{{done}} / {{total}}',
     assignAllDone: '{{count}} oda atandı',
     assignAllPartial: '{{done}} atandı, {{failed}} başarısız',

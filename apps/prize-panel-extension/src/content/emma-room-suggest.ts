@@ -228,6 +228,8 @@ type PlanList = {
 };
 let planList: PlanList | null = null;
 let planInflight: Promise<PlanList> | null = null;
+let listPaintFrame = 0;
+let listDirty = false;
 const detailInflight = new Set<string>();
 let suggestion: ApiRoomSuggestion | null = null;
 let suggestionLoading = false;
@@ -1043,32 +1045,36 @@ function readCheckInRows(): Promise<Array<{ id: string; room: string }> | null> 
   });
 }
 
-function listedRoomIsEmpty(room: string): boolean {
-  const trimmed = room.trim();
-  if (!trimmed || trimmed === '0000') return true;
-  return !isKnownHotelRoom(trimmed);
-}
-
-function availableOnCheckInList(
+function readyRoomCounts(
   plan: PlanList,
   listed: Array<{ id: string; room: string }> | null,
-): number {
+): { ready: number; total: number } {
+  const readyOf = (id: string) =>
+    plan.items.some((entry) => sameReservation(entry.reservationId, id) && entry.suggestion?.readyNow === true);
   if (listed?.length) {
     const seen = new Set<string>();
-    let count = 0;
+    let total = 0;
+    let ready = 0;
     for (const row of listed) {
       const key = reservationKey(row.id);
-      if (seen.has(key) || !listedRoomIsEmpty(row.room)) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
-      const item = plan.items.find((entry) => sameReservation(entry.reservationId, row.id));
-      if (item?.suggestion) count += 1;
+      total += 1;
+      if (readyOf(row.id)) ready += 1;
     }
-    return count;
+    return { ready, total };
   }
-  return plan.items.filter((item) => item.suggestion).length;
+  return {
+    total: plan.items.length,
+    ready: plan.items.filter((item) => item.suggestion?.readyNow).length,
+  };
 }
 
-function ensureAssignCount(count: number, before: HTMLElement) {
+function ensureAssignCount(ready: number, total: number, before: HTMLElement) {
+  if (total <= 0) {
+    document.getElementById(ASSIGN_COUNT_ID)?.remove();
+    return;
+  }
   let label = document.getElementById(ASSIGN_COUNT_ID);
   if (!label || label.nextElementSibling !== before) {
     label?.remove();
@@ -1077,10 +1083,10 @@ function ensureAssignCount(count: number, before: HTMLElement) {
     label.className = 'sapMBarChild';
     before.insertAdjacentElement('beforebegin', label);
   }
-  label.textContent = interpolate(msgs.emmaRoom.assignAllAvailable, { count });
+  label.textContent = interpolate(msgs.emmaRoom.assignAllAvailable, { ready, total });
 }
 
-function ensureAssignAllButton(count = 0) {
+function ensureAssignAllButton(ready = 0, total = 0) {
   const express = findExpressCheckIn();
   if (!express) {
     document.getElementById(ASSIGN_ALL_ID)?.remove();
@@ -1090,7 +1096,7 @@ function ensureAssignAllButton(count = 0) {
   let btn = document.getElementById(ASSIGN_ALL_ID) as HTMLButtonElement | null;
   if (btn?.nextElementSibling === express) {
     if (btn.dataset.busy !== '1' && btn.dataset.hold !== '1') setAssignAllText(msgs.emmaRoom.assignAll);
-    ensureAssignCount(count, btn);
+    ensureAssignCount(ready, total, btn);
     return;
   }
   btn?.remove();
@@ -1108,7 +1114,7 @@ function ensureAssignAllButton(count = 0) {
   });
   express.insertAdjacentElement('beforebegin', btn);
   setAssignAllText(msgs.emmaRoom.assignAll);
-  ensureAssignCount(count, btn);
+  ensureAssignCount(ready, total, btn);
 }
 
 function listRowForBooking(booking: string): HTMLElement | null {
@@ -1195,6 +1201,97 @@ function isCheckInListPage(): boolean {
   );
 }
 
+function paintCheckInRows(plan: PlanList, missing?: Set<string>) {
+  const table = findCheckInListTable();
+  if (!table) return;
+  painting = true;
+  try {
+    const cols = resolveListColumns(table);
+    const rows = table.querySelectorAll<HTMLElement>(
+      'tbody tr.sapUiTableContentRow, tbody tr.sapUiTableTr',
+    );
+    const rowSet = new Set(rows);
+    const seen = new Set<HTMLElement>();
+    const usedRooms = new Set<string>();
+
+    for (const row of rows) {
+      const roomCell = cellByColIndex(row, cols.room);
+      const booking = bookingFromListRow(row);
+      if (!booking) {
+        roomCell?.querySelector(`[${ROW_ATTR}="row"]`)?.remove();
+        continue;
+      }
+      const arrivalCell = cellByColIndex(row, cols.arrival);
+      if (!roomCell) continue;
+
+      const fixed = roomFromListCell(roomCell);
+      const existing = roomCell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
+
+      if (fixed) {
+        unassignedReportedAt.delete(reservationKey(booking));
+        existing?.remove();
+        continue;
+      }
+
+      const arrivalIso = arrivalIsoFromRow(row, arrivalCell);
+      if (arrivalIso && !isDateToday(arrivalIso)) {
+        existing?.remove();
+        continue;
+      }
+
+      if (plan.error) {
+        seen.add(ensureRowNote(roomCell, plan.error, true));
+        continue;
+      }
+
+      const item = plan.items.find((rowItem) => sameReservation(rowItem.reservationId, booking));
+      const roomKey = item?.suggestion ? item.suggestion.roomNumber.replace(/^0+/, '') : '';
+      if (!item?.suggestion || (roomKey && usedRooms.has(roomKey))) {
+        if (!item) missing?.add(booking);
+        if (item) seen.add(ensureRowNote(roomCell, msgs.emmaRoom.noSuggestion, false));
+        else if (!awaitingUnassigned) existing?.remove();
+        continue;
+      }
+      usedRooms.add(roomKey);
+
+      seen.add(ensureRowChip(roomCell, item.suggestion));
+    }
+
+    document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => {
+      if (!(el instanceof HTMLElement) || seen.has(el)) return;
+      const row = el.closest('tr.sapUiTableContentRow, tr.sapUiTableTr');
+      if (!row || !rowSet.has(row as HTMLElement)) el.remove();
+    });
+  } finally {
+    queueMicrotask(() => {
+      painting = false;
+      if (!listDirty) return;
+      listDirty = false;
+      scheduleListPaint();
+    });
+  }
+}
+
+function scheduleListPaint() {
+  if (listPaintFrame) return;
+  listPaintFrame = window.requestAnimationFrame(() => {
+    listPaintFrame = 0;
+    if (!planList) {
+      scheduleRefresh();
+      return;
+    }
+    paintCheckInRows(planList);
+  });
+}
+
+function mutationInCheckInList(record: MutationRecord): boolean {
+  const nodes = [record.target, ...record.addedNodes, ...record.removedNodes];
+  return nodes.some((node) => {
+    const el = node instanceof Element ? node : node.parentElement;
+    return Boolean(el?.closest('table[id*="checkInList"], [id*="CheckInList"][id*="table"]'));
+  });
+}
+
 async function scanCheckInList(missing?: Set<string>) {
   const table = findCheckInListTable();
   if (!table) {
@@ -1203,69 +1300,16 @@ async function scanCheckInList(missing?: Set<string>) {
       document.getElementById(ASSIGN_ALL_ID)?.remove();
       document.getElementById(ASSIGN_COUNT_ID)?.remove();
     } else {
-      ensureAssignAllButton(0);
+      ensureAssignAllButton(0, 0);
     }
     return;
   }
 
-  const cols = resolveListColumns(table);
-  const rows = table.querySelectorAll<HTMLElement>(
-    'tbody tr.sapUiTableContentRow, tbody tr.sapUiTableTr',
-  );
-  const rowSet = new Set(rows);
-  const seen = new Set<HTMLElement>();
-  const usedRooms = new Set<string>();
   const plan = await loadPlanList();
+  paintCheckInRows(plan, missing);
   const listed = await readCheckInRows();
-  const available = availableOnCheckInList(plan, listed);
-
-  for (const row of rows) {
-    const booking = bookingFromListRow(row);
-    if (!booking) continue;
-
-    const roomCell = cellByColIndex(row, cols.room);
-    const arrivalCell = cellByColIndex(row, cols.arrival);
-    if (!roomCell) continue;
-
-    const fixed = roomFromListCell(roomCell);
-    const existing = roomCell.querySelector<HTMLElement>(`[${ROW_ATTR}="row"]`);
-
-    if (fixed) {
-      unassignedReportedAt.delete(reservationKey(booking));
-      existing?.remove();
-      continue;
-    }
-
-    const arrivalIso = arrivalIsoFromRow(row, arrivalCell);
-    if (arrivalIso && !isDateToday(arrivalIso)) {
-      existing?.remove();
-      continue;
-    }
-
-    if (plan.error) {
-      seen.add(ensureRowNote(roomCell, plan.error, true));
-      continue;
-    }
-
-    const item = plan.items.find((rowItem) => sameReservation(rowItem.reservationId, booking));
-    const roomKey = item?.suggestion ? item.suggestion.roomNumber.replace(/^0+/, '') : '';
-    if (!item?.suggestion || (roomKey && usedRooms.has(roomKey))) {
-      if (!item) missing?.add(booking);
-      if (item) seen.add(ensureRowNote(roomCell, msgs.emmaRoom.noSuggestion, false));
-      else if (!awaitingUnassigned) existing?.remove();
-      continue;
-    }
-    usedRooms.add(roomKey);
-
-    seen.add(ensureRowChip(roomCell, item.suggestion));
-  }
-
-  document.querySelectorAll(`[${ROW_ATTR}="row"]`).forEach((el) => {
-    if (!(el instanceof HTMLElement) || seen.has(el)) return;
-    const row = el.closest('tr.sapUiTableContentRow, tr.sapUiTableTr');
-    if (!row || !rowSet.has(row as HTMLElement)) el.remove();
-  });
-  ensureAssignAllButton(available);
+  const counts = readyRoomCounts(plan, listed);
+  ensureAssignAllButton(counts.ready, counts.total);
 }
 
 function clearDetailHost() {
@@ -1347,7 +1391,6 @@ async function tick() {
     return;
   }
   tickRunning = true;
-  painting = true;
   try {
     if (!isLikelyEmmaPage()) {
       clearDetailHost();
@@ -1376,13 +1419,10 @@ async function tick() {
     }
   } finally {
     tickRunning = false;
-    window.setTimeout(() => {
-      painting = false;
-      if (tickQueued) {
-        tickQueued = false;
-        scheduleRefresh();
-      }
-    }, 0);
+    if (tickQueued) {
+      tickQueued = false;
+      scheduleRefresh();
+    }
   }
 }
 
@@ -1407,7 +1447,10 @@ export function startEmmaRoomSuggestWatcher() {
 
   void tick();
 
-  const place = () => placeDetailChip();
+  const place = () => {
+    placeDetailChip();
+    scheduleListPaint();
+  };
   window.addEventListener('scroll', place, true);
   window.addEventListener('resize', place);
 
@@ -1419,7 +1462,11 @@ export function startEmmaRoomSuggestWatcher() {
   });
 
   const obs = new MutationObserver((mutations) => {
-    if (painting) return;
+    if (painting) {
+      listDirty = true;
+      return;
+    }
+    let listChanged = false;
     for (const m of mutations) {
       const t = m.target;
       if (
@@ -1449,9 +1496,14 @@ export function startEmmaRoomSuggestWatcher() {
       ) {
         continue;
       }
+      if (mutationInCheckInList(m)) {
+        listChanged = true;
+        continue;
+      }
       scheduleRefresh();
       return;
     }
+    if (listChanged) scheduleListPaint();
   });
   obs.observe(document.documentElement, { childList: true, subtree: true });
 
