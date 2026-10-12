@@ -87,8 +87,12 @@ function isTruthyFlag(v: unknown): boolean {
   return false;
 }
 
-/** Room Status tile `data-outoforder`: "OO" while housekeeping can stay DI/IN. */
+/**
+ * Room Status tile `data-outoforder` comes from RoomDetail.Incident ("OO" / "").
+ * Housekeeping RoomStatus stays DI/IN/CL while Incident marks the OO badge.
+ */
 const EXPLICIT_OOO_KEYS = [
+  'Incident',
   'OutOfOrder',
   'Ooo',
   'OOO',

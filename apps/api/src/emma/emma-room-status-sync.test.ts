@@ -83,9 +83,9 @@ describe('emma room rack-day out of order', () => {
     assert.equal(mapEmmaToDerivedStatus(stillBlocked[0]!), DerivedRoomStatus.OUT_OF_ORDER);
   });
 
-  it('follows the room-status outoforder code and keeps housekeeping Dirty', () => {
+  it('follows RoomDetail.Incident=OO and keeps housekeeping Dirty', () => {
     const live = mapEmmaRoomDetailRow(
-      { RoomId: '0035', RoomStatus: 'DI', OutOfOrder: 'OO' },
+      { RoomId: '0035', RoomStatus: 'DI', Incident: 'OO' },
       new Map(),
     );
     assert.ok(live);
@@ -95,7 +95,7 @@ describe('emma room rack-day out of order', () => {
     assert.equal(mapEmmaToDerivedStatus(live!), DerivedRoomStatus.OUT_OF_ORDER);
 
     const back = mapEmmaRoomDetailRow(
-      { RoomId: '0021', RoomStatus: 'IN', OutOfOrder: '' },
+      { RoomId: '0021', RoomStatus: 'IN', Incident: '' },
       new Map(),
     );
     assert.equal(back?.outOfOrder, false);
@@ -105,9 +105,9 @@ describe('emma room rack-day out of order', () => {
     assert.equal(mapEmmaToDerivedStatus(notRevived[0]!), DerivedRoomStatus.INSPECTED);
   });
 
-  it('treats an inspected room as out of order when the tile flag is OO', () => {
+  it('treats an inspected room as out of order when Incident is OO', () => {
     const live = mapEmmaRoomDetailRow(
-      { RoomId: '0014', RoomStatus: 'IN', OutOfOrder: 'OO' },
+      { RoomId: '0014', RoomStatus: 'IN', Incident: 'OO' },
       new Map([['IN', 'Inspected']]),
     );
     assert.ok(live);
