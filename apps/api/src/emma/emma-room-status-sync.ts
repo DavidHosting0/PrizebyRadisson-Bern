@@ -39,6 +39,8 @@ export type EmmaRoomStatusSnapshot = {
   statusCode: string | null;
   statusLabel: string | null;
   outOfOrder: boolean;
+  /** Room Status already decided OOO (`data-outoforder`). Rack history must not override it. */
+  outOfOrderExplicit: boolean;
   floorId: string | null;
   buildingId: string | null;
   raw: Record<string, unknown>;
@@ -83,6 +85,52 @@ function isTruthyFlag(v: unknown): boolean {
     return s === 'x' || s === 'true' || s === '1' || s === 'yes';
   }
   return false;
+}
+
+/** Room Status tile `data-outoforder`: "OO" while housekeeping can stay DI/IN. */
+const EXPLICIT_OOO_KEYS = [
+  'OutOfOrder',
+  'Ooo',
+  'OOO',
+  'IsOutOfOrder',
+  'RoomOutOfOrder',
+  'OooStatus',
+  'OutOfOrderStatus',
+  'Outoforder',
+  'OooInd',
+  'OutOfOrderInd',
+  'RoomOoo',
+];
+
+export function isOoMarker(v: unknown): boolean {
+  if (isTruthyFlag(v)) return true;
+  if (typeof v !== 'string') return false;
+  const s = v.trim();
+  if (!s) return false;
+  if (isOoRackStatus(s)) return true;
+  return /out\s*of\s*order|außer\s*betrieb/i.test(s);
+}
+
+/**
+ * Live out-of-order flag from the Room Status screen.
+ * `null` when that field is not on the row (rack days may fill in).
+ * An empty value is an explicit "not out of order".
+ */
+export function explicitOutOfOrder(row: Record<string, unknown>): boolean | null {
+  const named = EXPLICIT_OOO_KEYS.find(
+    (k) => Object.prototype.hasOwnProperty.call(row, k) && row[k] !== undefined && row[k] !== null,
+  );
+  const key =
+    named ??
+    Object.keys(row).find(
+      (k) =>
+        !k.startsWith('__') &&
+        /out\s*of\s*order|outoforder|^ooo(status|ind|flag)?$/i.test(k) &&
+        row[k] !== undefined &&
+        row[k] !== null,
+    );
+  if (!key) return null;
+  return isOoMarker(row[key]);
 }
 
 export function extractExpandedResults(
@@ -151,11 +199,8 @@ export function roomHasActiveOutOfOrderRackDay(
 }
 
 function detectOutOfOrder(row: Record<string, unknown>, statusCode: string | null): boolean {
-  if (
-    isTruthyFlag(pickField(row, ['OutOfOrder', 'Ooo', 'IsOutOfOrder', 'RoomOutOfOrder', 'OutOfService']))
-  ) {
-    return true;
-  }
+  const explicit = explicitOutOfOrder(row);
+  if (explicit !== null) return explicit;
   if (roomHasActiveOutOfOrderRackDay(row)) return true;
   const text = [
     pickString(row, ['StatusText', 'RoomStatusText', 'HkStatusText', 'Description']),
@@ -200,12 +245,14 @@ export function mapEmmaRoomDetailRow(
     pickString(row, ['HkStatusText', 'RoomStatusText', 'StatusText', 'StatusDescription']) ??
     (statusCode ? statusLookup.get(statusCode) ?? null : null);
 
+  const explicit = explicitOutOfOrder(row);
   return {
     emmaRoomId,
     roomNumber,
     statusCode,
     statusLabel,
-    outOfOrder: detectOutOfOrder(row, statusCode),
+    outOfOrder: explicit !== null ? explicit : detectOutOfOrder(row, statusCode),
+    outOfOrderExplicit: explicit !== null,
     floorId: pickString(row, ['FloorId', 'Floor', 'FloorID']),
     buildingId: pickString(row, ['BuildingId', 'Building']),
     raw: row,
@@ -454,7 +501,9 @@ async function fetchOutOfOrderRoomNumbersFromRackDaysHttp(
     for (const row of rows) {
       const emmaRoomId = pickString(row, ['Room', 'RoomId', 'RoomNumber']);
       if (!emmaRoomId) continue;
-      if (!roomHasActiveOutOfOrderRackDay(row, today)) continue;
+      const explicit = explicitOutOfOrder(row);
+      if (explicit === false) continue;
+      if (explicit !== true && !roomHasActiveOutOfOrderRackDay(row, today)) continue;
       const roomNumber = normalizeEmmaRoomNumber(emmaRoomId);
       ooo.add(roomNumber);
       debug?.log(`[EMMA debug] RoomRackDays OOO: room=${roomNumber} emmaId=${emmaRoomId}`);
@@ -465,12 +514,17 @@ async function fetchOutOfOrderRoomNumbersFromRackDaysHttp(
   return ooo;
 }
 
-/** RoomRackDays is the live OOO list. Rooms absent from it are back in service. */
+/**
+ * Rack days only fill rooms whose Room Status row has no out-of-order field.
+ * An explicit `data-outoforder` value (including empty) wins over old OO blocks.
+ */
 export function applyRackDaysOutOfOrder(
   snapshots: EmmaRoomStatusSnapshot[],
   oooRooms: Set<string>,
 ): EmmaRoomStatusSnapshot[] {
-  return snapshots.map((snap) => ({ ...snap, outOfOrder: oooRooms.has(snap.roomNumber) }));
+  return snapshots.map((snap) =>
+    snap.outOfOrderExplicit ? snap : { ...snap, outOfOrder: oooRooms.has(snap.roomNumber) },
+  );
 }
 
 function snapshotsFromRows(
