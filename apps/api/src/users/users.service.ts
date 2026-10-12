@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole, AssignmentStatus } from '@prisma/client';
+import { Prisma, UserRole, UserTitlePrefix, AssignmentStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { defaultSystemRoleId } from '../permissions/ensure-system-roles';
@@ -89,6 +89,15 @@ export class UsersService {
       where: { id: userId },
       data: { preferredLocale: locale },
       select: { id: true, preferredLocale: true },
+    });
+    return updated;
+  }
+
+  async setOwnChatTitlePrefix(userId: string, chatTitlePrefix: UserTitlePrefix | null) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { chatTitlePrefix },
+      select: { id: true, chatTitlePrefix: true, titlePrefix: true },
     });
     return updated;
   }

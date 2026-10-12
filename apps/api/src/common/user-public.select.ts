@@ -3,5 +3,6 @@ export const userPublicSelect = {
   id: true,
   name: true,
   titlePrefix: true,
+  chatTitlePrefix: true,
   avatarS3Key: true,
 } as const;

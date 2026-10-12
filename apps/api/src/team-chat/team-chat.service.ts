@@ -13,6 +13,7 @@ import {
   type SupportedLocale,
 } from '@housekeeping/shared';
 import { userPublicSelect } from '../common/user-public.select';
+import { resolveChatTitlePrefix } from '../common/resolve-chat-title-prefix';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { S3Service } from '../storage/s3.service';
@@ -46,6 +47,7 @@ type AuthorRow = {
   id: string;
   name: string;
   titlePrefix: string;
+  chatTitlePrefix?: string | null;
   avatarS3Key: string | null;
 };
 
@@ -162,7 +164,9 @@ export class TeamChatService {
       cur.count++;
       if (r.userId === viewerId) cur.me = true;
       const name = r.user?.name?.trim() || '—';
-      const titlePrefix = r.user?.titlePrefix ?? '';
+      const titlePrefix = r.user
+        ? resolveChatTitlePrefix(r.user)
+        : '';
       const avatarUrl =
         r.user?.avatarS3Key && avatarUrls
           ? avatarUrls.get(r.user.avatarS3Key) ?? null
@@ -279,7 +283,7 @@ export class TeamChatService {
     return {
       id: a.id,
       name: a.name,
-      titlePrefix: a.titlePrefix,
+      titlePrefix: resolveChatTitlePrefix(a),
       avatarUrl: a.avatarS3Key ? urls.get(a.avatarS3Key) ?? null : null,
     };
   }
@@ -547,6 +551,7 @@ export class TeamChatService {
         id: true,
         name: true,
         titlePrefix: true,
+        chatTitlePrefix: true,
         avatarS3Key: true,
         role: true,
         permissionGrants: { select: { permission: true } },
@@ -574,7 +579,7 @@ export class TeamChatService {
         return {
           id: u.id,
           name: u.name,
-          titlePrefix: u.titlePrefix,
+          titlePrefix: resolveChatTitlePrefix(u),
           avatarUrl,
         };
       }),

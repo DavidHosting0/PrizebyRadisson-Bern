@@ -366,6 +366,8 @@ model User {
   isActive     Boolean         @default(true)
   role         UserRole
   titlePrefix  UserTitlePrefix @default(CLEANER)
+  /// Optional chat-only display prefix; when null, chat falls back to titlePrefix (app area).
+  chatTitlePrefix UserTitlePrefix?
   /// Object-storage key for the user's avatar photo. URLs are resolved on read via presigned GETs.
   avatarS3Key  String?
   /// UI and chat translation locale (`de` | `en` | `pt`).

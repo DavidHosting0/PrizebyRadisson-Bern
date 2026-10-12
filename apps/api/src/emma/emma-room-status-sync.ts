@@ -99,29 +99,34 @@ export function extractExpandedResults(
 export function isOoRackStatus(status: string | null | undefined): boolean {
   if (!status) return false;
   const s = status.trim().toUpperCase();
-  return s === 'OO' || s === 'OOO' || s === 'OOS' || /^O(OO|OS)?$/.test(s);
+  return s === 'OO' || s === 'OOO' || s === 'OOS';
 }
 
 function dateOnlyToIso(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** True when a rack-day incident covers the given hotel calendar day (YYYY-MM-DD). */
+/**
+ * A rack row is one hotel day (`Day`). Old OO rows keep their original
+ * arrival/departure span, so that span must not keep the room blocked after
+ * EMMA has put it back in service. Without `Day`, the span applies and the
+ * departure day itself is already free.
+ */
 export function isRackDayActiveOnDate(
   rackDay: Record<string, unknown>,
   todayIso: string,
 ): boolean {
+  const day = pickString(rackDay, ['Day']);
+  if (day?.length === 8) {
+    const dayIso = `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`;
+    return dayIso === todayIso;
+  }
   const arrival = parseEmmaDateOnly(pickField(rackDay, ['ArrivalDate']));
   const departure = parseEmmaDateOnly(pickField(rackDay, ['DepartureDate']));
   if (arrival && departure) {
     const from = dateOnlyToIso(arrival);
     const to = dateOnlyToIso(departure);
-    return todayIso >= from && todayIso <= to;
-  }
-  const day = pickString(rackDay, ['Day']);
-  if (day?.length === 8) {
-    const dayIso = `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6, 8)}`;
-    return dayIso === todayIso;
+    return todayIso >= from && todayIso < to;
   }
   return false;
 }
@@ -151,7 +156,7 @@ function detectOutOfOrder(row: Record<string, unknown>, statusCode: string | nul
     .filter(Boolean)
     .join(' ');
   if (/out\s*of\s*order|ooo|außer\s*betrieb/i.test(text)) return true;
-  if (statusCode && /^O(OO|OS)?$/i.test(statusCode)) return true;
+  if (statusCode && isOoRackStatus(statusCode)) return true;
   return false;
 }
 

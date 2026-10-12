@@ -50,6 +50,7 @@ export class AuthController {
       name: user.name,
       phone: user.phone,
       titlePrefix: user.titlePrefix,
+      chatTitlePrefix: user.chatTitlePrefix,
       avatarUrl,
       preferredLocale: user.preferredLocale,
       permissions: user.effectivePermissions,
