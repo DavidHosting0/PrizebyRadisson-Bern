@@ -15,7 +15,11 @@ import { DamageReportModal } from '@/components/housekeeper/DamageReportModal';
 import { PriorityBadge } from '@/components/PriorityBadge';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { useToast } from '@/components/toast/ToastProvider';
-import { userTitlePrefixLabel, formatUserWithTitlePrefix } from '@/lib/userTitlePrefix';
+import {
+  userTitlePrefixLabel,
+  formatUserWithTitlePrefix,
+  resolveChatTitlePrefix,
+} from '@/lib/userTitlePrefix';
 import { useDamageTypeLabel } from '@/lib/damageReportTypes';
 import { MentionText } from '@/components/team-chat/MentionText';
 import { MentionComposer } from '@/components/team-chat/MentionComposer';
@@ -713,7 +717,7 @@ export function TeamChatView({
         author: {
           id: user.id,
           name: user.name,
-          titlePrefix: user.titlePrefix ?? '',
+          titlePrefix: resolveChatTitlePrefix(user),
           avatarUrl: user.avatarUrl,
         },
         replyTo: replyTo

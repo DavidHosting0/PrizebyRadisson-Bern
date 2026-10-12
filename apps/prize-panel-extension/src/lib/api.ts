@@ -22,6 +22,7 @@ export type Me = {
   name: string;
   phone?: string | null;
   titlePrefix?: string | null;
+  chatTitlePrefix?: string | null;
   preferredLocale?: string;
   avatarUrl?: string | null;
   permissions?: string[];

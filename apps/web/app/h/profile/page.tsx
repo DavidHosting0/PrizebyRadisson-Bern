@@ -8,13 +8,16 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ExtensionDownloadLink } from '@/components/profile/ExtensionDownloadLink';
+import { ChatTitlePrefixField } from '@/components/profile/ChatTitlePrefixField';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
+import { resolveChatTitlePrefix, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
 
 export default function HousekeeperProfilePage() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const t = useTranslations('profile');
   const [photoOpen, setPhotoOpen] = useState(false);
+  const chatRole = user ? userTitlePrefixLabel(resolveChatTitlePrefix(user)) : '';
 
   return (
     <div className="flex min-h-[calc(100dvh-8rem)] flex-col p-4">
@@ -37,11 +40,18 @@ export default function HousekeeperProfilePage() {
           </button>
           <div>
             <p className="text-lg font-semibold text-white">{user?.name}</p>
-            <p className="text-xs text-sidebar-muted">{user?.email}</p>
+            <p className="text-xs text-sidebar-muted">
+              {chatRole ? `${chatRole} · ` : ''}
+              {user?.email}
+            </p>
           </div>
           <Button variant="ghostOnDark" onClick={() => setPhotoOpen(true)}>
             {t('updatePhoto')}
           </Button>
+        </Card>
+
+        <Card tone="dark" className="text-left">
+          <ChatTitlePrefixField tone="dark" />
         </Card>
 
         <Button

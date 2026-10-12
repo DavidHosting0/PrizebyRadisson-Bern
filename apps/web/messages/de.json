@@ -864,7 +864,13 @@
     "downloadExtension": "Chrome Extension herunterladen",
     "downloadExtensionHint": "PrizeBern Panel für Chrome —",
     "installInstructions": "Installationsanleitung",
-    "openProfile": "Profil & Einstellungen"
+    "openProfile": "Profil & Einstellungen",
+    "chatRole": "Chat-Rolle",
+    "chatRoleHint": "Wird neben deinem Namen im Team-Chat angezeigt. Ändert nicht deine App-Bereich-Berechtigungen.",
+    "chatRoleDefault": "Standard (App-Bereich: {appArea})",
+    "chatRoleAppAreaFallback": "App-Bereich",
+    "chatRolePreview": "Anzeige: {role}",
+    "chatRoleSaveFailed": "Chat-Rolle konnte nicht gespeichert werden"
   },
   "housekeeper": {
     "roomsTitle": "Deine Zimmer",

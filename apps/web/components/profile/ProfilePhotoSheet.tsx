@@ -9,7 +9,8 @@ import { useAuth } from '@/lib/auth-context';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ExtensionDownloadLink } from '@/components/profile/ExtensionDownloadLink';
-import { userTitlePrefixLabel } from '@/lib/userTitlePrefix';
+import { ChatTitlePrefixField } from '@/components/profile/ChatTitlePrefixField';
+import { resolveChatTitlePrefix, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
 type Props = {
@@ -100,6 +101,7 @@ export function ProfilePhotoSheet({ open, onClose }: Props) {
 
   if (!open || !user) return null;
   const displayUrl = previewUrl ?? user.avatarUrl ?? null;
+  const chatRoleLabel = userTitlePrefixLabel(resolveChatTitlePrefix(user));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-4">
@@ -145,11 +147,13 @@ export function ProfilePhotoSheet({ open, onClose }: Props) {
               <div className="text-center">
                 <p className="text-lg font-semibold text-ink">{user.name}</p>
                 <p className="text-xs text-ink-muted">
-                  {user.titlePrefix ? `${userTitlePrefixLabel(user.titlePrefix)} · ` : ''}
+                  {chatRoleLabel ? `${chatRoleLabel} · ` : ''}
                   {user.email}
                 </p>
               </div>
             </div>
+
+            <ChatTitlePrefixField />
 
             <input
               ref={fileRef}

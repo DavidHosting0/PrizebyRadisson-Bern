@@ -17,6 +17,14 @@ export function userTitlePrefixLabel(prefix: string | null | undefined): string 
   return row?.label ?? prefix.replace(/_/g, ' ');
 }
 
+/** Chat badge: profile override, else admin app-area titlePrefix. */
+export function resolveChatTitlePrefix(user: {
+  titlePrefix?: string | null;
+  chatTitlePrefix?: string | null;
+}): string {
+  return user.chatTitlePrefix ?? user.titlePrefix ?? '';
+}
+
 /** Shown in headers, chat badges, assignments: "Prefix · Name" */
 export function formatUserWithTitlePrefix(name: string, titlePrefix?: string | null): string {
   const p = userTitlePrefixLabel(titlePrefix);

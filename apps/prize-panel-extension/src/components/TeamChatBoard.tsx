@@ -762,7 +762,7 @@ export function TeamChatBoard() {
         author: {
           id: user.id,
           name: user.name,
-          titlePrefix: user.titlePrefix ?? '',
+          titlePrefix: user.chatTitlePrefix ?? user.titlePrefix ?? '',
           avatarUrl: user.avatarUrl,
         },
         replyTo: replyTo

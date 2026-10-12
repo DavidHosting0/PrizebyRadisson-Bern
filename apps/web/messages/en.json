@@ -864,7 +864,13 @@
     "downloadExtension": "Download Chrome extension",
     "downloadExtensionHint": "PrizeBern Panel for Chrome —",
     "installInstructions": "installation guide",
-    "openProfile": "Profile & settings"
+    "openProfile": "Profile & settings",
+    "chatRole": "Chat role",
+    "chatRoleHint": "Shown next to your name in team chat. Does not change your app area or permissions.",
+    "chatRoleDefault": "Default (app area: {appArea})",
+    "chatRoleAppAreaFallback": "App area",
+    "chatRolePreview": "Display: {role}",
+    "chatRoleSaveFailed": "Could not save chat role"
   },
   "housekeeper": {
     "roomsTitle": "Your rooms",
