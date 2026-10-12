@@ -452,14 +452,12 @@ async function fetchOutOfOrderRoomNumbersFromRackDaysHttp(
   return ooo;
 }
 
+/** RoomRackDays is the live OOO list. Rooms absent from it are back in service. */
 export function applyRackDaysOutOfOrder(
   snapshots: EmmaRoomStatusSnapshot[],
   oooRooms: Set<string>,
 ): EmmaRoomStatusSnapshot[] {
-  if (oooRooms.size === 0) return snapshots;
-  return snapshots.map((snap) =>
-    oooRooms.has(snap.roomNumber) ? { ...snap, outOfOrder: true } : snap,
-  );
+  return snapshots.map((snap) => ({ ...snap, outOfOrder: oooRooms.has(snap.roomNumber) }));
 }
 
 function snapshotsFromRows(
@@ -573,12 +571,6 @@ export function mapEmmaToDerivedStatus(
   const code = (snap.statusCode ?? '').toUpperCase().replace(/\s+/g, '');
   const label = (snap.statusLabel ?? '').toLowerCase();
 
-  if (
-    /^O(OO|OS|OOO)?$/.test(code) ||
-    /out\s*of\s*order|out-of-order|außer\s*betrieb|outoforder/.test(label)
-  ) {
-    return DerivedRoomStatus.OUT_OF_ORDER;
-  }
   if (
     /^IN$/.test(code) ||
     /^INS(P|PECT|PECTED)?$/.test(code) ||

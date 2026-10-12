@@ -379,6 +379,7 @@ export class EmmaService {
               where: { id },
               data: {
                 outOfOrder: data.outOfOrder,
+                ...(data.outOfOrder ? {} : { oooReason: null, oooUntil: null }),
                 metadata: data.metadata as Prisma.InputJsonValue,
               },
             });

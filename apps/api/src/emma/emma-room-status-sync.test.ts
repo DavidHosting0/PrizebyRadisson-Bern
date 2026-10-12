@@ -60,6 +60,26 @@ describe('emma room rack-day out of order', () => {
     assert.equal(patched[0]?.outOfOrder, true);
     assert.equal(mapEmmaToDerivedStatus(patched[0]!), DerivedRoomStatus.OUT_OF_ORDER);
   });
+
+  it('clears OOO when the room is no longer on the EMMA rack-day list', () => {
+    const stale: EmmaRoomStatusSnapshot = {
+      emmaRoomId: '0104',
+      roomNumber: '104',
+      statusCode: 'OO',
+      statusLabel: 'Out of order',
+      outOfOrder: true,
+      floorId: '01',
+      buildingId: '01',
+      raw: {},
+    };
+    const cleared = applyRackDaysOutOfOrder([stale], new Set());
+    assert.equal(cleared[0]?.outOfOrder, false);
+    assert.notEqual(mapEmmaToDerivedStatus(cleared[0]!), DerivedRoomStatus.OUT_OF_ORDER);
+
+    const stillBlocked = applyRackDaysOutOfOrder([stale], new Set(['104']));
+    assert.equal(stillBlocked[0]?.outOfOrder, true);
+    assert.equal(mapEmmaToDerivedStatus(stillBlocked[0]!), DerivedRoomStatus.OUT_OF_ORDER);
+  });
 });
 
 describe('applyEmmaSnapshotsToRooms syncedAt refresh', () => {
