@@ -9,7 +9,6 @@ import { useAuth } from '@/lib/auth-context';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ExtensionDownloadLink } from '@/components/profile/ExtensionDownloadLink';
-import { ChatTitlePrefixField } from '@/components/profile/ChatTitlePrefixField';
 import { resolveChatTitlePrefix, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
 import { useOverlayKeyboard } from '@/lib/hooks/useOverlayKeyboard';
 
@@ -152,8 +151,6 @@ export function ProfilePhotoSheet({ open, onClose }: Props) {
                 </p>
               </div>
             </div>
-
-            <ChatTitlePrefixField />
 
             <input
               ref={fileRef}

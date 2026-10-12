@@ -864,13 +864,7 @@
     "downloadExtension": "Chrome uzantısını indir",
     "downloadExtensionHint": "Chrome için PrizeBern Panel —",
     "installInstructions": "kurulum kılavuzu",
-    "openProfile": "Profil ve ayarlar",
-    "chatRole": "Sohbet rolü",
-    "chatRoleHint": "Ekip sohbetinde adınızın yanında gösterilir. Uygulama alanınızı veya izinlerinizi değiştirmez.",
-    "chatRoleDefault": "Varsayılan (uygulama alanı: {appArea})",
-    "chatRoleAppAreaFallback": "Uygulama alanı",
-    "chatRolePreview": "Görünüm: {role}",
-    "chatRoleSaveFailed": "Sohbet rolü kaydedilemedi"
+    "openProfile": "Profil ve ayarlar"
   },
   "housekeeper": {
     "roomsTitle": "Odalarınız",

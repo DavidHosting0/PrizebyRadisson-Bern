@@ -35,28 +35,15 @@ describe('emma room rack-day out of order', () => {
     assert.equal(isOoRackStatus('DI'), false);
   });
 
-  it('marks room 104 OOO only on the rack day itself', () => {
+  it('keeps an OO block active for the whole arrival–departure span, not only its Day', () => {
     const rackDay = ROOM_104_RACK_HAR.RoomRackDays.results[0];
     assert.equal(isRackDayActiveOnDate(rackDay, '2026-06-22'), true);
     assert.equal(roomHasActiveOutOfOrderRackDay(ROOM_104_RACK_HAR, '2026-06-22'), true);
-    assert.equal(isRackDayActiveOnDate(rackDay, '2026-06-29'), false);
-    assert.equal(roomHasActiveOutOfOrderRackDay(ROOM_104_RACK_HAR, '2026-06-29'), false);
-  });
-
-  it('does not keep a past OO day active just because its date span still covers today', () => {
-    assert.equal(roomHasActiveOutOfOrderRackDay(ROOM_104_RACK_HAR, '2026-06-29'), false);
+    assert.equal(isRackDayActiveOnDate(rackDay, '2026-06-29'), true);
+    assert.equal(roomHasActiveOutOfOrderRackDay(ROOM_104_RACK_HAR, '2026-06-29'), true);
+    assert.equal(isRackDayActiveOnDate(rackDay, '2026-07-05'), true);
     assert.equal(roomHasActiveOutOfOrderRackDay(ROOM_104_RACK_HAR, '2026-10-12'), false);
-  });
-
-  it('uses the date span only when the rack row has no day, and frees the departure day', () => {
-    const span = {
-      ArrivalDate: '/Date(1775141416000)/',
-      DepartureDate: '/Date(1783216800000)/',
-      Status: 'OO',
-    };
-    assert.equal(isRackDayActiveOnDate(span, '2026-06-29'), true);
-    assert.equal(isRackDayActiveOnDate(span, '2026-07-05'), false);
-    assert.equal(isRackDayActiveOnDate(span, '2026-10-12'), false);
+    assert.equal(roomHasActiveOutOfOrderRackDay(ROOM_104_RACK_HAR, '2025-01-01'), false);
   });
 
   it('maps snapshots with rack-day OOO to OUT_OF_ORDER derived status', () => {

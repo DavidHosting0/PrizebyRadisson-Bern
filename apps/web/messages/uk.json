@@ -864,13 +864,7 @@
     "downloadExtension": "Завантажити розширення Chrome",
     "downloadExtensionHint": "PrizeBern Panel для Chrome —",
     "installInstructions": "інструкція з встановлення",
-    "openProfile": "Профіль і налаштування",
-    "chatRole": "Роль у чаті",
-    "chatRoleHint": "Показується біля вашого імені в командному чаті. Не змінює область додатку чи права.",
-    "chatRoleDefault": "За замовчуванням (область: {appArea})",
-    "chatRoleAppAreaFallback": "Область додатку",
-    "chatRolePreview": "Відображення: {role}",
-    "chatRoleSaveFailed": "Не вдалося зберегти роль у чаті"
+    "openProfile": "Профіль і налаштування"
   },
   "housekeeper": {
     "roomsTitle": "Ваші номери",

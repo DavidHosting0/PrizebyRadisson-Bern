@@ -1,4 +1,4 @@
-import { IsArray, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsEmail, IsEnum, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 import { PermissionCode, UserRole, UserTitlePrefix } from '@prisma/client';
 
 export class CreateUserDto {
@@ -21,6 +21,12 @@ export class CreateUserDto {
 
   @IsEnum(UserTitlePrefix)
   titlePrefix!: UserTitlePrefix;
+
+  /** Optional chat-only display override; omit/null → use titlePrefix. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsEnum(UserTitlePrefix)
+  chatTitlePrefix?: UserTitlePrefix | null;
 
   /** Extra permissions beyond assigned roles (additive). */
   @IsOptional()

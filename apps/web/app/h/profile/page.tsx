@@ -8,7 +8,6 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ExtensionDownloadLink } from '@/components/profile/ExtensionDownloadLink';
-import { ChatTitlePrefixField } from '@/components/profile/ChatTitlePrefixField';
 import { ProfilePhotoSheet } from '@/components/profile/ProfilePhotoSheet';
 import { resolveChatTitlePrefix, userTitlePrefixLabel } from '@/lib/userTitlePrefix';
 
@@ -48,10 +47,6 @@ export default function HousekeeperProfilePage() {
           <Button variant="ghostOnDark" onClick={() => setPhotoOpen(true)}>
             {t('updatePhoto')}
           </Button>
-        </Card>
-
-        <Card tone="dark" className="text-left">
-          <ChatTitlePrefixField tone="dark" />
         </Card>
 
         <Button

@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 import { PermissionCode, UserRole, UserTitlePrefix } from '@prisma/client';
 
 export class UpdateUserDto {
@@ -17,6 +17,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserTitlePrefix)
   titlePrefix?: UserTitlePrefix;
+
+  /** Null clears override so chat falls back to titlePrefix (app area). */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsEnum(UserTitlePrefix)
+  chatTitlePrefix?: UserTitlePrefix | null;
 
   @IsOptional()
   @IsBoolean()

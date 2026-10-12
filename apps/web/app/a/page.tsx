@@ -26,6 +26,7 @@ type UserRow = {
   phone: string | null;
   role: string;
   titlePrefix: string;
+  chatTitlePrefix?: string | null;
   isActive: boolean;
   createdAt: string;
   permissionGrants?: { permission: string }[];
@@ -103,6 +104,7 @@ export default function AdminUserManagementPage() {
       phone?: string;
       role: string;
       titlePrefix: string;
+      chatTitlePrefix?: string | null;
       permissionGrants?: string[];
       roleIds?: string[];
     }) => api<UserRow>('/users', { method: 'POST', body: JSON.stringify(body) }),
@@ -126,6 +128,7 @@ export default function AdminUserManagementPage() {
         phone?: string | null;
         role?: string;
         titlePrefix?: string;
+        chatTitlePrefix?: string | null;
         isActive?: boolean;
         password?: string;
         permissionGrants?: string[];
@@ -182,6 +185,14 @@ export default function AdminUserManagementPage() {
                 {u.phone && <p className="text-sm text-sidebar-muted">{u.phone}</p>}
                 <p className="mt-1 text-xs text-sidebar-muted">
                   <span className="font-medium text-white/90">{userTitlePrefixLabel(u.titlePrefix)}</span>
+                  {u.chatTitlePrefix ? (
+                    <>
+                      <span className="mx-1.5 text-sidebar-muted/60">·</span>
+                      <span className="text-white/80">
+                        Chat: {userTitlePrefixLabel(u.chatTitlePrefix)}
+                      </span>
+                    </>
+                  ) : null}
                   <span className="mx-1.5 text-sidebar-muted/60">·</span>
                   {accountTypeLabel(u.role)}
                   {!u.isActive && (
@@ -294,6 +305,7 @@ function UserUpsertModal({
     phone?: string;
     role: string;
     titlePrefix: string;
+    chatTitlePrefix: string | null;
     permissionGrants?: string[];
     roleIds?: string[];
   }) => void;
@@ -302,6 +314,7 @@ function UserUpsertModal({
     phone: string | null;
     role: string;
     titlePrefix: string;
+    chatTitlePrefix: string | null;
     isActive: boolean;
     password?: string;
     permissionGrants: string[];
@@ -315,6 +328,7 @@ function UserUpsertModal({
   const [name, setName] = useState(initial?.name ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
   const [titlePrefix, setTitlePrefix] = useState<string>(initial?.titlePrefix ?? 'CLEANER');
+  const [chatTitlePrefix, setChatTitlePrefix] = useState<string>(initial?.chatTitlePrefix ?? '');
   // Account type (drives which app shell the user opens after login) is
   // derived from the chosen title prefix; admins don't pick it explicitly.
   const role = accountTypeForTitlePrefix(titlePrefix);
@@ -329,12 +343,14 @@ function UserUpsertModal({
     if (mode === 'edit' && initial) {
       setExtraGrantCodes(initial.permissionGrants?.map((g) => g.permission) ?? []);
       setRoleIds(initial.roles?.map((r) => r.id) ?? []);
+      setChatTitlePrefix(initial.chatTitlePrefix ?? '');
     }
     if (mode === 'create') {
       setExtraGrantCodes([]);
       setRoleIds([]);
+      setChatTitlePrefix('');
     }
-  }, [mode, initial?.id, initial?.permissionGrants, initial?.roles]);
+  }, [mode, initial?.id, initial?.permissionGrants, initial?.roles, initial?.chatTitlePrefix]);
 
 
   function toggleGrant(code: string) {
@@ -359,6 +375,7 @@ function UserUpsertModal({
         phone: phone.trim() || undefined,
         role,
         titlePrefix,
+        chatTitlePrefix: chatTitlePrefix === '' ? null : chatTitlePrefix,
         permissionGrants: extraGrantCodes.length ? extraGrantCodes : undefined,
         roleIds: roleIds.length ? roleIds : undefined,
       });
@@ -375,6 +392,7 @@ function UserUpsertModal({
       phone: string | null;
       role: string;
       titlePrefix: string;
+      chatTitlePrefix: string | null;
       isActive: boolean;
       password?: string;
       permissionGrants: string[];
@@ -384,6 +402,7 @@ function UserUpsertModal({
       phone: phone.trim() ? phone.trim() : null,
       role,
       titlePrefix,
+      chatTitlePrefix: chatTitlePrefix === '' ? null : chatTitlePrefix,
       isActive,
       permissionGrants: extraGrantCodes,
       roleIds,
@@ -470,6 +489,26 @@ function UserUpsertModal({
               value={titlePrefix}
               onChange={(e) => setTitlePrefix(e.target.value)}
             >
+              {USER_TITLE_PREFIX_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-ink">Chat role</span>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              Shown next to their name in team chat. Default uses the app area above.
+            </p>
+            <select
+              className="mt-1 w-full min-h-[44px] cursor-pointer rounded-btn border border-border bg-surface px-3 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15"
+              value={chatTitlePrefix}
+              onChange={(e) => setChatTitlePrefix(e.target.value)}
+            >
+              <option value="">
+                Default (app area: {userTitlePrefixLabel(titlePrefix) || '—'})
+              </option>
               {USER_TITLE_PREFIX_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}

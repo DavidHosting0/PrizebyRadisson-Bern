@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole, UserTitlePrefix, AssignmentStatus } from '@prisma/client';
+import { Prisma, UserRole, AssignmentStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { defaultSystemRoleId } from '../permissions/ensure-system-roles';
@@ -32,6 +32,7 @@ function toUserDto(u: UserWithRoles) {
     phone: u.phone,
     role: u.role,
     titlePrefix: u.titlePrefix,
+    chatTitlePrefix: u.chatTitlePrefix,
     isActive: u.isActive,
     createdAt: u.createdAt,
     permissionGrants: u.permissionGrants.map((g) => ({ permission: g.permission })),
@@ -93,15 +94,6 @@ export class UsersService {
     return updated;
   }
 
-  async setOwnChatTitlePrefix(userId: string, chatTitlePrefix: UserTitlePrefix | null) {
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: { chatTitlePrefix },
-      select: { id: true, chatTitlePrefix: true, titlePrefix: true },
-    });
-    return updated;
-  }
-
   async listHousekeepers() {
     return this.prisma.user.findMany({
       where: { role: UserRole.HOUSEKEEPER, isActive: true },
@@ -150,6 +142,7 @@ export class UsersService {
         phone: dto.phone,
         role: dto.role,
         titlePrefix: dto.titlePrefix,
+        chatTitlePrefix: dto.chatTitlePrefix ?? null,
         permissionGrants: dto.permissionGrants?.length
           ? { create: dto.permissionGrants.map((permission) => ({ permission })) }
           : undefined,
@@ -190,6 +183,7 @@ export class UsersService {
     if (dto.role !== undefined) data.role = dto.role;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
     if (dto.titlePrefix !== undefined) data.titlePrefix = dto.titlePrefix;
+    if (dto.chatTitlePrefix !== undefined) data.chatTitlePrefix = dto.chatTitlePrefix;
     if (dto.password) {
       data.passwordHash = await bcrypt.hash(dto.password, 10);
     }

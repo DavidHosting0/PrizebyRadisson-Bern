@@ -17,7 +17,6 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateLocaleDto } from './dto/update-locale.dto';
-import { UpdateChatTitlePrefixDto } from './dto/update-chat-title-prefix.dto';
 
 @Controller('users')
 export class UsersController {
@@ -73,14 +72,6 @@ export class UsersController {
   @Patch('me/locale')
   setOwnLocale(@CurrentUser('id') userId: string, @Body() dto: UpdateLocaleDto) {
     return this.users.setOwnLocale(userId, dto.locale);
-  }
-
-  @Patch('me/chat-title-prefix')
-  setOwnChatTitlePrefix(
-    @CurrentUser('id') userId: string,
-    @Body() dto: UpdateChatTitlePrefixDto,
-  ) {
-    return this.users.setOwnChatTitlePrefix(userId, dto.chatTitlePrefix);
   }
 
   @Patch(':userId')
