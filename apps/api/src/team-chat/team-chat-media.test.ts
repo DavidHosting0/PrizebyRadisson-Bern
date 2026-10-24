@@ -3,53 +3,67 @@ import { describe, it } from 'node:test';
 import {
   isAllowedTeamChatUploadMime,
   isTeamChatPhotoTooLarge,
+  isTeamChatStoredMediaTooLarge,
   isTeamChatVideoContentType,
+  isTeamChatVideoFile,
+  isTeamChatVideoUrl,
   mergeTeamChatMessage,
   orderTeamChatWindow,
-  rejectTeamChatImageFile,
+  rejectTeamChatMediaFile,
   sniffTeamChatMediaPrefix,
   TEAM_CHAT_MAX_STORED_PHOTO_BYTES,
+  TEAM_CHAT_MAX_STORED_VIDEO_BYTES,
 } from '@housekeeping/shared';
 
 describe('team chat media guards', () => {
-  it('rejects videos by MIME and filename even when type is empty', () => {
+  it('allows videos within the source size cap', () => {
     assert.equal(
-      rejectTeamChatImageFile({ type: 'video/mp4', name: 'clip.mp4', size: 1_000 }),
-      'video',
+      rejectTeamChatMediaFile({ type: 'video/mp4', name: 'clip.mp4', size: 1_000_000 }),
+      null,
     );
     assert.equal(
-      rejectTeamChatImageFile({ type: '', name: 'IMG_1234.MOV', size: 1_000 }),
-      'video',
+      rejectTeamChatMediaFile({ type: '', name: 'IMG_1234.MOV', size: 1_000_000 }),
+      null,
     );
+    assert.equal(isTeamChatVideoFile({ type: 'video/mp4', name: 'a.mp4' }), true);
   });
 
   it('allows normal photos', () => {
     assert.equal(
-      rejectTeamChatImageFile({ type: 'image/jpeg', name: 'room.jpg', size: 800_000 }),
+      rejectTeamChatMediaFile({ type: 'image/jpeg', name: 'room.jpg', size: 800_000 }),
       null,
     );
     assert.equal(
-      rejectTeamChatImageFile({ type: 'image/heic', name: 'IMG_1.HEIC', size: 2_000_000 }),
+      rejectTeamChatMediaFile({ type: 'image/heic', name: 'IMG_1.HEIC', size: 2_000_000 }),
       null,
     );
   });
 
-  it('rejects oversized source files and non-images', () => {
+  it('rejects oversized source files and non-media', () => {
     assert.equal(
-      rejectTeamChatImageFile({ type: 'image/jpeg', name: 'huge.jpg', size: 40 * 1024 * 1024 }),
+      rejectTeamChatMediaFile({ type: 'image/jpeg', name: 'huge.jpg', size: 40 * 1024 * 1024 }),
       'tooLarge',
     );
     assert.equal(
-      rejectTeamChatImageFile({ type: 'application/pdf', name: 'x.pdf', size: 1000 }),
-      'notImage',
+      rejectTeamChatMediaFile({
+        type: 'video/mp4',
+        name: 'huge.mp4',
+        size: 300 * 1024 * 1024,
+      }),
+      'tooLarge',
+    );
+    assert.equal(
+      rejectTeamChatMediaFile({ type: 'application/pdf', name: 'x.pdf', size: 1000 }),
+      'notSupported',
     );
   });
 
-  it('only allows jpeg/png/webp for presign', () => {
+  it('allows jpeg/png/webp and compressed video mime for presign', () => {
     assert.equal(isAllowedTeamChatUploadMime('image/jpeg'), true);
     assert.equal(isAllowedTeamChatUploadMime('image/png; charset=binary'), true);
     assert.equal(isAllowedTeamChatUploadMime('image/heic'), false);
-    assert.equal(isAllowedTeamChatUploadMime('video/mp4'), false);
+    assert.equal(isAllowedTeamChatUploadMime('video/mp4'), true);
+    assert.equal(isAllowedTeamChatUploadMime('video/webm'), true);
   });
 
   it('sniffs jpeg vs mp4 ftyp vs heic ftyp', () => {
@@ -62,11 +76,18 @@ describe('team chat media guards', () => {
     assert.equal(sniffTeamChatMediaPrefix(heic), 'image');
   });
 
-  it('treats stored objects over the chat photo cap as too large', () => {
+  it('treats stored objects over the chat media caps as too large', () => {
     assert.equal(isTeamChatPhotoTooLarge(TEAM_CHAT_MAX_STORED_PHOTO_BYTES + 1), true);
     assert.equal(isTeamChatPhotoTooLarge(400_000), false);
+    assert.equal(
+      isTeamChatStoredMediaTooLarge(TEAM_CHAT_MAX_STORED_VIDEO_BYTES + 1, 'video/webm'),
+      true,
+    );
+    assert.equal(isTeamChatStoredMediaTooLarge(5_000_000, 'video/mp4', 'team-chat/a.mp4'), false);
     assert.equal(isTeamChatVideoContentType('video/mp4'), true);
     assert.equal(isTeamChatVideoContentType('image/jpeg'), false);
+    assert.equal(isTeamChatVideoUrl('https://cdn/x/team-chat/a.webm?X-Amz=1'), true);
+    assert.equal(isTeamChatVideoUrl('https://cdn/x/team-chat/a.jpg'), false);
   });
 
   it('returns the newest window in chronological order for the chat UI', () => {

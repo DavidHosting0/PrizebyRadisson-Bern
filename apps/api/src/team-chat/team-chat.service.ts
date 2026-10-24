@@ -3,8 +3,7 @@ import { PermissionCode, User } from '@prisma/client';
 import {
   isAllowedTeamChatUploadMime,
   isSupportedLocale,
-  isTeamChatPhotoTooLarge,
-  isTeamChatVideoContentType,
+  isTeamChatStoredMediaTooLarge,
   orderTeamChatWindow,
   resolveLocale,
   sniffTeamChatMediaPrefix,
@@ -203,24 +202,25 @@ export class TeamChatService {
     if (hit && Date.now() - hit.at < TeamChatService.PHOTO_SKIP_TTL_MS) return hit.skip;
     const meta = await this.s3.headObject(key);
     const skip = !!(
-      meta &&
-      (isTeamChatPhotoTooLarge(meta.contentLength) || isTeamChatVideoContentType(meta.contentType))
+      meta && isTeamChatStoredMediaTooLarge(meta.contentLength, meta.contentType, key)
     );
     this.photoSkipCache.set(key, { at: Date.now(), skip });
     if (skip) {
-      this.log.warn(`Skipping chat photo ${key} (video or oversized)`);
+      this.log.warn(`Skipping chat media ${key} (oversized)`);
     }
     return skip;
   }
 
   private async assertChatPhotoSafe(key: string) {
     const meta = await this.s3.headObject(key);
-    if (meta && (isTeamChatPhotoTooLarge(meta.contentLength) || isTeamChatVideoContentType(meta.contentType))) {
-      throw new BadRequestException('Only image uploads are allowed');
+    if (meta && isTeamChatStoredMediaTooLarge(meta.contentLength, meta.contentType, key)) {
+      throw new BadRequestException('Media file is too large');
     }
     const prefix = await this.s3.getObjectPrefix(key);
-    if (prefix && sniffTeamChatMediaPrefix(prefix) === 'video') {
-      throw new BadRequestException('Only image uploads are allowed');
+    const kind = prefix ? sniffTeamChatMediaPrefix(prefix) : 'unknown';
+    // Reject non-media blobs that were uploaded with a spoofed content type.
+    if (kind === 'unknown' && meta?.contentType && !meta.contentType.startsWith('image/') && !meta.contentType.startsWith('video/')) {
+      throw new BadRequestException('Only image or video uploads are allowed');
     }
   }
 
@@ -618,9 +618,17 @@ export class TeamChatService {
   async presign(contentType: string) {
     const mime = (contentType || '').toLowerCase().split(';')[0]!.trim() || 'image/jpeg';
     if (!isAllowedTeamChatUploadMime(mime)) {
-      throw new BadRequestException('Only image uploads are allowed');
+      throw new BadRequestException('Only image or video uploads are allowed');
     }
-    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+    const ext = mime.includes('png')
+      ? 'png'
+      : mime.includes('webp')
+        ? 'webp'
+        : mime.includes('webm')
+          ? 'webm'
+          : mime.includes('mp4')
+            ? 'mp4'
+            : 'jpg';
     const key = this.s3.buildTeamChatKey(ext);
     const { url } = await this.s3.presignPut(key, mime);
     return { uploadUrl: url, key };

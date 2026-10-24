@@ -1,47 +1,106 @@
 /** Original file picked in the client before compression. */
 export const TEAM_CHAT_MAX_SOURCE_PHOTO_BYTES = 25 * 1024 * 1024;
 
-/** Max images attached to one team-chat message (WhatsApp-style album). */
-export const TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE = 10;
+/** Original video picked before client re-encode (phones often shoot large files). */
+export const TEAM_CHAT_MAX_SOURCE_VIDEO_BYTES = 250 * 1024 * 1024;
 
-/** Stored object after upload. Chat photos are compressed to ~0.6MB; videos are much larger. */
+/**
+ * Max media files attached to one team-chat message (album).
+ * High ceiling so gallery multi-select works; still bounds abuse / payload size.
+ */
+export const TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE = 100;
+
+/** Stored object after upload. Chat photos are compressed to ~0.6MB. */
 export const TEAM_CHAT_MAX_STORED_PHOTO_BYTES = 2.5 * 1024 * 1024;
 
+/** Stored video after client compress (~720p / ~1.2 Mbps). */
+export const TEAM_CHAT_MAX_STORED_VIDEO_BYTES = 25 * 1024 * 1024;
+
 const VIDEO_NAME = /\.(mp4|m4v|mov|webm|avi|mkv|mpeg|mpg|3gp|qt)$/i;
+const VIDEO_URL_EXT = /\.(mp4|m4v|mov|webm|avi|mkv|mpeg|mpg|3gp|qt)(?:$|\?|#)/i;
 
 /** MIME types accepted for the presigned PUT (after client compression). */
-const UPLOAD_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
+const UPLOAD_MIMES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'video/webm',
+  'video/mp4',
+]);
 
-export type TeamChatImageReject = 'video' | 'tooLarge' | 'notImage';
+export type TeamChatMediaReject = 'tooLarge' | 'notSupported';
+
+/** @deprecated Use TeamChatMediaReject */
+export type TeamChatImageReject = TeamChatMediaReject | 'video' | 'notImage';
 
 export function isAllowedTeamChatUploadMime(contentType: string): boolean {
   const mime = contentType.toLowerCase().split(';')[0]!.trim();
   return UPLOAD_MIMES.has(mime);
 }
 
+export function isTeamChatVideoFile(file: { type: string; name: string }): boolean {
+  const mime = (file.type || '').toLowerCase().split(';')[0]!.trim();
+  const name = file.name || '';
+  return mime.startsWith('video/') || VIDEO_NAME.test(name);
+}
+
+/** Detect video from a key or presigned URL path. */
+export function isTeamChatVideoUrl(urlOrKey: string | null | undefined): boolean {
+  if (!urlOrKey) return false;
+  const path = urlOrKey.split('?')[0]?.split('#')[0] ?? '';
+  return VIDEO_URL_EXT.test(path);
+}
+
 /**
  * Client-side guard for the file picker. Empty MIME is allowed when the name
- * looks like an image (some iOS versions omit type); videos are always rejected.
+ * looks like an image (some iOS versions omit type).
  */
+export function rejectTeamChatMediaFile(file: {
+  type: string;
+  name: string;
+  size: number;
+}): TeamChatMediaReject | null {
+  const mime = (file.type || '').toLowerCase().split(';')[0]!.trim();
+  const name = file.name || '';
+
+  if (isTeamChatVideoFile(file)) {
+    if (file.size > TEAM_CHAT_MAX_SOURCE_VIDEO_BYTES) return 'tooLarge';
+    return null;
+  }
+
+  if (file.size > TEAM_CHAT_MAX_SOURCE_PHOTO_BYTES) return 'tooLarge';
+  if (mime && !mime.startsWith('image/')) return 'notSupported';
+  if (mime === 'image/svg+xml' || mime === 'image/tiff' || mime === 'image/bmp') {
+    return 'notSupported';
+  }
+  if (!mime && VIDEO_NAME.test(name)) return 'tooLarge';
+  return null;
+}
+
+/** @deprecated Prefer rejectTeamChatMediaFile */
 export function rejectTeamChatImageFile(file: {
   type: string;
   name: string;
   size: number;
 }): TeamChatImageReject | null {
-  const mime = (file.type || '').toLowerCase().split(';')[0]!.trim();
-  const name = file.name || '';
-
-  if (mime.startsWith('video/') || VIDEO_NAME.test(name)) return 'video';
-  if (file.size > TEAM_CHAT_MAX_SOURCE_PHOTO_BYTES) return 'tooLarge';
-  if (mime && !mime.startsWith('image/')) return 'notImage';
-  if (mime === 'image/svg+xml' || mime === 'image/tiff' || mime === 'image/bmp') {
-    return 'notImage';
-  }
-  return null;
+  return rejectTeamChatMediaFile(file);
 }
 
 export function isTeamChatPhotoTooLarge(contentLength: number | undefined): boolean {
   return typeof contentLength === 'number' && contentLength > TEAM_CHAT_MAX_STORED_PHOTO_BYTES;
+}
+
+export function isTeamChatStoredMediaTooLarge(
+  contentLength: number | undefined,
+  contentType?: string,
+  key?: string,
+): boolean {
+  if (typeof contentLength !== 'number') return false;
+  if (isTeamChatVideoContentType(contentType) || isTeamChatVideoUrl(key)) {
+    return contentLength > TEAM_CHAT_MAX_STORED_VIDEO_BYTES;
+  }
+  return contentLength > TEAM_CHAT_MAX_STORED_PHOTO_BYTES;
 }
 
 export function isTeamChatVideoContentType(contentType: string | undefined): boolean {

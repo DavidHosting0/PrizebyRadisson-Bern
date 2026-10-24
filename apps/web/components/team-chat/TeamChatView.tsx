@@ -30,7 +30,13 @@ import {
 } from '@/components/team-chat/MessageContextMenu';
 import { useLocale } from '@/lib/locale-context';
 import { useTranslations } from 'next-intl';
-import { rejectTeamChatImageFile, TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE } from '@housekeeping/shared';
+import {
+  isTeamChatVideoFile,
+  isTeamChatVideoUrl,
+  rejectTeamChatMediaFile,
+  TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE,
+} from '@housekeeping/shared';
+import { compressChatVideo } from '@/lib/compress-chat-video';
 import { removeTeamChatMessage, upsertTeamChatMessage, teamChatQueryOptions } from '@/lib/team-chat-cache';
 import { ChatPhotoAlbum, ChatPhotoLightbox } from '@/components/team-chat/ChatPhotoAlbum';
 
@@ -49,7 +55,9 @@ function isNearLatest(el: HTMLElement, threshold = NEAR_BOTTOM_THRESHOLD_PX): bo
 }
 const LONG_PRESS_MS = 480;
 const PHOTO_COMPRESS_MS = 20_000;
-const CHAT_PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif';
+const VIDEO_COMPRESS_MS = 180_000;
+const CHAT_MEDIA_ACCEPT =
+  'image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif,video/mp4,video/quicktime,video/webm,video/*,.mp4,.mov,.webm,.m4v';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -404,7 +412,11 @@ export function TeamChatView({
   const photoPreviewUrlsRef = useRef<string[]>([]);
   photoPreviewUrlsRef.current = photoPreviewUrls;
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const [lightbox, setLightbox] = useState<{ urls: string[]; index: number } | null>(null);
+  const [lightbox, setLightbox] = useState<{
+    urls: string[];
+    index: number;
+    videoFlags?: boolean[];
+  } | null>(null);
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [newDmgOpen, setNewDmgOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -613,14 +625,14 @@ export function TeamChatView({
       if (incoming.length === 0) return;
       const accepted: File[] = [];
       for (const file of incoming) {
-        const reason = rejectTeamChatImageFile(file);
+        const reason = rejectTeamChatMediaFile(file);
         if (reason) {
           const msg =
-            reason === 'video'
-              ? tChat('videoNotAllowed')
-              : reason === 'tooLarge'
-                ? tChat('photoTooLarge')
-                : tChat('photoNotSupported');
+            reason === 'tooLarge'
+              ? isTeamChatVideoFile(file)
+                ? tChat('videoTooLarge')
+                : tChat('photoTooLarge')
+              : tChat('photoNotSupported');
           toast.push(msg, 'warning');
           continue;
         }
@@ -641,29 +653,58 @@ export function TeamChatView({
     [tChat, toast],
   );
 
-  const openPhotoLightbox = useCallback((urls: string[], index: number) => {
-    if (urls.length === 0) return;
-    setLightbox({ urls, index });
-  }, []);
+  const openPhotoLightbox = useCallback(
+    (urls: string[], index: number, videoFlags?: boolean[]) => {
+      if (urls.length === 0) return;
+      setLightbox({ urls, index, videoFlags });
+    },
+    [],
+  );
 
   const uploadChatPhoto = useCallback(
     async (file: File): Promise<string> => {
-      const skipCompress =
-        file.size <= 500_000 && /image\/(jpeg|jpg|png|webp)/i.test(file.type);
-      const compressed = skipCompress
-        ? file
-        : await withTimeout(
-            imageCompression(file, {
-              maxSizeMB: 0.6,
-              maxWidthOrHeight: 1600,
-              useWebWorker: true,
-            }),
-            PHOTO_COMPRESS_MS,
-            new Error(tChat('photoUploadFailed')),
+      const isVideo = isTeamChatVideoFile(file);
+      let compressed: File | Blob = file;
+      if (isVideo) {
+        try {
+          compressed = await withTimeout(
+            compressChatVideo(file),
+            VIDEO_COMPRESS_MS,
+            new Error(tChat('videoCompressFailed')),
           );
-      const rawType = compressed.type || file.type || 'image/jpeg';
-      const contentType =
-        rawType.startsWith('image/') && !/heic|heif/i.test(rawType) ? rawType : 'image/jpeg';
+        } catch (e) {
+          const code = e instanceof Error ? e.message : '';
+          if (code === 'VIDEO_TOO_LARGE_AFTER_COMPRESS') {
+            throw new Error(tChat('videoTooLarge'));
+          }
+          throw new Error(tChat('videoCompressFailed'));
+        }
+      } else {
+        const skipCompress =
+          file.size <= 500_000 && /image\/(jpeg|jpg|png|webp)/i.test(file.type);
+        compressed = skipCompress
+          ? file
+          : await withTimeout(
+              imageCompression(file, {
+                maxSizeMB: 0.6,
+                maxWidthOrHeight: 1600,
+                useWebWorker: true,
+              }),
+              PHOTO_COMPRESS_MS,
+              new Error(tChat('photoUploadFailed')),
+            );
+      }
+      const rawType = compressed.type || file.type || (isVideo ? 'video/webm' : 'image/jpeg');
+      let contentType: string;
+      if (isVideo) {
+        contentType = rawType.startsWith('video/') ? rawType.split(';')[0]! : 'video/webm';
+        if (!contentType.includes('webm') && !contentType.includes('mp4')) {
+          contentType = 'video/webm';
+        }
+      } else {
+        contentType =
+          rawType.startsWith('image/') && !/heic|heif/i.test(rawType) ? rawType : 'image/jpeg';
+      }
       const presign = await api<{ uploadUrl: string; key: string }>('/team-chat/presign', {
         method: 'POST',
         body: JSON.stringify({ contentType }),
@@ -674,7 +715,7 @@ export function TeamChatView({
         body: compressed,
       });
       if (!putRes.ok) {
-        throw new Error(tChat('photoUploadFailed'));
+        throw new Error(isVideo ? tChat('videoCompressFailed') : tChat('photoUploadFailed'));
       }
       return presign.key;
     },
@@ -689,10 +730,19 @@ export function TeamChatView({
       photos?: File[];
     }) => {
       const files = payload.photos ?? [];
-      const photoS3Keys: string[] = [];
-      for (const file of files) {
-        photoS3Keys.push(await uploadChatPhoto(file));
-      }
+      // Parallel uploads (bounded) so large gallery picks finish reliably.
+      const concurrency = 4;
+      const photoS3Keys: string[] = new Array(files.length);
+      let next = 0;
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, files.length) }, async () => {
+          while (true) {
+            const i = next++;
+            if (i >= files.length) return;
+            photoS3Keys[i] = await uploadChatPhoto(files[i]!);
+          }
+        }),
+      );
       return api<ChatMsg>(`/team-chat/messages?lang=${locale}`, {
         method: 'POST',
         body: JSON.stringify({
@@ -1348,28 +1398,65 @@ export function TeamChatView({
           {photoPreviewUrls.length > 0 && (
             <div className="mx-auto w-full max-w-3xl border-b border-sidebar-border/60 px-3 py-2">
               <div className="flex flex-wrap gap-2">
-                {photoPreviewUrls.map((url, i) => (
-                  <div
-                    key={url}
-                    className="relative h-16 w-16 overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={url}
-                      alt=""
-                      className="h-full w-full cursor-pointer object-cover"
-                      onClick={() => openPhotoLightbox(photoPreviewUrls, i)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removePhotoAt(i)}
-                      className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
-                      aria-label={tChat('removePhoto')}
+                {photoPreviewUrls.map((url, i) => {
+                  const previewIsVideo = photoFiles[i]
+                    ? isTeamChatVideoFile(photoFiles[i]!)
+                    : isTeamChatVideoUrl(url);
+                  return (
+                    <div
+                      key={url}
+                      className="relative h-16 w-16 overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5"
                     >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                      {previewIsVideo ? (
+                        <video
+                          src={url}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="h-full w-full cursor-pointer object-cover"
+                          onClick={() =>
+                            openPhotoLightbox(
+                              photoPreviewUrls,
+                              i,
+                              photoFiles.map((f) => isTeamChatVideoFile(f)),
+                            )
+                          }
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={url}
+                          alt=""
+                          className="h-full w-full cursor-pointer object-cover"
+                          onClick={() =>
+                            openPhotoLightbox(
+                              photoPreviewUrls,
+                              i,
+                              photoFiles.map((f) => isTeamChatVideoFile(f)),
+                            )
+                          }
+                        />
+                      )}
+                      {previewIsVideo && (
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removePhotoAt(i)}
+                        className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
+                        aria-label={tChat('removePhoto')}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
                 {photoFiles.length < TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE && (
                   <button
                     type="button"
@@ -1434,7 +1521,7 @@ export function TeamChatView({
             <input
               ref={photoInputRef}
               type="file"
-              accept={CHAT_PHOTO_ACCEPT}
+              accept={CHAT_MEDIA_ACCEPT}
               multiple
               className="hidden"
               onChange={(e) => {
@@ -1580,6 +1667,7 @@ export function TeamChatView({
         <ChatPhotoLightbox
           urls={lightbox.urls}
           index={lightbox.index}
+          videoFlags={lightbox.videoFlags}
           alt={tChat('photoAlt')}
           closeLabel={tCommon('close')}
           prevLabel={tChat('prevPhoto')}

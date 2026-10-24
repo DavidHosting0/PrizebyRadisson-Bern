@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
+import { isTeamChatVideoUrl } from '@housekeeping/shared';
 
 type LightboxProps = {
   urls: string[];
@@ -11,9 +12,42 @@ type LightboxProps = {
   closeLabel: string;
   prevLabel: string;
   nextLabel: string;
+  /** When URLs are blob: previews without extensions, mark video slots explicitly. */
+  videoFlags?: boolean[];
   onClose: () => void;
   onIndexChange: (index: number) => void;
 };
+
+function MediaThumb({
+  url,
+  alt,
+  className,
+  onError,
+  forceVideo,
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+  onError?: () => void;
+  forceVideo?: boolean;
+}) {
+  if (forceVideo || isTeamChatVideoUrl(url)) {
+    return (
+      <video
+        src={url}
+        muted
+        playsInline
+        preload="metadata"
+        className={className}
+        onError={onError}
+      />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt={alt} className={className} onError={onError} draggable={false} />
+  );
+}
 
 export function ChatPhotoLightbox({
   urls,
@@ -22,12 +56,14 @@ export function ChatPhotoLightbox({
   closeLabel,
   prevLabel,
   nextLabel,
+  videoFlags,
   onClose,
   onIndexChange,
 }: LightboxProps) {
   const safeIndex = Math.max(0, Math.min(index, urls.length - 1));
   const url = urls[safeIndex];
   const multi = urls.length > 1;
+  const isVideo = videoFlags?.[safeIndex] ?? isTeamChatVideoUrl(url);
 
   const go = useCallback(
     (delta: number) => {
@@ -96,13 +132,24 @@ export function ChatPhotoLightbox({
           </button>
         )}
 
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
-          alt={alt}
-          className="max-h-full max-w-full object-contain select-none"
-          draggable={false}
-        />
+        {isVideo ? (
+          <video
+            key={url}
+            src={url}
+            controls
+            playsInline
+            autoPlay
+            className="max-h-full max-w-full object-contain"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt={alt}
+            className="max-h-full max-w-full object-contain select-none"
+            draggable={false}
+          />
+        )}
 
         {multi && (
           <button
@@ -129,12 +176,25 @@ export function ChatPhotoLightbox({
                 onIndexChange(i);
               }}
               className={clsx(
-                'h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-2 transition',
+                'relative h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-2 transition',
                 i === safeIndex ? 'ring-action' : 'ring-transparent opacity-60 hover:opacity-100',
               )}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={thumb} alt="" className="h-full w-full object-cover" />
+              <MediaThumb
+                url={thumb}
+                alt=""
+                className="h-full w-full object-cover"
+                forceVideo={videoFlags?.[i]}
+              />
+              {(videoFlags?.[i] ?? isTeamChatVideoUrl(thumb)) && (
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </span>
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -179,6 +239,7 @@ export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: Galler
     >
       {show.map((url, i) => {
         const isLast = i === show.length - 1 && overflow > 0;
+        const isVideo = isTeamChatVideoUrl(url);
         const cell =
           show.length === 1
             ? 'min-h-[160px] max-h-72'
@@ -199,15 +260,35 @@ export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: Galler
               cell,
             )}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={url}
-              alt={alt}
-              loading="lazy"
-              decoding="async"
-              onError={() => setFailed((prev) => ({ ...prev, [urls.indexOf(url)]: true }))}
-              className="h-full w-full object-cover"
-            />
+            {isVideo ? (
+              <video
+                src={url}
+                muted
+                playsInline
+                preload="metadata"
+                className="h-full w-full object-cover"
+                onError={() => setFailed((prev) => ({ ...prev, [urls.indexOf(url)]: true }))}
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={url}
+                alt={alt}
+                loading="lazy"
+                decoding="async"
+                onError={() => setFailed((prev) => ({ ...prev, [urls.indexOf(url)]: true }))}
+                className="h-full w-full object-cover"
+              />
+            )}
+            {isVideo && !isLast && (
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white shadow">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </span>
+              </span>
+            )}
             {isLast && (
               <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-2xl font-semibold text-white">
                 {moreLabel(overflow)}
