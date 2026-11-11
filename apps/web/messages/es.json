@@ -308,6 +308,7 @@
     "loading": "Cargando…",
     "emptyFeed": "Aún no hay mensajes ni solicitudes. Saluda a tu equipo.",
     "jumpToLatest": "Ir a los últimos mensajes",
+    "scrollForOlder": "Desplaza hacia arriba para ver mensajes anteriores",
     "newMessages": "Mensajes nuevos",
     "replyingToName": "Respondiendo a {name}",
     "placeholderMessage": "Mensaje al equipo…",

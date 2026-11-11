@@ -446,19 +446,28 @@ export class TeamChatService {
     viewer: User,
     lang?: string,
     order: 'asc' | 'desc' = 'asc',
+    /** ISO timestamp — return messages strictly older than this (scroll-up pagination). */
+    before?: string,
   ) {
     const take = Math.min(Math.max(1, limit), 500);
     const targetLocale = resolveLocale(lang, viewer.preferredLocale);
+    const beforeDate = before ? new Date(before) : null;
+    const beforeOk = !!beforeDate && !Number.isNaN(beforeDate.getTime());
     const newestFirst = (await this.prisma.teamChatMessage.findMany({
       take,
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(beforeOk ? { createdAt: { lt: beforeDate! } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       include: messageInclude,
     })) as unknown as MessageRow[];
     const rows = orderTeamChatWindow(newestFirst, order);
     const ids = [...new Set(rows.flatMap((r) => (r.replyTo ? [r.id, r.replyTo.id] : [r.id])))];
     const [urls, translationRows] = await Promise.all([
-      this.buildMediaUrlMap(rows),
+      // Skip per-key S3 HEAD on list — was the main TTFB cost. Oversized media is
+      // already rejected on upload / create-time assertChatPhotoSafe.
+      this.buildMediaUrlMap(rows, { verifyPhotos: false }),
       ids.length
         ? this.prisma.teamChatMessageTranslation.findMany({
             where: { messageId: { in: ids }, locale: targetLocale },

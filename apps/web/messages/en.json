@@ -308,6 +308,7 @@
     "loading": "Loading…",
     "emptyFeed": "No messages or requests yet. Say hi to your team.",
     "jumpToLatest": "Jump to latest messages",
+    "scrollForOlder": "Scroll up for older messages",
     "newMessages": "New messages",
     "replyingToName": "Replying to {name}",
     "placeholderMessage": "Message the team…",

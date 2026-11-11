@@ -18,9 +18,16 @@ export class TeamChatController {
     @Query('limit') limit?: string,
     @Query('lang') lang?: string,
     @Query('order') order?: string,
+    @Query('before') before?: string,
   ) {
     const dir = order === 'desc' ? 'desc' : 'asc';
-    return this.svc.list(limit ? parseInt(limit, 10) : 200, user, lang, dir);
+    return this.svc.list(
+      limit ? parseInt(limit, 10) : 200,
+      user,
+      lang,
+      dir,
+      before?.trim() || undefined,
+    );
   }
 
   @Get('mentionables')

@@ -665,7 +665,7 @@ export function TeamChatBoard() {
 
   const { data: messages, isPending: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
-    queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=200&lang=${locale}`),
+    queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=60&lang=${locale}`),
     staleTime: 60_000,
     gcTime: 30 * 60_000,
     refetchInterval: 20_000,

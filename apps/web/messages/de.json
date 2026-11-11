@@ -308,6 +308,7 @@
     "loading": "Laden…",
     "emptyFeed": "Noch keine Nachrichten oder Anfragen. Sag Hallo zu deinem Team.",
     "jumpToLatest": "Zu den neuesten Nachrichten",
+    "scrollForOlder": "Nach oben scrollen für ältere Nachrichten",
     "newMessages": "Neue Nachrichten",
     "replyingToName": "Antwort an {name}",
     "placeholderMessage": "Nachricht an das Team…",

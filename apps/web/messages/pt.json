@@ -308,6 +308,7 @@
     "loading": "A carregar…",
     "emptyFeed": "Ainda sem mensagens ou pedidos. Diga olá à equipa.",
     "jumpToLatest": "Ir para as mensagens mais recentes",
+    "scrollForOlder": "Desliza para cima para mensagens mais antigas",
     "newMessages": "Novas mensagens",
     "replyingToName": "A responder a {name}",
     "placeholderMessage": "Mensagem para a equipa…",

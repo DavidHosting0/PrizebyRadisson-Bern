@@ -238,7 +238,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
 
   const chatQ = useQuery({
     queryKey: ['team-chat-messages', 'stats'],
-    queryFn: () => api<{ createdAt: string }[]>('/team-chat/messages?limit=200'),
+    queryFn: () => api<{ createdAt: string }[]>('/team-chat/messages?limit=60'),
     enabled: canChat,
     staleTime: 15_000,
     refetchInterval: 30_000,

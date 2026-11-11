@@ -308,6 +308,7 @@
     "loading": "Yükleniyor…",
     "emptyFeed": "Henüz mesaj veya talep yok. Ekibinize merhaba deyin.",
     "jumpToLatest": "Son mesajlara git",
+    "scrollForOlder": "Daha eski mesajlar için yukarı kaydır",
     "newMessages": "Yeni mesajlar",
     "replyingToName": "{name} kişisine yanıt",
     "placeholderMessage": "Ekibe mesaj…",

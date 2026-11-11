@@ -37,10 +37,18 @@ import {
   TEAM_CHAT_MAX_PHOTOS_PER_MESSAGE,
 } from '@housekeeping/shared';
 import { compressChatVideo } from '@/lib/compress-chat-video';
-import { removeTeamChatMessage, upsertTeamChatMessage, teamChatQueryOptions } from '@/lib/team-chat-cache';
+import {
+  prependTeamChatMessages,
+  removeTeamChatMessage,
+  TEAM_CHAT_PAGE_SIZE,
+  teamChatMessagesUrl,
+  upsertTeamChatMessage,
+  teamChatQueryOptions,
+} from '@/lib/team-chat-cache';
 import { ChatPhotoAlbum, ChatPhotoLightbox } from '@/components/team-chat/ChatPhotoAlbum';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
+const LOAD_OLDER_THRESHOLD_PX = 480;
 
 /**
  * With `flex-col-reverse`, scrollTop === 0 is the visual bottom (newest messages).
@@ -441,16 +449,62 @@ export function TeamChatView({
   const touchMsgId = useRef<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
-
+  const loadingOlderRef = useRef(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   const { data: messages, isPending: loadingMsg } = useQuery({
     queryKey: ['team-chat-messages', locale],
-    queryFn: () => api<ChatMsg[]>(`/team-chat/messages?limit=300&lang=${locale}`),
+    queryFn: () => api<ChatMsg[]>(teamChatMessagesUrl(locale)),
     ...teamChatQueryOptions,
   });
   // Wait until messages query has data (or settled) so cached damages don't flash alone.
   const chatReady = !loadingMsg;
   const messageList = messages ?? [];
+
+  useEffect(() => {
+    // Fresh locale / first page: assume more history until a short page proves otherwise.
+    setHasMoreOlder(true);
+  }, [locale]);
+
+  useEffect(() => {
+    if (!chatReady) return;
+    if (messageList.length > 0 && messageList.length < TEAM_CHAT_PAGE_SIZE) {
+      setHasMoreOlder(false);
+    }
+  }, [chatReady, messageList.length]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMoreOlder) return;
+    const oldest = messageList[0];
+    if (!oldest?.createdAt) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const el = scrollContainerRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    const prevTop = el?.scrollTop ?? 0;
+    try {
+      const older = await api<ChatMsg[]>(
+        teamChatMessagesUrl(locale, { before: oldest.createdAt }),
+      );
+      if (older.length < TEAM_CHAT_PAGE_SIZE) setHasMoreOlder(false);
+      if (older.length === 0) return;
+      qc.setQueryData<ChatMsg[]>(['team-chat-messages', locale], (old) =>
+        prependTeamChatMessages(old, older),
+      );
+      requestAnimationFrame(() => {
+        const scroller = scrollContainerRef.current;
+        if (!scroller) return;
+        const delta = scroller.scrollHeight - prevHeight;
+        if (delta > 0) scroller.scrollTop = prevTop + delta;
+      });
+    } catch (e: unknown) {
+      toast.push(e instanceof Error ? e.message : tChat('loading'), 'warning');
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [hasMoreOlder, locale, messageList, qc, tChat, toast]);
 
   const { data: requests = [], isLoading: loadingReq } = useQuery({
     queryKey: ['service-requests'],
@@ -519,10 +573,14 @@ export function TeamChatView({
     const onChat = (payload: ChatMsg) => {
       if (payload?.id && payload.author?.id) upsertTeamChatMessage(qc, payload, locale);
     };
-    const onReact = () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+    const onReact = () => {
+      // Full list is cheaper now (no S3 HEAD + smaller page); still needed because
+      // the socket payload is only `{ messageId }` without reaction summaries.
+      void qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+    };
     const onDeleted = (payload: { messageId?: string }) => {
       if (payload?.messageId) removeTeamChatMessage(qc, payload.messageId);
-      else qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+      else void qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
     };
     const onReq = () => qc.invalidateQueries({ queryKey: ['service-requests'] });
     const onDmg = () => qc.invalidateQueries({ queryKey: ['damage-reports'] });
@@ -569,7 +627,12 @@ export function TeamChatView({
     const near = isNearLatest(el);
     isNearLatestRef.current = near;
     setShowJumpToBottom(!near);
-  }, []);
+    // flex-col-reverse: oldest end is near max scrollTop
+    const fromOldest = el.scrollHeight - el.clientHeight - el.scrollTop;
+    if (fromOldest < LOAD_OLDER_THRESHOLD_PX) {
+      void loadOlderMessages();
+    }
+  }, [loadOlderMessages]);
 
   const timelineTailKey = timeline.length > 0 ? timeline[timeline.length - 1].key : null;
   const feedReady = chatReady && timeline.length > 0;
@@ -809,20 +872,29 @@ export function TeamChatView({
 
   const toggleReaction = useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
-      api(`/team-chat/messages/${messageId}/reactions`, {
-        method: 'POST',
-        body: JSON.stringify({ emoji }),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] }),
+      api<{ messageId: string; reactions: ReactionSummary[] }>(
+        `/team-chat/messages/${messageId}/reactions`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ emoji }),
+        },
+      ),
+    onSuccess: (data) => {
+      qc.setQueryData<ChatMsg[]>(['team-chat-messages', locale], (old) =>
+        (old ?? []).map((m) =>
+          m.id === data.messageId ? { ...m, reactions: data.reactions } : m,
+        ),
+      );
+    },
   });
 
   const deleteMessage = useMutation({
     mutationFn: (messageId: string) =>
       api(`/team-chat/messages/${messageId}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    onSuccess: (_data, messageId) => {
       setMenu(null);
       setPendingDeleteId(null);
-      qc.invalidateQueries({ queryKey: ['team-chat-messages', locale] });
+      removeTeamChatMessage(qc, messageId);
       toast.push(tChat('messageDeleted'), 'success');
     },
     onError: (e: unknown) => {
@@ -1047,13 +1119,21 @@ export function TeamChatView({
             {tChat('emptyFeed')}
           </p>
         )}
+        {chatReady && (loadingOlder || hasMoreOlder) && messageList.length > 0 && (
+          <p className="mb-2 text-center text-[11px] text-sidebar-muted">
+            {loadingOlder ? tChat('loading') : tChat('scrollForOlder')}
+          </p>
+        )}
 
         <ul className="flex w-full flex-col">
           {chatReady
             ? timeline.map((item) => {
             if (item.kind === 'day') {
               return (
-                <li key={item.key} className="my-3 flex justify-center">
+                <li
+                  key={item.key}
+                  className="my-3 flex justify-center [content-visibility:auto] [contain-intrinsic-size:auto_2.5rem]"
+                >
                   <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-muted ring-1 ring-white/10">
                     {item.label}
                   </span>
@@ -1065,7 +1145,10 @@ export function TeamChatView({
               const r = item.req;
               const active = r.status !== 'RESOLVED' && r.status !== 'CANCELLED';
               return (
-                <li key={item.key} className="my-2 flex justify-center">
+                <li
+                  key={item.key}
+                  className="my-2 flex justify-center [content-visibility:auto] [contain-intrinsic-size:auto_7rem]"
+                >
                   <div
                     className={clsx(
                       'w-full max-w-xl rounded-2xl border px-4 py-3 shadow-none',
@@ -1126,7 +1209,10 @@ export function TeamChatView({
               const d = item.dmg;
               const active = d.status !== 'RESOLVED';
               return (
-                <li key={item.key} className="my-2 flex justify-center">
+                <li
+                  key={item.key}
+                  className="my-2 flex justify-center [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
+                >
                   <div
                     className={clsx(
                       'w-full max-w-xl overflow-hidden rounded-2xl border shadow-none',
@@ -1137,7 +1223,13 @@ export function TeamChatView({
                   >
                     <div className="aspect-[16/9] max-h-40 bg-white/5">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={d.photoUrl} alt="" className="h-full w-full object-cover" />
+                      <img
+                        src={d.photoUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-cover"
+                      />
                     </div>
                     <div className="px-4 py-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1190,7 +1282,7 @@ export function TeamChatView({
               <li
                 key={item.key}
                 className={clsx(
-                  'group relative flex w-full touch-pan-y',
+                  'group relative flex w-full touch-pan-y [content-visibility:auto] [contain-intrinsic-size:auto_4.5rem]',
                   mine ? 'justify-end' : 'justify-start',
                   isHead ? 'mt-3' : 'mt-0.5',
                   (m.reactions ?? []).length > 0 && 'mb-1.5',

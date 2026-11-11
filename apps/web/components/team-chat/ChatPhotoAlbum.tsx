@@ -1,9 +1,35 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 import { isTeamChatVideoUrl } from '@housekeeping/shared';
+
+/** Defer attaching media `src` until the album is near the viewport. */
+function useNearViewport(rootMargin = '200px'): [RefObject<HTMLDivElement>, boolean] {
+  const ref = useRef<HTMLDivElement>(null!);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || near) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setNear(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setNear(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near, rootMargin]);
+  return [ref, near];
+}
 
 type LightboxProps = {
   urls: string[];
@@ -215,6 +241,7 @@ type GalleryProps = {
 /** WhatsApp-style tile grid: up to 4 tiles, last shows +N when more remain. */
 export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: GalleryProps) {
   const [failed, setFailed] = useState<Record<number, boolean>>({});
+  const [rootRef, near] = useNearViewport('240px');
   const visible = urls.filter((_, i) => !failed[i]);
   if (visible.length === 0) return null;
 
@@ -230,6 +257,7 @@ export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: Galler
 
   return (
     <div
+      ref={rootRef}
       className={clsx(
         'grid gap-0.5 overflow-hidden rounded-xl',
         gridClass,
@@ -260,7 +288,7 @@ export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: Galler
               cell,
             )}
           >
-            {isVideo ? (
+            {near && isVideo ? (
               <video
                 src={url}
                 muted
@@ -269,7 +297,7 @@ export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: Galler
                 className="h-full w-full object-cover"
                 onError={() => setFailed((prev) => ({ ...prev, [urls.indexOf(url)]: true }))}
               />
-            ) : (
+            ) : near ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={url}
@@ -279,7 +307,7 @@ export function ChatPhotoAlbum({ urls, alt, hasText, moreLabel, onOpen }: Galler
                 onError={() => setFailed((prev) => ({ ...prev, [urls.indexOf(url)]: true }))}
                 className="h-full w-full object-cover"
               />
-            )}
+            ) : null}
             {isVideo && !isLast && (
               <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/55 text-white shadow">
