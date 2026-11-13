@@ -6,7 +6,7 @@ export const STORAGE_KEYS = {
   rememberEmail: 'rememberEmail',
   /** Chat toast + sound in content script. Default on when unset. */
   chatNotificationsEnabled: 'chatNotificationsEnabled',
-  /** Mirrors User.preferredLocale for content scripts (de/en/pt/es/tr/uk). */
+  /** Mirrors User.preferredLocale for content scripts (de/en/pt/es/tr/uk/pl). */
   preferredLocale: 'preferredLocale',
   /** Separate BernTicket gateway session (bernticket.com). */
   btAccessToken: 'btAccessToken',

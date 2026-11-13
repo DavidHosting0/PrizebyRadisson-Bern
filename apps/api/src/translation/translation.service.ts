@@ -131,6 +131,8 @@ export class TranslationService {
       /\b(veya|değil|degil|oda|lütfen|lutfen|teşekkür|tesekkur|teşekkürler|tesekkurler|merhaba|sabah|çıkış|cikis|giriş|giris|kirli|temiz|için|icin|yok|gibi|tamam|evet|hayır|hayir|misafir|kat|bugün|bugun|yarın|yarin|günaydın|gunaydin|günler|gunler)\b/i;
     const ukHints =
       /\b(і|та|або|не|є|кімната|кімнати|будь ласка|дякую|привіт|ранок|виїзд|заїзд|брудний|чистий|добрий|день)\b/i;
+    const plHints =
+      /\b(oraz|pokój|pokoje|proszę|dziękuję|cześć|dzień dobry|wyjazd|przyjazd|brudny|czysty|gość|dziś|jutro|prosimy|łazienka|ręcznik|pościel|sprzątać|proszę)\b/i;
 
     const scores: Record<SupportedLocale, number> = {
       de: (sample.match(deHints) ?? []).length,
@@ -139,6 +141,7 @@ export class TranslationService {
       es: (sample.match(esHints) ?? []).length,
       tr: (sample.match(trHints) ?? []).length,
       uk: (sample.match(ukHints) ?? []).length,
+      pl: (sample.match(plHints) ?? []).length,
     };
 
     // Strong character signals outweigh weak function-word hits.
@@ -147,6 +150,8 @@ export class TranslationService {
     if (/[ãõ]/i.test(sample)) scores.pt += 3;
     if (/[äöüß]/i.test(sample)) scores.de += 2;
     if (/[ñ¿¡]/.test(sample)) scores.es += 3;
+    // Polish-specific letters (exclude ó — also common in ES/PT).
+    if (/[ąćęłńśźżĄĆĘŁŃŚŹŻ]/.test(sample)) scores.pl += 3;
 
     const best = Math.max(...Object.values(scores));
     if (best === 0) {
@@ -155,12 +160,13 @@ export class TranslationService {
       if (/[ãõ]/i.test(sample)) return 'pt';
       if (/[äöüß]/i.test(sample)) return 'de';
       if (/[ñ¿¡]/.test(sample)) return 'es';
+      if (/[ąćęłńśźżĄĆĘŁŃŚŹŻ]/.test(sample)) return 'pl';
       // Uncertain — do not guess "en" (breaks EN UI translation).
       return null;
     }
 
     // Prefer distinctive locales when scores tie (pt before es — shared hotel vocab).
-    const order: SupportedLocale[] = ['uk', 'tr', 'pt', 'es', 'de', 'en'];
+    const order: SupportedLocale[] = ['uk', 'tr', 'pl', 'pt', 'es', 'de', 'en'];
     for (const locale of order) {
       if (scores[locale] === best) return locale;
     }

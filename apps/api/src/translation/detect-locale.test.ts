@@ -34,6 +34,11 @@ describe('TranslationService.detectLocale', () => {
     assert.equal(svc.detectLocale('Кімната брудна, будь ласка приберіть'), 'uk');
   });
 
+  it('detects Polish hotel chat', () => {
+    assert.equal(svc.detectLocale('Pokój jest brudny, proszę posprzątać'), 'pl');
+    assert.equal(svc.detectLocale('Dziękuję, gość wyjechał'), 'pl');
+  });
+
   it('does not guess English when uncertain', () => {
     assert.equal(svc.detectLocale('303'), null);
     assert.equal(svc.detectLocale('ok'), null);

@@ -22,6 +22,7 @@ import ptMessages from '@/messages/pt.json';
 import esMessages from '@/messages/es.json';
 import trMessages from '@/messages/tr.json';
 import ukMessages from '@/messages/uk.json';
+import plMessages from '@/messages/pl.json';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 
@@ -33,6 +34,7 @@ const MESSAGES: Record<SupportedLocale, typeof deMessages> = {
   es: esMessages,
   tr: trMessages,
   uk: ukMessages,
+  pl: plMessages,
 };
 
 type LocaleCtx = {

@@ -151,7 +151,9 @@ function formatClock(iso: string, locale: string) {
             ? 'tr-TR'
             : locale === 'uk'
               ? 'uk-UA'
-              : 'de-CH';
+              : locale === 'pl'
+                ? 'pl-PL'
+                : 'de-CH';
   return new Date(iso).toLocaleTimeString(tag, { hour: '2-digit', minute: '2-digit' });
 }
 

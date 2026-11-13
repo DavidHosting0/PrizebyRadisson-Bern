@@ -39,11 +39,12 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
             roomId,
           }),
         });
-        await fetch(presign.uploadUrl, {
+        const putRes = await fetch(presign.uploadUrl, {
           method: 'PUT',
           body: compressed,
           headers: { 'Content-Type': compressed.type || 'image/jpeg' },
         });
+        if (!putRes.ok) throw new Error('Photo upload failed');
         photoS3Key = presign.key;
       }
 
@@ -76,15 +77,19 @@ export function LostFoundReportModal({ open, onClose, roomId, roomNumber }: Prop
   if (!open) return null;
 
   const field =
-    'mt-1.5 w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-sm text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15';
+    'mt-1.5 w-full rounded-btn border border-border bg-surface px-3 py-2.5 text-base text-ink shadow-card focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 sm:text-sm';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[min(94vh,720px)] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-card border border-border bg-surface shadow-lift sm:rounded-card"
       >
         <div className="border-b border-border px-5 py-4">
           <h2 className="text-lg font-semibold text-ink">{t('lostFoundTitle')}</h2>

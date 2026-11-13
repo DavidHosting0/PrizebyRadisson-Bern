@@ -12,6 +12,8 @@ function justNow(code: string): string {
       return 'az önce';
     case 'uk':
       return 'щойно';
+    case 'pl':
+      return 'przed chwilą';
     default:
       return 'just now';
   }
@@ -41,6 +43,8 @@ export function formatAge(iso: string | null | undefined, locale: string = 'de')
         return `${minutes} dk önce`;
       case 'uk':
         return `${minutes} хв тому`;
+      case 'pl':
+        return `${minutes} min temu`;
       default:
         return `${minutes} min ago`;
     }
@@ -59,6 +63,8 @@ export function formatAge(iso: string | null | undefined, locale: string = 'de')
         return `${hours} sa önce`;
       case 'uk':
         return `${hours} год тому`;
+      case 'pl':
+        return `${hours} godz. temu`;
       default:
         return `${hours} h ago`;
     }
@@ -76,6 +82,8 @@ export function formatAge(iso: string | null | undefined, locale: string = 'de')
       return `${days} g önce`;
     case 'uk':
       return `${days} д тому`;
+    case 'pl':
+      return `${days} dn. temu`;
     default:
       return `${days} d ago`;
   }

@@ -76,6 +76,14 @@ export function LocaleFlag({
           <rect y="8" width="24" height="8" fill="#FFD700" />
         </svg>
       );
+    case 'pl':
+      return (
+        <svg {...common}>
+          <title>Poland</title>
+          <rect width="24" height="16" fill="#fff" rx="1.5" />
+          <rect y="8" width="24" height="8" fill="#DC143C" />
+        </svg>
+      );
     default:
       return null;
   }

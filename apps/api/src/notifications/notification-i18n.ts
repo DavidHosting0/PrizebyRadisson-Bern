@@ -89,6 +89,18 @@ const CATALOG: Record<SupportedLocale, Record<NotificationMessageKey, string>> =
     priorityNormal: 'Звичайний',
     listAnd: 'і',
   },
+  pl: {
+    teamChatMention: 'Zostałeś/aś wspomniany/a przez {authorName}',
+    teamChatMentionOther: '{authorName} wspomniał(a) {mentionedNames}',
+    teamChatMessage: '{authorName} napisał(a)',
+    teamChatMentionBody: 'Otwórz czat zespołu, aby przeczytać wiadomość',
+    teamChatPhoto: 'Zdjęcie',
+    serviceRequestCreated: 'Nowe zlecenie — Pokój {roomNumber} chce {typeLabel}',
+    serviceRequestBody: '{typeLabel} ({priority})',
+    priorityUrgent: 'Pilne',
+    priorityNormal: 'Normalne',
+    listAnd: 'i',
+  },
 };
 
 function interpolate(template: string, params: Record<string, string>): string {

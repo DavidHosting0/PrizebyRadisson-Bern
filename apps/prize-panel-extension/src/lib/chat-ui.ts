@@ -119,6 +119,17 @@ const DAMAGE_TYPES: Record<SupportedLocale, Record<string, string>> = {
     ELECTRICAL_OR_APPLIANCE: 'Електрика / прилад',
     OTHER: 'Інше',
   },
+  pl: {
+    FURNITURE: 'Meble',
+    CURTAINS: 'Zasłony',
+    FIXTURES: 'Wyposażenie',
+    WALL_OR_CEILING: 'Ściana / sufit',
+    FLOOR: 'Podłoga',
+    WINDOW_OR_DOOR: 'Okno / drzwi',
+    BATHROOM: 'Łazienka',
+    ELECTRICAL_OR_APPLIANCE: 'Elektryka / urządzenie',
+    OTHER: 'Inne',
+  },
 };
 
 type RawStrings = Omit<
@@ -432,6 +443,56 @@ const STRINGS: Record<SupportedLocale, RawStrings> = {
     damageAcknowledgedOption: 'Підтверджено',
     damageResolvedOption: 'Вирішено',
   },
+  pl: {
+    title: 'Czat',
+    subtitle: 'Kanał zespołu · PrizeBern',
+    loading: 'Ładowanie…',
+    empty: 'Brak wiadomości lub zgłoszeń.',
+    today: 'Dziś',
+    yesterday: 'Wczoraj',
+    showOriginal: 'Pokaż oryginał',
+    showTranslation: 'Pokaż tłumaczenie',
+    aiTranslated: 'Ta wiadomość została przetłumaczona przez AI',
+    more: 'Więcej',
+    moreEmojis: 'Więcej emoji',
+    emojis: 'Emoji',
+    back: 'Wstecz',
+    reply: 'Odpowiedz',
+    delete: 'Usuń',
+    deleteConfirm: 'Usunąć tę wiadomość?',
+    cancel: 'Anuluj',
+    deletedMessage: 'Usunięta wiadomość',
+    replyingTo: 'Odpowiedź do {name}',
+    placeholder: 'Wiadomość… @ aby wspomnieć',
+    attachPhoto: 'Dołącz zdjęcie',
+    removePhoto: 'Usuń zdjęcie',
+    photoMessage: 'Zdjęcie',
+    photoAlt: 'Zdjęcie z czatu',
+    photoReady: 'Zdjęcie gotowe do wysłania',
+    photoUploadFailed: 'Nie udało się przesłać zdjęcia',
+    videoNotAllowed: 'Nie można wysyłać filmów na czacie. Dołącz zdjęcie.',
+    photoTooLarge: 'Plik jest za duży (maks. 25 MB).',
+    photoNotSupported: 'Ten typ pliku nie jest obsługiwany. Wybierz zdjęcie.',
+    noPostPermission: 'Brak uprawnień do pisania.',
+    serviceRequest: 'Zlecenie serwisowe',
+    damageReport: 'Zgłoszenie uszkodzenia',
+    room: 'Pokój {roomNumber}',
+    claim: 'Przejmij',
+    markDone: 'Gotowe',
+    requestOpen: 'Otwarte — jeszcze nie przejęte',
+    requestClaimed: 'Przejęte',
+    requestClaimedBy: 'Przejęte przez {who}',
+    requestInProgress: 'W toku',
+    requestInProgressBy: 'W toku · {who}',
+    requestDone: 'Wykonane',
+    requestCancelled: 'Anulowane',
+    damageReported: 'Zgłoszone — oczekuje na weryfikację',
+    damageAcknowledged: 'Potwierdzone',
+    damageResolved: 'Rozwiązane',
+    damageReportedOption: 'Zgłoszone',
+    damageAcknowledgedOption: 'Potwierdzone',
+    damageResolvedOption: 'Rozwiązane',
+  },
 };
 
 export function chatUi(preferredLocale?: string | null): ChatUiStrings {
@@ -471,6 +532,8 @@ export function dayLabel(iso: string, preferredLocale?: string | null): string {
             ? 'tr-TR'
             : locale === 'uk'
               ? 'uk-UA'
-              : 'de-CH';
+              : locale === 'pl'
+                ? 'pl-PL'
+                : 'de-CH';
   return d.toLocaleDateString(tag, { weekday: 'short', day: 'numeric', month: 'short' });
 }

@@ -8,6 +8,7 @@ import pt from './messages/pt';
 import es from './messages/es';
 import tr from './messages/tr';
 import uk from './messages/uk';
+import pl from './messages/pl';
 
 const CATALOG: Record<SupportedLocale, ExtensionMessages> = {
   de,
@@ -16,6 +17,7 @@ const CATALOG: Record<SupportedLocale, ExtensionMessages> = {
   es,
   tr,
   uk,
+  pl,
 };
 
 export function getMessages(locale?: string | null): ExtensionMessages {

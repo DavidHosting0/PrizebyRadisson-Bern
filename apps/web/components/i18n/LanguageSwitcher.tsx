@@ -19,6 +19,7 @@ const LOCALE_META: Record<SupportedLocale, { name: string }> = {
   es: { name: 'Español' },
   tr: { name: 'Türkçe' },
   uk: { name: 'Українська' },
+  pl: { name: 'Polski' },
 };
 
 export function LanguageSwitcher({

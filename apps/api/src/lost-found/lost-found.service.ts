@@ -86,14 +86,13 @@ export class LostFoundService {
       await this.assertHousekeeperRoom(user, dto.roomId);
     }
     const status = dto.status ?? LostFoundStatus.FOUND;
-    const isCleanerReport = user.role === UserRole.HOUSEKEEPER;
     return this.prisma.lostFoundItem.create({
       data: {
         roomId: dto.roomId ?? undefined,
         description: dto.description,
         photoS3Key: dto.photoS3Key,
         status,
-        foundAt: isCleanerReport ? new Date() : null,
+        foundAt: new Date(),
         storedAt: status === LostFoundStatus.STORED ? new Date() : null,
         storedLocation: dto.storedLocation ?? null,
         reportedByUserId: user.id,

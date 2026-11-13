@@ -1,4 +1,4 @@
-export const SUPPORTED_LOCALES = ['de', 'en', 'pt', 'es', 'tr', 'uk'] as const;
+export const SUPPORTED_LOCALES = ['de', 'en', 'pt', 'es', 'tr', 'uk', 'pl'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: SupportedLocale = 'de';
 
@@ -18,6 +18,7 @@ export function resolveLocale(
   if (fb.startsWith('es')) return 'es';
   if (fb.startsWith('tr')) return 'tr';
   if (fb.startsWith('uk') || fb.startsWith('ua')) return 'uk';
+  if (fb.startsWith('pl')) return 'pl';
   if (fb.startsWith('de')) return 'de';
   return DEFAULT_LOCALE;
 }
@@ -35,6 +36,8 @@ export function intlLocale(locale: SupportedLocale): string {
       return 'tr-TR';
     case 'uk':
       return 'uk-UA';
+    case 'pl':
+      return 'pl-PL';
     default:
       return 'de-CH';
   }
@@ -58,6 +61,8 @@ export function localeLangName(locale: SupportedLocale): string {
       return 'Turkish';
     case 'uk':
       return 'Ukrainian';
+    case 'pl':
+      return 'Polish';
     default:
       return 'German';
   }

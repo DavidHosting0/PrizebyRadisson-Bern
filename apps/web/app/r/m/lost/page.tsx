@@ -8,7 +8,7 @@ export default function ReceptionMobileLostPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <LostFoundManager tone="dark" subtitle={t('subtitleMobile')} />
+      <LostFoundManager tone="dark" embedded subtitle={t('subtitleMobile')} />
     </div>
   );
 }
