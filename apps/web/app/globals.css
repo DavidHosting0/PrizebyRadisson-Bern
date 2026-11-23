@@ -7,6 +7,21 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* While the chat composer is focused and the keyboard is open, hide the
+   fixed bottom tab bar so typed text stays visible above the keyboard. */
+html[data-chat-keyboard='1'] [data-mobile-bottom-nav] {
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+html[data-chat-keyboard='1'] [data-mobile-shell-chat] {
+  padding-bottom: 0 !important;
+}
+
 html {
   /* Do not reserve a document gutter — app shells scroll inside main/AppPageBody.
      A stable gutter here showed as a white strip beside the page scrollbar. */

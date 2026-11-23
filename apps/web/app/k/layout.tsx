@@ -86,6 +86,7 @@ export default function KitchenLayout({ children }: { children: React.ReactNode 
         'flex flex-col bg-[#121a26] pb-[calc(5.5rem+var(--safe-bottom))]',
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
+      {...(isChat ? { 'data-mobile-shell-chat': '' } : {})}
     >
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-sidebar-border bg-sidebar/95 px-5 py-3.5 shadow-sidebar backdrop-blur-sm">
         <div className="min-w-0">
@@ -109,7 +110,10 @@ export default function KitchenLayout({ children }: { children: React.ReactNode 
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex justify-center border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] pt-1 shadow-lift backdrop-blur-md">
+      <nav
+        data-mobile-bottom-nav
+        className="fixed bottom-0 left-0 right-0 z-40 flex justify-center border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] pt-1 shadow-lift backdrop-blur-md"
+      >
         <div className="flex w-full max-w-md items-stretch justify-center gap-1 px-3">
           {tabs.map((tab) => {
             const active = path === tab.href || path.startsWith(`${tab.href}/`);

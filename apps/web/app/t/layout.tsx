@@ -81,6 +81,7 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
         'flex flex-col bg-[#121a26] pb-[calc(5rem+var(--safe-bottom))]',
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
+      {...(isChat ? { 'data-mobile-shell-chat': '' } : {})}
     >
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-sidebar-border bg-sidebar/95 px-4 py-3 shadow-sidebar backdrop-blur-sm">
         <div className="min-w-0">
@@ -104,7 +105,10 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md">
+      <nav
+        data-mobile-bottom-nav
+        className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar/98 pb-[var(--safe-bottom)] shadow-lift backdrop-blur-md"
+      >
         {tabs.map((tab) => {
           const active = path === tab.href || path.startsWith(`${tab.href}/`);
           const Icon = tab.Icon;

@@ -313,7 +313,18 @@ function MentionComposer({
       }
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      onSubmitShortcut?.();
+      return;
+    }
+    // Touch / narrow: Enter = newline; desktop: Enter = send.
+    const touchLike =
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(pointer: coarse)').matches ||
+        window.matchMedia('(max-width: 767px)').matches ||
+        navigator.maxTouchPoints > 0);
+    if (e.key === 'Enter' && !e.shiftKey && !touchLike) {
       e.preventDefault();
       onSubmitShortcut?.();
     }

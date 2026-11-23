@@ -46,6 +46,7 @@ import {
   teamChatQueryOptions,
 } from '@/lib/team-chat-cache';
 import { ChatPhotoAlbum, ChatPhotoLightbox } from '@/components/team-chat/ChatPhotoAlbum';
+import { useVisualViewportBottomOverlap } from '@/lib/hooks/useVisualViewportBottomOverlap';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 const LOAD_OLDER_THRESHOLD_PX = 480;
@@ -428,6 +429,10 @@ export function TeamChatView({
   const [newReqOpen, setNewReqOpen] = useState(false);
   const [newDmgOpen, setNewDmgOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [composerFocused, setComposerFocused] = useState(false);
+  const composerBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardOverlap = useVisualViewportBottomOverlap();
+  const keyboardLift = composerFocused ? keyboardOverlap : 0;
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [menu, setMenu] = useState<{
     message: ChatMsg;
@@ -1081,6 +1086,22 @@ export function TeamChatView({
 
   const isHk = user?.role === 'HOUSEKEEPER' || user?.role === 'SUPERVISOR';
 
+  useEffect(() => {
+    const active = keyboardLift > 40;
+    if (active) document.documentElement.dataset.chatKeyboard = '1';
+    else delete document.documentElement.dataset.chatKeyboard;
+    return () => {
+      delete document.documentElement.dataset.chatKeyboard;
+    };
+  }, [keyboardLift]);
+
+  useEffect(() => {
+    return () => {
+      if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+      delete document.documentElement.dataset.chatKeyboard;
+    };
+  }, []);
+
   const menuLabels = useMemo(
     () => ({
       reply: tChat('reply'),
@@ -1097,6 +1118,7 @@ export function TeamChatView({
         'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#121a26] [background-image:radial-gradient(ellipse_at_top,_rgba(59,111,160,0.14),_transparent_55%)]',
         className,
       )}
+      style={keyboardLift > 0 ? { paddingBottom: keyboardLift } : undefined}
     >
       <div
         className="relative flex h-0 min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain px-3 py-4 [overflow-anchor:none] sm:px-5"
@@ -1645,6 +1667,15 @@ export function TeamChatView({
               onMentionUserIdsChange={setMentionUserIds}
               placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
               maxLength={2000}
+              onFocus={() => {
+                if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+                setComposerFocused(true);
+              }}
+              onBlur={() => {
+                // Delay so tapping Send isn't lost when the keyboard inset collapses.
+                if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+                composerBlurTimerRef.current = setTimeout(() => setComposerFocused(false), 180);
+              }}
               onSubmitShortcut={() => {
                 const t = body.trim();
                 if ((!t && photoFiles.length === 0) || !canPost) return;

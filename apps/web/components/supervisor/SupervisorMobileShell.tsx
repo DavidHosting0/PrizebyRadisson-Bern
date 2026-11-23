@@ -42,6 +42,7 @@ export function SupervisorMobileShell({
         'flex flex-col bg-[#121a26] pb-[calc(5rem+var(--safe-bottom))]',
         isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
       )}
+      {...(isChat ? { 'data-mobile-shell-chat': '' } : {})}
     >
       <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar/95 px-3 py-2.5 shadow-sidebar backdrop-blur-sm">
         <div className="min-w-0">
@@ -66,7 +67,10 @@ export function SupervisorMobileShell({
       >
         {children}
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar pb-[var(--safe-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
+      <nav
+        data-mobile-bottom-nav
+        className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-sidebar-border bg-sidebar pb-[var(--safe-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.35)]"
+      >
         {tabs.map((t) => {
           const active = t.home
             ? path === '/s/m' ||

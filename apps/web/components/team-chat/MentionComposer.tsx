@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -30,7 +31,18 @@ type Props = {
   maxLength?: number;
   className?: string;
   onSubmitShortcut?: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
+
+function preferNewlineOnEnter(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(pointer: coarse)').matches ||
+    window.matchMedia('(max-width: 767px)').matches ||
+    navigator.maxTouchPoints > 0
+  );
+}
 
 export function MentionComposer({
   value,
@@ -41,11 +53,34 @@ export function MentionComposer({
   maxLength = 2000,
   className,
   onSubmitShortcut,
+  onFocus,
+  onBlur,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [highlightIdx, setHighlightIdx] = useState(0);
+  const [newlineOnEnter, setNewlineOnEnter] = useState(false);
+
+  useEffect(() => {
+    setNewlineOnEnter(preferNewlineOnEnter());
+    const mq = window.matchMedia('(pointer: coarse), (max-width: 767px)');
+    const sync = () => setNewlineOnEnter(preferNewlineOnEnter());
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  const resizeToContent = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const next = Math.min(el.scrollHeight, 160);
+    el.style.height = `${Math.max(next, 44)}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeToContent();
+  }, [value, resizeToContent]);
 
   const { data: suggestions = [] } = useQuery({
     queryKey: ['team-chat-mentionables', mentionQuery ?? ''],
@@ -76,7 +111,10 @@ export function MentionComposer({
         onMentionUserIdsChange([...mentionUserIds, user.id]);
       }
       closeMentions();
-      requestAnimationFrame(() => textareaRef.current?.focus());
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        resizeToContent();
+      });
     },
     [
       mentionStart,
@@ -86,6 +124,7 @@ export function MentionComposer({
       mentionUserIds,
       onMentionUserIdsChange,
       closeMentions,
+      resizeToContent,
     ],
   );
 
@@ -122,7 +161,17 @@ export function MentionComposer({
       }
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
+
+    const modSend = (e.metaKey || e.ctrlKey) && e.key === 'Enter';
+    if (modSend) {
+      e.preventDefault();
+      onSubmitShortcut?.();
+      return;
+    }
+
+    // Phone / touch: Enter inserts a newline; send via the button.
+    // Desktop: Enter sends, Shift+Enter inserts a newline.
+    if (e.key === 'Enter' && !e.shiftKey && !newlineOnEnter) {
       e.preventDefault();
       onSubmitShortcut?.();
     }
@@ -133,18 +182,21 @@ export function MentionComposer({
   }, [suggestions.length, highlightIdx]);
 
   return (
-    <div className="relative flex-1">
+    <div className="relative min-w-0 flex-1">
       <textarea
         ref={textareaRef}
         rows={1}
+        enterKeyHint={newlineOnEnter ? 'enter' : 'send'}
         className={clsx(
-          'min-h-[44px] w-full resize-none rounded-full border border-sidebar-border bg-sidebar px-4 py-2.5 text-sm text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15',
+          'max-h-40 min-h-[44px] w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar px-4 py-2.5 text-base leading-snug text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 sm:text-sm',
           className,
         )}
         placeholder={placeholder}
         value={value}
         onChange={onInputChange}
         onKeyDown={onKeyDown}
+        onFocus={onFocus}
+        onBlur={onBlur}
         maxLength={maxLength}
         autoComplete="off"
       />
@@ -161,7 +213,7 @@ export function MentionComposer({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pickMention(u)}
                 className={clsx(
-                  'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition',
+                  'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition',
                   i === highlightIdx ? 'bg-action/20 text-white' : 'text-white hover:bg-white/10',
                 )}
               >
