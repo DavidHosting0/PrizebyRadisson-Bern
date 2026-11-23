@@ -445,9 +445,12 @@ export function TeamChatView({
   const composerBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const [composerFormHeight, setComposerFormHeight] = useState(0);
+  // Keyboard pin only while focused. Wide composer layout stays if there is draft text/photos.
   const pinComposer = !tablet && composerFocused;
   const keyboardInset = useKeyboardBottomInset(pinComposer);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const phoneWide =
+    !tablet && (composerFocused || body.length > 0 || photoFiles.length > 0 || !!replyTo);
   const [menu, setMenu] = useState<{
     message: ChatMsg;
     x: number;
@@ -1705,25 +1708,26 @@ export function TeamChatView({
             Tablet / desktop: always a single horizontal row.
           */}
           {(() => {
-            const phoneFocus = !tablet && composerFocused;
+            // Keep the wide (icons-above) layout after keyboard dismiss if a draft remains.
+            const phoneFocus = phoneWide;
             const toolMorph =
               'inline-flex items-center justify-center border border-sidebar-border bg-sidebar text-sidebar-muted transition-[flex,width,height,border-radius,color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-action/40 hover:text-white';
-            // Focused: short + wide bars (h-8, share row). Idle: round 40px.
+            // Idle + send + textarea all share 44px (h-11). Wide: short wide bars.
             const toolShape = tablet
               ? 'h-12 w-12 shrink-0 rounded-full'
               : phoneFocus
                 ? 'h-8 min-h-[2rem] flex-1 basis-0 rounded-xl sm:h-11 sm:w-11 sm:flex-none sm:basis-auto sm:rounded-full'
-                : 'h-10 w-10 shrink-0 rounded-full sm:h-11 sm:w-11';
+                : 'h-11 w-11 shrink-0 rounded-full';
 
             return (
               <div
                 className={clsx(
                   'mx-auto flex w-full transition-[gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
                   tablet
-                    ? 'max-w-4xl flex-row items-end gap-3 px-4 py-3'
+                    ? 'max-w-4xl flex-row items-center gap-3 px-4 py-3'
                     : clsx(
-                        'max-w-3xl px-3 py-2 sm:flex-row sm:items-end sm:gap-2 sm:px-4 sm:py-2.5',
-                        phoneFocus ? 'flex-col items-stretch gap-2' : 'flex-row items-end gap-2',
+                        'max-w-3xl px-3 py-2 sm:flex-row sm:items-center sm:gap-2 sm:px-4 sm:py-2.5',
+                        phoneFocus ? 'flex-col items-stretch gap-2' : 'flex-row items-center gap-2',
                       ),
                 )}
               >
@@ -1734,12 +1738,12 @@ export function TeamChatView({
                       ? 'shrink-0 gap-2'
                       : phoneFocus
                         ? 'w-full gap-1.5 sm:w-auto sm:shrink-0 sm:gap-1.5'
-                        : 'shrink-0 gap-1.5',
+                        : 'h-11 shrink-0 gap-1.5',
                   )}
                 >
                   <button
                     type="button"
-                    data-chat-tool={phoneFocus ? '' : undefined}
+                    data-chat-tool={composerFocused ? '' : undefined}
                     onClick={() => setProfileOpen(true)}
                     className={clsx(toolMorph, toolShape, 'overflow-hidden p-0')}
                     aria-label={tChat('editProfilePhoto')}
@@ -1749,15 +1753,14 @@ export function TeamChatView({
                     <Avatar
                       name={user?.name ?? '?'}
                       url={user?.avatarUrl}
-                      size={tablet ? 48 : phoneFocus ? 26 : 40}
-                      ring={!phoneFocus}
+                      size={tablet ? 48 : phoneFocus ? 26 : 44}
                     />
                   </button>
 
                   {canCreateRequest && (
                     <button
                       type="button"
-                      data-chat-tool={phoneFocus ? '' : undefined}
+                      data-chat-tool={composerFocused ? '' : undefined}
                       onClick={() => setNewReqOpen(true)}
                       className={clsx(toolMorph, toolShape)}
                       aria-label={tChat('newServiceRequest')}
@@ -1773,7 +1776,7 @@ export function TeamChatView({
                   {canCreateDamage && (
                     <button
                       type="button"
-                      data-chat-tool={phoneFocus ? '' : undefined}
+                      data-chat-tool={composerFocused ? '' : undefined}
                       onClick={() => setNewDmgOpen(true)}
                       className={clsx(toolMorph, toolShape, 'hover:border-rose-400/40 hover:text-rose-200')}
                       aria-label={tChat('newMaintenanceReport')}
@@ -1794,7 +1797,7 @@ export function TeamChatView({
 
                   <button
                     type="button"
-                    data-chat-tool={phoneFocus ? '' : undefined}
+                    data-chat-tool={composerFocused ? '' : undefined}
                     onClick={() => photoInputRef.current?.click()}
                     className={clsx(toolMorph, toolShape)}
                     aria-label={tChat('attachPhoto')}
@@ -1813,10 +1816,11 @@ export function TeamChatView({
                 </div>
 
                 <div
-                  data-chat-composer-row={phoneFocus ? '' : undefined}
+                  data-chat-composer-row={composerFocused ? '' : undefined}
                   className={clsx(
-                    'flex min-w-0 items-end transition-[width,flex-grow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
-                    tablet ? 'flex-1 gap-3' : phoneFocus ? 'w-full gap-2 sm:flex-1' : 'min-w-0 flex-1 gap-2',
+                    'flex min-w-0 transition-[width,flex-grow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    phoneFocus || body.includes('\n') ? 'items-end' : 'items-center',
+                    tablet ? 'flex-1 gap-3' : phoneFocus ? 'w-full gap-2 sm:flex-1' : 'h-11 min-w-0 flex-1 gap-2',
                   )}
                 >
                   <MentionComposer
@@ -1826,7 +1830,7 @@ export function TeamChatView({
                     onMentionUserIdsChange={setMentionUserIds}
                     placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
                     maxLength={2000}
-                    expanded={composerFocused}
+                    expanded={phoneWide}
                     density={tablet ? 'tablet' : 'default'}
                     className={
                       phoneFocus

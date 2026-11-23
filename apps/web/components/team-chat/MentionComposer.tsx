@@ -212,8 +212,10 @@ export function MentionComposer({
         rows={1}
         enterKeyHint={newlineOnEnter ? 'enter' : 'send'}
         className={clsx(
-          'w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar leading-snug text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15',
-          tablet ? 'min-h-[56px] px-4 py-3.5 text-[17px]' : 'min-h-[44px] px-3.5 py-2.5 text-base sm:px-4 sm:text-sm',
+          'box-border w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15',
+          tablet
+            ? 'min-h-[56px] px-4 py-3.5 text-[17px] leading-snug'
+            : 'min-h-11 px-3.5 py-2.5 text-base leading-snug sm:px-4 sm:text-sm',
           className,
         )}
         style={{ maxHeight: maxHeightPx }}
