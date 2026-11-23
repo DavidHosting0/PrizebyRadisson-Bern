@@ -218,6 +218,32 @@ const GROUPS: { id: string; label: string; entries: Entry[] }[] = [
     ],
   },
   {
+    id: 'breakfast',
+    label: 'Breakfast / kitchen',
+    entries: [
+      {
+        code: PermissionCode.BREAKFAST_READ,
+        title: 'View breakfast board',
+        description: 'Open today’s breakfast list, stats, and forecast.',
+      },
+      {
+        code: PermissionCode.BREAKFAST_WRITE,
+        title: 'Manage breakfast board',
+        description: 'Book breakfast for rooms and mark them served.',
+      },
+      {
+        code: PermissionCode.BREAKFAST_WISHES_READ,
+        title: 'View breakfast wishes',
+        description: 'See dietary and special breakfast wishes for rooms.',
+      },
+      {
+        code: PermissionCode.BREAKFAST_WISHES_WRITE,
+        title: 'Manage breakfast wishes',
+        description: 'Create and update special breakfast wishes (reception).',
+      },
+    ],
+  },
+  {
     id: 'reservations',
     label: 'Reservations',
     entries: [

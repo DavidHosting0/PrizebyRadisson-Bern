@@ -7,6 +7,7 @@ export const USER_TITLE_PREFIX_OPTIONS = [
   { value: 'HTC', label: 'HTC' },
   { value: 'ADMIN', label: 'Admin' },
   { value: 'TECHNICIAN', label: 'Technician' },
+  { value: 'KITCHEN', label: 'Kitchen' },
 ] as const;
 
 export type UserTitlePrefixValue = (typeof USER_TITLE_PREFIX_OPTIONS)[number]['value'];
@@ -55,6 +56,8 @@ export function accountTypeForTitlePrefix(prefix: string): string {
       return 'ADMIN';
     case 'TECHNICIAN':
       return 'TECHNICIAN';
+    case 'KITCHEN':
+      return 'KITCHEN';
     case 'HOUSEKEEPING_SUPERVISOR':
       return 'SUPERVISOR';
     case 'CLEANER':

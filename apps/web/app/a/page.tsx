@@ -51,6 +51,8 @@ function accountTypeLabel(r: string) {
       return 'Reception account';
     case 'TECHNICIAN':
       return 'Technician account';
+    case 'KITCHEN':
+      return 'Kitchen account';
     case 'ADMIN':
       return 'Admin account';
     default:

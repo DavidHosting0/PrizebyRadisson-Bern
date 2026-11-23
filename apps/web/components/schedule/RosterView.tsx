@@ -47,6 +47,7 @@ const ROLE_COLORS: Record<string, string> = {
   HOUSEKEEPER: 'bg-emerald-100 text-emerald-900 border-emerald-200',
   SUPERVISOR: 'bg-violet-100 text-violet-900 border-violet-200',
   TECHNICIAN: 'bg-amber-100 text-amber-900 border-amber-200',
+  KITCHEN: 'bg-orange-100 text-orange-900 border-orange-200',
   ADMIN: 'bg-rose-100 text-rose-900 border-rose-200',
 };
 
@@ -55,6 +56,7 @@ const ROLE_COLORS_DARK: Record<string, string> = {
   HOUSEKEEPER: 'bg-emerald-500/15 text-emerald-200 border-emerald-500/30',
   SUPERVISOR: 'bg-violet-500/15 text-violet-200 border-violet-500/30',
   TECHNICIAN: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
+  KITCHEN: 'bg-orange-500/15 text-orange-200 border-orange-500/30',
   ADMIN: 'bg-rose-500/15 text-rose-200 border-rose-500/30',
 };
 

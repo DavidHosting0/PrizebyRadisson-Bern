@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import type {
+  BreakfastSpecialWishDto,
   GuestComplaintDto,
   RoomLoanDto,
   ShiftHandoverStateDto,
@@ -18,6 +19,7 @@ import { SettingsDialog } from '@/components/SettingsDialog';
 import { ShiftHandoverBoard } from '@/components/ShiftHandoverBoard';
 import { ShiftNotesBoard } from '@/components/ShiftNotesBoard';
 import { ComplaintsBoard } from '@/components/ComplaintsBoard';
+import { BreakfastWishesBoard } from '@/components/BreakfastWishesBoard';
 import { LoansBoard } from '@/components/LoansBoard';
 import { TeamChatBoard } from '@/components/TeamChatBoard';
 import { BernTicketBoard } from '@/components/BernTicketBoard';
@@ -28,7 +30,15 @@ const queryClient = new QueryClient({
   },
 });
 
-type PanelView = 'home' | 'todo' | 'notes' | 'complaints' | 'loans' | 'chat' | 'bernticket';
+type PanelView =
+  | 'home'
+  | 'todo'
+  | 'notes'
+  | 'complaints'
+  | 'breakfastWishes'
+  | 'loans'
+  | 'chat'
+  | 'bernticket';
 
 function IconButton({
   label,
@@ -198,6 +208,7 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
   const canTodo = usePermission('SHIFT_HANDOVER_READ');
   const canNotes = usePermission('SHIFT_NOTES_READ');
   const canComplaints = usePermission('COMPLAINTS_READ');
+  const canBreakfastWishes = usePermission('BREAKFAST_WISHES_READ');
   const canLoans = usePermission('LOANS_READ');
   const canChat = usePermission('TEAM_CHAT_READ');
   const calendarToday = calendarTodayIso();
@@ -232,6 +243,17 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
     queryKey: ['loans', 'all-for-stats'],
     queryFn: () => api<RoomLoanDto[]>('/loans'),
     enabled: canLoans,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+
+  const breakfastWishesQ = useQuery({
+    queryKey: ['breakfast', 'wishes', calendarToday, 'OPEN', 'stats'],
+    queryFn: () =>
+      api<BreakfastSpecialWishDto[]>(
+        `/breakfast/wishes?date=${calendarToday}&status=OPEN`,
+      ),
+    enabled: canBreakfastWishes,
     staleTime: 15_000,
     refetchInterval: 30_000,
   });
@@ -282,6 +304,16 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
     if (n === 0) return m.nav.loansNoneToday;
     return n === 1 ? m.nav.loansOneToday : interpolate(m.nav.loansCountToday, { count: n });
   }, [canLoans, loansQ.data, loansQ.isLoading, calendarToday, m]);
+
+  const breakfastWishesInfo = useMemo(() => {
+    if (!canBreakfastWishes) return m.nav.noPermission;
+    if (breakfastWishesQ.isLoading) return m.nav.loading;
+    const n = (breakfastWishesQ.data ?? []).length;
+    if (n === 0) return m.nav.breakfastWishesNoneToday;
+    return n === 1
+      ? m.nav.breakfastWishesOneToday
+      : interpolate(m.nav.breakfastWishesCountToday, { count: n });
+  }, [canBreakfastWishes, breakfastWishesQ.data, breakfastWishesQ.isLoading, m]);
 
   const chatInfo = useMemo(() => {
     if (!canChat) return m.nav.noPermission;
@@ -366,6 +398,22 @@ function CategoryHome({ onOpen }: { onOpen: (v: Exclude<PanelView, 'home'>) => v
           }
         />
         <CategoryTile
+          title={m.nav.breakfastWishesTitle}
+          info={breakfastWishesInfo}
+          disabled={!canBreakfastWishes}
+          onClick={() => onOpen('breakfastWishes')}
+          icon={
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+              <path
+                d="M4 11h16v2a6 6 0 01-6 6H10a6 6 0 01-6-6v-2z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path d="M8 11V7a4 4 0 018 0v4M12 3v2" strokeLinecap="round" />
+            </svg>
+          }
+        />
+        <CategoryTile
           title={m.nav.loansTitle}
           info={loansInfo}
           disabled={!canLoans}
@@ -406,6 +454,7 @@ function PanelBody({
   if (view === 'todo') return <ShiftHandoverBoard />;
   if (view === 'notes') return <ShiftNotesBoard />;
   if (view === 'complaints') return <ComplaintsBoard />;
+  if (view === 'breakfastWishes') return <BreakfastWishesBoard />;
   return <LoansBoard />;
 }
 

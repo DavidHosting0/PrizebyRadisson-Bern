@@ -20,6 +20,7 @@ const UserRole = {
   SUPERVISOR: 'SUPERVISOR',
   RECEPTION: 'RECEPTION',
   TECHNICIAN: 'TECHNICIAN',
+  KITCHEN: 'KITCHEN',
 } as const;
 const UserTitlePrefix = {
   ADMIN: 'ADMIN',
@@ -27,6 +28,7 @@ const UserTitlePrefix = {
   HOUSEKEEPING_SUPERVISOR: 'HOUSEKEEPING_SUPERVISOR',
   RECEPTION: 'RECEPTION',
   TECHNICIAN: 'TECHNICIAN',
+  KITCHEN: 'KITCHEN',
 } as const;
 const ChecklistTaskStatus = { NOT_STARTED: 'NOT_STARTED' } as const;
 const AssignmentStatus = { ACTIVE: 'ACTIVE' } as const;
@@ -126,6 +128,24 @@ async function main() {
       name: 'Rita Reception',
       role: UserRole.RECEPTION,
       titlePrefix: UserTitlePrefix.RECEPTION,
+    },
+  });
+
+  const kitchen = await prisma.user.upsert({
+    where: { email: 'kitchen@demo.local' },
+    update: {
+      passwordHash,
+      name: 'Kim Kitchen',
+      role: UserRole.KITCHEN,
+      titlePrefix: UserTitlePrefix.KITCHEN,
+      isActive: true,
+    },
+    create: {
+      email: 'kitchen@demo.local',
+      passwordHash,
+      name: 'Kim Kitchen',
+      role: UserRole.KITCHEN,
+      titlePrefix: UserTitlePrefix.KITCHEN,
     },
   });
 
@@ -384,7 +404,14 @@ async function main() {
   await seedLoanCatalog(prisma);
   await seedReviewTaxonomy(prisma);
 
-  console.log('Seed OK', { admin: admin.email, hk: hk.email, sup: sup.email, tech: tech.email, rec: rec.email });
+  console.log('Seed OK', {
+    admin: admin.email,
+    hk: hk.email,
+    sup: sup.email,
+    tech: tech.email,
+    rec: rec.email,
+    kitchen: kitchen.email,
+  });
 }
 
 main()

@@ -19,7 +19,7 @@ type Props = {
 };
 
 function shellDashboardFromPathname(pathname: string): string | null {
-  const match = pathname.match(/^\/(r|s|h|t|a)(?:\/|$)/);
+  const match = pathname.match(/^\/(r|s|h|t|a|k)(?:\/|$)/);
   return match ? `/${match[1]}` : null;
 }
 

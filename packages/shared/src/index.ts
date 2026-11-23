@@ -4,6 +4,7 @@ export enum UserRole {
   RECEPTION = 'RECEPTION',
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
+  KITCHEN = 'KITCHEN',
 }
 
 export enum DerivedRoomStatus {
@@ -37,6 +38,7 @@ export * from './reception-ops';
 export * from './team-chat-media';
 export * from './room-suggestion';
 export * from './review-analyzer';
+export * from './breakfast';
 
 export const WS_EVENTS = {
   SERVICE_REQUEST_CREATED: 'service_request.created',

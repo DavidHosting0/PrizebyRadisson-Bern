@@ -9,6 +9,7 @@ import {
   buildHousekeeperDeputySet,
   buildHousekeeperHtcSet,
   buildHousekeeperSet,
+  buildKitchenSet,
   buildReceptionSet,
   buildSupervisorSet,
   buildTechnicianSet,
@@ -21,6 +22,7 @@ export const SYSTEM_ROLE_NAMES = {
   SUPERVISOR: 'Supervisor',
   RECEPTION_FULL: 'Reception — Full',
   TECHNICIAN: 'Technician',
+  KITCHEN: 'Kitchen',
   ARRIVAL_CHECK: 'Arrival Check',
 } as const;
 
@@ -76,6 +78,13 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
     permissions: buildTechnicianSet(),
   },
   {
+    name: SYSTEM_ROLE_NAMES.KITCHEN,
+    color: '#e74c3c',
+    position: 45,
+    description: 'Kitchen iPad app: breakfast board, forecast, and team chat.',
+    permissions: buildKitchenSet(),
+  },
+  {
     name: SYSTEM_ROLE_NAMES.ARRIVAL_CHECK,
     color: '#9b59b6',
     position: 40,
@@ -91,6 +100,7 @@ function defaultSystemRoleName(
   if (role === UserRole.ADMIN) return null;
   if (role === UserRole.RECEPTION) return SYSTEM_ROLE_NAMES.RECEPTION_FULL;
   if (role === UserRole.TECHNICIAN) return SYSTEM_ROLE_NAMES.TECHNICIAN;
+  if (role === UserRole.KITCHEN) return SYSTEM_ROLE_NAMES.KITCHEN;
   if (role === UserRole.SUPERVISOR) return SYSTEM_ROLE_NAMES.SUPERVISOR;
   if (role === UserRole.HOUSEKEEPER) {
     switch (titlePrefix) {

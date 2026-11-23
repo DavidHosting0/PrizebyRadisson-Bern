@@ -13,6 +13,7 @@ enum UserRole {
   RECEPTION
   ADMIN
   TECHNICIAN
+  KITCHEN
 }
 
 /** Shown in chat, headers, and assignments (independent of permission role). */
@@ -24,6 +25,7 @@ enum UserTitlePrefix {
   HTC
   ADMIN
   TECHNICIAN
+  KITCHEN
 }
 
 /** Fine-grained access; merged with role + titlePrefix defaults + per-user grants. */
@@ -86,6 +88,21 @@ enum PermissionCode {
   ACTIVITY_LOG_READ
   PUBLIC_AREA_MANAGE
   REVIEW_ANALYZER_READ
+  BREAKFAST_READ
+  BREAKFAST_WRITE
+  BREAKFAST_WISHES_READ
+  BREAKFAST_WISHES_WRITE
+}
+
+enum BreakfastEntrySource {
+  MANUAL
+  EMMA
+}
+
+enum BreakfastWishStatus {
+  OPEN
+  DONE
+  CANCELLED
 }
 
 enum ActivityLogCategory {
@@ -409,6 +426,8 @@ model User {
   complaintsResolved       GuestComplaint[]         @relation("ComplaintResolvedBy")
   roomLoansLoaned          RoomLoan[]               @relation("RoomLoanLoanedBy")
   roomLoansReturned        RoomLoan[]               @relation("RoomLoanReturnedBy")
+  breakfastEntriesServed   BreakfastDayEntry[]      @relation("BreakfastEntryServedBy")
+  breakfastWishesCreated   BreakfastSpecialWish[]   @relation("BreakfastWishCreatedBy")
   dailyCleaningPlansSaved  DailyCleaningPlan[]      @relation("DailyCleaningPlanSavedBy")
   dailyCleaningTasksAssigned DailyCleaningTask[]    @relation("DailyCleaningTaskAssignee")
   lateShiftOverrides       DailyLateShiftOverride[]
@@ -553,6 +572,8 @@ model Room {
   guestStays         RoomGuestStay[]
   guestComplaints    GuestComplaint[]
   roomLoans          RoomLoan[]
+  breakfastDayEntries BreakfastDayEntry[]
+  breakfastSpecialWishes BreakfastSpecialWish[]
   dailyCleaningTasks DailyCleaningTask[]
   cleaningDeferrals  RoomCleaningDeferral[]
   inspectionTasks    DailyInspectionTask[]
@@ -1425,6 +1446,48 @@ model RoomLoan {
   @@index([returnedAt])
   @@index([roomId])
   @@index([catalogItemId])
+}
+
+/// Kitchen breakfast roster for one room on one service day (EMMA sync later).
+model BreakfastDayEntry {
+  id              String               @id @default(cuid())
+  hotelId         String
+  serviceDate     DateTime             @db.Date
+  roomId          String
+  room            Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  reservationId   String?
+  persons         Int
+  source          BreakfastEntrySource @default(MANUAL)
+  servedAt        DateTime?
+  servedByUserId  String?
+  servedBy        User?                @relation("BreakfastEntryServedBy", fields: [servedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([hotelId, serviceDate, roomId])
+  @@index([hotelId, serviceDate])
+  @@index([roomId])
+  @@index([servedAt])
+}
+
+/// Dietary / special breakfast wishes noted by reception for the kitchen.
+model BreakfastSpecialWish {
+  id              String              @id @default(cuid())
+  hotelId         String
+  roomId          String
+  room            Room                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  serviceDate     DateTime            @db.Date
+  tags            String[]
+  note            String?             @db.Text
+  status          BreakfastWishStatus @default(OPEN)
+  createdByUserId String
+  createdBy       User                @relation("BreakfastWishCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([hotelId, serviceDate, status])
+  @@index([roomId])
+  @@index([createdAt])
 }
 
 model Guide {

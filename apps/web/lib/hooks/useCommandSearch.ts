@@ -57,6 +57,8 @@ function roomHref(user: Me, roomId: string): string | undefined {
       return `/h/room/${roomId}`;
     case 'TECHNICIAN':
       return '/t/rooms';
+    case 'KITCHEN':
+      return '/k/breakfast';
     default:
       return undefined;
   }

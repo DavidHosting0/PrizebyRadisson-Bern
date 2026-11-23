@@ -314,6 +314,7 @@ export const RECEPTION_NAV_ICONS: Record<string, NavIcon> = {
   '/r/todo': IconClipboard,
   '/r/schichtuebergabe': IconGuide,
   '/r/beschwerden': IconDamage,
+  '/r/fruehstueck-sonderwuensche': IconClipboard,
   '/r/leihartikel': IconPackage,
   '/r/schichtplan': IconCalendar,
   '/r/puzzle': IconPuzzle,

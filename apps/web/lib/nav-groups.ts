@@ -105,6 +105,7 @@ export const RECEPTION_NAV_GROUPS: NavGroupDef[] = [
       '/r/todo',
       '/r/schichtuebergabe',
       '/r/beschwerden',
+      '/r/fruehstueck-sonderwuensche',
       '/r/leihartikel',
       '/r/schichtplan',
       '/r/puzzle',

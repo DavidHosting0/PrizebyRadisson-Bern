@@ -93,7 +93,10 @@
     "reviewAnalyzerTrends": "Тренди",
     "reviewAnalyzerReports": "Звіти",
     "reviewAnalyzerAlerts": "Сповіщення",
-    "reviewAnalyzerSettings": "Налаштування"
+    "reviewAnalyzerSettings": "Налаштування",
+    "breakfastWishes": "Breakfast wishes",
+    "breakfast": "Breakfast",
+    "breakfastForecast": "Forecast"
   },
   "frontOfficeBackup": {
     "title": "Резерв EMMA — рецепція",
@@ -363,8 +366,8 @@
       "photoReady": "Фото готове до надсилання",
       "photoUploadFailed": "Не вдалося завантажити фото",
       "videoNotAllowed": "Не вдалося обробити відео.",
-    "videoTooLarge": "Відео завелике (макс. 250 МБ до стиснення, ~25 МБ після).",
-    "videoCompressFailed": "Не вдалося стиснути або завантажити відео.",
+      "videoTooLarge": "Відео завелике (макс. 250 МБ до стиснення, ~25 МБ після).",
+      "videoCompressFailed": "Не вдалося стиснути або завантажити відео.",
       "photoTooLarge": "Фото завелике (максимум 25 МБ).",
       "photoNotSupported": "Цей тип файлу не підтримується. Виберіть фото або відео."
     },
@@ -1570,5 +1573,61 @@
     "chromeHint": "Меню Chrome (⋮) → Встановити застосунок",
     "installNow": "Встановити зараз",
     "installing": "…"
+  },
+  "kitchen": {
+    "statTotal": "Breakfasts today",
+    "statRemaining": "Still coming",
+    "statPeak": "Peak today",
+    "statPeakEmpty": "—",
+    "statWishes": "Special wishes",
+    "roomList": "Rooms",
+    "roomsCount": "{count} rooms",
+    "emptyList": "No breakfast bookings yet. Add a room with the keypad.",
+    "wishBadge": "Wish",
+    "persons": "{count} persons",
+    "serve": "Done",
+    "undoServe": "Undo",
+    "lookupTitle": "Room lookup",
+    "roomNumber": "Room number",
+    "foundBreakfast": "Room {room}: {count} breakfast(s)",
+    "notFound": "No breakfast for this room yet.",
+    "bookOne": "+ 1 person",
+    "bookTwo": "+ 2 persons",
+    "wishesTitle": "Special wishes",
+    "wishesEmpty": "No open wishes today.",
+    "forecastTitle": "Breakfast forecast",
+    "forecastHint": "Booked breakfasts for upcoming days. EMMA sync comes later.",
+    "forecastEmpty": "No forecast entries yet.",
+    "forecastRooms": "{count} rooms"
+  },
+  "breakfastWishes": {
+    "date": "Service date",
+    "newWish": "New wish",
+    "room": "Room",
+    "selectRoom": "— select —",
+    "tags": "Tags",
+    "note": "Note",
+    "notePlaceholder": "Optional details…",
+    "save": "Save wish",
+    "empty": "No wishes for this day.",
+    "markDone": "Done",
+    "cancelWish": "Cancel",
+    "errorRoomRequired": "Select a room.",
+    "errorTagsRequired": "Select at least one tag.",
+    "status": {
+      "OPEN": "Open",
+      "DONE": "Done",
+      "CANCELLED": "Cancelled",
+      "ALL": "All"
+    },
+    "tag": {
+      "glutenfrei": "Gluten-free",
+      "vegan": "Vegan",
+      "vegetarisch": "Vegetarian",
+      "laktosefrei": "Lactose-free",
+      "schweinefleischfrei": "No pork",
+      "allergie": "Allergy",
+      "andere": "Other"
+    }
   }
 }

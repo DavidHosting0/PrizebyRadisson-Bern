@@ -39,6 +39,7 @@ import { ShiftHandoverModule } from './shift-handover/shift-handover.module';
 import { ShiftNotesModule } from './shift-notes/shift-notes.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { LoansModule } from './loans/loans.module';
+import { BreakfastModule } from './breakfast/breakfast.module';
 import { ActivityLogModule } from './activity-log/activity-log.module';
 import { ReviewAnalyzerModule } from './review-analyzer/review-analyzer.module';
 import { CryptoModule } from './common/crypto/crypto.module';
@@ -88,6 +89,7 @@ import configuration from './config/configuration';
     ShiftNotesModule,
     ComplaintsModule,
     LoansModule,
+    BreakfastModule,
     ActivityLogModule,
     ReviewAnalyzerModule,
   ],

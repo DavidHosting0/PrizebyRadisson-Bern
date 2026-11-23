@@ -18,6 +18,8 @@ const ROLE_SHELL: Record<string, string> = {
 
   TECHNICIAN: '/t',
 
+  KITCHEN: '/k',
+
 };
 
 
@@ -67,6 +69,8 @@ export const RECEPTION_NAV: NavItem[] = [
   { href: '/r/schichtuebergabe', labelKey: 'shiftHandover', permission: 'SHIFT_NOTES_READ' },
 
   { href: '/r/beschwerden', labelKey: 'complaints', permission: 'COMPLAINTS_READ' },
+
+  { href: '/r/fruehstueck-sonderwuensche', labelKey: 'breakfastWishes', permission: 'BREAKFAST_WISHES_READ' },
 
   { href: '/r/leihartikel', labelKey: 'loans', permission: 'LOANS_READ' },
 
@@ -162,6 +166,18 @@ export const TECHNICIAN_NAV: NavItem[] = [
   { href: '/t/rooms', labelKey: 'rooms', permission: 'ROOMS_READ' },
 
   { href: '/t/chat', labelKey: 'chat', permission: 'TEAM_CHAT_READ' },
+
+];
+
+
+
+export const KITCHEN_NAV: NavItem[] = [
+
+  { href: '/k/breakfast', labelKey: 'breakfast', permission: 'BREAKFAST_READ' },
+
+  { href: '/k/forecast', labelKey: 'breakfastForecast', permission: 'BREAKFAST_READ' },
+
+  { href: '/k/chat', labelKey: 'chat', permission: 'TEAM_CHAT_READ' },
 
 ];
 
@@ -341,6 +357,20 @@ export function getTechnicianRoutePermission(pathname: string): PermissionCode |
 
 
 
+export function getKitchenRoutePermission(pathname: string): PermissionCode | null {
+
+  const item = KITCHEN_NAV.find(
+
+    (n) => pathname === n.href || pathname.startsWith(`${n.href}/`),
+
+  );
+
+  return item?.permission ?? null;
+
+}
+
+
+
 export function hasAnyReceptionPermission(user: Me | null | undefined): boolean {
 
   if (!user) return false;
@@ -411,6 +441,24 @@ export function hasAnyTechnicianPermission(user: Me | null | undefined): boolean
 
 
 
+export function hasAnyKitchenPermission(user: Me | null | undefined): boolean {
+
+  if (!user) return false;
+
+  if (isAdmin(user)) return true;
+
+  return hasAnyPermission(
+
+    user,
+
+    KITCHEN_NAV.map((n) => n.permission),
+
+  );
+
+}
+
+
+
 export function getHomePath(user: Me | null | undefined): string {
 
   if (!user) return '/login';
@@ -442,6 +490,12 @@ export function getHomePath(user: Me | null | undefined): string {
   if (user.role === 'TECHNICIAN') {
 
     return getFirstAllowedPath(user, TECHNICIAN_NAV) ?? '/login';
+
+  }
+
+  if (user.role === 'KITCHEN') {
+
+    return getFirstAllowedPath(user, KITCHEN_NAV) ?? '/login';
 
   }
 

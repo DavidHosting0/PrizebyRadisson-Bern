@@ -13,6 +13,7 @@ export function notificationLinkPath(
       if (role === UserRole.RECEPTION || role === UserRole.ADMIN) return '/r/chat';
       if (role === UserRole.SUPERVISOR) return '/s/chat';
       if (role === UserRole.TECHNICIAN) return '/t/chat';
+      if (role === UserRole.KITCHEN) return '/k/chat';
       return '/h/chat';
     default:
       return '/h/chat';

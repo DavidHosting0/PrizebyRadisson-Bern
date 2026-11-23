@@ -60,6 +60,10 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   PermissionCode.ACTIVITY_LOG_READ,
   PermissionCode.PUBLIC_AREA_MANAGE,
   PermissionCode.REVIEW_ANALYZER_READ,
+  PermissionCode.BREAKFAST_READ,
+  PermissionCode.BREAKFAST_WRITE,
+  PermissionCode.BREAKFAST_WISHES_READ,
+  PermissionCode.BREAKFAST_WISHES_WRITE,
 ];
 
 export function addCleanerBase(s: Set<PermissionCode>) {
@@ -108,6 +112,18 @@ export function buildTechnicianSet(): Set<PermissionCode> {
   return s;
 }
 
+/** Kitchen iPad app: breakfast board, forecast, wishes read, team chat. */
+export function buildKitchenSet(): Set<PermissionCode> {
+  const s = new Set<PermissionCode>();
+  s.add(PermissionCode.BREAKFAST_READ);
+  s.add(PermissionCode.BREAKFAST_WRITE);
+  s.add(PermissionCode.BREAKFAST_WISHES_READ);
+  s.add(PermissionCode.ROOMS_READ);
+  s.add(PermissionCode.TEAM_CHAT_READ);
+  s.add(PermissionCode.TEAM_CHAT_POST);
+  return s;
+}
+
 export function buildReceptionSet(): Set<PermissionCode> {
   const s = new Set<PermissionCode>();
   s.add(PermissionCode.ROOMS_READ);
@@ -142,6 +158,8 @@ export function buildReceptionSet(): Set<PermissionCode> {
   s.add(PermissionCode.COMPLAINTS_WRITE);
   s.add(PermissionCode.LOANS_READ);
   s.add(PermissionCode.LOANS_WRITE);
+  s.add(PermissionCode.BREAKFAST_WISHES_READ);
+  s.add(PermissionCode.BREAKFAST_WISHES_WRITE);
   return s;
 }
 
@@ -199,6 +217,10 @@ export function defaultPermissionsForUser(role: UserRole, titlePrefix: UserTitle
 
   if (role === UserRole.TECHNICIAN) {
     return buildTechnicianSet();
+  }
+
+  if (role === UserRole.KITCHEN) {
+    return buildKitchenSet();
   }
 
   if (role === UserRole.SUPERVISOR) {

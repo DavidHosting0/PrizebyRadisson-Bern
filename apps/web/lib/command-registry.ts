@@ -10,6 +10,7 @@ import {
   SUPERVISOR_NAV,
   HOUSEKEEPER_NAV,
   TECHNICIAN_NAV,
+  KITCHEN_NAV,
   type NavItem,
 } from '@/lib/permission-routes';
 import { RECEPTION_NAV_ICONS, SUPERVISOR_NAV_ICONS, IconDash } from '@/components/nav/nav-icons';
@@ -36,6 +37,7 @@ const QUICK_HREFS: Record<string, string[]> = {
   SUPERVISOR: ['/s', '/s/board', '/s/open-tasks', '/s/departures', '/s/room-tasks'],
   HOUSEKEEPER: ['/h', '/h/requests'],
   TECHNICIAN: ['/t/maintenance', '/t/rooms'],
+  KITCHEN: ['/k/breakfast', '/k/forecast', '/k/chat'],
   ADMIN: ['/a', '/a/roles', '/a/reservations-stats'],
 };
 
@@ -49,6 +51,8 @@ function navForRole(role: string | undefined): NavItem[] {
       return HOUSEKEEPER_NAV;
     case 'TECHNICIAN':
       return TECHNICIAN_NAV;
+    case 'KITCHEN':
+      return KITCHEN_NAV;
     default:
       return [];
   }

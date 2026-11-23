@@ -142,3 +142,32 @@ export function IconLost({ className }: { className?: string }) {
     </svg>
   );
 }
+
+export function IconBreakfast({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 11h16v2a6 6 0 01-6 6H10a6 6 0 01-6-6v-2z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path d="M8 11V7a4 4 0 018 0v4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path d="M12 3v2" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconForecast({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 19V5m0 14h16M8 15l3-4 2 2 4-6"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

@@ -37,6 +37,7 @@ export type ExtensionMessages = {
     todoTitle: string;
     notesTitle: string;
     complaintsTitle: string;
+    breakfastWishesTitle: string;
     loansTitle: string;
     todoNoTasks: string;
     todoAllDone: string;
@@ -48,6 +49,9 @@ export type ExtensionMessages = {
     complaintsNoneToday: string;
     complaintsOneToday: string;
     complaintsCountToday: string;
+    breakfastWishesNoneToday: string;
+    breakfastWishesOneToday: string;
+    breakfastWishesCountToday: string;
     loansNoneToday: string;
     loansOneToday: string;
     loansCountToday: string;
@@ -166,6 +170,24 @@ export type ExtensionMessages = {
     roomLabel: string;
     resolve: string;
     empty: string;
+  };
+  breakfastWishes: {
+    newWish: string;
+    roomPlaceholder: string;
+    tagsLabel: string;
+    notePlaceholder: string;
+    incomplete: string;
+    save: string;
+    loading: string;
+    empty: string;
+    markDone: string;
+    tagGlutenfrei: string;
+    tagVegan: string;
+    tagVegetarisch: string;
+    tagLaktosefrei: string;
+    tagSchweinefleischfrei: string;
+    tagAllergie: string;
+    tagAndere: string;
   };
   loans: {
     lend: string;
