@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
   type ChangeEvent,
+  type FocusEvent,
 } from 'react';
 import clsx from 'clsx';
 import { useQuery } from '@tanstack/react-query';
@@ -36,7 +37,7 @@ type Props = {
   density?: 'default' | 'tablet';
   onSubmitShortcut?: () => void;
   onFocus?: () => void;
-  onBlur?: () => void;
+  onBlur?: (e?: FocusEvent<HTMLTextAreaElement>) => void;
 };
 
 function preferNewlineOnEnter(): boolean {
@@ -83,10 +84,16 @@ export function MentionComposer({
   const resizeToContent = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    // Empty field must stay single-line. Measuring scrollHeight with a wrapped
+    // placeholder (narrow idle layout) otherwise leaves a tall empty box after blur.
+    if (!value) {
+      el.style.height = `${minHeightPx}px`;
+      return;
+    }
+    el.style.height = '0px';
     const next = Math.min(el.scrollHeight, maxHeightPx);
     el.style.height = `${Math.max(next, minHeightPx)}px`;
-  }, [maxHeightPx, minHeightPx]);
+  }, [value, maxHeightPx, minHeightPx]);
 
   useLayoutEffect(() => {
     resizeToContent();
@@ -143,8 +150,12 @@ export function MentionComposer({
     onChange(next);
 
     const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = `${Math.max(Math.min(el.scrollHeight, maxHeightPx), minHeightPx)}px`;
+    if (!next) {
+      el.style.height = `${minHeightPx}px`;
+    } else {
+      el.style.height = '0px';
+      el.style.height = `${Math.max(Math.min(el.scrollHeight, maxHeightPx), minHeightPx)}px`;
+    }
 
     const pos = el.selectionStart ?? next.length;
     const before = next.slice(0, pos);
@@ -211,7 +222,14 @@ export function MentionComposer({
         onChange={onInputChange}
         onKeyDown={onKeyDown}
         onFocus={onFocus}
-        onBlur={onBlur}
+        onBlur={(e) => {
+          if (!value && textareaRef.current) {
+            textareaRef.current.style.height = `${minHeightPx}px`;
+          } else {
+            resizeToContent();
+          }
+          onBlur?.(e);
+        }}
         maxLength={maxLength}
         autoComplete="off"
       />

@@ -20,12 +20,17 @@ html[data-chat-keyboard='1'] [data-mobile-bottom-nav] {
     visibility 160ms ease;
 }
 
-html[data-chat-keyboard='1'] [data-mobile-shell-chat] {
-  padding-bottom: 0 !important;
-}
-
 html[data-chat-keyboard='1'] [data-install-banner] {
   display: none !important;
+}
+
+/* Chat in mobile shells: clear the fixed tab bar without a dead gap under the composer. */
+[data-mobile-shell-chat] [data-chat-composer-dock] {
+  padding-bottom: calc(4.75rem + var(--safe-bottom));
+}
+
+html[data-chat-keyboard='1'] [data-mobile-shell-chat] [data-chat-composer-dock] {
+  padding-bottom: 0;
 }
 
 @keyframes hk-chat-tool-widen {

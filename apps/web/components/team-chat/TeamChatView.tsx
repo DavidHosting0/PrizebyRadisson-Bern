@@ -1556,6 +1556,7 @@ export function TeamChatView({
         <form
           ref={composerFormRef}
           onSubmit={onSend}
+          data-chat-composer-dock
           className={clsx(
             'border-t border-sidebar-border/60 bg-[#121a26] backdrop-blur',
             pinComposer ? 'fixed inset-x-0 z-50' : 'shrink-0',

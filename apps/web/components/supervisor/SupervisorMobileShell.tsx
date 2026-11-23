@@ -39,8 +39,10 @@ export function SupervisorMobileShell({
   return (
     <div
       className={clsx(
-        'flex flex-col bg-[#121a26] pb-[calc(5rem+var(--safe-bottom))]',
-        isChat ? 'h-dvh overflow-hidden' : 'min-h-screen',
+        'flex flex-col bg-[#121a26]',
+        isChat
+          ? 'h-dvh overflow-hidden'
+          : 'min-h-screen pb-[calc(5rem+var(--safe-bottom))]',
       )}
       {...(isChat ? { 'data-mobile-shell-chat': '' } : {})}
     >
