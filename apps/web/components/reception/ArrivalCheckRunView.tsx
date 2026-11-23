@@ -143,11 +143,27 @@ function RunItemRow({ item, highlight }: { item: ArrivalCheckRunItem; highlight?
           <p className="mt-1 text-xs text-orange-300">{manualReason}</p>
         )}
       </div>
-      {!highlight && item.paymentStatus === 'PAID' && (
-        <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-          {t('statVcc')}
-        </span>
-      )}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {(item.bernTicketStatus === 'CREATED' ||
+          item.bernTicketStatus === 'FAILED' ||
+          item.bernTicketStatus === 'PENDING') && (
+          <span
+            className="rounded-md bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-200"
+            title={item.bernTicketError ?? undefined}
+          >
+            {item.bernTicketStatus === 'CREATED'
+              ? t('bernTicketOk')
+              : item.bernTicketStatus === 'PENDING'
+                ? t('bernTicketPending')
+                : t('bernTicketFail')}
+          </span>
+        )}
+        {!highlight && item.paymentStatus === 'PAID' && (
+          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+            {t('statVcc')}
+          </span>
+        )}
+      </div>
     </li>
   );
 }

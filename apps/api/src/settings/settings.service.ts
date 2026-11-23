@@ -5,6 +5,7 @@ import { SecretCipherService } from '../common/crypto/secret-cipher.service';
 import type { UpdatePuzzleLoginDto } from './dto/update-puzzle-login.dto';
 import type { UpdateEmmaLoginDto } from './dto/update-emma-login.dto';
 import type { UpdateAiConfigDto } from './dto/update-ai-config.dto';
+import type { UpdateBernTicketLoginDto } from './dto/update-bernticket-login.dto';
 
 /** Stored under HotelSettings.settings JSON key `puzzelLogin` */
 export type PuzzelLoginStored = {
@@ -66,6 +67,18 @@ type AiConfigPersisted = {
   openaiModel?: string;
 };
 
+/** Plaintext BernTicket credentials for server-side ticket creation. */
+export type BernTicketLoginStored = {
+  email?: string;
+  password?: string;
+};
+
+/** Persisted shape (password is AES-GCM ciphertext, base64). */
+type BernTicketLoginPersisted = {
+  email?: string;
+  passwordEnc?: string;
+};
+
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 
 const PUZZEL_KEY = 'puzzelLogin';
@@ -75,6 +88,7 @@ const EMMA_KEY = 'emmaLogin';
 const EMMA_HTTP_SESSION_KEY = 'emmaHttpSession';
 const EMMA_ROOM_STATUS_SYNC_KEY = 'emmaRoomStatusSync';
 const AI_KEY = 'aiConfig';
+const BERNTICKET_KEY = 'bernTicketLogin';
 
 export type EmmaHttpSessionStored = {
   cookies: Array<{ name: string; value: string; domain?: string; path?: string }>;
@@ -310,6 +324,46 @@ export class SettingsService {
     };
   }
 
+  // ------------------------- BernTicket login -----------------------------
+
+  /** Public shape for the admin UI (no plaintext password). */
+  async getBernTicketLoginMeta() {
+    const row = await this.ensureRow();
+    return this.metaFromBernTicketRaw(this.asRecord(row.settings)[BERNTICKET_KEY]);
+  }
+
+  async updateBernTicketLogin(dto: UpdateBernTicketLoginDto) {
+    const current = await this.ensureRow();
+    const s = this.asRecord(current.settings);
+    const prev = this.parseBernTicketPersisted(s[BERNTICKET_KEY]);
+    const next = this.mergeBernTicketInput(prev, dto);
+
+    const updated = await this.prisma.hotelSettings.update({
+      where: { id: current.id },
+      data: {
+        settings: { ...s, [BERNTICKET_KEY]: next } as object,
+      },
+    });
+    // Password/email change invalidates any in-memory BernTicket session in
+    // BernTicketService (cleared lazily when email no longer matches).
+    return this.metaFromBernTicketRaw(this.asRecord(updated.settings)[BERNTICKET_KEY]);
+  }
+
+  /**
+   * Plaintext BernTicket credentials for server-side ticket creation.
+   * Returns null if email or password is missing.
+   */
+  async getBernTicketLoginSecrets(): Promise<BernTicketLoginStored | null> {
+    const row = await this.ensureRow();
+    const persisted = this.parseBernTicketPersisted(
+      this.asRecord(row.settings)[BERNTICKET_KEY],
+    );
+    const email = persisted.email?.trim();
+    const password = this.cipher.decryptSafe(persisted.passwordEnc);
+    if (!email || !password?.trim()) return null;
+    return { email, password: password.trim() };
+  }
+
   /**
    * Full EMMA credentials for server-side automation. Decrypts the encrypted
    * fields. Returns null if no EMMA login has been configured yet.
@@ -511,6 +565,9 @@ export class SettingsService {
       } else if (key === AI_KEY) {
         // Same rule for the AI/OpenAI key — must go through /settings/ai-config.
         continue;
+      } else if (key === BERNTICKET_KEY) {
+        // Encrypted BernTicket blob must go through /settings/bernticket-login.
+        continue;
       } else {
         next[key] = val;
       }
@@ -529,6 +586,13 @@ export class SettingsService {
     }
     if (raw[AI_KEY] && typeof raw[AI_KEY] === 'object' && !Array.isArray(raw[AI_KEY])) {
       out[AI_KEY] = this.metaFromAiRaw(raw[AI_KEY]);
+    }
+    if (
+      raw[BERNTICKET_KEY] &&
+      typeof raw[BERNTICKET_KEY] === 'object' &&
+      !Array.isArray(raw[BERNTICKET_KEY])
+    ) {
+      out[BERNTICKET_KEY] = this.metaFromBernTicketRaw(raw[BERNTICKET_KEY]);
     }
     return out;
   }
@@ -669,6 +733,39 @@ export class SettingsService {
     return {
       hasOpenaiApiKey: !!p.openaiApiKeyEnc,
       openaiModel: p.openaiModel?.trim() || DEFAULT_OPENAI_MODEL,
+    };
+  }
+
+  // ------------------------- BernTicket helpers ---------------------------
+
+  private parseBernTicketPersisted(raw: unknown): BernTicketLoginPersisted {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const o = raw as Record<string, unknown>;
+    return {
+      email: typeof o.email === 'string' ? o.email : undefined,
+      passwordEnc: typeof o.passwordEnc === 'string' ? o.passwordEnc : undefined,
+    };
+  }
+
+  private mergeBernTicketInput(
+    prev: BernTicketLoginPersisted,
+    dto: UpdateBernTicketLoginDto,
+  ): BernTicketLoginPersisted {
+    const next: BernTicketLoginPersisted = { ...prev };
+    if (dto.email !== undefined) {
+      next.email = dto.email.trim();
+    }
+    if (dto.password !== undefined && dto.password.length > 0) {
+      next.passwordEnc = this.cipher.encrypt(dto.password);
+    }
+    return next;
+  }
+
+  private metaFromBernTicketRaw(raw: unknown) {
+    const p = this.parseBernTicketPersisted(raw);
+    return {
+      email: typeof p.email === 'string' && p.email.trim() ? p.email.trim() : null,
+      hasPassword: !!p.passwordEnc,
     };
   }
 }

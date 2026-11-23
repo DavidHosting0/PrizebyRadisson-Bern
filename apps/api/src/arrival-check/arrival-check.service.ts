@@ -9,6 +9,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import type {
+  ArrivalCheckBernTicketStatus,
   ArrivalCheckCategoryCount,
   ArrivalCheckPaymentStatus,
   ArrivalCheckRunDetail,
@@ -30,6 +31,7 @@ import {
   involvesArrivalCheckForbiddenFolio,
   isArrivalCheckForbiddenFolio,
   pickMainGuestMail,
+  prepareBernTicketForArrival,
   shouldClearGuestEmailForArrivalCheck,
 } from '@housekeeping/shared';
 import type { User } from '@prisma/client';
@@ -41,6 +43,8 @@ import {
 import { decryptDetailBundle } from '../reservations/reservation-detail-bundle';
 import { EmmaService } from '../emma/emma.service';
 import { buildEmmaRequestObjectKey } from '../emma/emma-odata-client';
+import { BernTicketService } from '../bernticket/bernticket.service';
+import { BtApiError } from '../bernticket/bernticket.types';
 import { buildArrivalCheckDecision, FOLIO_3_MANUAL_REASON, type ArrivalCheckDecision } from './arrival-check-rules';
 import { planVccPayment } from './arrival-check-vcc';
 import {
@@ -79,6 +83,7 @@ export class ArrivalCheckService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly cipher: SecretCipherService,
     private readonly emma: EmmaService,
+    private readonly bernTicket: BernTicketService,
     @Inject(forwardRef(() => ReservationsService))
     private readonly reservations: ReservationsService,
   ) {}
@@ -762,6 +767,9 @@ export class ArrivalCheckService implements OnModuleInit {
         folio2Amount: null,
         folio2Currency: null,
         paymentError: null,
+        bernTicketStatus: null,
+        bernTicketError: null,
+        bernTicketId: null,
         statusMessage: 'Reservierungsdaten werden aus EMMA geladen …',
         startedAt: item.startedAt ?? new Date(),
         finishedAt: null,
@@ -838,6 +846,18 @@ export class ArrivalCheckService implements OnModuleInit {
           });
         }
       }
+
+      // BernTicket: never blocks folio / VCC processing.
+      await this.createBernTicketForArrivalItem({
+        itemId,
+        reservationId: item.reservationId,
+        guestName: sensitive?.mainGuestName ?? null,
+        arrivalDate: snap ? formatHotelDateOnly(snap.arrivalDate) : '',
+        departureDate: snap ? formatHotelDateOnly(snap.departureDate) : '',
+        numPax: snap?.numPax ?? null,
+        classifyBase: this.classifyMessage(decision, categoryLabel),
+        emailNote,
+      });
 
       if (hasArrivalCheckForbiddenFolioActivity(folio)) {
         await this.prisma.arrivalCheckRunItem.update({
@@ -1279,6 +1299,93 @@ export class ArrivalCheckService implements OnModuleInit {
   }
 
   /**
+   * Create a BernTicket for this reservation. Never throws — failures only set
+   * bernTicketStatus/Error and must not affect folio / VCC processing.
+   */
+  private async createBernTicketForArrivalItem(params: {
+    itemId: string;
+    reservationId: string;
+    guestName: string | null;
+    arrivalDate: string;
+    departureDate: string;
+    numPax: number | null;
+    classifyBase: string;
+    emailNote: string | null;
+  }): Promise<void> {
+    const statusSuffix = params.emailNote ? ` ${params.emailNote}` : '';
+    const restoreMessage = `${params.classifyBase}${statusSuffix}`.trim();
+
+    try {
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: params.itemId },
+        data: {
+          bernTicketStatus: 'PENDING',
+          bernTicketError: null,
+          bernTicketId: null,
+          statusMessage: 'BernTicket wird erstellt …',
+        },
+      });
+
+      const prepared = prepareBernTicketForArrival({
+        guestName: params.guestName,
+        bookingNumber: params.reservationId,
+        arrivalDate: params.arrivalDate,
+        departureDate: params.departureDate,
+        numPax: params.numPax,
+      });
+
+      if (!prepared.ok) {
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: params.itemId },
+          data: {
+            bernTicketStatus: 'FAILED',
+            bernTicketError: prepared.error,
+            bernTicketId: null,
+            statusMessage: restoreMessage,
+          },
+        });
+        return;
+      }
+
+      const ticket = await this.bernTicket.createTicket(prepared.body);
+      await this.prisma.arrivalCheckRunItem.update({
+        where: { id: params.itemId },
+        data: {
+          bernTicketStatus: 'CREATED',
+          bernTicketError: null,
+          bernTicketId: ticket.id,
+          statusMessage: restoreMessage,
+        },
+      });
+    } catch (err) {
+      const message =
+        err instanceof BtApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'BernTicket-Erstellung fehlgeschlagen.';
+      this.log.warn(
+        `BernTicket create failed reservation=${params.reservationId}: ${message}`,
+      );
+      try {
+        await this.prisma.arrivalCheckRunItem.update({
+          where: { id: params.itemId },
+          data: {
+            bernTicketStatus: 'FAILED',
+            bernTicketError: message,
+            bernTicketId: null,
+            statusMessage: restoreMessage,
+          },
+        });
+      } catch (persistErr) {
+        this.log.warn(
+          `BernTicket status persist failed reservation=${params.reservationId}: ${(persistErr as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
    * Clear OTA guest-mailbox placeholders (e.g. @guest.booking.com) on the main
    * guest. Non-blocking: failures are logged and surfaced in the status note.
    */
@@ -1513,6 +1620,9 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentError: string | null;
         alreadyCompletedAt: Date | null;
         alreadyCompletedRunId: string | null;
+        bernTicketStatus: ArrivalCheckBernTicketStatus | null;
+        bernTicketError: string | null;
+        bernTicketId: string | null;
       }[];
     },
     snapshots: {
@@ -1566,6 +1676,9 @@ export class ArrivalCheckService implements OnModuleInit {
         paymentError: item.paymentError ?? null,
         alreadyCompletedAt: item.alreadyCompletedAt?.toISOString() ?? null,
         alreadyCompletedRunId: item.alreadyCompletedRunId ?? null,
+        bernTicketStatus: item.bernTicketStatus ?? null,
+        bernTicketError: item.bernTicketError ?? null,
+        bernTicketId: item.bernTicketId ?? null,
       };
     });
     return { ...summary, items };

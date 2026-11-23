@@ -1087,13 +1087,19 @@ export function TeamChatView({
   const isHk = user?.role === 'HOUSEKEEPER' || user?.role === 'SUPERVISOR';
 
   useEffect(() => {
-    const active = keyboardLift > 40;
+    const mobile =
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(max-width: 767px)').matches ||
+        window.matchMedia('(pointer: coarse)').matches);
+    // Hide bottom category tabs as soon as the composer is focused on phone —
+    // don't wait for visualViewport overlap (unreliable on some iOS builds).
+    const active = composerFocused && mobile;
     if (active) document.documentElement.dataset.chatKeyboard = '1';
     else delete document.documentElement.dataset.chatKeyboard;
     return () => {
       delete document.documentElement.dataset.chatKeyboard;
     };
-  }, [keyboardLift]);
+  }, [composerFocused]);
 
   useEffect(() => {
     return () => {
@@ -1587,122 +1593,178 @@ export function TeamChatView({
               </p>
             </div>
           )}
-          <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 py-2.5 sm:px-4">
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              className="shrink-0 rounded-full transition-transform hover:scale-[1.03]"
-              aria-label={tChat('editProfilePhoto')}
-              title={tChat('yourProfilePhoto')}
-            >
-              <Avatar name={user?.name ?? '?'} url={user?.avatarUrl} size={40} ring />
-            </button>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept={CHAT_MEDIA_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              onPhotosPicked(e.target.files);
+              e.target.value = '';
+            }}
+          />
 
-            {canCreateRequest && (
+          {/*
+            Mobile: tools sit on a row above the full-width textarea.
+            Desktop (sm+): single horizontal row via sm:flex-row.
+          */}
+          <div
+            className={clsx(
+              'mx-auto flex w-full max-w-3xl flex-col gap-1.5 px-3 py-2 sm:flex-row sm:items-end sm:gap-2 sm:px-4 sm:py-2.5',
+              composerFocused && 'gap-1',
+            )}
+          >
+            <div
+              className={clsx(
+                'flex shrink-0 items-center gap-1.5 sm:contents',
+                composerFocused && 'gap-1',
+              )}
+            >
               <button
                 type="button"
-                onClick={() => setNewReqOpen(true)}
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white"
-                aria-label={tChat('newServiceRequest')}
-                title={tChat('newServiceRequest')}
+                onClick={() => setProfileOpen(true)}
+                className="shrink-0 rounded-full transition-transform hover:scale-[1.03]"
+                aria-label={tChat('editProfilePhoto')}
+                title={tChat('yourProfilePhoto')}
+                onMouseDown={(e) => e.preventDefault()}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <Avatar
+                  name={user?.name ?? '?'}
+                  url={user?.avatarUrl}
+                  size={composerFocused ? 28 : 40}
+                  ring
+                />
+              </button>
+
+              {canCreateRequest && (
+                <button
+                  type="button"
+                  onClick={() => setNewReqOpen(true)}
+                  className={clsx(
+                    'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white',
+                    composerFocused ? 'h-8 w-8' : 'h-10 w-10 sm:h-11 sm:w-11',
+                  )}
+                  aria-label={tChat('newServiceRequest')}
+                  title={tChat('newServiceRequest')}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <svg
+                    width={composerFocused ? 16 : 20}
+                    height={composerFocused ? 16 : 20}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden
+                  >
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
+
+              {canCreateDamage && (
+                <button
+                  type="button"
+                  onClick={() => setNewDmgOpen(true)}
+                  className={clsx(
+                    'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-rose-400/40 hover:text-rose-200',
+                    composerFocused ? 'h-8 w-8' : 'h-10 w-10 sm:h-11 sm:w-11',
+                  )}
+                  aria-label={tChat('newMaintenanceReport')}
+                  title={tChat('newMaintenanceReport')}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <svg
+                    width={composerFocused ? 16 : 20}
+                    height={composerFocused ? 16 : 20}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden
+                  >
+                    <path
+                      d="M14.7 6.3a1 1 0 011.4 0l1.6 1.6a1 1 0 010 1.4l-8.5 8.5H6v-1.6l8.7-8.9z"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinejoin="round"
+                    />
+                    <path d="M4 20h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                className={clsx(
+                  'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white',
+                  composerFocused ? 'h-8 w-8' : 'h-10 w-10 sm:h-11 sm:w-11',
+                )}
+                aria-label={tChat('attachPhoto')}
+                title={tChat('attachPhoto')}
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <svg
+                  width={composerFocused ? 16 : 20}
+                  height={composerFocused ? 16 : 20}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden
+                >
+                  <path
+                    d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                  />
+                  <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
                 </svg>
               </button>
-            )}
+            </div>
 
-            {canCreateDamage && (
+            <div className="flex min-w-0 flex-1 items-end gap-2">
+              <MentionComposer
+                value={body}
+                onChange={setBody}
+                mentionUserIds={mentionUserIds}
+                onMentionUserIdsChange={setMentionUserIds}
+                placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
+                maxLength={2000}
+                expanded={composerFocused}
+                onFocus={() => {
+                  if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+                  setComposerFocused(true);
+                }}
+                onBlur={() => {
+                  if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+                  composerBlurTimerRef.current = setTimeout(() => setComposerFocused(false), 180);
+                }}
+                onSubmitShortcut={() => {
+                  const t = body.trim();
+                  if ((!t && photoFiles.length === 0) || !canPost) return;
+                  send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photos: photoFiles });
+                }}
+              />
+
               <button
-                type="button"
-                onClick={() => setNewDmgOpen(true)}
-                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-rose-400/40 hover:text-rose-200"
-                aria-label={tChat('newMaintenanceReport')}
-                title={tChat('newMaintenanceReport')}
+                type="submit"
+                disabled={!body.trim() && photoFiles.length === 0}
+                className={clsx(
+                  'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
+                  body.trim() || photoFiles.length > 0
+                    ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
+                    : 'bg-white/10 text-sidebar-muted',
+                )}
+                aria-label={tChat('sendMessage')}
+                onMouseDown={(e) => e.preventDefault()}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
                   <path
-                    d="M14.7 6.3a1 1 0 011.4 0l1.6 1.6a1 1 0 010 1.4l-8.5 8.5H6v-1.6l8.7-8.9z"
+                    d="M3.5 3.5l17 8.5-17 8.5 3-8.5-3-8.5z"
                     stroke="currentColor"
                     strokeWidth="1.7"
                     strokeLinejoin="round"
                   />
-                  <path d="M4 20h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
                 </svg>
               </button>
-            )}
-
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept={CHAT_MEDIA_ACCEPT}
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                onPhotosPicked(e.target.files);
-                e.target.value = '';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white"
-              aria-label={tChat('attachPhoto')}
-              title={tChat('attachPhoto')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                />
-                <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
-              </svg>
-            </button>
-
-            <MentionComposer
-              value={body}
-              onChange={setBody}
-              mentionUserIds={mentionUserIds}
-              onMentionUserIdsChange={setMentionUserIds}
-              placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
-              maxLength={2000}
-              onFocus={() => {
-                if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
-                setComposerFocused(true);
-              }}
-              onBlur={() => {
-                // Delay so tapping Send isn't lost when the keyboard inset collapses.
-                if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
-                composerBlurTimerRef.current = setTimeout(() => setComposerFocused(false), 180);
-              }}
-              onSubmitShortcut={() => {
-                const t = body.trim();
-                if ((!t && photoFiles.length === 0) || !canPost) return;
-                send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photos: photoFiles });
-              }}
-            />
-
-            <button
-              type="submit"
-              disabled={!body.trim() && photoFiles.length === 0}
-              className={clsx(
-                'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
-                body.trim() || photoFiles.length > 0
-                  ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
-                  : 'bg-white/10 text-sidebar-muted',
-              )}
-              aria-label={tChat('sendMessage')}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M3.5 3.5l17 8.5-17 8.5 3-8.5-3-8.5z"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
+            </div>
           </div>
         </form>
       )}

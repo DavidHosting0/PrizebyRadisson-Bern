@@ -10,6 +10,9 @@ export type ArrivalCheckItemStatus =
 
 export type ArrivalCheckStep = 'FOLIO_LOAD' | 'CHARGE_ASSIGN' | 'PREPAID_SETTLE';
 
+/** Outcome of automatic BernTicket creation during arrival check. */
+export type ArrivalCheckBernTicketStatus = 'NONE' | 'PENDING' | 'CREATED' | 'FAILED';
+
 /**
  * VCC auto-payment outcome per reservation:
  * - NOT_REQUIRED: no VCC charge applies (flexible, Radisson direct, personal card, …).
@@ -145,6 +148,12 @@ export type ArrivalCheckRunItem = {
   alreadyCompletedAt: string | null;
   /** Run id of the earlier successful arrival check (for linking in the UI). */
   alreadyCompletedRunId: string | null;
+  /** Automatic BernTicket create outcome (null = not attempted / legacy rows). */
+  bernTicketStatus: ArrivalCheckBernTicketStatus | null;
+  /** Error / skip reason when bernTicketStatus is FAILED. */
+  bernTicketError: string | null;
+  /** Remote BernTicket id when created successfully. */
+  bernTicketId: string | null;
 };
 
 export type ArrivalCheckCategoryCount = {

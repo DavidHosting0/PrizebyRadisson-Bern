@@ -25,6 +25,7 @@ export * from './reservations';
 export * from './reservation-analytics';
 export * from './arrival-check';
 export * from './ota-placeholder-email';
+export * from './bernticket-arrival';
 export * from './occupancy';
 export * from './monitor-map';
 export * from './guides';

@@ -7,15 +7,17 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* While the chat composer is focused and the keyboard is open, hide the
-   fixed bottom tab bar so typed text stays visible above the keyboard. */
+/* While the chat composer is focused on phone, hide the fixed bottom tab bar
+   so typed text stays visible above the keyboard. */
 html[data-chat-keyboard='1'] [data-mobile-bottom-nav] {
-  transform: translateY(100%);
+  transform: translateY(110%);
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transition:
     transform 160ms ease,
-    opacity 160ms ease;
+    opacity 160ms ease,
+    visibility 160ms ease;
 }
 
 html[data-chat-keyboard='1'] [data-mobile-shell-chat] {

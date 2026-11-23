@@ -90,6 +90,9 @@ function mockItem(
     paymentError: null,
     alreadyCompletedAt: null,
     alreadyCompletedRunId: null,
+    bernTicketStatus: null,
+    bernTicketError: null,
+    bernTicketId: null,
     ...overrides,
   };
 }
@@ -170,6 +173,10 @@ export function buildArrivalCheckMockRun(
               statusMessage: `${guestAt(i).name}: Posten erfolgreich verschoben.`,
               paymentStatus: guestAt(i).scenario === 'VCC' ? 'PAID' : 'NOT_REQUIRED',
               paymentAmount: guestAt(i).scenario === 'VCC' ? '245.50' : null,
+              bernTicketStatus: i === 0 ? 'FAILED' : 'CREATED',
+              bernTicketError:
+                i === 0 ? 'BernTicket verlangt 2FA — Ticket nicht erstellt.' : null,
+              bernTicketId: i === 0 ? null : `bt-mock-${i}`,
             }),
           );
         } else if (i === Math.floor(n / 2)) {
@@ -180,6 +187,7 @@ export function buildArrivalCheckMockRun(
               movesPlanned: 3,
               movesDone: 1,
               statusMessage: `${arrivalCheckCategoryLabel(guest.source, guest.scenario)} erkannt – Posten 2/3 werden verschoben …`,
+              bernTicketStatus: 'PENDING',
             }),
           );
         } else {
@@ -192,12 +200,18 @@ export function buildArrivalCheckMockRun(
     case 'success': {
       for (let i = 0; i < n; i++) {
         const guest = guestAt(i);
+        const btOk = i % 3 !== 1;
         items.push(
           mockItem(i, 'COMPLETED', {
             statusMessage: `${arrivalCheckCategoryLabel(guest.source, guest.scenario)}: abgeschlossen.`,
             paymentStatus: guest.scenario === 'VCC' ? 'PAID' : 'NOT_REQUIRED',
             paymentAmount: guest.scenario === 'VCC' ? '189.00' : null,
             paymentDepositId: guest.scenario === 'VCC' ? '0001' : null,
+            bernTicketStatus: btOk ? 'CREATED' : 'FAILED',
+            bernTicketError: btOk
+              ? null
+              : 'Mehr als 3 Personen — BernTicket nicht erstellt.',
+            bernTicketId: btOk ? `bt-mock-${i}` : null,
           }),
         );
       }

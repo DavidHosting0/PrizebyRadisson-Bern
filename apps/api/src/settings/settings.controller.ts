@@ -7,6 +7,7 @@ import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { UpdatePuzzleLoginDto } from './dto/update-puzzle-login.dto';
 import { UpdateEmmaLoginDto } from './dto/update-emma-login.dto';
 import { UpdateAiConfigDto } from './dto/update-ai-config.dto';
+import { UpdateBernTicketLoginDto } from './dto/update-bernticket-login.dto';
 import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('settings')
@@ -51,6 +52,20 @@ export class SettingsController {
   @Roles(UserRole.ADMIN)
   patchEmmaLogin(@Body() dto: UpdateEmmaLoginDto) {
     return this.settings.updateEmmaLogin(dto);
+  }
+
+  @Get('bernticket-login')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  bernTicketLoginMeta() {
+    return this.settings.getBernTicketLoginMeta();
+  }
+
+  @Patch('bernticket-login')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  patchBernTicketLogin(@Body() dto: UpdateBernTicketLoginDto) {
+    return this.settings.updateBernTicketLogin(dto);
   }
 
   @Get('ai-config')

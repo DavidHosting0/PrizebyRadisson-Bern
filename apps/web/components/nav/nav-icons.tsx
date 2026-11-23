@@ -149,6 +149,20 @@ export function IconPuzzle({ className }: { className?: string }) {
   );
 }
 
+export function IconTicket({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 9a2 2 0 012-2h14a2 2 0 012 2v1.5a1.5 1.5 0 000 3V15a2 2 0 01-2 2H5a2 2 0 01-2-2v-1.5a1.5 1.5 0 000-3V9z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path d="M9 7v10" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeDasharray="2 3" />
+    </svg>
+  );
+}
+
 export function IconMonitor({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>

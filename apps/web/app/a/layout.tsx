@@ -20,6 +20,7 @@ import {
   IconPerformance,
   IconPuzzle,
   IconReservations,
+  IconTicket,
   type NavIcon,
 } from '@/components/nav/nav-icons';
 import type { SidebarNavGroup } from '@/lib/nav-groups';
@@ -43,6 +44,7 @@ const ADMIN_NAV_ICONS: Record<string, NavIcon> = {
   '/a/integrations': IconPuzzle,
   '/a/emma': IconMonitor,
   '/a/puzzle': IconPuzzle,
+  '/a/bernticket': IconTicket,
   '/a/ai': IconPerformance,
   '/a/monitor-map': IconMonitor,
 };
@@ -103,6 +105,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           { href: '/a/integrations', label: tAdmin('integrations') },
           { href: '/a/emma', label: 'EMMA' },
           { href: '/a/puzzle', label: 'Puzzle' },
+          { href: '/a/bernticket', label: 'BernTicket' },
           { href: '/a/ai', label: 'AI' },
           { href: '/a/monitor-map', label: 'Monitor Map' },
         ],

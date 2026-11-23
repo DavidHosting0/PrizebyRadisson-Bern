@@ -30,6 +30,8 @@ type Props = {
   placeholder?: string;
   maxLength?: number;
   className?: string;
+  /** Taller auto-grow while the mobile composer is focused. */
+  expanded?: boolean;
   onSubmitShortcut?: () => void;
   onFocus?: () => void;
   onBlur?: () => void;
@@ -52,6 +54,7 @@ export function MentionComposer({
   placeholder,
   maxLength = 2000,
   className,
+  expanded = false,
   onSubmitShortcut,
   onFocus,
   onBlur,
@@ -61,6 +64,7 @@ export function MentionComposer({
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [highlightIdx, setHighlightIdx] = useState(0);
   const [newlineOnEnter, setNewlineOnEnter] = useState(false);
+  const maxHeightPx = expanded ? 220 : 140;
 
   useEffect(() => {
     setNewlineOnEnter(preferNewlineOnEnter());
@@ -73,14 +77,14 @@ export function MentionComposer({
   const resizeToContent = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = '0px';
-    const next = Math.min(el.scrollHeight, 160);
-    el.style.height = `${Math.max(next, 44)}px`;
-  }, []);
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, maxHeightPx);
+    el.style.height = `${Math.max(next, expanded ? 72 : 44)}px`;
+  }, [expanded, maxHeightPx]);
 
   useLayoutEffect(() => {
     resizeToContent();
-  }, [value, resizeToContent]);
+  }, [value, expanded, resizeToContent]);
 
   const { data: suggestions = [] } = useQuery({
     queryKey: ['team-chat-mentionables', mentionQuery ?? ''],
@@ -133,6 +137,9 @@ export function MentionComposer({
     onChange(next);
 
     const el = e.target;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(Math.min(el.scrollHeight, maxHeightPx), expanded ? 72 : 44)}px`;
+
     const pos = el.selectionStart ?? next.length;
     const before = next.slice(0, pos);
     const atMatch = before.match(/@([^\s@]*)$/);
@@ -188,9 +195,11 @@ export function MentionComposer({
         rows={1}
         enterKeyHint={newlineOnEnter ? 'enter' : 'send'}
         className={clsx(
-          'max-h-40 min-h-[44px] w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar px-4 py-2.5 text-base leading-snug text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 sm:text-sm',
+          'w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar px-3.5 py-2.5 text-base leading-snug text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 sm:px-4 sm:text-sm',
+          expanded ? 'min-h-[72px]' : 'min-h-[44px]',
           className,
         )}
+        style={{ maxHeight: maxHeightPx }}
         placeholder={placeholder}
         value={value}
         onChange={onInputChange}

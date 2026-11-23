@@ -292,6 +292,14 @@ enum ArrivalCheckStep {
   PREPAID_SETTLE
 }
 
+/// Automatic BernTicket creation outcome on an arrival-check run item.
+enum ArrivalCheckBernTicketStatus {
+  NONE
+  PENDING
+  CREATED
+  FAILED
+}
+
 /// PrizeBern / Rezeption: Kategorisierung der Puzzel-Tickets (KI).
 enum PuzzelTicketPrizeCategory {
   SPAM
@@ -1289,6 +1297,9 @@ model ArrivalCheckRunItem {
   /** Set when this item was auto-skipped because an earlier run completed the same reservation. */
   alreadyCompletedAt    DateTime?
   alreadyCompletedRunId String?
+  bernTicketStatus      ArrivalCheckBernTicketStatus?
+  bernTicketError       String?                @db.Text
+  bernTicketId          String?
 
   @@unique([runId, reservationId])
   @@index([runId])

@@ -89,6 +89,7 @@ const RULES: RouteRule[] = [
   { method: 'PATCH', pattern: /^\/settings$/, action: 'settings.update', label: 'Hotel-Einstellungen geändert', category: ActivityLogCategory.SETTINGS },
   { method: 'PATCH', pattern: /^\/settings\/puzzle-login$/, action: 'settings.puzzle_login', label: 'Puzzle-Login geändert', category: ActivityLogCategory.SETTINGS },
   { method: 'PATCH', pattern: /^\/settings\/emma-login$/, action: 'settings.emma_login', label: 'EMMA-Login geändert', category: ActivityLogCategory.SETTINGS },
+  { method: 'PATCH', pattern: /^\/settings\/bernticket-login$/, action: 'settings.bernticket_login', label: 'BernTicket-Login geändert', category: ActivityLogCategory.SETTINGS },
   { method: 'PATCH', pattern: /^\/settings\/ai-config$/, action: 'settings.ai_config', label: 'KI-Konfiguration geändert', category: ActivityLogCategory.SETTINGS },
 
   // Floor plans
