@@ -173,11 +173,13 @@ function ChatMessageBody({
   mine,
   mentions,
   onOpenPhotos,
+  tablet = false,
 }: {
   msg: ChatMsg;
   mine: boolean;
   mentions?: ChatAuthor[];
   onOpenPhotos: (urls: string[], index: number) => void;
+  tablet?: boolean;
 }) {
   const t = useTranslations('chat');
   const [showOriginal, setShowOriginal] = useState(false);
@@ -199,14 +201,19 @@ function ChatMessageBody({
         />
       )}
       {hasText && (
-        <MentionText body={displayBody} mentions={mentions} className="text-[14.5px] leading-snug" />
+        <MentionText
+          body={displayBody}
+          mentions={mentions}
+          className={clsx('leading-snug', tablet ? 'text-[17px]' : 'text-[14.5px]')}
+        />
       )}
       {hasTranslation && hasText && (
         <div className="mt-0.5 flex items-center gap-0.5">
           {!showOriginal ? (
             <span
               className={clsx(
-                'min-w-0 flex-1 truncate text-right text-[7px] leading-none tracking-wide',
+                'min-w-0 flex-1 truncate text-right leading-none tracking-wide',
+                tablet ? 'text-[10px]' : 'text-[7px]',
                 mine ? 'text-white/40' : 'text-sidebar-muted/65',
               )}
             >
@@ -221,13 +228,14 @@ function ChatMessageBody({
             title={showOriginal ? t('showTranslation') : t('showOriginal')}
             aria-label={showOriginal ? t('showTranslation') : t('showOriginal')}
             className={clsx(
-              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md transition-colors',
+              'inline-flex shrink-0 items-center justify-center rounded-md transition-colors',
+              tablet ? 'h-8 w-8' : 'h-5 w-5',
               mine
                 ? 'text-white/65 hover:bg-white/10 hover:text-white'
                 : 'text-sidebar-muted hover:bg-white/10 hover:text-white',
             )}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <svg width={tablet ? 16 : 12} height={tablet ? 16 : 12} viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
                 d="M7 8h11l-2.5-2.5M18 16H7l2.5 2.5"
                 stroke="currentColor"
@@ -392,10 +400,14 @@ function computeIsGroupHead(items: TimelineItem[]): Record<string, boolean> {
 export function TeamChatView({
   className,
   embedOperationsSocket = true,
+  density = 'default',
 }: {
   className?: string;
   embedOperationsSocket?: boolean;
+  /** Larger type and touch targets for iPad / kitchen shell. */
+  density?: 'default' | 'tablet';
 }) {
+  const tablet = density === 'tablet';
   const { user } = useAuth();
   const { locale } = useLocale();
   const tChat = useTranslations('chat');
@@ -432,7 +444,9 @@ export function TeamChatView({
   const [composerFocused, setComposerFocused] = useState(false);
   const composerBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardOverlap = useVisualViewportBottomOverlap();
-  const keyboardLift = composerFocused ? keyboardOverlap : 0;
+  // Only lift for a real soft keyboard — small overlaps leave an empty strip under the composer.
+  const keyboardLift =
+    composerFocused && keyboardOverlap > 120 ? keyboardOverlap : 0;
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [menu, setMenu] = useState<{
     message: ChatMsg;
@@ -1127,7 +1141,10 @@ export function TeamChatView({
       style={keyboardLift > 0 ? { paddingBottom: keyboardLift } : undefined}
     >
       <div
-        className="relative flex h-0 min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain px-3 py-4 [overflow-anchor:none] sm:px-5"
+        className={clsx(
+          'relative flex h-0 min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain [overflow-anchor:none]',
+          tablet ? 'px-5 py-5 sm:px-8' : 'px-3 py-4 sm:px-5',
+        )}
         ref={scrollContainerRef}
         onScroll={handleScroll}
       >
@@ -1135,20 +1152,22 @@ export function TeamChatView({
           flex-col-reverse: browser opens at scrollTop 0 = newest messages.
           Content stays chronological (oldest → newest) inside the inner wrapper.
         */}
-        <div className="mx-auto w-full max-w-3xl">
+        <div className={clsx('mx-auto w-full', tablet ? 'max-w-4xl' : 'max-w-3xl')}>
         {!chatReady && (
-          <p className="text-sm text-sidebar-muted">{tChat('loading')}</p>
+          <p className={clsx('text-sidebar-muted', tablet ? 'text-base' : 'text-sm')}>
+            {tChat('loading')}
+          </p>
         )}
         {chatReady &&
           !loadingReq &&
           !(canReadDamage && loadingDmg) &&
           timeline.filter((i) => i.kind !== 'day').length === 0 && (
-          <p className="mt-12 text-center text-sm text-sidebar-muted">
+          <p className={clsx('mt-12 text-center text-sidebar-muted', tablet ? 'text-base' : 'text-sm')}>
             {tChat('emptyFeed')}
           </p>
         )}
         {chatReady && (loadingOlder || hasMoreOlder) && messageList.length > 0 && (
-          <p className="mb-2 text-center text-[11px] text-sidebar-muted">
+          <p className={clsx('mb-2 text-center text-sidebar-muted', tablet ? 'text-sm' : 'text-[11px]')}>
             {loadingOlder ? tChat('loading') : tChat('scrollForOlder')}
           </p>
         )}
@@ -1324,20 +1343,26 @@ export function TeamChatView({
               >
                 <div
                   className={clsx(
-                    'flex max-w-[85%] items-end gap-2 sm:max-w-[72%]',
+                    'flex items-end gap-2',
+                    tablet ? 'max-w-[88%] sm:max-w-[78%]' : 'max-w-[85%] sm:max-w-[72%]',
                     mine ? 'flex-row-reverse' : 'flex-row',
                   )}
                 >
-                  <div className="w-8 shrink-0">
+                  <div className={clsx('shrink-0', tablet ? 'w-11' : 'w-8')}>
                     {!mine && isTail ? (
-                      <Avatar name={m.author.name} url={m.author.avatarUrl} size={32} />
+                      <Avatar
+                        name={m.author.name}
+                        url={m.author.avatarUrl}
+                        size={tablet ? 44 : 32}
+                      />
                     ) : null}
                   </div>
 
                   <div className="relative min-w-0">
                     <div
                       className={clsx(
-                        'relative min-w-[56px] select-none px-3.5 py-2 text-sm shadow-none',
+                        'relative select-none shadow-none',
+                        tablet ? 'min-w-[72px] px-4 py-2.5 text-base' : 'min-w-[56px] px-3.5 py-2 text-sm',
                         mine
                           ? 'bg-indigo-500/20 text-white'
                           : 'bg-white/5 text-white border border-sidebar-border/60',
@@ -1354,8 +1379,20 @@ export function TeamChatView({
                     >
                       {!mine && isHead && (
                         <div className="mb-0.5 flex items-baseline gap-1.5">
-                          <span className="text-[12px] font-semibold text-white">{m.author.name}</span>
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-sidebar-muted">
+                          <span
+                            className={clsx(
+                              'font-semibold text-white',
+                              tablet ? 'text-[15px]' : 'text-[12px]',
+                            )}
+                          >
+                            {m.author.name}
+                          </span>
+                          <span
+                            className={clsx(
+                              'font-medium uppercase tracking-wide text-sidebar-muted',
+                              tablet ? 'text-xs' : 'text-[10px]',
+                            )}
+                          >
                             {userTitlePrefixLabel(m.author.titlePrefix)}
                           </span>
                         </div>
@@ -1364,7 +1401,8 @@ export function TeamChatView({
                       {m.replyTo != null && (
                         <div
                           className={clsx(
-                            'mb-1.5 rounded-md border-l-[3px] px-2 py-1 text-[11px]',
+                            'mb-1.5 rounded-md border-l-[3px] px-2 py-1',
+                            tablet ? 'text-sm' : 'text-[11px]',
                             mine
                               ? 'border-white/30 bg-white/5'
                               : 'border-action/60 bg-action/10',
@@ -1388,12 +1426,13 @@ export function TeamChatView({
                         mine={mine}
                         mentions={m.mentions}
                         onOpenPhotos={openPhotoLightbox}
+                        tablet={tablet}
                       />
 
                       <span
                         className={clsx(
-                          'mt-0.5 block text-right text-[10px] leading-none text-sidebar-muted/80',
-                          'tabular-nums',
+                          'mt-0.5 block text-right leading-none text-sidebar-muted/80 tabular-nums',
+                          tablet ? 'text-xs' : 'text-[10px]',
                         )}
                       >
                         {formatClock(m.createdAt)}
@@ -1453,7 +1492,10 @@ export function TeamChatView({
                                 );
                               }}
                               className={clsx(
-                                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] shadow-none transition-colors',
+                                'inline-flex items-center gap-1 rounded-full border shadow-none transition-colors',
+                                tablet
+                                  ? 'min-h-9 px-3 py-1.5 text-sm'
+                                  : 'px-2 py-0.5 text-[11px]',
                                 rx.me
                                   ? 'border-action/40 bg-action/20 font-medium text-white'
                                   : 'border-sidebar-border/60 bg-white/5 text-sidebar-muted hover:bg-white/10',
@@ -1481,7 +1523,10 @@ export function TeamChatView({
           <button
             type="button"
             onClick={() => scrollToLatest('smooth')}
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sidebar-border bg-sidebar px-3 py-1.5 text-xs font-medium text-white shadow-none transition hover:bg-sidebar-hover"
+            className={clsx(
+              'pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-sidebar-border bg-sidebar font-medium text-white shadow-none transition hover:bg-sidebar-hover',
+              tablet ? 'min-h-11 px-4 py-2.5 text-sm' : 'px-3 py-1.5 text-xs',
+            )}
             aria-label={tChat('jumpToLatest')}
           >
             <span aria-hidden>↓</span>
@@ -1493,7 +1538,12 @@ export function TeamChatView({
       {canPost && (
         <form onSubmit={onSend} className="shrink-0 border-t border-sidebar-border/60 bg-[#121a26]/95 backdrop-blur">
           {replyTo && (
-            <div className="mx-auto flex w-full max-w-3xl items-start justify-between gap-2 border-b border-sidebar-border/60 bg-action/10 px-3 py-2 text-xs">
+            <div
+              className={clsx(
+                'mx-auto flex w-full items-start justify-between gap-2 border-b border-sidebar-border/60 bg-action/10',
+                tablet ? 'max-w-4xl px-4 py-3 text-sm' : 'max-w-3xl px-3 py-2 text-xs',
+              )}
+            >
               <div className="min-w-0 border-l-[3px] border-action/60 pl-2">
                 <p className="font-semibold text-white">
                   {tChat('replyingToName', { name: replyTo.author.name })}
@@ -1508,7 +1558,10 @@ export function TeamChatView({
               </div>
               <button
                 type="button"
-                className="shrink-0 rounded-md px-2 py-1 font-medium text-sidebar-muted hover:bg-white/10 hover:text-white"
+                className={clsx(
+                  'shrink-0 rounded-md font-medium text-sidebar-muted hover:bg-white/10 hover:text-white',
+                  tablet ? 'min-h-10 px-3 py-2' : 'px-2 py-1',
+                )}
                 onClick={() => setReplyTo(null)}
               >
                 {tCommon('cancel')}
@@ -1516,7 +1569,12 @@ export function TeamChatView({
             </div>
           )}
           {photoPreviewUrls.length > 0 && (
-            <div className="mx-auto w-full max-w-3xl border-b border-sidebar-border/60 px-3 py-2">
+            <div
+              className={clsx(
+                'mx-auto w-full border-b border-sidebar-border/60',
+                tablet ? 'max-w-4xl px-4 py-3' : 'max-w-3xl px-3 py-2',
+              )}
+            >
               <div className="flex flex-wrap gap-2">
                 {photoPreviewUrls.map((url, i) => {
                   const previewIsVideo = photoFiles[i]
@@ -1525,7 +1583,10 @@ export function TeamChatView({
                   return (
                     <div
                       key={url}
-                      className="relative h-16 w-16 overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5"
+                      className={clsx(
+                        'relative overflow-hidden rounded-lg border border-sidebar-border/60 bg-white/5',
+                        tablet ? 'h-20 w-20' : 'h-16 w-16',
+                      )}
                     >
                       {previewIsVideo ? (
                         <video
@@ -1569,7 +1630,10 @@ export function TeamChatView({
                       <button
                         type="button"
                         onClick={() => removePhotoAt(i)}
-                        className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
+                        className={clsx(
+                          'absolute right-0.5 top-0.5 inline-flex items-center justify-center rounded-full bg-black/70 text-white',
+                          tablet ? 'h-7 w-7 text-xs' : 'h-5 w-5 text-[10px]',
+                        )}
                         aria-label={tChat('removePhoto')}
                       >
                         ✕
@@ -1581,14 +1645,17 @@ export function TeamChatView({
                   <button
                     type="button"
                     onClick={() => photoInputRef.current?.click()}
-                    className="inline-flex h-16 w-16 items-center justify-center rounded-lg border border-dashed border-sidebar-border/80 bg-white/5 text-lg text-sidebar-muted transition hover:border-action/40 hover:text-white"
+                    className={clsx(
+                      'inline-flex items-center justify-center rounded-lg border border-dashed border-sidebar-border/80 bg-white/5 text-sidebar-muted transition hover:border-action/40 hover:text-white',
+                      tablet ? 'h-20 w-20 text-2xl' : 'h-16 w-16 text-lg',
+                    )}
                     aria-label={tChat('attachPhoto')}
                   >
                     +
                   </button>
                 )}
               </div>
-              <p className="mt-1.5 text-xs text-sidebar-muted">
+              <p className={clsx('mt-1.5 text-sidebar-muted', tablet ? 'text-sm' : 'text-xs')}>
                 {tChat('photosReady', { count: photoFiles.length })}
               </p>
             </div>
@@ -1606,19 +1673,31 @@ export function TeamChatView({
           />
 
           {/*
-            Mobile: tools sit on a row above the full-width textarea.
-            Desktop (sm+): single horizontal row via sm:flex-row.
+            Idle (phone): one row — icons | textarea | send.
+            Focused (phone only): icons shrink onto a row above; textarea takes full width.
+            Tablet / desktop: always a single horizontal row with large targets.
           */}
           <div
             className={clsx(
-              'mx-auto flex w-full max-w-3xl flex-col gap-1.5 px-3 py-2 sm:flex-row sm:items-end sm:gap-2 sm:px-4 sm:py-2.5',
-              composerFocused && 'gap-1',
+              'mx-auto flex w-full',
+              tablet
+                ? 'max-w-4xl flex-row items-end gap-3 px-4 py-3'
+                : clsx(
+                    'max-w-3xl px-3 py-2 sm:flex-row sm:items-end sm:gap-2 sm:px-4 sm:py-2.5',
+                    composerFocused
+                      ? 'flex-col items-stretch gap-1.5'
+                      : 'flex-row items-end gap-2',
+                  ),
             )}
           >
             <div
               className={clsx(
-                'flex shrink-0 items-center gap-1.5 sm:contents',
-                composerFocused && 'gap-1',
+                'flex shrink-0 items-center',
+                tablet
+                  ? 'gap-2'
+                  : composerFocused
+                    ? 'w-full gap-1 sm:w-auto sm:gap-1.5'
+                    : 'gap-1.5',
               )}
             >
               <button
@@ -1632,7 +1711,7 @@ export function TeamChatView({
                 <Avatar
                   name={user?.name ?? '?'}
                   url={user?.avatarUrl}
-                  size={composerFocused ? 28 : 40}
+                  size={tablet ? 48 : composerFocused ? 28 : 40}
                   ring
                 />
               </button>
@@ -1643,18 +1722,23 @@ export function TeamChatView({
                   onClick={() => setNewReqOpen(true)}
                   className={clsx(
                     'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white',
-                    composerFocused ? 'h-8 w-8' : 'h-10 w-10 sm:h-11 sm:w-11',
+                    tablet
+                      ? 'h-12 w-12'
+                      : composerFocused
+                        ? 'h-8 w-8 sm:h-11 sm:w-11'
+                        : 'h-10 w-10 sm:h-11 sm:w-11',
                   )}
                   aria-label={tChat('newServiceRequest')}
                   title={tChat('newServiceRequest')}
                   onMouseDown={(e) => e.preventDefault()}
                 >
                   <svg
-                    width={composerFocused ? 16 : 20}
-                    height={composerFocused ? 16 : 20}
+                    width={tablet ? 22 : 20}
+                    height={tablet ? 22 : 20}
                     viewBox="0 0 24 24"
                     fill="none"
                     aria-hidden
+                    className={!tablet && composerFocused ? 'max-sm:h-4 max-sm:w-4' : undefined}
                   >
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
@@ -1667,18 +1751,23 @@ export function TeamChatView({
                   onClick={() => setNewDmgOpen(true)}
                   className={clsx(
                     'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-rose-400/40 hover:text-rose-200',
-                    composerFocused ? 'h-8 w-8' : 'h-10 w-10 sm:h-11 sm:w-11',
+                    tablet
+                      ? 'h-12 w-12'
+                      : composerFocused
+                        ? 'h-8 w-8 sm:h-11 sm:w-11'
+                        : 'h-10 w-10 sm:h-11 sm:w-11',
                   )}
                   aria-label={tChat('newMaintenanceReport')}
                   title={tChat('newMaintenanceReport')}
                   onMouseDown={(e) => e.preventDefault()}
                 >
                   <svg
-                    width={composerFocused ? 16 : 20}
-                    height={composerFocused ? 16 : 20}
+                    width={tablet ? 22 : 20}
+                    height={tablet ? 22 : 20}
                     viewBox="0 0 24 24"
                     fill="none"
                     aria-hidden
+                    className={!tablet && composerFocused ? 'max-sm:h-4 max-sm:w-4' : undefined}
                   >
                     <path
                       d="M14.7 6.3a1 1 0 011.4 0l1.6 1.6a1 1 0 010 1.4l-8.5 8.5H6v-1.6l8.7-8.9z"
@@ -1696,18 +1785,23 @@ export function TeamChatView({
                 onClick={() => photoInputRef.current?.click()}
                 className={clsx(
                   'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white',
-                  composerFocused ? 'h-8 w-8' : 'h-10 w-10 sm:h-11 sm:w-11',
+                  tablet
+                    ? 'h-12 w-12'
+                    : composerFocused
+                      ? 'h-8 w-8 sm:h-11 sm:w-11'
+                      : 'h-10 w-10 sm:h-11 sm:w-11',
                 )}
                 aria-label={tChat('attachPhoto')}
                 title={tChat('attachPhoto')}
                 onMouseDown={(e) => e.preventDefault()}
               >
                 <svg
-                  width={composerFocused ? 16 : 20}
-                  height={composerFocused ? 16 : 20}
+                  width={tablet ? 22 : 20}
+                  height={tablet ? 22 : 20}
                   viewBox="0 0 24 24"
                   fill="none"
                   aria-hidden
+                  className={!tablet && composerFocused ? 'max-sm:h-4 max-sm:w-4' : undefined}
                 >
                   <path
                     d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
@@ -1719,7 +1813,13 @@ export function TeamChatView({
               </button>
             </div>
 
-            <div className="flex min-w-0 flex-1 items-end gap-2">
+            <div
+              className={clsx(
+                'flex min-w-0 flex-1 items-end',
+                tablet ? 'gap-3' : 'gap-2',
+                !tablet && composerFocused && 'w-full sm:w-auto',
+              )}
+            >
               <MentionComposer
                 value={body}
                 onChange={setBody}
@@ -1728,6 +1828,7 @@ export function TeamChatView({
                 placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
                 maxLength={2000}
                 expanded={composerFocused}
+                density={tablet ? 'tablet' : 'default'}
                 onFocus={() => {
                   if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
                   setComposerFocused(true);
@@ -1747,7 +1848,8 @@ export function TeamChatView({
                 type="submit"
                 disabled={!body.trim() && photoFiles.length === 0}
                 className={clsx(
-                  'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-none transition',
+                  'inline-flex shrink-0 items-center justify-center rounded-full shadow-none transition',
+                  tablet ? 'h-14 w-14' : 'h-11 w-11',
                   body.trim() || photoFiles.length > 0
                     ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
                     : 'bg-white/10 text-sidebar-muted',
@@ -1755,7 +1857,13 @@ export function TeamChatView({
                 aria-label={tChat('sendMessage')}
                 onMouseDown={(e) => e.preventDefault()}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <svg
+                  width={tablet ? 24 : 20}
+                  height={tablet ? 24 : 20}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden
+                >
                   <path
                     d="M3.5 3.5l17 8.5-17 8.5 3-8.5-3-8.5z"
                     stroke="currentColor"

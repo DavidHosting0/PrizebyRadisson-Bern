@@ -32,6 +32,8 @@ type Props = {
   className?: string;
   /** Taller auto-grow while the mobile composer is focused. */
   expanded?: boolean;
+  /** Larger type / min height for iPad kitchen chat. */
+  density?: 'default' | 'tablet';
   onSubmitShortcut?: () => void;
   onFocus?: () => void;
   onBlur?: () => void;
@@ -55,6 +57,7 @@ export function MentionComposer({
   maxLength = 2000,
   className,
   expanded = false,
+  density = 'default',
   onSubmitShortcut,
   onFocus,
   onBlur,
@@ -64,7 +67,10 @@ export function MentionComposer({
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [highlightIdx, setHighlightIdx] = useState(0);
   const [newlineOnEnter, setNewlineOnEnter] = useState(false);
-  const maxHeightPx = expanded ? 220 : 140;
+  const tablet = density === 'tablet';
+  // Start as a single line; grow with content up to max (don't jump to a tall box on focus).
+  const maxHeightPx = tablet ? (expanded ? 280 : 180) : expanded ? 220 : 120;
+  const minHeightPx = tablet ? 56 : 44;
 
   useEffect(() => {
     setNewlineOnEnter(preferNewlineOnEnter());
@@ -79,8 +85,8 @@ export function MentionComposer({
     if (!el) return;
     el.style.height = 'auto';
     const next = Math.min(el.scrollHeight, maxHeightPx);
-    el.style.height = `${Math.max(next, expanded ? 72 : 44)}px`;
-  }, [expanded, maxHeightPx]);
+    el.style.height = `${Math.max(next, minHeightPx)}px`;
+  }, [maxHeightPx, minHeightPx]);
 
   useLayoutEffect(() => {
     resizeToContent();
@@ -138,7 +144,7 @@ export function MentionComposer({
 
     const el = e.target;
     el.style.height = 'auto';
-    el.style.height = `${Math.max(Math.min(el.scrollHeight, maxHeightPx), expanded ? 72 : 44)}px`;
+    el.style.height = `${Math.max(Math.min(el.scrollHeight, maxHeightPx), minHeightPx)}px`;
 
     const pos = el.selectionStart ?? next.length;
     const before = next.slice(0, pos);
@@ -195,8 +201,8 @@ export function MentionComposer({
         rows={1}
         enterKeyHint={newlineOnEnter ? 'enter' : 'send'}
         className={clsx(
-          'w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar px-3.5 py-2.5 text-base leading-snug text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15 sm:px-4 sm:text-sm',
-          expanded ? 'min-h-[72px]' : 'min-h-[44px]',
+          'w-full resize-none overflow-y-auto rounded-2xl border border-sidebar-border bg-sidebar leading-snug text-white placeholder:text-sidebar-muted focus:border-action/40 focus:outline-none focus:ring-2 focus:ring-action/15',
+          tablet ? 'min-h-[56px] px-4 py-3.5 text-[17px]' : 'min-h-[44px] px-3.5 py-2.5 text-base sm:px-4 sm:text-sm',
           className,
         )}
         style={{ maxHeight: maxHeightPx }}
@@ -212,7 +218,10 @@ export function MentionComposer({
 
       {mentionQuery !== null && suggestions.length > 0 && (
         <ul
-          className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-xl border border-sidebar-border bg-sidebar py-1 shadow-lift"
+          className={clsx(
+            'absolute bottom-full left-0 z-20 mb-1 w-full overflow-y-auto rounded-xl border border-sidebar-border bg-sidebar py-1 shadow-lift',
+            tablet ? 'max-h-64' : 'max-h-48',
+          )}
           role="listbox"
         >
           {suggestions.map((u, i) => (
@@ -222,11 +231,12 @@ export function MentionComposer({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pickMention(u)}
                 className={clsx(
-                  'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition',
+                  'flex w-full items-center gap-2 text-left transition',
+                  tablet ? 'px-4 py-3.5 text-base' : 'px-3 py-2.5 text-sm',
                   i === highlightIdx ? 'bg-action/20 text-white' : 'text-white hover:bg-white/10',
                 )}
               >
-                <Avatar name={u.name} url={u.avatarUrl} size={28} />
+                <Avatar name={u.name} url={u.avatarUrl} size={tablet ? 36 : 28} />
                 <span className="min-w-0 truncate font-medium">
                   {formatUserWithTitlePrefix(u.name, u.titlePrefix)}
                 </span>
