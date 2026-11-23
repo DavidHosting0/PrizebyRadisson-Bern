@@ -1,21 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, type RefObject } from 'react';
 
 /**
- * Pixels of the layout viewport covered from the bottom (soft keyboard, browser chrome).
- * Used to lift chat composers into the visible area on mobile.
+ * While `active`, size `rootRef` so it ends at the visual viewport bottom
+ * (just above the soft keyboard). Avoids paddingBottom, which stacks with
+ * iOS scroll-into-view and leaves an empty strip under the composer.
  */
-export function useVisualViewportBottomOverlap(): number {
-  const [overlap, setOverlap] = useState(0);
+export function useFitToVisualViewport(
+  rootRef: RefObject<HTMLElement | null>,
+  active: boolean,
+): void {
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!root) return;
 
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
+    const clear = () => {
+      root.style.height = '';
+      root.style.maxHeight = '';
+    };
+
+    if (!active || !vv) {
+      clear();
+      return;
+    }
 
     const sync = () => {
-      const next = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-      setOverlap(next);
+      const top = root.getBoundingClientRect().top;
+      const visualBottom = vv.offsetTop + vv.height;
+      const available = Math.round(visualBottom - top);
+      if (available > 120) {
+        root.style.height = `${available}px`;
+        root.style.maxHeight = `${available}px`;
+      } else {
+        clear();
+      }
     };
 
     sync();
@@ -26,8 +46,7 @@ export function useVisualViewportBottomOverlap(): number {
       vv.removeEventListener('resize', sync);
       vv.removeEventListener('scroll', sync);
       window.removeEventListener('resize', sync);
+      clear();
     };
-  }, []);
-
-  return overlap;
+  }, [rootRef, active]);
 }

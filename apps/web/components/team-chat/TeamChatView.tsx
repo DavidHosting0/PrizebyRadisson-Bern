@@ -46,7 +46,7 @@ import {
   teamChatQueryOptions,
 } from '@/lib/team-chat-cache';
 import { ChatPhotoAlbum, ChatPhotoLightbox } from '@/components/team-chat/ChatPhotoAlbum';
-import { useVisualViewportBottomOverlap } from '@/lib/hooks/useVisualViewportBottomOverlap';
+import { useFitToVisualViewport } from '@/lib/hooks/useVisualViewportBottomOverlap';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 80;
 const LOAD_OLDER_THRESHOLD_PX = 480;
@@ -443,10 +443,8 @@ export function TeamChatView({
   const [profileOpen, setProfileOpen] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
   const composerBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keyboardOverlap = useVisualViewportBottomOverlap();
-  // Only lift for a real soft keyboard — small overlaps leave an empty strip under the composer.
-  const keyboardLift =
-    composerFocused && keyboardOverlap > 120 ? keyboardOverlap : 0;
+  const chatRootRef = useRef<HTMLDivElement>(null);
+  useFitToVisualViewport(chatRootRef, composerFocused);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [menu, setMenu] = useState<{
     message: ChatMsg;
@@ -1134,11 +1132,11 @@ export function TeamChatView({
   );
   return (
     <div
+      ref={chatRootRef}
       className={clsx(
         'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#121a26] [background-image:radial-gradient(ellipse_at_top,_rgba(59,111,160,0.14),_transparent_55%)]',
         className,
       )}
-      style={keyboardLift > 0 ? { paddingBottom: keyboardLift } : undefined}
     >
       <div
         className={clsx(
@@ -1673,207 +1671,181 @@ export function TeamChatView({
           />
 
           {/*
-            Idle (phone): one row — icons | textarea | send.
-            Focused (phone only): icons shrink onto a row above; textarea takes full width.
-            Tablet / desktop: always a single horizontal row with large targets.
+            Idle (phone): one row — round icons | textarea | send.
+            Focused (phone): short wide rectangular tool bars above; full-width textarea below.
+            Morph is CSS-animated (width / height / radius).
+            Tablet / desktop: always a single horizontal row.
           */}
-          <div
-            className={clsx(
-              'mx-auto flex w-full',
-              tablet
-                ? 'max-w-4xl flex-row items-end gap-3 px-4 py-3'
-                : clsx(
-                    'max-w-3xl px-3 py-2 sm:flex-row sm:items-end sm:gap-2 sm:px-4 sm:py-2.5',
-                    composerFocused
-                      ? 'flex-col items-stretch gap-1.5'
-                      : 'flex-row items-end gap-2',
-                  ),
-            )}
-          >
-            <div
-              className={clsx(
-                'flex shrink-0 items-center',
-                tablet
-                  ? 'gap-2'
-                  : composerFocused
-                    ? 'w-full gap-1 sm:w-auto sm:gap-1.5'
-                    : 'gap-1.5',
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => setProfileOpen(true)}
-                className="shrink-0 rounded-full transition-transform hover:scale-[1.03]"
-                aria-label={tChat('editProfilePhoto')}
-                title={tChat('yourProfilePhoto')}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <Avatar
-                  name={user?.name ?? '?'}
-                  url={user?.avatarUrl}
-                  size={tablet ? 48 : composerFocused ? 28 : 40}
-                  ring
-                />
-              </button>
+          {(() => {
+            const phoneFocus = !tablet && composerFocused;
+            const toolMorph =
+              'inline-flex items-center justify-center border border-sidebar-border bg-sidebar text-sidebar-muted transition-[width,height,flex-grow,flex-basis,border-radius,background-color,color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-action/40 hover:text-white';
+            const toolShape = tablet
+              ? 'h-12 w-12 shrink-0 rounded-full'
+              : phoneFocus
+                ? 'h-9 min-h-9 flex-1 basis-0 rounded-xl sm:h-11 sm:w-11 sm:flex-none sm:rounded-full'
+                : 'h-10 w-10 shrink-0 rounded-full sm:h-11 sm:w-11';
 
-              {canCreateRequest && (
-                <button
-                  type="button"
-                  onClick={() => setNewReqOpen(true)}
-                  className={clsx(
-                    'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white',
-                    tablet
-                      ? 'h-12 w-12'
-                      : composerFocused
-                        ? 'h-8 w-8 sm:h-11 sm:w-11'
-                        : 'h-10 w-10 sm:h-11 sm:w-11',
-                  )}
-                  aria-label={tChat('newServiceRequest')}
-                  title={tChat('newServiceRequest')}
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <svg
-                    width={tablet ? 22 : 20}
-                    height={tablet ? 22 : 20}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden
-                    className={!tablet && composerFocused ? 'max-sm:h-4 max-sm:w-4' : undefined}
-                  >
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </button>
-              )}
-
-              {canCreateDamage && (
-                <button
-                  type="button"
-                  onClick={() => setNewDmgOpen(true)}
-                  className={clsx(
-                    'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-rose-400/40 hover:text-rose-200',
-                    tablet
-                      ? 'h-12 w-12'
-                      : composerFocused
-                        ? 'h-8 w-8 sm:h-11 sm:w-11'
-                        : 'h-10 w-10 sm:h-11 sm:w-11',
-                  )}
-                  aria-label={tChat('newMaintenanceReport')}
-                  title={tChat('newMaintenanceReport')}
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <svg
-                    width={tablet ? 22 : 20}
-                    height={tablet ? 22 : 20}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden
-                    className={!tablet && composerFocused ? 'max-sm:h-4 max-sm:w-4' : undefined}
-                  >
-                    <path
-                      d="M14.7 6.3a1 1 0 011.4 0l1.6 1.6a1 1 0 010 1.4l-8.5 8.5H6v-1.6l8.7-8.9z"
-                      stroke="currentColor"
-                      strokeWidth="1.7"
-                      strokeLinejoin="round"
-                    />
-                    <path d="M4 20h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-                  </svg>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => photoInputRef.current?.click()}
+            return (
+              <div
                 className={clsx(
-                  'inline-flex shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-muted transition hover:border-action/40 hover:text-white',
+                  'mx-auto flex w-full transition-[gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
                   tablet
-                    ? 'h-12 w-12'
-                    : composerFocused
-                      ? 'h-8 w-8 sm:h-11 sm:w-11'
-                      : 'h-10 w-10 sm:h-11 sm:w-11',
+                    ? 'max-w-4xl flex-row items-end gap-3 px-4 py-3'
+                    : clsx(
+                        'max-w-3xl px-3 py-2 sm:flex-row sm:items-end sm:gap-2 sm:px-4 sm:py-2.5',
+                        phoneFocus ? 'flex-col items-stretch gap-2' : 'flex-row items-end gap-2',
+                      ),
                 )}
-                aria-label={tChat('attachPhoto')}
-                title={tChat('attachPhoto')}
-                onMouseDown={(e) => e.preventDefault()}
               >
-                <svg
-                  width={tablet ? 22 : 20}
-                  height={tablet ? 22 : 20}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden
-                  className={!tablet && composerFocused ? 'max-sm:h-4 max-sm:w-4' : undefined}
+                <div
+                  className={clsx(
+                    'flex items-center transition-[width,gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    tablet
+                      ? 'shrink-0 gap-2'
+                      : phoneFocus
+                        ? 'w-full gap-1.5 sm:w-auto sm:shrink-0 sm:gap-1.5'
+                        : 'shrink-0 gap-1.5',
+                  )}
                 >
-                  <path
-                    d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                  <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
-                </svg>
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setProfileOpen(true)}
+                    className={clsx(toolMorph, toolShape, 'overflow-hidden p-0')}
+                    aria-label={tChat('editProfilePhoto')}
+                    title={tChat('yourProfilePhoto')}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <Avatar
+                      name={user?.name ?? '?'}
+                      url={user?.avatarUrl}
+                      size={tablet ? 48 : phoneFocus ? 28 : 40}
+                      ring={!phoneFocus}
+                    />
+                  </button>
 
-            <div
-              className={clsx(
-                'flex min-w-0 flex-1 items-end',
-                tablet ? 'gap-3' : 'gap-2',
-                !tablet && composerFocused && 'w-full sm:w-auto',
-              )}
-            >
-              <MentionComposer
-                value={body}
-                onChange={setBody}
-                mentionUserIds={mentionUserIds}
-                onMentionUserIdsChange={setMentionUserIds}
-                placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
-                maxLength={2000}
-                expanded={composerFocused}
-                density={tablet ? 'tablet' : 'default'}
-                onFocus={() => {
-                  if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
-                  setComposerFocused(true);
-                }}
-                onBlur={() => {
-                  if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
-                  composerBlurTimerRef.current = setTimeout(() => setComposerFocused(false), 180);
-                }}
-                onSubmitShortcut={() => {
-                  const t = body.trim();
-                  if ((!t && photoFiles.length === 0) || !canPost) return;
-                  send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photos: photoFiles });
-                }}
-              />
+                  {canCreateRequest && (
+                    <button
+                      type="button"
+                      onClick={() => setNewReqOpen(true)}
+                      className={clsx(toolMorph, toolShape)}
+                      aria-label={tChat('newServiceRequest')}
+                      title={tChat('newServiceRequest')}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <svg width={tablet ? 22 : 18} height={tablet ? 22 : 18} viewBox="0 0 24 24" fill="none" aria-hidden>
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  )}
 
-              <button
-                type="submit"
-                disabled={!body.trim() && photoFiles.length === 0}
-                className={clsx(
-                  'inline-flex shrink-0 items-center justify-center rounded-full shadow-none transition',
-                  tablet ? 'h-14 w-14' : 'h-11 w-11',
-                  body.trim() || photoFiles.length > 0
-                    ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
-                    : 'bg-white/10 text-sidebar-muted',
-                )}
-                aria-label={tChat('sendMessage')}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                <svg
-                  width={tablet ? 24 : 20}
-                  height={tablet ? 24 : 20}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden
+                  {canCreateDamage && (
+                    <button
+                      type="button"
+                      onClick={() => setNewDmgOpen(true)}
+                      className={clsx(toolMorph, toolShape, 'hover:border-rose-400/40 hover:text-rose-200')}
+                      aria-label={tChat('newMaintenanceReport')}
+                      title={tChat('newMaintenanceReport')}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      <svg width={tablet ? 22 : 18} height={tablet ? 22 : 18} viewBox="0 0 24 24" fill="none" aria-hidden>
+                        <path
+                          d="M14.7 6.3a1 1 0 011.4 0l1.6 1.6a1 1 0 010 1.4l-8.5 8.5H6v-1.6l8.7-8.9z"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M4 20h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    className={clsx(toolMorph, toolShape)}
+                    aria-label={tChat('attachPhoto')}
+                    title={tChat('attachPhoto')}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <svg width={tablet ? 22 : 18} height={tablet ? 22 : 18} viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <path
+                        d="M4 7.5A2.5 2.5 0 016.5 5h2.1l.9-1.4A1.5 1.5 0 0110.75 3h2.5a1.5 1.5 0 011.25.6L15.4 5h2.1A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                      />
+                      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div
+                  className={clsx(
+                    'flex min-w-0 items-end transition-[width,flex-grow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    tablet ? 'flex-1 gap-3' : phoneFocus ? 'w-full gap-2 sm:flex-1' : 'min-w-0 flex-1 gap-2',
+                  )}
                 >
-                  <path
-                    d="M3.5 3.5l17 8.5-17 8.5 3-8.5-3-8.5z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinejoin="round"
+                  <MentionComposer
+                    value={body}
+                    onChange={setBody}
+                    mentionUserIds={mentionUserIds}
+                    onMentionUserIdsChange={setMentionUserIds}
+                    placeholder={replyTo ? tChat('placeholderReply') : tChat('placeholderMessage')}
+                    maxLength={2000}
+                    expanded={composerFocused}
+                    density={tablet ? 'tablet' : 'default'}
+                    className={
+                      phoneFocus
+                        ? 'transition-[box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] focus:shadow-[0_0_0_1px_rgba(59,111,160,0.35)]'
+                        : undefined
+                    }
+                    onFocus={() => {
+                      if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+                      setComposerFocused(true);
+                    }}
+                    onBlur={() => {
+                      if (composerBlurTimerRef.current) clearTimeout(composerBlurTimerRef.current);
+                      composerBlurTimerRef.current = setTimeout(() => setComposerFocused(false), 180);
+                    }}
+                    onSubmitShortcut={() => {
+                      const t = body.trim();
+                      if ((!t && photoFiles.length === 0) || !canPost) return;
+                      send.mutate({ text: t, replyToId: replyTo?.id, mentionUserIds, photos: photoFiles });
+                    }}
                   />
-                </svg>
-              </button>
-            </div>
-          </div>
+
+                  <button
+                    type="submit"
+                    disabled={!body.trim() && photoFiles.length === 0}
+                    className={clsx(
+                      'inline-flex shrink-0 items-center justify-center rounded-full shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                      tablet ? 'h-14 w-14' : 'h-11 w-11',
+                      body.trim() || photoFiles.length > 0
+                        ? 'bg-action text-white hover:bg-action/90 active:bg-action/95'
+                        : 'bg-white/10 text-sidebar-muted',
+                    )}
+                    aria-label={tChat('sendMessage')}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <svg
+                      width={tablet ? 24 : 20}
+                      height={tablet ? 24 : 20}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden
+                    >
+                      <path
+                        d="M3.5 3.5l17 8.5-17 8.5 3-8.5-3-8.5z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </form>
       )}
 
