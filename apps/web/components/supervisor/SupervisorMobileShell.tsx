@@ -93,7 +93,7 @@ export function SupervisorMobileShell({
           );
         })}
       </nav>
-      <InstallAppBanner />
+      {!isChat && <InstallAppBanner />}
     </div>
   );
 }

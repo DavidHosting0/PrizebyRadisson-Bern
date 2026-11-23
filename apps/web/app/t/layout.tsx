@@ -127,7 +127,7 @@ export default function TechnicianLayout({ children }: { children: React.ReactNo
           );
         })}
       </nav>
-      <InstallAppBanner />
+      {!isChat && <InstallAppBanner />}
     </div>
   );
 }

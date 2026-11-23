@@ -134,7 +134,7 @@ export default function KitchenLayout({ children }: { children: React.ReactNode 
           })}
         </div>
       </nav>
-      <InstallAppBanner />
+      {!isChat && <InstallAppBanner />}
     </div>
   );
 }

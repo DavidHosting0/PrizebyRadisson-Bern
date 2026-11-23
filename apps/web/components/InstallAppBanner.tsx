@@ -78,6 +78,7 @@ export function InstallAppBanner() {
 
   return (
     <div
+      data-install-banner
       className={clsx(
         'fixed bottom-[calc(5.5rem+var(--safe-bottom))] left-3 right-3 z-50 mx-auto max-w-md',
         'rounded-xl border border-border bg-surface px-4 py-3 shadow-lift',

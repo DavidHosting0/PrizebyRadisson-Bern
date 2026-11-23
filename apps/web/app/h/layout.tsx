@@ -127,7 +127,7 @@ export default function HousekeeperLayout({ children }: { children: React.ReactN
           );
         })}
       </nav>
-      <InstallAppBanner />
+      {!isChat && <InstallAppBanner />}
     </div>
   );
 }

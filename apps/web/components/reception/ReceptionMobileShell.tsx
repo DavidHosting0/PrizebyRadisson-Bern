@@ -93,7 +93,7 @@ export function ReceptionMobileShell({
           );
         })}
       </nav>
-      <InstallAppBanner />
+      {!isChat && <InstallAppBanner />}
     </div>
   );
 }

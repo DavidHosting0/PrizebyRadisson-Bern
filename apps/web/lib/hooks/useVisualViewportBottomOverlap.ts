@@ -1,41 +1,27 @@
 'use client';
 
-import { useLayoutEffect, type RefObject } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
- * While `active`, size `rootRef` so it ends at the visual viewport bottom
- * (just above the soft keyboard). Avoids paddingBottom, which stacks with
- * iOS scroll-into-view and leaves an empty strip under the composer.
+ * Soft-keyboard inset from the bottom of the layout viewport (px).
+ * Used to `position: fixed; bottom: inset` the chat composer on iOS —
+ * sizing the whole chat to visualViewport left a gap under the field.
  */
-export function useFitToVisualViewport(
-  rootRef: RefObject<HTMLElement | null>,
-  active: boolean,
-): void {
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    if (!root) return;
+export function useKeyboardBottomInset(active: boolean): number {
+  const [inset, setInset] = useState(0);
 
-    const clear = () => {
-      root.style.height = '';
-      root.style.maxHeight = '';
-    };
-
-    if (!active || !vv) {
-      clear();
+  useEffect(() => {
+    if (!active) {
+      setInset(0);
       return;
     }
 
+    const vv = window.visualViewport;
+    if (!vv) return;
+
     const sync = () => {
-      const top = root.getBoundingClientRect().top;
-      const visualBottom = vv.offsetTop + vv.height;
-      const available = Math.round(visualBottom - top);
-      if (available > 120) {
-        root.style.height = `${available}px`;
-        root.style.maxHeight = `${available}px`;
-      } else {
-        clear();
-      }
+      const next = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      setInset(next);
     };
 
     sync();
@@ -46,7 +32,8 @@ export function useFitToVisualViewport(
       vv.removeEventListener('resize', sync);
       vv.removeEventListener('scroll', sync);
       window.removeEventListener('resize', sync);
-      clear();
     };
-  }, [rootRef, active]);
+  }, [active]);
+
+  return inset;
 }
